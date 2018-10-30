@@ -208,7 +208,7 @@
         return -p.f/p.tau_decay*etd;
     }
     inline float_point Conductance_Exp::eval_g(float_point t) {
-        return p.f/etd;
+        return p.f*etd;
     }
     inline float_point Conductance_Exp::eval_ig(float_point t) {
         return p.f*p.tau_decay*(1-etd);
