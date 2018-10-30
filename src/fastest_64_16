@@ -1,0 +1,42 @@
+Time for the kernel: 8.275968 ms
+Time for memory copy: 235.770432 ms
+fractions:
+25603619, 25594437, 25601893, 25600048, 3
+Time for the kernel: 5.760000 ms
+Time for memory copy: 117.871452 ms
+fractions:
+25595675, 25604952, 25598048, 25601322, 3
+Time for the kernel: 5.617152 ms
+Time for memory copy: 125.083328 ms
+fractions:
+25600185, 25599814, 25596707, 25603291, 3
+Time for the kernel: 5.642368 ms
+Time for memory copy: 111.171516 ms
+fractions:
+25602617, 25594818, 25598970, 25603592, 3
+Time for the kernel: 5.630368 ms
+Time for memory copy: 84.172829 ms
+fractions:
+25602011, 25598882, 25592539, 25606561, 7
+==== kernel_example PASSED
+Time for the kernel: 8.475648 ms
+Time for memory copy: 234.758270 ms
+fractions:
+25603619, 25594437, 25601893, 25600048, 3
+Time for the kernel: 5.838592 ms
+Time for memory copy: 117.442017 ms
+fractions:
+25595675, 25604952, 25598048, 25601322, 3
+Time for the kernel: 5.722720 ms
+Time for memory copy: 124.540192 ms
+fractions:
+25600185, 25599814, 25596707, 25603291, 3
+Time for the kernel: 5.749152 ms
+Time for memory copy: 110.333885 ms
+fractions:
+25602617, 25594818, 25598970, 25603592, 3
+Time for the kernel: 5.740128 ms
+Time for memory copy: 84.105537 ms
+fractions:
+25602011, 25598882, 25592539, 25606561, 7
+==== kernel_example PASSED
