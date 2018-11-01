@@ -2,11 +2,11 @@
 
 int main(int argc, char *argv[])
 {
-    std::ofstream v_file, gE_file, gI_file;
+    std::ofstream v_file, spike_file, gE_file, gI_file;
     float time;
     //cudaEventCreateWithFlags(&gReady, cudaEventDisableTiming);
     curandStateMRG32k3a *state;
-    unsigned long long seed = 1234;
+    unsigned long long seed = 183765712;
     int device;
     int b1,b2;
     b1 = 64;
@@ -15,13 +15,13 @@ int main(int argc, char *argv[])
     unsigned int nstep = 10;
     double dt = 0.125f; // ms
     struct cudaDeviceProp properties;  
-    double *v, *gE, *gI, *preMat, *inputRate; 
-    double *d_v, *d_gE, *d_gI, *d_hE, *d_hI, *d_fE, *d_fI, *d_preMat, *d_inputRate;
+    double *v, *gE, *gI, *preMat, *eventRate; 
+    double *d_v, *d_gE, *d_gI, *d_hE, *d_hI, *d_fE, *d_fI, *d_preMat, *d_inputRate, *d_eventRate;
     double *d_a, *d_b;
     double *gactVecE, *hactVecE;
     double *gactVecI, *hactVecI;
-    double *lastInfo;
-    double *actVec;
+    double *leftTimeRate, *lastNegLogRand;
+    int *spikeTrain, *d_spikeTrain;
     double flatRate = 10000.0f; // Hz
     /* to be extended */
     bool presetInit = false;
@@ -58,7 +58,7 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaMemcpyToSymbol(tRef_I, &h_tRef_I, sizeof(double), 0, cudaMemcpyHostToDevice));
     CUDA_CALL(cudaMemcpyToSymbol(nE,     &h_nE, sizeof(unsigned int), 0, cudaMemcpyHostToDevice));
     // potentially variable
-    CUDA_CALL(cudaMemcpyToSymbol(vT,     &h_vT, sizeof(unsigned int), 0, cudaMemcpyHostToDevice));
+    CUDA_CALL(cudaMemcpyToSymbol(vT,     &h_vT, sizeof(double), 0, cudaMemcpyHostToDevice));
 
     /* check for double precision support */
     CUDA_CALL(cudaGetDevice(&device));
@@ -68,34 +68,53 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    unsigned int nbatch, batchEnd, batchStep;
+    // v, gE, gI, spikeTrain
+    double hostMemToDiskPerStep = b1 * b2 * (sizeof(double) + ngTypeE*sizeof(double) + ngTypeI*sizeof(double) + sizeof(int) )/(1024*1024);
+    //batchStep = floor(HALF_MEMORY_OCCUPANCY/hostMemToDiskPerStep);
+    batchStep = 1;
+    if (batchStep < 10) {
+        printf("consider increase HALF_MEMORY_OCCUPANCY, batch step = %i\n", batchStep);
+    } else {
+        if (batchStep == 0) {
+            printf("increase HALF_MEMORY_OCCUPANCY, memory to write on disk per step: %i Mb", hostMemToDiskPerStep);
+            return EXIT_FAILURE;
+        }
+    }
+    nbatch = nstep/batchStep; 
+    batchEnd = nstep - batchStep*nbatch;
+
     /* Allocate space for results on host */
     //pinned memory
-    CUDA_CALL(cudaMallocHost((void**)&v,         b1 * b2 * sizeof(double)));
-    CUDA_CALL(cudaMallocHost((void**)&gE,        b1 * b2 * ngTypeE * sizeof(double)));
-    CUDA_CALL(cudaMallocHost((void**)&gI,        b1 * b2 * ngTypeI *sizeof(double)));
-    CUDA_CALL(cudaMallocHost((void**)&inputRate, b1 * b2 * sizeof(double)));
-    CUDA_CALL(cudaMallocHost((void**)&actVec,    b1 * b2 * sizeof(double)));
+    CUDA_CALL(cudaMallocHost((void**)&v,          b1 * b2 * sizeof(double) * batchStep * 2));
+    CUDA_CALL(cudaMallocHost((void**)&gE,         b1 * b2 * ngTypeE * sizeof(double) * batchStep * 2));
+    CUDA_CALL(cudaMallocHost((void**)&gI,         b1 * b2 * ngTypeI *sizeof(double) * batchStep * 2));
+    CUDA_CALL(cudaMallocHost((void**)&spikeTrain, b1 * b2 * sizeof(int) * batchStep * 2));
+    CUDA_CALL(cudaMallocHost((void**)&eventRate,  b1 * b2 * sizeof(double) * 2));
     preMat = (double *)calloc(b1 * b2, sizeof(double));
 
     /* Allocate space for results on device */
-    CUDA_CALL(cudaMalloc((void **)&d_v,         b1 * b2 * sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&d_gE,        b1 * b2 * ngTypeE *sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&d_gI,        b1 * b2 * ngTypeI * sizeof(double))); 
-    CUDA_CALL(cudaMalloc((void **)&d_hE,        b1 * b2 * ngTypeE *sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&d_hI,        b1 * b2 * ngTypeI * sizeof(double))); 
-    CUDA_CALL(cudaMalloc((void **)&d_fE,        b1 * b2 * ngTypeE *sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&d_fI,        b1 * b2 * ngTypeI * sizeof(double))); 
-    CUDA_CALL(cudaMalloc((void **)&d_a,         b1 * b2 * sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&d_b,         b1 * b2 * sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&d_inputRate, b1 * b2 * sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&gactVecE,    b1 * b2 * ngTypeE * sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&hactVecE,    b1 * b2 * ngTypeI *sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&gactVecI,    b1 * b2 * ngTypeE * sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&hactVecI,    b1 * b2 * ngTypeI *sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&d_preMat,    b1 * b2 * b1 * b2 * sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&d_v,            b1 * b2 * sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&d_gE,           b1 * b2 * ngTypeE *sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&d_gI,           b1 * b2 * ngTypeI * sizeof(double))); 
+    CUDA_CALL(cudaMalloc((void **)&d_hE,           b1 * b2 * ngTypeE *sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&d_hI,           b1 * b2 * ngTypeI * sizeof(double))); 
+    CUDA_CALL(cudaMalloc((void **)&d_fE,           b1 * b2 * ngTypeE *sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&d_fI,           b1 * b2 * ngTypeI * sizeof(double))); 
+    CUDA_CALL(cudaMalloc((void **)&d_a,            b1 * b2 * sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&d_b,            b1 * b2 * sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&d_inputRate,    b1 * b2 * sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&d_eventRate,    b1 * b2 * sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&d_spikeTrain,   b1 * b2 * sizeof(int)));
+    CUDA_CALL(cudaMalloc((void **)&gactVecE,       b1 * b2 * ngTypeE * sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&hactVecE,       b1 * b2 * ngTypeE *sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&gactVecI,       b1 * b2 * ngTypeI * sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&hactVecI,       b1 * b2 * ngTypeI *sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&d_preMat,       b1 * b2 * b1 * b2 * sizeof(double)));
     /* Allocate space for rng on device */
-    CUDA_CALL(cudaMalloc((void **)&state,       b1 * b2 * sizeof(curandStateMRG32k3a)));
-    CUDA_CALL(cudaMalloc((void **)&lastInfo,    b1 * b2 * sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&state,          b1 * b2 * sizeof(curandStateMRG32k3a)));
+    CUDA_CALL(cudaMalloc((void **)&leftTimeRate,   b1 * b2 * sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&lastNegLogRand, b1 * b2 * sizeof(double)));
     /* Allocate space for partial reduce results on device */
     unsigned int sizeToReduce = b1*b2;
     unsigned int nReduceThreads = sizeToReduce/2;
@@ -125,10 +144,10 @@ int main(int argc, char *argv[])
     printf("blockdims for 2-layer reduction: %i x %i and 1 x %i \n", rn_b1, rn_b2, rn_b1/2);
 
     double *gEproduct_b1, *gIproduct_b1, *hEproduct_b1, *hIproduct_b1;
-    CUDA_CALL(cudaMalloc((void **)&gEproduct_b1,  b1 * b2 * b1 * ngTypeE * sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&gIproduct_b1,  b1 * b2 * b1 * ngTypeE * sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&hEproduct_b1,  b1 * b2 * b1 * ngTypeE * sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&hIproduct_b1,  b1 * b2 * b1 * ngTypeI * sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&gEproduct_b1,  b1 * b2 * rn_b1 * ngTypeE * sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&gIproduct_b1,  b1 * b2 * rn_b1 * ngTypeE * sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&hEproduct_b1,  b1 * b2 * rn_b1 * ngTypeE * sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&hIproduct_b1,  b1 * b2 * rn_b1 * ngTypeI * sizeof(double)));
 
 
 
@@ -138,18 +157,25 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaStreamCreate(&i1));
     CUDA_CALL(cudaStreamCreate(&i2));
     CUDA_CALL(cudaStreamCreate(&i3));
+    double s = 1e-1;
     if (presetInit) {
     } else {
-        init<double><<<b1,b2,0,i1>>>(d_inputRate, flatRate*dt/1000.0);
-        init<double><<<b1,b2*ngTypeE,0,i2>>>(d_fE, 1e-1);
-        init<double><<<b1,b2*ngTypeI,0,i3>>>(d_fI, 1e-1);
-        CUDA_CHECK();
-        CUDA_CALL(cudaMemset(d_v, 0, b1 * b2 * sizeof(double)));
-        CUDA_CALL(cudaMemset(d_gE, 0, b1 * b2 * ngTypeE * sizeof(double)));
-        CUDA_CALL(cudaMemset(d_gI, 0, b1 * b2 * ngTypeI * sizeof(double)));
-        CUDA_CALL(cudaMemset(d_hE, 0, b1 * b2 * ngTypeE * sizeof(double)));
-        CUDA_CALL(cudaMemset(d_hI, 0, b1 * b2 * ngTypeI * sizeof(double)));
-        CUDA_CALL(cudaMemset(d_preMat, 1, b1 * b2 * b1 * b2 * sizeof(double)));
+        // init rand generation for poisson
+        logRand_init<<<b1,b2,0,i1>>>(lastNegLogRand, state, seed);
+        init<double><<<b1,b2,0,i2>>>(d_inputRate, flatRate*dt/1000.0f);
+        init<double><<<b1,b2,0,i3>>>(v, 0.0f);
+        init<double><<<b1,b2,0,i1>>>(leftTimeRate, 0.0f);
+        init<double><<<b1,b2*ngTypeE,0,i2>>>(d_fE, 1.0f);
+        init<double><<<b1,b2*ngTypeI,0,i3>>>(d_fI, 1.0f);
+        init<double><<<b1,b2*ngTypeE,0,i1>>>(d_gE, 0.0f);
+        init<double><<<b1,b2*ngTypeI,0,i2>>>(d_gI, 0.0f);
+        init<double><<<b1,b2*ngTypeE,0,i3>>>(d_hE, 0.0f);
+        init<double><<<b1,b2*ngTypeI,0,i1>>>(d_hI, 0.0f);
+        init<double><<<b1,b2*ngTypeE,0,i2>>>(gactVecE, 0.0f);
+        init<double><<<b1,b2*ngTypeI,0,i3>>>(gactVecI, 0.0f);
+        init<double><<<b1,b2*ngTypeE,0,i1>>>(hactVecE, 0.0f);
+        init<double><<<b1,b2*ngTypeI,0,i2>>>(hactVecI, 0.0f);
+        init<double><<<b1*b1*b2,b2,0,i3>>>(d_preMat, s);
     }
     CUDA_CALL(cudaStreamDestroy(i1));
     CUDA_CALL(cudaStreamDestroy(i2));
@@ -169,73 +195,101 @@ int main(int argc, char *argv[])
     unsigned int shared_mem = 48;
     bool init = true;
     v_file.open("v_ictorious.bin", std::ios::out|std::ios::binary);
+    spike_file.open("s_uspicious.bin", std::ios::out|std::ios::binary);
     gE_file.open("gE_nerous.bin", std::ios::out|std::ios::binary);
     gI_file.open("gI_berish.bin", std::ios::out|std::ios::binary);
     CUDA_CALL(cudaEventRecord(start, 0));
-    double sum = 0.0f;
-    double fr = 0.0f;
-    for (int i=0; i<nstep; i++) {
-        printf("==== i = %i started ===== \n", i);
-        CUDA_CALL(cudaStreamWaitEvent(s1, gReady, 0));
-        /* Compute voltage (acquire initial spikes) */
-        compute_V<<<b1, b2, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_a, d_b, d_preMat, d_inputRate, gactVecE, hactVecE, gactVecI, hactVecI, d_fE, d_fI, lastInfo, state, nstep, ngTypeE, ngTypeI, condE, condI, dt, b1*b2, seed, init);
-        CUDA_CHECK();
-        //CUDA_CALL(cudaEventRecord(initialSpikesObtained, s1));
-        /* Spike correction */
-        CUDA_CALL(cudaEventRecord(spikeCorrected, s1));
-        /* Write voltage of last step to disk */
-        v_file.write((char*)v, b1 * b2 * sizeof(double));
-        /* Copy voltage to host */
-        CUDA_CALL(cudaMemcpyAsync(v, d_v, b1 * b2 * sizeof(double), cudaMemcpyDeviceToHost, s1));
-        CUDA_CALL(cudaMemcpyAsync(inputRate, d_inputRate, b1 * b2 * sizeof(double), cudaMemcpyDeviceToHost, s1));
-        CUDA_CALL(cudaMemcpyAsync(actVec, gactVecE, b1 * b2 * sizeof(double), cudaMemcpyDeviceToHost, s1));
+    //double events = 0.0f;
+    //int spikes = 0;
+    unsigned int ibatch = 0;
+    unsigned int bStep = 0;
+    unsigned int batchOffset = 0;
+    unsigned int copySize = batchStep;
+    unsigned int n = b1*b2*copySize;
+    //for (int ibatch=0; i<nbatch; ibatch++) {
+    //    if(ibatch == nbatch-1) {
+    //        copySize = batchEnd;
+    //    }
+        for (int i=0; i<nstep; i++) {
+            unsigned int offset; 
+            //offset = b1*b2*(batchOffset + i);
+            offset = 0;
+            CUDA_CALL(cudaStreamWaitEvent(s1, gReady, 0));
+            /* Compute voltage (acquire initial spikes) */
+            compute_V<<<b1, b2, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_a, d_b, d_preMat, d_inputRate, d_eventRate, d_spikeTrain, gactVecE, hactVecE, gactVecI, hactVecI, d_fE, d_fI, leftTimeRate, lastNegLogRand, state, nstep, ngTypeE, ngTypeI, condE, condI, dt, b1*b2, seed, init);
+            CUDA_CHECK();
+            //CUDA_CALL(cudaEventRecord(initialSpikesObtained, s1));
+            /* Spike correction */
+            CUDA_CALL(cudaEventRecord(spikeCorrected, s1));
+            /* Write voltage of last step to disk */
+            v_file.write((char*)&(v[n*batchOffset]),               n*sizeof(double));
+            /* Write spikeTrain of last step to disk */
+            spike_file.write((char*)&(spikeTrain[n*batchOffset]),  n*sizeof(int));
+            /* Copy voltage to host */
+            CUDA_CALL(cudaMemcpyAsync(&(v[offset]), d_v, b1 * b2 * sizeof(double), cudaMemcpyDeviceToHost, s1));
+            //CUDA_CALL(cudaMemcpyAsync(eventRate, d_eventRate, b1 * b2 * sizeof(double), cudaMemcpyDeviceToHost, s1));
+            /* Copy spikeTrain to host */
+            CUDA_CALL(cudaMemcpyAsync(&(spikeTrain[offset]), d_spikeTrain, b1 * b2 * sizeof(int), cudaMemcpyDeviceToHost, s1));
 
-        CUDA_CALL(cudaStreamWaitEvent(s2, spikeCorrected, 0));
-        /* Recalibrate conductance */
-        recal_G<<<b1,b2,shared_mem,s2>>>(d_a, d_b, d_gE, d_gI, d_hE, d_hI,d_preMat, gactVecE, hactVecE, gactVecI, hactVecI, gEproduct_b1, hEproduct_b1, gIproduct_b1, hIproduct_b1, b1*b2, ngTypeE, ngTypeI, rn_b1, rn_b2);
-        CUDA_CHECK();
-        /* Write conductance of last step to disk */
-        gE_file.write((char*)gE, b1 * b2 * ngTypeE * sizeof(double));
-        gI_file.write((char*)gI, b1 * b2 * ngTypeI * sizeof(double));
-        /* Copy conductance to host */
-        CUDA_CALL(cudaMemcpyAsync(gE, d_gE, b1 * b2 * ngTypeE * sizeof(double), cudaMemcpyDeviceToHost, s2));
-        CUDA_CALL(cudaMemcpyAsync(gI, d_gI, b1 * b2 * ngTypeI * sizeof(double), cudaMemcpyDeviceToHost, s2));
-        CUDA_CALL(cudaEventRecord(gReady, s2));
-        init = false;
-        printf("==== i = %i ended ===== \n", i);
-        double _sum = 0.0f;
-        double _fr = 0.0f;
-        for (int j=0; j<b1*b2; j++) {
-            _sum += inputRate[j];
-            if (actVec[j] > 0.0f) {
-                _fr += 1.0;
+            CUDA_CALL(cudaStreamWaitEvent(s2, spikeCorrected, 0));
+            /* Recalibrate conductance */
+            recal_G<<<b1,b2,shared_mem,s2>>>(d_a, d_b, d_gE, d_gI, d_hE, d_hI,d_preMat, gactVecE, hactVecE, gactVecI, hactVecI, gEproduct_b1, hEproduct_b1, gIproduct_b1, hIproduct_b1, b1*b2, ngTypeE, ngTypeI, rn_b1, rn_b2);
+            CUDA_CHECK();
+            /* Write conductance of last step to disk */
+            gE_file.write((char*)&(gE[n*ngTypeE*batchOffset]),     n*ngTypeE*sizeof(double));
+            gI_file.write((char*)&(gI[n*ngTypeE*batchOffset]),     n*ngTypeI*sizeof(double));
+            /* Copy conductance to host */
+            CUDA_CALL(cudaMemcpyAsync(&(gE[offset*ngTypeE]), d_gE, b2 * b2 * ngTypeE * sizeof(double), cudaMemcpyDeviceToHost, s2));
+            CUDA_CALL(cudaMemcpyAsync(&(gI[offset*ngTypeI]), d_gI, b1 * b2 * ngTypeI * sizeof(double), cudaMemcpyDeviceToHost, s2));
+            CUDA_CALL(cudaEventRecord(gReady, s2));
+            init = false;
+            printf("\r total: %3.1f, batch: %3.1f", float(ibatch)/nbatch, float(i)/copySize);
+            fflush(stdout);
+            //double _events = 0.0f;
+            //int _spikes = 0;
+            //for (int j=0; j<b1*b2; j++) {
+            //    _events += eventRate[j];
+            //    if (spikeTrain[j] > 0) {
+            //        _spikes++
+            //    }
+            //}
+            //events += _events;
+            //spikes += _spikes;
+            //printf("instant input rate = %fkHz\n", _events/(b1*b2));
+            //printf("instant firing rate = %fHz\n", _fr/(dt*b1*b2)*1000.0);
+            if (batchOffset == 0) {
+                batchOffset = 0;
+                //batchOffset = batchStep;
+            } else {
+                batchOffset = 0;
             }
         }
-        sum += _sum;
-        fr += _fr;
-        printf("instant input rate = %fkHz\n", _sum/(b1*b2));
-        printf("instant firing rate = %fHz\n", _fr/(dt*b1*b2)*1000.0);
-
-    }
+        /* WHen hit HALF_MEMORY_OCCUPANCY, write half of the array to disk, the other half left to receive from device */
+        // Alternating
+        // switch batchOffset
+    //}
 
     v_file.write((char*)v, b1 * b2 * sizeof(double));
+    spike_file.write((char*)spikeTrain, b1 * b2 * sizeof(int));
     gE_file.write((char*)gE, b1 * b2 * ngTypeE * sizeof(double));
     gI_file.write((char*)gI, b1 * b2 * ngTypeI * sizeof(double));
     
-    printf("flatRate = %fkHz, realized mean input rate = %fkHz\n", flatRate*dt/1000.0, sum/(nstep*b1*b2));
-    printf("mean firing rate = %fHz\n", fr/(dt*nstep*b1*b2)*1000.0);
+    //printf("flatRate = %fkHz, realized mean input rate = %fkHz\n", flatRate*dt/1000.0, events/(nstep*b1*b2));
+    //printf("mean firing rate = %fHz\n", fr/(dt*nstep*b1*b2)*1000.0);
 
     CUDA_CALL(cudaEventRecord(stop, 0));
     CUDA_CALL(cudaEventSynchronize(stop));
     CUDA_CALL(cudaEventElapsedTime(&time, start, stop));
     printf("Runtime per neuronal time: %f\n", time/(dt*nstep));
 
+    cpu_version(b1*b2, condE, condI, flatRate, nstep, dt, ngTypeE, ngTypeI, h_nE, s);
     /* Cleanup */
     printf("Cleaning up:\n");
     CUDA_CALL(cudaStreamDestroy(s1));
     CUDA_CALL(cudaStreamDestroy(s2));
     printf("    CUDA streams destroyed\n");
     if (v_file.is_open()) v_file.close();
+    if (spike_file.is_open()) spike_file.close();
     if (gE_file.is_open()) gE_file.close();
     if (gI_file.is_open()) gI_file.close();
     printf("    Output files closed\n");
@@ -258,13 +312,17 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaFree(gIproduct_b1));
     CUDA_CALL(cudaFree(hEproduct_b1));
     CUDA_CALL(cudaFree(hIproduct_b1));
-    CUDA_CALL(cudaFree(lastInfo));
+    CUDA_CALL(cudaFree(leftTimeRate));
+    CUDA_CALL(cudaFree(lastNegLogRand));
+    CUDA_CALL(cudaFree(d_inputRate));
+    CUDA_CALL(cudaFree(d_eventRate));
+    CUDA_CALL(cudaFree(d_spikeTrain));
     printf("    Device memory freed\n");
     CUDA_CALL(cudaFreeHost(v));
     CUDA_CALL(cudaFreeHost(gE));
     CUDA_CALL(cudaFreeHost(gI));
-    CUDA_CALL(cudaFreeHost(actVec));
-    CUDA_CALL(cudaFreeHost(inputRate));
+    CUDA_CALL(cudaFreeHost(eventRate));
+    CUDA_CALL(cudaFreeHost(spikeTrain));
     free(preMat);
     printf("    Host memory freed\n");
     return EXIT_SUCCESS;

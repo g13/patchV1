@@ -1,8 +1,11 @@
 #ifndef MACRO_H
 #define MACRO_H
 
+#define MAX_FFINPUT_PER_DT 10 // dt in ms
+#define HALF_MEMORY_OCCUPANCY 1 // in Mb
+
 #define CUDA_ERROR_CHECK
-#define CUDA_DEEP_ERROR_CHECK
+//#define CUDA_DEEP_ERROR_CHECK
 
 #define CUDA_CALL(err) __cudaSafeCall(err, __FILE__, __LINE__)
 #define CUDA_CHECK() __cudaCheckError( __FILE__, __LINE__)

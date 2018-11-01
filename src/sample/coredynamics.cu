@@ -2,8 +2,6 @@
 #include <cuda.h>
 #include "MACRO.h"
 
-#define MAX_FFINPUT_PER_DT 10
-
 __constant__ double vE, vI, vL, vT;
 __constant__ double gL_E, gL_I;
 __constant__ double tRef_E, tRef_I;
@@ -110,7 +108,8 @@ __global__ void partial_dot1d(T* x, T* y1, T* y2, T* g, T* h, int size) {
     unsigned int blockLen_half = blockDim.x/2;
     // thread index
     unsigned int block_id = threadIdx.x;
-    unsigned int global_id = blockIdx.x*(2*blockLen) + block_id;
+    unsigned int grid_id = blockIdx.x;
+    unsigned int global_id = grid_id*(2*blockLen) + block_id;
     // elmenent-wise product to shared memory
     product_g[block_id] = x[global_id]*y1[global_id] + x[global_id + blockLen] * y1[global_id+blockLen];
     product_h[block_id] = x[global_id]*y2[global_id] + x[global_id + blockLen] * y2[global_id+blockLen];
@@ -123,8 +122,8 @@ __global__ void partial_dot1d(T* x, T* y1, T* y2, T* g, T* h, int size) {
     reduce2<T>(product_g, product_h, block_id, blockLen_half);
 
     if (block_id == 0) {
-        g[block_id] = product_g[0];
-        h[block_id] = product_h[0];
+        g[grid_id] = product_g[0];
+        h[grid_id] = product_h[0];
     }
 }
 
@@ -148,6 +147,7 @@ __global__ void final_reduce(T* pg, T* ph, T* g, T* h, int size) {
     if (block_id == 0) {
         (*g) = partial_g[0];
         (*h) = partial_h[0];
+        //printf("r1 = %f, r2 = %f \n", partial_g[0], partial_h[0]);
     }
 }
 
@@ -176,7 +176,7 @@ __global__ void recal_G(double* __restrict__ a,
         gL = gL_I;
     }
     double gE_t = 0.0;
-    printf("%i before gE = %f\n", id, gE[id]);
+    //double bgE = gE[id];
     #pragma unroll
     for (int ig=0; ig<ngTypeE; ig++) {
         unsigned int aid = networkSize*ig;
@@ -188,7 +188,7 @@ __global__ void recal_G(double* __restrict__ a,
         d_CUDA_CHECK();
         gE_t += gE[gid];
     }
-    printf("%i after gE = %f\n", id, gE[id]);
+    //printf("id-%i: %f -> %f\n", id, bgE, gE[id]);
     double gI_t = 0.0;
     #pragma unroll
     for (int ig=0; ig<ngTypeI; ig++) {
@@ -211,24 +211,40 @@ __global__ void init(T *array, T value) {
     array[id] = value;
 }
 
+__global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed) {
+    unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
+    curandStateMRG32k3a localState = state[id];
+    curand_init(seed, id, 0, &localState);
+    logRand[id] = -log(curand_uniform_double(&localState));
+    state[id] = localState;
+}
+
 __device__ int set_input_time(double inputTime[],
                               double dt,
                               double rate,
-                              unsigned int id,
-                              double *lastInfo,
+                              double *leftTimeRate,
+                              double *lastNegLogRand,
                               curandStateMRG32k3a* __restrict__ state) {
     int i = 0;
-    double tau = -log(curand_uniform_double(state))/rate;
-    //printf("tau = %f\n", tau);
-    while (tau <= dt) {
+    double tau, dTau, negLogRand;
+    tau = (*lastNegLogRand - (*leftTimeRate))/rate;
+    if (tau > dt) {
+        *leftTimeRate += (dt * rate);
+        return i;
+    } else do {
         inputTime[i] = tau;
-        tau -= log(curand_uniform_double(state))/rate;
+        negLogRand = -log(curand_uniform_double(state));
+        dTau = negLogRand/rate;
+        tau += dTau;
         i++;
         if (i == MAX_FFINPUT_PER_DT) {
             printf("exceeding max input per dt %i\n", MAX_FFINPUT_PER_DT);
+            //printf("inputTime: %f, %f, %f, %f, %f, %f, %f, %f, %f, %f\n", inputTime[0], inputTime[1], inputTime[2], inputTime[3], inputTime[4], inputTime[5], inputTime[6], inputTime[7], inputTime[8], inputTime[9]);
             break;
         }
-    } 
+    } while (tau <= dt);
+    *lastNegLogRand = negLogRand;
+    *leftTimeRate = (dt - tau + dTau) * rate;
     return i;
 }
 
@@ -252,18 +268,15 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
     }
 }
 
- __device__  bool step(Func_RK2* lif,
-                              double dt, unsigned int id, double tRef) {
-    bool spiked = false;
-    double tsp = -1.0f;
+ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id) {
+    lif->tsp = -1.0f;
     if (lif->tBack <= 0.0f) {
         // not in refractory period
         lif->runge_kutta_2(dt);
         if (lif->v > vT) {
             // crossed threshold
-            tsp = lif->compute_spike_time(dt); 
-            lif->tBack = tsp + tRef;
-            spiked = true;
+            lif->tsp = lif->compute_spike_time(dt); 
+            lif->tBack = lif->tsp + tRef;
             //printf("neuron #%i fired initially\n", id);
         }
     } else {
@@ -277,7 +290,7 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
         lif->compute_pseudo_v0(dt);
         lif->runge_kutta_2(dt);
     }
-    return spiked;
+    return lif->tsp;
 }
 
 __global__ void compute_V(double* __restrict__ v,
@@ -289,13 +302,16 @@ __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ b,
                           double* __restrict__ preMat,
                           double* __restrict__ inputRate,
+                          double* __restrict__ eventRate,
+                          int*   __restrict__ spikeTrain,
                           double* __restrict__ gactVecE,
                           double* __restrict__ hactVecE,
                           double* __restrict__ gactVecI,
                           double* __restrict__ hactVecI,
                           double* __restrict__ fE,
                           double* __restrict__ fI,
-                          double* __restrict__ lastInfo,
+                          double* __restrict__ leftTimeRate,
+                          double* __restrict__ lastNegLogRand,
                           curandStateMRG32k3a* __restrict__ state,
                           unsigned int nstep, unsigned int ngTypeE, unsigned int ngTypeI, ConductanceShape condE, ConductanceShape condI, double dt, int networkSize, unsigned long long seed, bool init) {
 
@@ -319,8 +335,6 @@ __global__ void compute_V(double* __restrict__ v,
     //}
     LIF lif(v[id]);
     if (init) {
-        // init rand generation for poisson
-        curand_init(seed, id, 0, &localState);
         // init cond E 
         gE_t = 0.0f;
         #pragma unroll
@@ -340,14 +354,17 @@ __global__ void compute_V(double* __restrict__ v,
         lif.b0 = b[id];
     }
     //printf("id %i, init finished\n",id);
+    /* Get feedforward input */
+    // consider use shared memory for dynamic allocation
     double inputTime[MAX_FFINPUT_PER_DT];
-    // get feedforward input
-    int nInput = set_input_time(inputTime, dt, inputRate[id], id, &(lastInfo[id]), &localState);
-    //if (nInput > 0) {
-    //    printf("id %i, %i feedforward inputs obtained (%f)\n", id, nInput, inputTime[0]);
-    //}
+    //printf("rate = %f\n", inputRate[id]);
+    int nInput = set_input_time(inputTime, dt, inputRate[id], &(leftTimeRate[id]), &(lastNegLogRand[id]), &localState);
+    printf("id-%i, %i feedforward inputs obtained\n", id, nInput);
+    if (nInput > 0) {
+        printf("id-%i, %i feedforward inputs obtained (%f)\n", id, nInput, inputTime[0]);
+    }
     // return a realization of Poisson input rate
-    inputRate[id] = nInput/dt;
+    eventRate[id] = nInput/dt;
     // update rng state 
     state[id] = localState;
     gE_t = 0.0f;
@@ -378,21 +395,24 @@ __global__ void compute_V(double* __restrict__ v,
         hI[gid] = h_i;
         fI[gid] = f_i;
     }
-    //if (gE[id] > 0.0f) {
-    //    printf("id %i, gE %f, gI %f \n",id, gE[id], gI[id]);
+    printf("id-%i, on device gE %f, gI %f \n",id, gE[id], gI[id]);
+    //if (id==0) {
+    //    printf("gL=%f,vT=%f,vL=%f,vE=%f,vI=%f,tRef=%f\n", gL, vT, vL, vE, vI,tRef);
     //}
     lif.set_p1(gE_t, gI_t, gL);
     // rk2 step
-    bool spiked = step(&lif, dt, id, tRef);
+    spikeTrain[id] = step(&lif, dt, tRef, id);
     v[id] = lif.v;
 
     //setup acting vectors
     double g_end, h_end;
+    int spiked = 0;
     if (id < nE) {
         #pragma unroll
         for (int ig=0; ig<ngTypeE; ig++) {
-            if (spiked) {
+            if (spikeTrain[id]>0.0f) {
                 condE.compute_single_input_conductance(&g_end, &h_end, 1.0f, lif.tsp, ig);
+                spiked = 1;
             }
             gid = networkSize*ig+id;
             gactVecE[gid] = spiked*g_end;
@@ -401,14 +421,16 @@ __global__ void compute_V(double* __restrict__ v,
     } else {
         #pragma unroll
         for (int ig=0; ig<ngTypeI; ig++) {
-            if (spiked) {
+            if (spikeTrain[id]>0.0f) {
                 condI.compute_single_input_conductance(&g_end, &h_end, 1.0f, lif.tsp, ig);
+                spiked = 1;
             }
             gid = networkSize*ig+id;
             gactVecI[gid] = spiked*g_end;
             hactVecI[gid] = spiked*h_end;
         }
     }
+    //printf("id-%i, gend %f, hend %f, spiked %i \n",id, g_end, h_end, spiked);
     //if (id == 0) {
     //    printf("fml\n");
     //}
@@ -441,7 +463,7 @@ __device__ void Func_RK2::runge_kutta_2(double dt) {
     b1 = get_b(gE, gI, gL); 
 }
 
-inline  __device__ double eval_LIF(double a, double b, double v) {
+inline  __host__ __device__ double eval_LIF(double a, double b, double v) {
     return -a * v + b;
 }
 
