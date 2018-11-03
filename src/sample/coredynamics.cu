@@ -151,9 +151,7 @@ __global__ void final_reduce(T* pg, T* ph, T* g, T* h, int size) {
     }
 }
 
-__global__ void recal_G(double* __restrict__ a,
-                        double* __restrict__ b,
-                        double* __restrict__ gE,
+__global__ void recal_G(double* __restrict__ gE,
                         double* __restrict__ gI,
                         double* __restrict__ hE,
                         double* __restrict__ hI,
@@ -169,14 +167,6 @@ __global__ void recal_G(double* __restrict__ a,
                         unsigned int networkSize, unsigned int ngTypeE, unsigned int ngTypeI, unsigned int b1, unsigned int b2
                         ) {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
-    double gL;
-    if (id < nE) {
-        gL = gL_E;
-    } else {
-        gL = gL_I;
-    }
-    double gE_t = 0.0;
-    //double bgE = gE[id];
     #pragma unroll
     for (int ig=0; ig<ngTypeE; ig++) {
         unsigned int aid = networkSize*ig;
@@ -186,10 +176,8 @@ __global__ void recal_G(double* __restrict__ a,
         //d_CUDA_CHECK();
         final_reduce<double><<<1, b1/2, b1*sizeof(double)>>>(&(gEproduct_b1[bid]), &(hEproduct_b1[bid]), &(gE[gid]), &(hE[gid]), b1/2);
         //d_CUDA_CHECK();
-        gE_t += gE[gid];
     }
     //printf("id-%i: %f -> %f\n", id, bgE, gE[id]);
-    double gI_t = 0.0;
     #pragma unroll
     for (int ig=0; ig<ngTypeI; ig++) {
         unsigned int aid = networkSize*ig;
@@ -199,10 +187,7 @@ __global__ void recal_G(double* __restrict__ a,
         //d_CUDA_CHECK();
         final_reduce<double><<<1, b1/2, b1*sizeof(double)>>>(&(gIproduct_b1[bid]), &(hIproduct_b1[bid]), &(gI[gid]), &(hI[gid]), b1/2);
         //d_CUDA_CHECK();
-        gI_t += gI[gid];
     }
-    a[id] = get_a(gE_t, gI_t, gL);
-    b[id] = get_b(gE_t, gI_t, gL);
 }
 
 template <typename T>
@@ -256,15 +241,9 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
                                   unsigned int nInput, double dt, unsigned int ig
                                   ) {
 
-    //printf("before exc decay.\n");
     cond.decay_conductance(g, h, dt, ig); 
-    //printf("exc decayed.\n");
     for (int i=0; i<nInput; i++) {
-        //printf("inputTime[%i] = %f.\n", i, inputTime[i]);
-        //printf("rt = %f, dt = %f.\n", cond.riseTime[ig], cond.decayTime[ig]);
         cond.compute_single_input_conductance(g, h, *f, dt-inputTime[i], ig);
-        //printf("g = %e, h = %e, f = %f.\n", *g, *h, *f);
-        // todo: learning on f
     }
 }
 
@@ -315,15 +294,11 @@ __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ leftTimeRate,
                           double* __restrict__ lastNegLogRand,
                           curandStateMRG32k3a* __restrict__ state,
-                          unsigned int ngTypeE, unsigned int ngTypeI, ConductanceShape condE, ConductanceShape condI, double dt, int networkSize, unsigned long long seed, bool init) {
+                          unsigned int ngTypeE, unsigned int ngTypeI, ConductanceShape condE, ConductanceShape condI, double dt, int networkSize, unsigned long long seed) {
 
-    unsigned int gid;
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
-    curandStateMRG32k3a localState = state[id];
-    double gI_t;
-    double gE_t;
-    double gL, tRef;
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
+    double gL, tRef;
     if (id < nE) {
         tRef = tRef_E;
         gL = gL_E;
@@ -331,44 +306,37 @@ __global__ void compute_V(double* __restrict__ v,
         tRef = tRef_I;
         gL = gL_I;
     }
-    //printf("id %i, f %f, %f \n",id, fE[id], fE[networkSize*(ngTypeE-1)+id]);
-    //if (v[id] > 0.0f) {
-    //    printf("id %i, v %f \n",id, v[id]);
+    //if (id == 0) {
+    //    printf("%f, %f, %f, %f, %f, %f, %f, %f \n",vE , vI, vL, vT, gL_E, gL_I, tRef_E, tRef_I);
     //}
     LIF lif(v[id], tBack[id]);
-    if (init) {
-        // init cond E 
-        gE_t = 0.0f;
-        #pragma unroll
-        for (int ig=0; ig<ngTypeI; ig++) {
-            gE_t += gE[networkSize*ig + id];
-        }
-        // init cond I 
-        gI_t = 0.0f;
-        #pragma unroll
-        for (int ig=0; ig<ngTypeI; ig++) {
-            gI_t += gI[networkSize*ig + id];
-        }
-        /* set a0 b0 for the first step */
-        lif.set_p0(gE_t, gI_t, gL);
-    } else {
-        lif.a0 = a[id];
-        lif.b0 = b[id];
+    /* set a0 b0 for the first step */
+    double gI_t;
+    double gE_t;
+    // init cond E 
+    gE_t = 0.0f;
+    #pragma unroll
+    for (int ig=0; ig<ngTypeI; ig++) {
+        gE_t += gE[networkSize*ig + id];
     }
-    //printf("id %i, init finished\n",id);
+    //  cond I 
+    gI_t = 0.0f;
+    #pragma unroll
+    for (int ig=0; ig<ngTypeI; ig++) {
+        gI_t += gI[networkSize*ig + id];
+    }
+    lif.set_p0(gE_t, gI_t, gL);
     /* Get feedforward input */
     // consider use shared memory for dynamic allocation
     double inputTime[MAX_FFINPUT_PER_DT];
-    //printf("rate = %f\n", inputRate[id]);
+    curandStateMRG32k3a localState = state[id];
     int nInput = set_input_time(inputTime, dt, inputRate[id], &(leftTimeRate[id]), &(lastNegLogRand[id]), &localState);
-    //printf("id-%i, %i feedforward inputs obtained\n", id, nInput);
-    //if (nInput > 0) {
-    //    printf("id-%i, %i feedforward inputs obtained (%f)\n", id, nInput, inputTime[0]);
-    //}
     // return a realization of Poisson input rate
     eventRate[id] = nInput;
     // update rng state 
     state[id] = localState;
+    /* evolve g to t+dt with ff input only */
+    unsigned int gid;
     gE_t = 0.0f;
     #pragma unroll
     for (int ig=0; ig<ngTypeE; ig++) {
@@ -380,7 +348,8 @@ __global__ void compute_V(double* __restrict__ v,
         gE_t += g_i;
         gE[gid] = g_i;
         hE[gid] = h_i;
-        fE[gid] = f_i;
+        // for learning
+        //fE[gid] = f_i;
     }
     //printf("id %i, exc cond ready.\n",id);
     gI_t = 0.0f;
@@ -395,12 +364,9 @@ __global__ void compute_V(double* __restrict__ v,
         gI_t += g_i;
         gI[gid] = g_i;
         hI[gid] = h_i;
-        fI[gid] = f_i;
+        // for learning
+        //fI[gid] = f_i;
     }
-    //printf("id-%i, on device gE %f, gI %f \n",id, gE[id], gI[id]);
-    //if (id==0) {
-    //    printf("gL=%f,vT=%f,vL=%f,vE=%f,vI=%f,tRef=%f\n", gL, vT, vL, vE, vI,tRef);
-    //}
     lif.set_p1(gE_t, gI_t, gL);
     // rk2 step
     spikeTrain[id] = step(&lif, dt, tRef, id);

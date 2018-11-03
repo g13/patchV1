@@ -7,11 +7,11 @@ int main(int argc, char *argv[])
     //cudaEventCreateWithFlags(&gReady, cudaEventDisableTiming);
     curandStateMRG32k3a *state;
     unsigned long long seed;
-    seed = 183765712;
-    //seed = std::time(0);
+    //seed = 183765712;
+    seed = std::time(0);
     int device;
     int b1,b2;
-    b1 = 64;
+    b1 = 16;
     b2 = 16;
     unsigned int nstep = 320;
     /* Overwrite parameters */
@@ -20,17 +20,31 @@ int main(int argc, char *argv[])
         printf(" ");
     }
     printf("\n");
-    if (argc >= 2)  {
+    if (argc == 2) {
+        sscanf(argv[argc-1],"%d",&seed); 
+    }
+    if (argc == 3) {
+        sscanf(argv[argc-1],"%d",&b2); 
+        sscanf(argv[argc-2],"%d",&b1); 
+    }
+    if (argc == 4) {
         sscanf(argv[argc-1],"%d",&b2); 
         sscanf(argv[argc-2],"%d",&b1); 
         sscanf(argv[argc-3],"%d",&nstep); 
     }
+    if (argc == 5) {
+        sscanf(argv[argc-1],"%d",&seed); 
+        sscanf(argv[argc-2],"%d",&b2); 
+        sscanf(argv[argc-3],"%d",&b1); 
+        sscanf(argv[argc-4],"%d",&nstep); 
+    }
+    printf("%i x %i, %i steps, seed = %i\n", b1, b2, nstep, seed);
     unsigned int h_nE = b1*b2*3/4;
     unsigned int t = 20;
     double dt = float(t)/float(nstep); // ms
     double flatRate = 500.0f; // Hz
     double ffsE = 1e-2;
-    double s = 50.0*ffsE/(b1*b2);
+    double s = 1.0*ffsE/(b1*b2);
     double ffsI = 1e-2;
     cpu_version(b1*b2, flatRate/1000.0, nstep, dt, h_nE, s, seed, ffsE, ffsI);
     struct cudaDeviceProp properties;  
@@ -59,7 +73,7 @@ int main(int argc, char *argv[])
     double h_vI = -2.0f/3.0f;
     double h_vL = 0.0f, h_vT = 1.0f;
     double h_gL_E = 0.05f, h_gL_I = 0.1f; // kHz
-    double h_tRef_E = 2.0f*dt, h_tRef_I = 1.0f*dt; // ms
+    double h_tRef_E = 0.5f, h_tRef_I = 0.25f; // ms
     CUDA_CALL(cudaMemcpyToSymbol(vE,     &h_vE, sizeof(double), 0, cudaMemcpyHostToDevice));
     CUDA_CALL(cudaMemcpyToSymbol(vI,     &h_vI, sizeof(double), 0, cudaMemcpyHostToDevice));
     CUDA_CALL(cudaMemcpyToSymbol(vL,     &h_vL, sizeof(double), 0, cudaMemcpyHostToDevice));
@@ -210,7 +224,6 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaStreamCreate(&s1));
     CUDA_CALL(cudaStreamCreate(&s2));
     unsigned int shared_mem = 48;
-    bool init = true;
     v_file.open("v_ictorious.bin", std::ios::out|std::ios::binary);
     spike_file.open("s_uspicious.bin", std::ios::out|std::ios::binary);
     gE_file.open("gE_nerous.bin", std::ios::out|std::ios::binary);
@@ -234,7 +247,7 @@ int main(int argc, char *argv[])
             CUDA_CALL(cudaStreamWaitEvent(s1, gReady, 0));
             CUDA_CALL(cudaDeviceSynchronize());
             /* Compute voltage (acquire initial spikes) */
-            compute_V<<<b1, b2, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_a, d_b, d_preMat, d_inputRate, d_eventRate, d_spikeTrain, tBack, gactVecE, hactVecE, gactVecI, hactVecI, d_fE, d_fI, leftTimeRate, lastNegLogRand, state, ngTypeE, ngTypeI, condE, condI, dt, b1*b2, seed, init);
+            compute_V<<<b1, b2, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_a, d_b, d_preMat, d_inputRate, d_eventRate, d_spikeTrain, tBack, gactVecE, hactVecE, gactVecI, hactVecI, d_fE, d_fI, leftTimeRate, lastNegLogRand, state, ngTypeE, ngTypeI, condE, condI, dt, b1*b2, seed);
             CUDA_CHECK();
             //CUDA_CALL(cudaEventRecord(initialSpikesObtained, s1));
             /* Spike correction */
@@ -252,7 +265,7 @@ int main(int argc, char *argv[])
             CUDA_CALL(cudaStreamWaitEvent(s2, spikeCorrected, 0));
             /* Recalibrate conductance */
             CUDA_CALL(cudaDeviceSynchronize());
-            //recal_G<<<b1,b2,shared_mem,s2>>>(d_a, d_b, d_gE, d_gI, d_hE, d_hI,d_preMat, gactVecE, hactVecE, gactVecI, hactVecI, gEproduct_b1, hEproduct_b1, gIproduct_b1, hIproduct_b1, b1*b2, ngTypeE, ngTypeI, rn_b1, rn_b2);
+            recal_G<<<b1,b2,shared_mem,s2>>>(d_gE, d_gI, d_hE, d_hI, d_preMat, gactVecE, hactVecE, gactVecI, hactVecI, gEproduct_b1, hEproduct_b1, gIproduct_b1, hIproduct_b1, b1*b2, ngTypeE, ngTypeI, rn_b1, rn_b2);
             CUDA_CHECK();
             /* Write conductance of last step to disk */
             gE_file.write((char*)&(gE[n*ngTypeE*batchOffset]),     n*ngTypeE*sizeof(double));
@@ -261,7 +274,6 @@ int main(int argc, char *argv[])
             CUDA_CALL(cudaMemcpyAsync(&(gE[offset*ngTypeE]), d_gE, b1 * b2 * ngTypeE * sizeof(double), cudaMemcpyDeviceToHost, s2));
             CUDA_CALL(cudaMemcpyAsync(&(gI[offset*ngTypeI]), d_gI, b1 * b2 * ngTypeI * sizeof(double), cudaMemcpyDeviceToHost, s2));
             CUDA_CALL(cudaEventRecord(gReady, s2));
-            init = false;
             //printf("\r total: %3.1f, batch: %3.1f", 100.0f*float(ibatch+1)/nbatch, float(i)/copySize);
             printf("\r stepping: %3.1f%%", 100.0f*float(i+1)/nstep);
             fflush(stdout);

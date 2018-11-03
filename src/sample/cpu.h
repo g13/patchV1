@@ -82,7 +82,7 @@ struct cpu_LIF {
     double compute_spike_time(double dt);
 };
 
-double cpu_step(cpu_LIF* lif, double dt, unsigned int id, double tRef) {
+double cpu_step(cpu_LIF* lif, double dt, double tRef, unsigned int id) {
     lif->tsp = -1.0f;
     if (lif->tBack <= 0.0f) {
         // not in refractory period
@@ -157,12 +157,12 @@ void cpu_LIF::reset_v() {
 }
 
 void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt, unsigned int h_nE, double s, unsigned long long seed, double ffsE, double ffsI) {
-    s = 0.0f;
+    printf("nE = %i, nI = %i\n", h_nE, networkSize-h_nE);
     unsigned int ngTypeE = 2;
     unsigned int ngTypeI = 1;
     double cpu_gL_E = 0.05f, cpu_gL_I = 0.1f; // kHz
     double gL, tRef;
-    double cpu_tRef_E = 2.0f*dt, cpu_tRef_I = 1.0f*dt; // ms
+    double cpu_tRef_E = 0.5f, cpu_tRef_I = 0.25f; // ms
     double *v = new double[networkSize];
     double *gE = new double[networkSize*ngTypeE];
     double *gI = new double[networkSize*ngTypeI];
@@ -211,6 +211,7 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
     gI_file.write((char*)gI, networkSize * ngTypeI * sizeof(double));
     int inputEvents = 0;
     int outputEvents = 0;
+    bool InhFired = false;
     for (unsigned int istep=0; istep<nstep; istep++) {
         for (unsigned int i=0; i<networkSize; i++) {
             lif[i]->v0 = lif[i]->v;
@@ -221,30 +222,27 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
                 gL = cpu_gL_I;
                 tRef = cpu_tRef_I;
             }
+            // get a0, b0
             double gE_t, gI_t;
-            if (istep == 0){
-                lif[i]->set_p0(0, 0, gL);
-            } else {
-                gE_t = 0.0f;
-                for (int ig = 0; ig < ngTypeE; ig++) {
-                    int gid = networkSize*ig + i;
-                    gE_t += gE[gid];
-                }
-                gI_t = 0.0f;
-                for (int ig = 0; ig < ngTypeI; ig++) {
-                    int gid = networkSize*ig + i;
-                    gI_t += gI[gid];
-                }
-                lif[i]->a0 = cpu_get_a(gE_t, gI_t, gL);
-                lif[i]->b0 = cpu_get_b(gE_t, gI_t, gL);
+            gE_t = 0.0f;
+            for (int ig = 0; ig < ngTypeE; ig++) {
+                int gid = networkSize*ig + i;
+                gE_t += gE[gid];
             }
+            gI_t = 0.0f;
+            for (int ig = 0; ig < ngTypeI; ig++) {
+                int gid = networkSize*ig + i;
+                gI_t += gI[gid];
+            }
+            lif[i]->set_p0(gE_t, gI_t, gL);
+
             nInput[i] = h_set_input_time(&(inputTime[i*10]), dt, flatRate, lTR[i], logRand[i], *randGen[i]);
             inputEvents += nInput[i];
             /* evolve g to t+dt with ff input only */
             gE_t = 0.0f;
             #pragma roll
             for (int ig=0; ig<ngTypeE; ig++) {
-                int gid = networkSize*ig + i;
+                unsigned int gid = networkSize*ig + i;
                 h_evolve_g(condE, &(gE[gid]), &(hE[gid]), &(fE[gid]), &(inputTime[i*10]), nInput[i], dt, ig);
                 gE_t += gE[gid];
             }
@@ -252,13 +250,12 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
             // no feed-forward inhibitory input (setting nInput = 0)
             #pragma roll
             for (int ig=0; ig<ngTypeI; ig++) {
-                int gid = networkSize*ig + i;
+                unsigned int gid = networkSize*ig + i;
                 h_evolve_g(condI, &(gI[gid]), &(hI[gid]), &(fI[gid]), &(inputTime[i*10]), 0, dt, ig);
                 gI_t += gI[gid];
             }
-            //printf("i-%i, gI = %f\n", i, gI_t);
             lif[i]->set_p1(gE_t, gI_t, gL);
-            spikeTrain[i] = cpu_step(lif[i], dt, i, tRef);
+            spikeTrain[i] = cpu_step(lif[i], dt, tRef, i);
             v[i] = lif[i]->v;
         }
         for (unsigned int i=0; i<networkSize; i++) {
@@ -279,7 +276,7 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
                         }
                     }
                 } else {
-                    //printf("inh-%i fired\n", i);
+                    InhFired = true;
                     #pragma unroll
                     for (int ig=0; ig<ngTypeI; ig++) {
                         g_end = 0;
@@ -301,6 +298,9 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
         printf("\r stepping %3.1f%%", 100.0f*float(istep+1)/nstep);
     }
     printf("\n");
+    if (InhFired) {
+        printf("    inh fired\n");
+    }
     printf("input events rate %fkHz\n", float(inputEvents)/(dt*nstep*networkSize));
     printf("output events rate %fHz\n", float(outputEvents)*1000.0f/(dt*nstep*networkSize));
     auto cpuTime = duration_cast<microseconds>(timeNow()-start).count();
