@@ -1,5 +1,6 @@
 #!/bin/bash
 module load cuda
 #nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -g -std=c++11 testReduce.cu -o tr -lcudadevrt
-nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 test.cu -o test -lcudadevrt
+nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -g test.cu -o test -lcudadevrt
+#nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -g cpuOnly.cu -o ctest -lcudadevrt
 #nvcc -arch=compute_70 -rdc=true -O2 -std=c++11 test.cu -o test #-lcudadevrt

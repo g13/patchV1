@@ -4,3 +4,4 @@
 #include <fstream>
 #include <cassert>
 #include "cpu.h"
+#include "MACRO.h"

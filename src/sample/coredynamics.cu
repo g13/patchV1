@@ -23,8 +23,10 @@ struct ConductanceShape {
         (*h) += f*etr;
     }
     __host__ __device__ __forceinline__ void decay_conductance(double *g, double *h, double dt, unsigned int ig) {
-        (*g) = (*g)*exp(-dt/decayTime[ig]);
-        (*h) = (*h)*exp(-dt/riseTime[ig]);
+        double etr = exp(-dt/riseTime[ig]);
+        double etd = exp(-dt/decayTime[ig]);
+        (*g) = (*g)*etd + (*h)*decayTime[ig]*(etd-etr)/deltaTau[ig];
+        (*h) = (*h)*etr;
     }
 };
 
@@ -32,9 +34,7 @@ struct Func_RK2 {
     double v, v0;
     // type variable
     double tBack, tsp;
-     __device__ Func_RK2(double _v0): v0(_v0) {
-        tBack = -1.0f;
-    }
+     __device__ Func_RK2(double _v0, double _tBack): v0(_v0), tBack(_tBack) {};
      __device__ void runge_kutta_2(double dt);
      __device__ virtual void set_p0(double _gE, double _gI, double _gL)=0;
      __device__ virtual void set_p1(double _gE, double _gI, double _gL)=0;
@@ -48,7 +48,7 @@ struct Func_RK2 {
 struct LIF: Func_RK2 {
     double a1, b1;
     double a0, b0;
-     __device__ LIF(double _v0): Func_RK2(_v0) {}; 
+     __device__ LIF(double _v0, double _tBack): Func_RK2(_v0, _tBack) {}; 
      __device__ virtual void set_p0(double _gE, double _gI, double _gL);
      __device__ virtual void set_p1(double _gE, double _gI, double _gL);
      __device__ virtual double eval0(double _v);
@@ -279,16 +279,17 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
             lif->tBack = lif->tsp + tRef;
             //printf("neuron #%i fired initially\n", id);
         }
-    } else {
-        // during refractory period
-        if (lif->tBack > dt) {
-            lif->reset_v(); 
-        } 
-    }
+    } 
     // return from refractory period
     if (lif->tBack > 0.0f && lif->tBack < dt) {
         lif->compute_pseudo_v0(dt);
         lif->runge_kutta_2(dt);
+        lif->tBack = -1.0f;
+    } 
+    // during refractory period
+    if (lif->tBack > dt) {
+        lif->reset_v(); 
+        lif->tBack -= dt;
     }
     return lif->tsp;
 }
@@ -303,7 +304,8 @@ __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ preMat,
                           double* __restrict__ inputRate,
                           double* __restrict__ eventRate,
-                          int*   __restrict__ spikeTrain,
+                          double* __restrict__ spikeTrain,
+                          double* __restrict__ tBack,
                           double* __restrict__ gactVecE,
                           double* __restrict__ hactVecE,
                           double* __restrict__ gactVecI,
@@ -333,7 +335,7 @@ __global__ void compute_V(double* __restrict__ v,
     //if (v[id] > 0.0f) {
     //    printf("id %i, v %f \n",id, v[id]);
     //}
-    LIF lif(v[id]);
+    LIF lif(v[id], tBack[id]);
     if (init) {
         // init cond E 
         gE_t = 0.0f;
@@ -359,10 +361,10 @@ __global__ void compute_V(double* __restrict__ v,
     double inputTime[MAX_FFINPUT_PER_DT];
     //printf("rate = %f\n", inputRate[id]);
     int nInput = set_input_time(inputTime, dt, inputRate[id], &(leftTimeRate[id]), &(lastNegLogRand[id]), &localState);
-    printf("id-%i, %i feedforward inputs obtained\n", id, nInput);
-    if (nInput > 0) {
-        printf("id-%i, %i feedforward inputs obtained (%f)\n", id, nInput, inputTime[0]);
-    }
+    //printf("id-%i, %i feedforward inputs obtained\n", id, nInput);
+    //if (nInput > 0) {
+    //    printf("id-%i, %i feedforward inputs obtained (%f)\n", id, nInput, inputTime[0]);
+    //}
     // return a realization of Poisson input rate
     eventRate[id] = nInput/dt;
     // update rng state 
@@ -395,7 +397,7 @@ __global__ void compute_V(double* __restrict__ v,
         hI[gid] = h_i;
         fI[gid] = f_i;
     }
-    printf("id-%i, on device gE %f, gI %f \n",id, gE[id], gI[id]);
+    //printf("id-%i, on device gE %f, gI %f \n",id, gE[id], gI[id]);
     //if (id==0) {
     //    printf("gL=%f,vT=%f,vL=%f,vE=%f,vI=%f,tRef=%f\n", gL, vT, vL, vE, vI,tRef);
     //}
@@ -403,6 +405,7 @@ __global__ void compute_V(double* __restrict__ v,
     // rk2 step
     spikeTrain[id] = step(&lif, dt, tRef, id);
     v[id] = lif.v;
+    tBack[id] = lif.tBack;
 
     //setup acting vectors
     double g_end, h_end;
