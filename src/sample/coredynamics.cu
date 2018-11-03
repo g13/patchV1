@@ -145,8 +145,8 @@ __global__ void final_reduce(T* pg, T* ph, T* g, T* h, int size) {
     reduce2<T>(partial_g, partial_h, block_id, blockLen_half);
 
     if (block_id == 0) {
-        (*g) = partial_g[0];
-        (*h) = partial_h[0];
+        (*g) += partial_g[0];
+        (*h) += partial_h[0];
         //printf("r1 = %f, r2 = %f \n", partial_g[0], partial_h[0]);
     }
 }
@@ -183,9 +183,9 @@ __global__ void recal_G(double* __restrict__ a,
         unsigned int bid = b1*ngTypeE*id + b1*ig;
         unsigned int gid = aid+id;
         partial_dot1d<double><<<b1, b2, b2*2*sizeof(double)>>>(&(preMat[id]), &(gactVecE[aid]), &(hactVecE[aid]), &(gEproduct_b1[bid]), &(hEproduct_b1[bid]),b2);
-        d_CUDA_CHECK();
+        //d_CUDA_CHECK();
         final_reduce<double><<<1, b1/2, b1*sizeof(double)>>>(&(gEproduct_b1[bid]), &(hEproduct_b1[bid]), &(gE[gid]), &(hE[gid]), b1/2);
-        d_CUDA_CHECK();
+        //d_CUDA_CHECK();
         gE_t += gE[gid];
     }
     //printf("id-%i: %f -> %f\n", id, bgE, gE[id]);
@@ -196,9 +196,9 @@ __global__ void recal_G(double* __restrict__ a,
         unsigned int bid = b1*ngTypeI*id + b1*ig;
         unsigned int gid = aid+id;
         partial_dot1d<double><<<b1, b2, b2*2*sizeof(double)>>>(&(preMat[id]), &(gactVecI[aid]), &(hactVecI[aid]), &(gIproduct_b1[bid]), &(hIproduct_b1[bid]), b2);
-        d_CUDA_CHECK();
+        //d_CUDA_CHECK();
         final_reduce<double><<<1, b1/2, b1*sizeof(double)>>>(&(gIproduct_b1[bid]), &(hIproduct_b1[bid]), &(gI[gid]), &(hI[gid]), b1/2);
-        d_CUDA_CHECK();
+        //d_CUDA_CHECK();
         gI_t += gI[gid];
     }
     a[id] = get_a(gE_t, gI_t, gL);
@@ -303,7 +303,7 @@ __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ b,
                           double* __restrict__ preMat,
                           double* __restrict__ inputRate,
-                          double* __restrict__ eventRate,
+                          int* __restrict__ eventRate,
                           double* __restrict__ spikeTrain,
                           double* __restrict__ tBack,
                           double* __restrict__ gactVecE,
@@ -315,7 +315,7 @@ __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ leftTimeRate,
                           double* __restrict__ lastNegLogRand,
                           curandStateMRG32k3a* __restrict__ state,
-                          unsigned int nstep, unsigned int ngTypeE, unsigned int ngTypeI, ConductanceShape condE, ConductanceShape condI, double dt, int networkSize, unsigned long long seed, bool init) {
+                          unsigned int ngTypeE, unsigned int ngTypeI, ConductanceShape condE, ConductanceShape condI, double dt, int networkSize, unsigned long long seed, bool init) {
 
     unsigned int gid;
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -366,7 +366,7 @@ __global__ void compute_V(double* __restrict__ v,
     //    printf("id-%i, %i feedforward inputs obtained (%f)\n", id, nInput, inputTime[0]);
     //}
     // return a realization of Poisson input rate
-    eventRate[id] = nInput/dt;
+    eventRate[id] = nInput;
     // update rng state 
     state[id] = localState;
     gE_t = 0.0f;
@@ -413,8 +413,10 @@ __global__ void compute_V(double* __restrict__ v,
     if (id < nE) {
         #pragma unroll
         for (int ig=0; ig<ngTypeE; ig++) {
+            g_end = 0;
+            h_end = 0;
             if (spikeTrain[id]>0.0f) {
-                condE.compute_single_input_conductance(&g_end, &h_end, 1.0f, lif.tsp, ig);
+                condE.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif.tsp, ig);
                 spiked = 1;
             }
             gid = networkSize*ig+id;
@@ -424,8 +426,10 @@ __global__ void compute_V(double* __restrict__ v,
     } else {
         #pragma unroll
         for (int ig=0; ig<ngTypeI; ig++) {
+            g_end = 0;
+            h_end = 0;
             if (spikeTrain[id]>0.0f) {
-                condI.compute_single_input_conductance(&g_end, &h_end, 1.0f, lif.tsp, ig);
+                condI.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif.tsp, ig);
                 spiked = 1;
             }
             gid = networkSize*ig+id;

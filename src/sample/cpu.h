@@ -4,6 +4,11 @@
 
 #define timeNow() std::chrono::high_resolution_clock::now()
 
+using namespace std::chrono;
+double cpu_vE = 14.0f/3.0f; // dimensionaless (non-dimensionalized)
+double cpu_vI = -2.0f/3.0f;
+double cpu_vL = 0.0f, cpu_vT = 1.0f;
+
 struct cConductanceShape {
     double riseTime[5], decayTime[5], deltaTau[5];
     cConductanceShape() {};
@@ -26,11 +31,6 @@ struct cConductanceShape {
         (*h) = (*h)*etr;
     }
 };
-
-using namespace std::chrono;
-double cpu_vE = 14.0f/3.0f; // dimensionaless (non-dimensionalized)
-double cpu_vI = -2.0f/3.0f;
-double cpu_vL = 0.0f, cpu_vT = 1.0f;
 
 std::uniform_real_distribution<double> distribution(0.0,1.0);
 int h_set_input_time(double *inputTime, double dt, double rate, double &leftTimeRate, double &lastNegLogRand, std::minstd_rand &randGen) {
@@ -56,7 +56,7 @@ int h_set_input_time(double *inputTime, double dt, double rate, double &leftTime
     return i;
 }
 
-void h_evolve_g(cConductanceShape &cond, double *g, double *h, double *f, double *inputTime,unsigned int nInput, double dt, unsigned int ig) {
+void h_evolve_g(cConductanceShape &cond, double *g, double *h, double *f, double *inputTime, unsigned int nInput, double dt, unsigned int ig) {
     cond.decay_conductance(g, h, dt, ig); 
     for (int i=0; i<nInput; i++) {
         cond.compute_single_input_conductance(g, h, *f, dt-inputTime[i], ig);
@@ -69,7 +69,7 @@ struct cpu_LIF {
     double tBack, tsp;
     double a1, b1;
     double a0, b0;
-    cpu_LIF(double _v0): v0(_v0) {
+    cpu_LIF(double _v0): v(_v0) {
         tBack = -1.0f;
     }; 
     void runge_kutta_2(double dt);
@@ -156,12 +156,13 @@ void cpu_LIF::reset_v() {
     v = cpu_vL;
 }
 
-void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt, unsigned int h_nE, double s) {
+void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt, unsigned int h_nE, double s, unsigned long long seed, double ffsE, double ffsI) {
+    s = 0.0f;
     unsigned int ngTypeE = 2;
     unsigned int ngTypeI = 1;
     double cpu_gL_E = 0.05f, cpu_gL_I = 0.1f; // kHz
     double gL, tRef;
-    double cpu_tRef_E = 2.0f, cpu_tRef_I = 1.0f; // ms
+    double cpu_tRef_E = 2.0f*dt, cpu_tRef_I = 1.0f*dt; // ms
     double *v = new double[networkSize];
     double *gE = new double[networkSize*ngTypeE];
     double *gI = new double[networkSize*ngTypeI];
@@ -188,20 +189,19 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
     cConductanceShape condE(riseTimeE, decayTimeE, ngTypeE);
     cConductanceShape condI(riseTimeI, decayTimeI, ngTypeI);
 
-    unsigned long long seed = 183765712;
     printf("cpu version started\n");
     cpu_LIF **lif = new cpu_LIF*[networkSize];
     for (unsigned int i=0; i<networkSize; i++) {
         randGen[i] = new std::minstd_rand(seed+i);
-        logRand[i] = distribution(*randGen[i]);
+        logRand[i] = -log(distribution(*randGen[i]));
         v[i] = 0.0f;
         lif[i] = new cpu_LIF(v[i]);
         gE[i] = 0.0f;
         gI[i] = 0.0f;
         hE[i] = 0.0f;
         hI[i] = 0.0f;
-        fE[i] = 1.0f;
-        fI[i] = 1.0f;
+        fE[i] = ffsE;
+        fI[i] = ffsI;
         lTR[i] = 0.0f;
     }
     //printf("cpu initialized\n");
@@ -209,8 +209,11 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
     v_file.write((char*)v, networkSize * sizeof(double));
     gE_file.write((char*)gE, networkSize * ngTypeE * sizeof(double));
     gI_file.write((char*)gI, networkSize * ngTypeI * sizeof(double));
+    int inputEvents = 0;
+    int outputEvents = 0;
     for (unsigned int istep=0; istep<nstep; istep++) {
         for (unsigned int i=0; i<networkSize; i++) {
+            lif[i]->v0 = lif[i]->v;
             if (i<h_nE) {
                 gL = cpu_gL_E;
                 tRef = cpu_tRef_E;
@@ -218,37 +221,57 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
                 gL = cpu_gL_I;
                 tRef = cpu_tRef_I;
             }
+            double gE_t, gI_t;
             if (istep == 0){
                 lif[i]->set_p0(0, 0, gL);
             } else {
-                lif[i]->a0 = lif[i]->a1;
-                lif[i]->b0 = lif[i]->b1; 
+                gE_t = 0.0f;
+                for (int ig = 0; ig < ngTypeE; ig++) {
+                    int gid = networkSize*ig + i;
+                    gE_t += gE[gid];
+                }
+                gI_t = 0.0f;
+                for (int ig = 0; ig < ngTypeI; ig++) {
+                    int gid = networkSize*ig + i;
+                    gI_t += gI[gid];
+                }
+                lif[i]->a0 = cpu_get_a(gE_t, gI_t, gL);
+                lif[i]->b0 = cpu_get_b(gE_t, gI_t, gL);
             }
             nInput[i] = h_set_input_time(&(inputTime[i*10]), dt, flatRate, lTR[i], logRand[i], *randGen[i]);
-            double gE_t = 0.0f;
+            inputEvents += nInput[i];
+            /* evolve g to t+dt with ff input only */
+            gE_t = 0.0f;
             #pragma roll
             for (int ig=0; ig<ngTypeE; ig++) {
                 int gid = networkSize*ig + i;
                 h_evolve_g(condE, &(gE[gid]), &(hE[gid]), &(fE[gid]), &(inputTime[i*10]), nInput[i], dt, ig);
                 gE_t += gE[gid];
             }
-            double gI_t = 0.0f; 
+            gI_t = 0.0f; 
+            // no feed-forward inhibitory input (setting nInput = 0)
             #pragma roll
             for (int ig=0; ig<ngTypeI; ig++) {
                 int gid = networkSize*ig + i;
-                h_evolve_g(condI, &(gI[gid]), &(hI[gid]), &(fI[gid]), &(inputTime[i*10]), nInput[i], dt, ig);
+                h_evolve_g(condI, &(gI[gid]), &(hI[gid]), &(fI[gid]), &(inputTime[i*10]), 0, dt, ig);
                 gI_t += gI[gid];
             }
+            //printf("i-%i, gI = %f\n", i, gI_t);
             lif[i]->set_p1(gE_t, gI_t, gL);
             spikeTrain[i] = cpu_step(lif[i], dt, i, tRef);
             v[i] = lif[i]->v;
-
+        }
+        for (unsigned int i=0; i<networkSize; i++) {
             double g_end, h_end;
             if (spikeTrain[i] > 0.0f) {
+                outputEvents ++;
                 if (i < h_nE) {
+                    //printf("exc-%i fired\n", i);
                     #pragma unroll
                     for (int ig=0; ig<ngTypeE; ig++) {
-                        condE.compute_single_input_conductance(&g_end, &h_end, s, lif[i]->tsp, ig);
+                        g_end = 0;
+                        h_end = 0;
+                        condE.compute_single_input_conductance(&g_end, &h_end, s, dt-lif[i]->tsp, ig);
                         for (int ii = 0; ii < networkSize; ii++) {
                             int gid = networkSize*ig+ii;
                             gE[gid] += g_end;
@@ -256,9 +279,12 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
                         }
                     }
                 } else {
+                    //printf("inh-%i fired\n", i);
                     #pragma unroll
                     for (int ig=0; ig<ngTypeI; ig++) {
-                        condI.compute_single_input_conductance(&g_end, &h_end, s, lif[i]->tsp, ig);
+                        g_end = 0;
+                        h_end = 0;
+                        condI.compute_single_input_conductance(&g_end, &h_end, s, dt-lif[i]->tsp, ig);
                         for (int ii = 0; ii < networkSize; ii++) {
                             int gid = networkSize*ig+ii;
                             gI[gid] += g_end;
@@ -275,6 +301,8 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
         printf("\r stepping %3.1f%%", 100.0f*float(istep+1)/nstep);
     }
     printf("\n");
+    printf("input events rate %fkHz\n", float(inputEvents)/(dt*nstep*networkSize));
+    printf("output events rate %fHz\n", float(outputEvents)*1000.0f/(dt*nstep*networkSize));
     auto cpuTime = duration_cast<microseconds>(timeNow()-start).count();
     printf("cpu version time cost: %3.1fms\n", static_cast<double>(cpuTime)/1000.0f);
     /* Cleanup */
