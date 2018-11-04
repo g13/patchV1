@@ -200,8 +200,8 @@ __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsign
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
     curand_init(seed, id, 0, &localState);
-    //logRand[id] = -log(curand_uniform_double(&localState));
-    logRand[id] = 1.0f;
+    logRand[id] = -log(curand_uniform_double(&localState));
+    //logRand[id] = 1.0f;
     state[id] = localState;
 }
 
@@ -330,14 +330,14 @@ __global__ void compute_V(double* __restrict__ v,
     double inputTime[MAX_FFINPUT_PER_DT];
     curandStateMRG32k3a localState = state[id];
     int nInput;
-    if (init) {
-        nInput = 1;
-        inputTime[0] = dt*0.9f;
-        lastNegLogRand[id] = 1.0f;
-        leftTimeRate[id] = 0.0f;
-    } else {
+    //if (init) {
+    //    nInput = 1;
+    //    inputTime[0] = dt*0.9f;
+    //    lastNegLogRand[id] = 1.0f;
+    //    leftTimeRate[id] = 0.0f;
+    //} else {
         nInput = set_input_time(inputTime, dt, inputRate[id], &(leftTimeRate[id]), &(lastNegLogRand[id]), &localState);
-    }
+    //}
     // return a realization of Poisson input rate
     eventRate[id] = nInput;
     // update rng state 

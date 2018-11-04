@@ -42,11 +42,11 @@ int main(int argc, char *argv[])
     unsigned int h_nE = b1*b2*3/4;
     unsigned int t = 20;
     double dt = float(t)/float(nstep); // ms
-    //double flatRate = 500.0f; // Hz
-    double flatRate = 0.0f; // Hz
-    double ffsE = 1e-1;
+    double flatRate = 100.0f; // Hz
+    //double flatRate = 0.0f; // Hz
+    double ffsE = 1e-2;
     double s = 1.0*ffsE/(b1*b2);
-    double ffsI = 1e-1;
+    double ffsI = 1e-2;
     printf("designated rate = %3.1fHz\n", flatRate);
     printf("nE = %i, nI = %i\n", h_nE, b1*b2-h_nE);
     cpu_version(b1*b2, flatRate/1000.0, nstep, dt, h_nE, s, seed, ffsE, ffsI);

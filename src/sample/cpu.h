@@ -192,8 +192,7 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
     cpu_LIF **lif = new cpu_LIF*[networkSize];
     for (unsigned int i=0; i<networkSize; i++) {
         randGen[i] = new std::minstd_rand(seed+i);
-        //logRand[i] = -log(distribution(*randGen[i]));
-        logRand[i] = 1.0f;
+        logRand[i] = -log(distribution(*randGen[i]));
         v[i] = 0.0f;
         lif[i] = new cpu_LIF(v[i]);
         lTR[i] = 0.0f;
@@ -248,14 +247,14 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
             }
             lif[i]->set_p0(gE_t, gI_t, gL);
 
-            if (istep==0) {
-                nInput[i] = 1;
-                inputTime[i*10] = dt*0.9f;
-                logRand[i] = 1.0f;
-                lTR[i] = 0.0f;
-            } else {
+            //if (istep==0) {
+            //    nInput[i] = 1;
+            //    inputTime[i*10] = dt*0.9f;
+            //    logRand[i] = 1.0f;
+            //    lTR[i] = 0.0f;
+            //} else {
                 nInput[i] = h_set_input_time(&(inputTime[i*10]), dt, flatRate, lTR[i], logRand[i], *randGen[i]);
-            }
+            //}
             inputEvents += nInput[i];
             /* evolve g to t+dt with ff input only */
             gE_t = 0.0f;
