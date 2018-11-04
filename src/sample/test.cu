@@ -42,10 +42,13 @@ int main(int argc, char *argv[])
     unsigned int h_nE = b1*b2*3/4;
     unsigned int t = 20;
     double dt = float(t)/float(nstep); // ms
-    double flatRate = 500.0f; // Hz
-    double ffsE = 1e-2;
+    //double flatRate = 500.0f; // Hz
+    double flatRate = 0.0f; // Hz
+    double ffsE = 1e-1;
     double s = 1.0*ffsE/(b1*b2);
-    double ffsI = 1e-2;
+    double ffsI = 1e-1;
+    printf("designated rate = %3.1fHz\n", flatRate);
+    printf("nE = %i, nI = %i\n", h_nE, b1*b2-h_nE);
     cpu_version(b1*b2, flatRate/1000.0, nstep, dt, h_nE, s, seed, ffsE, ffsI);
     struct cudaDeviceProp properties;  
     double *v, *gE, *gI, *preMat; 
@@ -207,6 +210,7 @@ int main(int argc, char *argv[])
         init<double><<<b1,b2*ngTypeE,0,i1>>>(hactVecE, 0.0f);
         init<double><<<b1,b2*ngTypeI,0,i2>>>(hactVecI, 0.0f);
         init<double><<<b1*b1*b2,b2,0,i3>>>(d_preMat, s);
+        init<double><<<b1,b2,0,i1>>>(tBack, -1.0f);
     }
     CUDA_CALL(cudaStreamDestroy(i1));
     CUDA_CALL(cudaStreamDestroy(i2));
@@ -240,6 +244,7 @@ int main(int argc, char *argv[])
     //    if(ibatch == nbatch-1) {
     //        copySize = batchEnd;
     //    }
+        bool init = true;
         for (int i=0; i<nstep; i++) {
             unsigned int offset; 
             //offset = b1*b2*(batchOffset + i);
@@ -247,8 +252,9 @@ int main(int argc, char *argv[])
             CUDA_CALL(cudaStreamWaitEvent(s1, gReady, 0));
             CUDA_CALL(cudaDeviceSynchronize());
             /* Compute voltage (acquire initial spikes) */
-            compute_V<<<b1, b2, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_a, d_b, d_preMat, d_inputRate, d_eventRate, d_spikeTrain, tBack, gactVecE, hactVecE, gactVecI, hactVecI, d_fE, d_fI, leftTimeRate, lastNegLogRand, state, ngTypeE, ngTypeI, condE, condI, dt, b1*b2, seed);
+            compute_V<<<b1, b2, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_a, d_b, d_preMat, d_inputRate, d_eventRate, d_spikeTrain, tBack, gactVecE, hactVecE, gactVecI, hactVecI, d_fE, d_fI, leftTimeRate, lastNegLogRand, state, ngTypeE, ngTypeI, condE, condI, dt, b1*b2, seed, init);
             CUDA_CHECK();
+            init = false;
             //CUDA_CALL(cudaEventRecord(initialSpikesObtained, s1));
             /* Spike correction */
             CUDA_CALL(cudaEventRecord(spikeCorrected, s1));
@@ -306,6 +312,17 @@ int main(int argc, char *argv[])
     gE_file.write((char*)gE, b1 * b2 * ngTypeE * sizeof(double));
     gI_file.write((char*)gI, b1 * b2 * ngTypeI * sizeof(double));
     printf("\n");
+
+    double _events = 0.0f;
+    int _spikes = 0;
+    for (int j=0; j<b1*b2; j++) {
+        _events += eventRate[j];
+        if (spikeTrain[j] > 0.0f) {
+            _spikes++;
+        }
+    }
+    events += _events;
+    spikes += _spikes;
     
     printf("flatRate = %fkHz, realized mean input rate = %fkHz\n", flatRate/1000.0, float(events)/(dt*nstep*b1*b2));
     printf("mean firing rate = %fHz\n", float(spikes)/(dt*nstep*b1*b2)*1000.0);
