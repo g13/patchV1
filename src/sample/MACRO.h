@@ -1,5 +1,7 @@
 #ifndef MACRO_H
 #define MACRO_H
+#include <stdio.h>
+#include <stdlib.h>
 
 #define MAX_FFINPUT_PER_DT 10 // dt in ms
 #define HALF_MEMORY_OCCUPANCY 1 // in Mb

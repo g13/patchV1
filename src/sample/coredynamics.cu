@@ -1,69 +1,16 @@
-#include <curand_kernel.h>
-#include <cuda.h>
-#include "MACRO.h"
+#include "coredynamics.cuh"
 
-__constant__ double vE, vI, vL, vT;
-__constant__ double gL_E, gL_I;
-__constant__ double tRef_E, tRef_I;
-__constant__ unsigned int nE;
-
-struct ConductanceShape {
-    double riseTime[5], decayTime[5], deltaTau[5];
-    __host__ __device__ ConductanceShape() {};
-    __host__ __device__ ConductanceShape(double rt[], double dt[], unsigned int ng) {
-        for (int i=0; i<ng; i++) {
-            riseTime[i] = rt[i];
-            decayTime[i] = dt[i];
-            deltaTau[i] = dt[i] - rt[i];
-        }
-    }
-    __host__ __device__ __forceinline__ void compute_single_input_conductance(double *g, double *h, double f, double dt, unsigned int ig) {
-        double etr = exp(-dt/riseTime[ig]);
-        (*g) += f*decayTime[ig]*(exp(-dt/decayTime[ig])-etr)/deltaTau[ig];
-        (*h) += f*etr;
-    }
-    __host__ __device__ __forceinline__ void decay_conductance(double *g, double *h, double dt, unsigned int ig) {
-        double etr = exp(-dt/riseTime[ig]);
-        double etd = exp(-dt/decayTime[ig]);
-        (*g) = (*g)*etd + (*h)*decayTime[ig]*(etd-etr)/deltaTau[ig];
-        (*h) = (*h)*etr;
-    }
-};
-
-struct Func_RK2 {
-    double v, v0;
-    // type variable
-    double tBack, tsp;
-     __device__ Func_RK2(double _v0, double _tBack): v0(_v0), tBack(_tBack) {};
-     __device__ void runge_kutta_2(double dt);
-     __device__ virtual void set_p0(double _gE, double _gI, double _gL)=0;
-     __device__ virtual void set_p1(double _gE, double _gI, double _gL)=0;
-     __device__ virtual double eval0(double _v)=0;
-     __device__ virtual double eval1(double _v)=0;
-     __device__ virtual void reset_v()=0;
-     __device__ virtual void compute_pseudo_v0(double dt)=0;
-     __device__ virtual double compute_spike_time(double dt)=0;
-};
-
-struct LIF: Func_RK2 {
-    double a1, b1;
-    double a0, b0;
-     __device__ LIF(double _v0, double _tBack): Func_RK2(_v0, _tBack) {}; 
-     __device__ virtual void set_p0(double _gE, double _gI, double _gL);
-     __device__ virtual void set_p1(double _gE, double _gI, double _gL);
-     __device__ virtual double eval0(double _v);
-     __device__ virtual double eval1(double _v);
-     __device__ virtual void reset_v();
-     __device__ virtual void compute_pseudo_v0(double dt);
-     __device__ virtual double compute_spike_time(double dt);
-};
+__constant__ double vE[1], vI[1], vT[1];
+__constant__ double gL_E[1], gL_I[1];
+__constant__ double tRef_E[1], tRef_I[1];
+__constant__ unsigned int nE[1];
 
 __forceinline__  __device__ double get_a(double gE, double gI, double gL) {
     return gE + gI + gL;
 }
 
-__forceinline__  __device__ double get_b(double gE, double gI, double gL) {
-    return gE * vE + gI * vI + gL * vL;
+__forceinline__  __device__ double get_b(double gE, double gI, double gL, double vL) {
+    return gE * vE[0] + gI * vI[0] + gL * vL;
 }
 
 template <typename T>
@@ -190,12 +137,6 @@ __global__ void recal_G(double* __restrict__ gE,
     }
 }
 
-template <typename T>
-__global__ void init(T *array, T value) {
-    unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
-    array[id] = value;
-}
-
 __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed) {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
@@ -248,12 +189,12 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
     }
 }
 
- __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id) {
+ __device__  double step(Func_RK2* lif, double dt, double tRef, double vL) {
     lif->tsp = -1.0f;
     if (lif->tBack <= 0.0f) {
         // not in refractory period
         lif->runge_kutta_2(dt);
-        if (lif->v > vT) {
+        if (lif->v > vT[0]) {
             // crossed threshold
             lif->tsp = lif->compute_spike_time(dt); 
             lif->tBack = lif->tsp + tRef;
@@ -262,13 +203,13 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
     } 
     // return from refractory period
     if (lif->tBack > 0.0f && lif->tBack < dt) {
-        lif->compute_pseudo_v0(dt);
+        lif->compute_pseudo_v0(dt, vL);
         lif->runge_kutta_2(dt);
         lif->tBack = -1.0f;
     } 
     // during refractory period
     if (lif->tBack > dt) {
-        lif->reset_v(); 
+        lif->reset_v(vL); 
         lif->tBack -= dt;
     }
     return lif->tsp;
@@ -295,17 +236,17 @@ __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ leftTimeRate,
                           double* __restrict__ lastNegLogRand,
                           curandStateMRG32k3a* __restrict__ state,
-                          unsigned int ngTypeE, unsigned int ngTypeI, ConductanceShape condE, ConductanceShape condI, double dt, int networkSize, unsigned long long seed, bool init) {
+                          unsigned int ngTypeE, unsigned int ngTypeI, ConductanceShape condE, ConductanceShape condI, double dt, int networkSize, unsigned long long seed, double vL) {
 
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
     double gL, tRef;
-    if (id < nE) {
-        tRef = tRef_E;
-        gL = gL_E;
+    if (id < nE[0]) {
+        tRef = tRef_E[0];
+        gL = gL_E[0];
     } else {
-        tRef = tRef_I;
-        gL = gL_I;
+        tRef = tRef_I[0];
+        gL = gL_I[0];
     }
     LIF lif(v[id], tBack[id]);
     /* set a0 b0 for the first step */
@@ -323,7 +264,7 @@ __global__ void compute_V(double* __restrict__ v,
     for (int ig=0; ig<ngTypeI; ig++) {
         gI_t += gI[networkSize*ig + id];
     }
-    lif.set_p0(gE_t, gI_t, gL);
+    lif.set_p0(gE_t, gI_t, gL, vL);
 
     /* Get feedforward input */
     // consider use shared memory for dynamic allocation
@@ -374,17 +315,17 @@ __global__ void compute_V(double* __restrict__ v,
         // for learning
         //fI[gid] = f_i;
     }
-    lif.set_p1(gE_t, gI_t, gL);
+    lif.set_p1(gE_t, gI_t, gL, vL);
     // rk2 step
 
-    spikeTrain[id] = step(&lif, dt, tRef, id);
+    spikeTrain[id] = step(&lif, dt, tRef, vL);
     v[id] = lif.v;
     tBack[id] = lif.tBack;
 
     //setup acting vectors
     double g_end, h_end;
     int spiked = 0;
-    if (id < nE) {
+    if (id < nE[0]) {
         #pragma unroll
         for (int ig=0; ig<ngTypeE; ig++) {
             g_end = 0.0;
@@ -425,23 +366,23 @@ __device__ void Func_RK2::runge_kutta_2(double dt) {
 
 
 __device__ double LIF:: compute_spike_time(double dt) {
-    return (vT-v0)/(v-v0)*dt;
+    return (vT[0]-v0)/(v-v0)*dt;
 }
 
-__device__ void LIF:: compute_pseudo_v0(double dt) {
+__device__ void LIF:: compute_pseudo_v0(double dt, double vL) {
     v0 = (vL-tBack*(b0 + b1 - a1*b0*dt)/2.0f)/(1.0f+tBack*(-a0 - a1 + a1*a0*dt)/2.0f);
     runge_kutta_2(dt);
 }
 
 
-__device__ void LIF::set_p0(double gE, double gI, double gL ) {
+__device__ void LIF::set_p0(double gE, double gI, double gL, double vL) {
     a0 = get_a(gE, gI, gL);
-    b0 = get_b(gE, gI, gL); 
+    b0 = get_b(gE, gI, gL, vL); 
 }
 
-__device__ void LIF::set_p1(double gE, double gI, double gL) {
+__device__ void LIF::set_p1(double gE, double gI, double gL, double vL) {
     a1 = get_a(gE, gI, gL);
-    b1 = get_b(gE, gI, gL); 
+    b1 = get_b(gE, gI, gL, vL); 
 }
 
 inline  __host__ __device__ double eval_LIF(double a, double b, double v) {
@@ -455,6 +396,6 @@ __device__ double LIF:: eval1(double _v) {
     return eval_LIF(a1,b1,_v);
 }
 
-__device__ void LIF:: reset_v() {
+__device__ void LIF:: reset_v(double vL) {
     v = vL;
 }
