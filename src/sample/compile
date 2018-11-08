@@ -3,3 +3,6 @@ module load cuda
 nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c test.cu -o main.o -lcudadevrt
 nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c coredynamics.cu -o coredynamics.o -lcudadevrt
 nvcc main.o coredynamics.o -o test
+# for windows
+nvcc -arch=compute_61 -rdc=true -Xcompiler -g -c test.cu -o main.o -lcudadevrt
+nvcc -arch=compute_61 -rdc=true -Xcompiler -g -c coredynamics.cu -o coredynamics.o -lcudadevrt
