@@ -6,8 +6,17 @@
 #define MAX_FFINPUT_PER_DT 10 // dt in ms
 #define HALF_MEMORY_OCCUPANCY 1 // in Mb
 
-#define CUDA_ERROR_CHECK
-#define CUDA_DEEP_ERROR_CHECK
+#define vE 14.0f/3.0f
+#define vI -2.0f/3.0f
+#define vT 1.0f
+#define vL 0.0f
+#define gL_E 0.05f
+#define gL_I 0.1f
+#define tRef_E 0.5f
+#define tRef_I 0.25f
+
+//#define CUDA_ERROR_CHECK
+//#define CUDA_DEEP_ERROR_CHECK
 
 #ifdef CUDA_DEEP_ERROR_CHECK
     #define CUDA_ERROR_CHECK
