@@ -43,6 +43,7 @@ int main(int argc, char *argv[])
 	unsigned int networkSize = b1*b2;
 	int warpSize = 32;
 	int nWarpBlock = ceil(networkSize / warpSize);
+    printf("init size %i, %i\n", warpSize, nWarpBlock);
 	if (float(networkSize / warpSize) != nWarpBlock) {
 		printf("make networkSize multiples of %i", warpSize);
 		return EXIT_FAILURE;
@@ -219,11 +220,18 @@ int main(int argc, char *argv[])
         //printf("logRand init cost %.1fms\n", time);
         CUDA_CALL(cudaEventRecord(kStart, 0));
 		//logRand_init << <nWarpBlock, warpSize, 0, i1 >> > (lastNegLogRand, state, seed);
-        logRand_init<<<2,warpSize*nWarpBlock/2,0,i1>>>(lastNegLogRand, state, seed);
+        int log_b1 = 2;
+        int log_b2 = warpSize*nWarpBlock/2;
+        while (log_b2 > 256) {
+            log_b2 = log_b2/2;
+            log_b1 = log_b1*2;
+        }
+        logRand_init<<<log_b1,log_b2,0,i1>>>(lastNegLogRand, state, seed);
+        CUDA_CHECK();
         CUDA_CALL(cudaEventRecord(kStop, 0));
         CUDA_CALL(cudaEventSynchronize(kStop));
         CUDA_CALL(cudaEventElapsedTime(&time, kStart, kStop));
-        printf("logRand init cost %.1fms\n", time);
+        printf("logRand_init<<<%ix%i>>> cost %.1fms\n", log_b1, log_b2, time);
     }
     CUDA_CALL(cudaStreamDestroy(i1));
     CUDA_CALL(cudaStreamDestroy(i2));

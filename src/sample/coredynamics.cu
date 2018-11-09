@@ -137,7 +137,6 @@ __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsign
     curandStateMRG32k3a localState = state[id];
     curand_init(seed, id, 0, &localState);
     logRand[id] = -log(curand_uniform_double(&localState));
-	cuPrintf("%f\n", logRand[id]);
     //logRand[id] = 1.0f;
     state[id] = localState;
 }
@@ -162,7 +161,8 @@ __device__ int set_input_time(double inputTime[],
         i++;
         if (i == MAX_FFINPUT_PER_DT) {
             printf("exceeding max input per dt %i\n", MAX_FFINPUT_PER_DT);
-            //printf("inputTime: %f, %f, %f, %f, %f, %f, %f, %f, %f, %f\n", inputTime[0], inputTime[1], inputTime[2], inputTime[3], inputTime[4], inputTime[5], inputTime[6], inputTime[7], inputTime[8], inputTime[9]);
+            printf("rate = %f, lastNegLogRand = %f, leftTimeRate = %f \n", rate, *lastNegLogRand, *leftTimeRate);
+            printf("inputTime[0]: %f, inputTime[1]: %f\n", inputTime[0], inputTime[1]);
             break;
         }
     } while (tau <= dt);
