@@ -170,6 +170,7 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
     double *fE = new double[networkSize*ngTypeE];
     double *fI = new double[networkSize*ngTypeI];
     double *spikeTrain = new double[networkSize];
+    double *preMat = new double[networkSize*networkSize];
     std::ofstream v_file, spike_file, gE_file, gI_file;
     v_file.open("v_CPU.bin", std::ios::out|std::ios::binary);
     spike_file.open("s_CPU.bin", std::ios::out|std::ios::binary);
@@ -196,6 +197,9 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
         v[i] = 0.0f;
         lif[i] = new cpu_LIF(v[i]);
         lTR[i] = 0.0f;
+        for (int j=0; j<networkSize; j++) {
+            preMat[i*networkSize+j] = s;
+        }
     }
     for (int ig = 0; ig < ngTypeE; ig++) {
         for (unsigned int i = 0; i < networkSize; i++) {
@@ -221,7 +225,10 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
     int inputEvents = 0;
     int outputEvents = 0;
     bool InhFired = false;
+    double vTime = 0.0f;
+    double gTime = 0.0f;
     for (unsigned int istep=0; istep<nstep; istep++) {
+        high_resolution_clock::time_point vStart = timeNow();
         for (unsigned int i=0; i<networkSize; i++) {
             lif[i]->v0 = lif[i]->v;
             if (i<h_nE) {
@@ -276,6 +283,8 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
             spikeTrain[i] = cpu_step(lif[i], dt, tRef, i);
             v[i] = lif[i]->v;
         }
+        vTime += static_cast<double>(duration_cast<microseconds>(timeNow()-vStart).count());
+        high_resolution_clock::time_point gStart = timeNow();
         for (unsigned int i=0; i<networkSize; i++) {
             double g_end, h_end;
             if (spikeTrain[i] > 0.0f) {
@@ -286,11 +295,11 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
                     for (int ig=0; ig<ngTypeE; ig++) {
                         g_end = 0.0;
                         h_end = 0.0;
-                        condE.compute_single_input_conductance(&g_end, &h_end, s, dt-lif[i]->tsp, ig);
+                        condE.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif[i]->tsp, ig);
                         for (int ii = 0; ii < networkSize; ii++) {
                             int gid = networkSize*ig+ii;
-                            gE[gid] += g_end;
-                            hE[gid] += h_end;
+                            gE[gid] += g_end * preMat[i*networkSize + ii];
+                            hE[gid] += h_end * preMat[i*networkSize + ii];
                         }
                     }
                 } else {
@@ -299,16 +308,17 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
                     for (int ig=0; ig<ngTypeI; ig++) {
                         g_end = 0.0;
                         h_end = 0.0;
-                        condI.compute_single_input_conductance(&g_end, &h_end, s, dt-lif[i]->tsp, ig);
+                        condI.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif[i]->tsp, ig);
                         for (int ii = 0; ii < networkSize; ii++) {
                             int gid = networkSize*ig+ii;
-                            gI[gid] += g_end;
-                            hI[gid] += h_end;
+                            gI[gid] += g_end * preMat[i*networkSize + ii];
+                            hI[gid] += h_end * preMat[i*networkSize + ii];
                         }
                     }
                 }
             }
         }
+        gTime += static_cast<double>(duration_cast<microseconds>(timeNow()-gStart).count());
         v_file.write((char*)v, networkSize * sizeof(double));
         spike_file.write((char*)spikeTrain, networkSize * sizeof(int));
         gE_file.write((char*)gE, networkSize * ngTypeE * sizeof(double));
@@ -323,6 +333,8 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
     printf("output events rate %fHz\n", float(outputEvents)*1000.0f/(dt*nstep*networkSize));
     auto cpuTime = duration_cast<microseconds>(timeNow()-start).count();
     printf("cpu version time cost: %3.1fms\n", static_cast<double>(cpuTime)/1000.0f);
+    printf("compute_V cost: %fms\n", vTime/1000.0f);
+    printf("recal_G cost: %fms\n", gTime/1000.0f);
     /* Cleanup */
     printf("Cleaning up\n");
     if (v_file.is_open()) v_file.close();
@@ -336,6 +348,7 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
     delete []hI;
     delete []fE;
     delete []fI;
+    delete []preMat;
     delete []spikeTrain;
     for (unsigned int i=0; i<networkSize; i++) {
         delete []randGen[i];
