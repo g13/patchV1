@@ -11,7 +11,7 @@ int main(int argc, char *argv[])
     seed = std::time(0);
     int device;
     int b1,b2;
-    b1 = 128;
+    b1 = 160;
     b2 = 128;
     bool printStep = false;
     unsigned int nstep = 200;
@@ -60,8 +60,7 @@ int main(int argc, char *argv[])
     int *eventRate, *d_eventRate;
     double *d_v, *d_gE, *d_gI, *d_hE, *d_hI, *d_fE, *d_fI, *d_preMat, *d_inputRate;
     double *d_a, *d_b;
-    double *gactVecE, *hactVecE;
-    double *gactVecI, *hactVecI;
+    double *gactVec, *hactVecE;
     double *leftTimeRate, *lastNegLogRand;
     double *spikeTrain, *d_spikeTrain, *tBack;
     /* to be extended */
@@ -95,6 +94,12 @@ int main(int argc, char *argv[])
 	}
 
     unsigned int nbatch, batchEnd, batchStep;
+    unsigned int ngType;
+    if (ngTypeE > ngTypeI) {
+        ngType = ngTypeE;
+    } else {
+        ngType = ngTypeI;
+    }
     // v, gE, gI, spikeTrain
     unsigned int hostMemToDiskPerStep = ceil(networkSize * (sizeof(double) + ngTypeE*sizeof(double) + ngTypeI*sizeof(double) + sizeof(int) )/(1024*1024));
     //batchStep = floor(HALF_MEMORY_OCCUPANCY/hostMemToDiskPerStep);
@@ -133,10 +138,8 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaMalloc((void **)&d_eventRate,    networkSize * sizeof(int)));
     CUDA_CALL(cudaMalloc((void **)&d_spikeTrain,   networkSize * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&tBack,          networkSize * sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&gactVecE,       networkSize * ngTypeE * sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&hactVecE,       networkSize * ngTypeE *sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&gactVecI,       networkSize * ngTypeI * sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&hactVecI,       networkSize * ngTypeI *sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&gactVec,        networkSize * ngType * sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&hactVec,        networkSize * ngType * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&d_preMat,       networkSize * networkSize * sizeof(double)));
     /* Allocate space for rng on device */
     CUDA_CALL(cudaMalloc((void **)&state,          networkSize * sizeof(curandStateMRG32k3a)));
@@ -144,36 +147,33 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaMalloc((void **)&lastNegLogRand, networkSize * sizeof(double)));
     /* Allocate space for partial reduce results on device */
 
-    unsigned int nReduceThreads = networkSize/2;
-    unsigned int rn_b1, rn_b2; 
-    if (nReduceThreads > 1048576) { //pow(2,20))
-        printf("reduce size exceeded 2^20, need extra layer of reduction");
+    dim3 rg_b1;
+    dim3 rg_b2(properties.maxThreadsPerBlock,1);
+    int s_actVec_length = 2*properties.maxThreadsPerBlock;
+    unsigned int rg_shared = s_actVec_length*(ngTypeE+ngTypeI)*sizeof(double);
+    if (rg_shared > properties.sharedMemPerBlock) {
+        printf("The size of the requested shared memory is not available\n");
         return EXIT_FAILURE;
-    }
-    if (b2<32) {
-        rn_b1 = b1/4;    
-        rn_b2 = b2*2;
     } else {
-        if (b2==32) {
-            rn_b1 = b1/2;
-            rn_b2 = b2;
-        } else {
-            if (b1 > 64) {
-                rn_b1 = b1/2;
-                rn_b2 = b2;
-            } else {
-                rn_b1 = b1;
-                rn_b2 = b2/2;
-            }
-        }
+        printf("recal_G will be using %i Mb of shared mem\n", rg_shared);
     }
-    printf("blockdims for 2-layer reduction: %i x %i and 1 x %i \n", rn_b1, rn_b2, rn_b1/2);
+    cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
+    rg_b1.x = networkSize/s_actVec_length;
+    if (rg_b1.x != double(networkSize)/s_actVec_length) {
+        printf("Please make networkSize %i multiples of %i\n", networkSize, s_actVec_length); 
+    }
+    rg_b1.y = networkSize/rg_b2.x;
+    int r_b1;
+    if (rg_b1.x >= 32) {
+        r_b2 = 1<<ceil(ilogb(rg_b1.x));
+        printf("blockdims for reduction of %i per thread : %i x %i \n", rg_b1.x, networkSize, r_b2);
+    }
 
-    double *gEproduct_b1, *gIproduct_b1, *hEproduct_b1, *hIproduct_b1;
-    CUDA_CALL(cudaMalloc((void **)&gEproduct_b1,  networkSize * rn_b1 * ngTypeE * sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&gIproduct_b1,  networkSize * rn_b1 * ngTypeE * sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&hEproduct_b1,  networkSize * rn_b1 * ngTypeE * sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&hIproduct_b1,  networkSize * rn_b1 * ngTypeI * sizeof(double)));
+    double *gE_b1y, *gI_b1y, *hE_b1y, *hI_b1y;
+    CUDA_CALL(cudaMalloc((void **)&gE_b1y,  networkSize * rn_b1 * ngTypeE * sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&gI_b1y,  networkSize * rn_b1 * ngTypeE * sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&hE_b1y,  networkSize * rn_b1 * ngTypeE * sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&hI_b1y,  networkSize * rn_b1 * ngTypeI * sizeof(double)));
 
 
 
@@ -224,45 +224,28 @@ int main(int argc, char *argv[])
         CUDA_CHECK();
         init<double><<<init_b1*ngTypeI,init_b2,0,i3>>>(d_hI, 0.0f);
         CUDA_CHECK();
-        init<double><<<init_b1*ngTypeE,init_b2,0,i2>>>(gactVecE, 0.0f);
+        init<double><<<init_b1*ngType,init_b2,0,i2>>>(gactVec, 0.0f);
         CUDA_CHECK();
-        init<double><<<init_b1*ngTypeI,init_b2,0,i3>>>(gactVecI, 0.0f);
-        CUDA_CHECK();
-        init<double><<<init_b1*ngTypeE,init_b2,0,i2>>>(hactVecE, 0.0f);
-        CUDA_CHECK();
-        init<double><<<init_b1*ngTypeI,init_b2,0,i3>>>(hactVecI, 0.0f);
-        CUDA_CHECK();
-        //printf("<<<(%i,%i)x(%i,%i)>>>\n", init_b1,init_b1,init_b2, init_b2);
-        printf("storage size of preMat %.1fMb\n", float(networkSize*networkSize*sizeof(double))/1024.0/1024.0);
-        printf("preMat size = %ix%i = %i\n",init_b1*init_b1*init_b2,init_b2,networkSize*networkSize);
-        //init<<<init_b1*init_b1*init_b2,init_b2,0,i2>>>(d_preMat, s, 1);
-        dim3 init2D_b1(init_b1*init_b2,init_b1);
-        dim3 init2D_b2(init_b2,1);
-        init2D<double><<<init2D_b1,init2D_b2,0,i2>>>(d_preMat, s, 1);
+        init<double><<<init_b1*ngType,init_b2,0,i3>>>(hactVec, 0.0f);
         CUDA_CHECK();
         //CUDA_CALL(cudaEventRecord(kStart, 0));
-        //int log_b1 = 2;
-        //int log_b2 = init_b2*init_b1/2;
-        //while (log_b2 > 256) {
-        //    log_b2 = log_b2/2;
-        //    log_b1 = log_b1*2;
-        //}
-        //logRand_init<<<log_b1,log_b2,0,i1>>>(lastNegLogRand, state, seed);
-        //CUDA_CHECK();
+        printf("storage size of preMat %.1fMb\n", float(networkSize*networkSize*sizeof(double))/1024.0/1024.0);
+        init<<<init_b1*init_b1*init_b2,init_b2,0,i2>>>(d_preMat, s);
+        CUDA_CHECK();
         //CUDA_CALL(cudaEventRecord(kStop, 0));
         //CUDA_CALL(cudaEventSynchronize(kStop));
         //CUDA_CALL(cudaEventElapsedTime(&time, kStart, kStop));
-        //printf("logRand_init<<<%ix%i>>> cost %.1fms\n", log_b1, log_b2, time);
-        //printf("logRand_init<<<%ix%i>>> cost %.1fms\n", init_b1, init_b2, time);
+        //printf("logRand_init<<<%ix%i>>> cost %.1fms\n", init_b1*init_b1*init_b2, init_b2, time);
     }
     CUDA_CALL(cudaStreamDestroy(i1));
     CUDA_CALL(cudaStreamDestroy(i2));
     CUDA_CALL(cudaStreamDestroy(i3));
 
     /* Create CUDA streams */
-    cudaStream_t s1, s2;
+    cudaStream_t s1, s2, s3;
     CUDA_CALL(cudaStreamCreate(&s1));
     CUDA_CALL(cudaStreamCreate(&s2));
+    CUDA_CALL(cudaStreamCreate(&s3));
     unsigned int shared_mem = 48;
     v_file.open("v_ictorious.bin", std::ios::out|std::ios::binary);
     spike_file.open("s_uspicious.bin", std::ios::out|std::ios::binary);
@@ -276,6 +259,7 @@ int main(int argc, char *argv[])
     unsigned int batchOffset = 0;
     unsigned int copySize = batchStep;
     unsigned int n = networkSize*copySize;
+    
     //for (int ibatch=0; i<nbatch; ibatch++) {
     //    if(ibatch == nbatch-1) {
     //        copySize = batchEnd;
@@ -290,7 +274,7 @@ int main(int argc, char *argv[])
             CUDA_CALL(cudaStreamWaitEvent(s1, gReady, 0));
             /* Compute voltage (acquire initial spikes) */
             CUDA_CALL(cudaEventRecord(kStart, 0));
-            compute_V<<<b1, b2, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_a, d_b, d_preMat, d_inputRate, d_eventRate, d_spikeTrain, tBack, gactVecE, hactVecE, gactVecI, hactVecI, d_fE, d_fI, leftTimeRate, lastNegLogRand, state, ngTypeE, ngTypeI, condE, condI, dt, networkSize, nE, seed, it);
+            compute_V<<<b1, b2, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_a, d_b, d_preMat, d_inputRate, d_eventRate, d_spikeTrain, tBack, gactVec, hactVec, d_fE, d_fI, leftTimeRate, lastNegLogRand, state, ngTypeE, ngTypeI, ngType, condE, condI, dt, networkSize, nE, seed, it);
             CUDA_CHECK();
             CUDA_CALL(cudaEventRecord(kStop, 0));
             CUDA_CALL(cudaEventSynchronize(kStop));
@@ -315,11 +299,31 @@ int main(int argc, char *argv[])
 
             CUDA_CALL(cudaStreamWaitEvent(s2, spikeCorrected, 0));
             /* Recalibrate conductance */
+            // recal E
             CUDA_CALL(cudaEventRecord(kStart, 0));
-            flat_recal_G<<<b1,b2,shared_mem,s2>>>(d_gE, d_gI, d_hE, d_hI, d_preMat, gactVecE, hactVecE, gactVecI, hactVecI, gEproduct_b1, hEproduct_b1, gIproduct_b1, hIproduct_b1, networkSize, ngTypeE, ngTypeI, rn_b1, rn_b2);
-            //recal_G<<<b1,b2,shared_mem,s2>>>(d_gE, d_gI, d_hE, d_hI, d_preMat, gactVecE, hactVecE, gactVecI, hactVecI, gEproduct_b1, hEproduct_b1, gIproduct_b1, hIproduct_b1, networkSize, ngTypeE, ngTypeI, rn_b1, rn_b2);
-            //naive_recal_G<<<b1,b2,shared_mem,s2>>>(d_gE, d_gI, d_hE, d_hI, d_preMat, gactVecE, hactVecE, gactVecI, hactVecI, gEproduct_b1, hEproduct_b1, gIproduct_b1, hIproduct_b1, networkSize, ngTypeE, ngTypeI, rn_b1, rn_b2);
+            recal_G<<<rg_b1,rg_b2,rg_shared,s2>>>(d_gE, d_hE, d_preMat,
+                                                  gactVec, hactVec,
+                                                  gE_b1y, hE_b1y,
+                                                  nE, ngTypeE);
             CUDA_CHECK();
+            // recal I
+            CUDA_CALL(cudaStreamWaitEvent(s3, spikeCorrected, 0));
+            recal_G<<<rg_b1,rg_b2,rg_shared,s3>>>(d_gI, d_hI, d_preMat,
+                                                  gactVec, hactVec, 
+                                                  gI_b1y, hI_b1y,
+                                                  networkSize-nE, ngTypeI);
+            CUDA_CHECK();
+            if (rg_b1.x >= 32) {
+                //  reduce sum
+                reduce<<<networkSize, r_b2, rg_shared, s2>>>(d_gE, d_hE,
+                                                                gE_b1y, hE_b1y,
+                                                                ngTypeE, rg_b1.x);
+                CUDA_CHECK();
+                reduce<<<networkSize, r_b2, rg_shared, s3>>>(d_gI, d_hI,
+                                                                gI_b1y, hI_b1y,
+                                                                ngTypeI, rg_b1.x);
+                CUDA_CHECK();
+            }
             CUDA_CALL(cudaEventRecord(kStop, 0));
             CUDA_CALL(cudaEventSynchronize(kStop));
             CUDA_CALL(cudaEventElapsedTime(&time, kStart, kStop));
@@ -398,17 +402,15 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaFree(d_hI));
     CUDA_CALL(cudaFree(d_fE));
     CUDA_CALL(cudaFree(d_fI));
-    CUDA_CALL(cudaFree(gactVecE));
-    CUDA_CALL(cudaFree(gactVecI));
-    CUDA_CALL(cudaFree(hactVecE));
-    CUDA_CALL(cudaFree(hactVecI));
+    CUDA_CALL(cudaFree(gactVec));
+    CUDA_CALL(cudaFree(hactVec));
     CUDA_CALL(cudaFree(d_preMat));
     CUDA_CALL(cudaFree(d_a));
     CUDA_CALL(cudaFree(d_b));
-    CUDA_CALL(cudaFree(gEproduct_b1));
-    CUDA_CALL(cudaFree(gIproduct_b1));
-    CUDA_CALL(cudaFree(hEproduct_b1));
-    CUDA_CALL(cudaFree(hIproduct_b1));
+    CUDA_CALL(cudaFree(gE_b1y));
+    CUDA_CALL(cudaFree(gI_b1y));
+    CUDA_CALL(cudaFree(hE_b1y));
+    CUDA_CALL(cudaFree(hI_b1y));
     CUDA_CALL(cudaFree(leftTimeRate));
     CUDA_CALL(cudaFree(lastNegLogRand));
     CUDA_CALL(cudaFree(d_inputRate));

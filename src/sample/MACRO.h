@@ -15,6 +15,8 @@
 #define tRef_E 0.5f
 #define tRef_I 0.25f
 
+#define FULL_MASK 0xffffffff
+
 #define CUDA_ERROR_CHECK
 //#define CUDA_DEEP_ERROR_CHECK
 

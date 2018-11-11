@@ -1,5 +1,6 @@
 #ifndef COREDYNAMICS_CUH
 #define COREDYNAMICS_CUH
+//#include <cooperative_groups.h>
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include <stdio.h>
@@ -59,38 +60,6 @@ struct LIF : Func_RK2 {
     __device__ virtual double compute_spike_time(double dt);
 };
 
-__global__ void naive_recal_G(double* __restrict__ gE,
-        double* __restrict__ gI,
-        double* __restrict__ hE,
-        double* __restrict__ hI,
-        double* __restrict__ preMat,
-        double* __restrict__ gactVecE,
-        double* __restrict__ hactVecE,
-        double* __restrict__ gactVecI,
-        double* __restrict__ hactVecI,
-        double* __restrict__ gEproduct_b1,
-        double* __restrict__ hEproduct_b1,
-        double* __restrict__ gIproduct_b1,
-        double* __restrict__ hIproduct_b1,
-        unsigned int networkSize, unsigned int ngTypeE, unsigned int ngTypeI, unsigned int b1, unsigned int b2
-        );
-
-__global__ void recal_G(double* __restrict__ gE,
-        double* __restrict__ gI,
-        double* __restrict__ hE,
-        double* __restrict__ hI,
-        double* __restrict__ preMat,
-        double* __restrict__ gactVecE,
-        double* __restrict__ hactVecE,
-        double* __restrict__ gactVecI,
-        double* __restrict__ hactVecI,
-        double* __restrict__ gEproduct_b1,
-        double* __restrict__ hEproduct_b1,
-        double* __restrict__ gIproduct_b1,
-        double* __restrict__ hIproduct_b1,
-        unsigned int networkSize, unsigned int ngTypeE, unsigned int ngTypeI, unsigned int b1, unsigned int b2
-        );
-
 __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ gE,
                           double* __restrict__ gI,
@@ -103,37 +72,35 @@ __global__ void compute_V(double* __restrict__ v,
                           int* __restrict__ eventRate,
                           double* __restrict__ spikeTrain,
                           double* __restrict__ tBack,
-                          double* __restrict__ gactVecE,
-                          double* __restrict__ hactVecE,
-                          double* __restrict__ gactVecI,
-                          double* __restrict__ hactVecI,
+                          double* __restrict__ gactVec,
+                          double* __restrict__ hactVec,
                           double* __restrict__ fE,
                           double* __restrict__ fI,
                           double* __restrict__ leftTimeRate,
                           double* __restrict__ lastNegLogRand,
                           curandStateMRG32k3a* __restrict__ state,
-        unsigned int ngTypeE, unsigned int ngTypeI, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, bool it);
+                          unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, bool it);
+
+__global__ void recal_G(double* __restrict__ g,
+                        double* __restrict__ h,
+                        double* __restrict__ preMat,
+                        double* __restrict__ gactVec,
+                        double* __restrict__ hactVec,
+                        double* __restrict__ g_b1y,
+                        double* __restrict__ h_b1y,
+                        unsigned int n, unsigned int offset, unsigned int ngType, unsigned int ns, int m);
+
+__global__ void reduce(double* __restrict__ g,
+                       double* __restrict__ h,
+                       double* __restrict__ g_b1y,
+                       double* __restrict__ h_b1y,
+                       unsigned int ngType);
 
 __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed);
 
 template <typename T>
-__global__ void init(T *array, T value, int i = -1) {
+__global__ void init(T *array, T value) {
     unsigned long id = blockIdx.x * blockDim.x + threadIdx.x;
     array[id] = value;
-    //if (id==0 && i > -1) {
-    //    printf("(%i) initialized\n", i);
-    //}
 }
-
-__device__ unsigned long getIdx_2D_2D();
-
-template <typename T>
-__global__ void init2D(T *array, T value, int i = -1) {
-    unsigned long id = getIdx_2D_2D();
-    array[id] = value;
-    //if (id==0 && i > -1) {
-    //    printf("(%i) initialized\n", i);
-    //}
-}
-
 #endif

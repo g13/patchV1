@@ -1,4 +1,5 @@
 #include "coredynamics.cuh"
+using namespace cooperative_groups;
 
 __forceinline__  __device__ double get_a(double gE, double gI, double gL) {
     return gE + gI + gL;
@@ -17,206 +18,109 @@ __device__ __forceinline__ void warpReduce(volatile T* data, int id, int halfLen
 }
 
 template <typename T>
-__device__ __forceinline__ void reduce2(volatile T *g, volatile T *h, int id, int halfLen) {
-    if (halfLen >= 32) {
-        #pragma unroll 
-        for (unsigned int i=halfLen; i>32; i>>=1) { 
-            if (id < i) {
-                // keep data stored sequentially
-                g[id] += g[id + i];
-                h[id] += h[id + i];
+
+__global__ void recal_G(double* __restrict__ g,
+                        double* __restrict__ h,
+                        double* __restrict__ preMat,
+                        double* __restrict__ gactVec,
+                        double* __restrict__ hactVec,
+                        double* __restrict__ g_b1y,
+                        double* __restrict__ h_b1y,
+                        unsigned int n, unsigned int offset, unsigned int ngType, unsigned int ns, int m
+) {
+    // 2D blockGrid
+    // -> D-1 pieces of actVec 
+    // -> D-2 pieces of post-synaptic neurons 
+    // 1D threadBlock
+    extern __shared__ double actVec[];
+    double *gaV = actVec;
+    double *haV = &(actVec[ngType*ns]);
+    unsigned int id = blockDim.x*blockIdx.y + threadIdx.x;
+    if (m>0) {
+        #pragma unroll
+        for (int ig=0; ig<ngType; ig++) {
+            #pragma unroll
+            for (int i=0; i<m; i++) {
+                // av = double[ngType,m,ns]
+                // actVec = double[ngType,n]
+                unsigned int sid = ig*ns + (i*blockDim.x + threadIdx.x);
+                unsigned int gid = (n*ig + offset + ns*blockIdx.x) + (i*blockDim.x + threadIdx.x);
+                gaV[sid] = gactVec[gid];
+                haV[sid] = hactVec[gid];
             }
-            __syncthreads();
-        }
-        // warp size no need to __syncthreads
-        if (id < 32) {
-            warpReduce(g, id, halfLen);
-            warpReduce(h, id, halfLen);
         }
     } else {
-        if (id < halfLen) {
-            warpReduce(g, id, halfLen);
-            warpReduce(h, id, halfLen);
+        if (threadIdx.x < ns) {
+            #pragma unroll
+            for (int ig=0; ig<ngType; ig++) {
+                // av = double[ngType,ns]
+                unsigned int sid = ig*ns + threadIdx.x;
+                unsigned int gid = (n*ig + offset + ns*blockIdx.x) + threadIdx.x;
+                gaV[sid] = gactVec[gid];
+                haV[sid] = hactVec[gid];
+            }
         }
     }
-}
-
-template <typename T>
-__global__ void partial_dot1d(T* x, T* y1, T* y2, T* g, T* h, int size) {
-    extern __shared__ T product[];
-    T *product_g = product;
-    T *product_h = &(product_g[size]) ;
-    unsigned int blockLen = blockDim.x;
-    unsigned int blockLen_half = blockDim.x/2;
-    // thread index
-    unsigned int block_id = threadIdx.x;
-    unsigned int grid_id = blockIdx.x;
-    unsigned int global_id = grid_id*(2*blockLen) + block_id;
-    // elmenent-wise product to shared memory
-    product_g[block_id] = x[global_id]*y1[global_id] + x[global_id + blockLen] * y1[global_id+blockLen];
-    product_h[block_id] = x[global_id]*y2[global_id] + x[global_id + blockLen] * y2[global_id+blockLen];
     __syncthreads();
-    // reduction within block
-
-    //if (block_id == 0 ) {
-    //    printf("blockLen/2 %i, dataSize %i \n",  blockLen_half, size);
-    //}
-    reduce2<T>(product_g, product_h, block_id, blockLen_half);
-
-    if (block_id == 0) {
-        g[grid_id] = product_g[0];
-        h[grid_id] = product_h[0];
+    for (int ig=0; ig<ngType; ig++) {
+        double g_t = 0.0f;
+        double h_t = 0.0f;
+        for (int i = 0; i<ns; i++) {
+            unsigned sid = ig*ns + i;
+            unsigned pid = (offset + blockIdx.x*ns + i)*n + id;
+            g_t += gaV[sid] * preMat[pid];
+            h_t += haV[sid] * preMat[pid];
+        }
+        if (gridDim.x < 32) {
+            unsigned int gid = ig*n + id;
+            atomic_add(&(g[gid]), g_t);
+            atomic_add(&(h[gid]), h_t);
+        } else {
+            // b1y = double[ngType, n, #(ns)]
+            unsigned int b1yid = ig*n*gridDim.x + id*gridDim.x + blockIdx.x;
+            g_b1y[b1yid] = g_t;
+            h_b1y[b1yid] = h_t;
+        }
     }
 }
 
-template <typename T>
-__global__ void final_reduce(T* pg, T* ph, T* g, T* h, int size) {
-    extern __shared__ T partials[];
-    T* partial_g = partials;
-    T* partial_h = &(partial_g[size]);
-    unsigned int blockLen = blockDim.x;
-    unsigned int blockLen_half = blockDim.x/2;
-    // thread index
-    unsigned int block_id = threadIdx.x;
-    unsigned int global_id = blockIdx.x*(2*blockLen) + block_id;
-    // elmenent-wise product to shared memory
-    partial_g[block_id] = pg[global_id] + pg[global_id + blockLen];
-    partial_h[block_id] = ph[global_id] + ph[global_id + blockLen];
-    __syncthreads();
-    // reduction within block
-    reduce2<T>(partial_g, partial_h, block_id, blockLen_half);
-
-    if (block_id == 0) {
-        (*g) += partial_g[0];
-        (*h) += partial_h[0];
-        //printf("r1 = %f, r2 = %f \n", partial_g[0], partial_h[0]);
-    }
-}
-
-__global__ void recal_G(double* __restrict__ gE,
-                        double* __restrict__ gI,
-                        double* __restrict__ hE,
-                        double* __restrict__ hI,
-                        double* __restrict__ preMat,
-                        double* __restrict__ gactVecE,
-                        double* __restrict__ hactVecE,
-                        double* __restrict__ gactVecI,
-                        double* __restrict__ hactVecI,
-                        double* __restrict__ gEproduct_b1,
-                        double* __restrict__ hEproduct_b1,
-                        double* __restrict__ gIproduct_b1,
-                        double* __restrict__ hIproduct_b1,
-                        unsigned int networkSize, unsigned int ngTypeE, unsigned int ngTypeI, unsigned int b1, unsigned int b2
-                        ) {
-    unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
-    #pragma unroll
-    for (int ig=0; ig<ngTypeE; ig++) {
-        unsigned int aid = networkSize*ig;
-        unsigned int bid = b1*ngTypeE*id + b1*ig;
-        unsigned int gid = aid+id;
-        partial_dot1d<double><<<b1, b2, b2*2*sizeof(double)>>>(&(preMat[id]), &(gactVecE[aid]), &(hactVecE[aid]), &(gEproduct_b1[bid]), &(hEproduct_b1[bid]),b2);
-        d_CUDA_CHECK();
-        final_reduce<double><<<1, b1/2, b1*sizeof(double)>>>(&(gEproduct_b1[bid]), &(hEproduct_b1[bid]), &(gE[gid]), &(hE[gid]), b1/2);
-        d_CUDA_CHECK();
-    }
-    //printf("id-%i: %f -> %f\n", id, bgE, gE[id]);
-    #pragma unroll
-    for (int ig=0; ig<ngTypeI; ig++) {
-        unsigned int aid = networkSize*ig;
-        unsigned int bid = b1*ngTypeI*id + b1*ig;
-        unsigned int gid = aid+id;
-        partial_dot1d<double><<<b1, b2, b2*2*sizeof(double)>>>(&(preMat[id]), &(gactVecI[aid]), &(hactVecI[aid]), &(gIproduct_b1[bid]), &(hIproduct_b1[bid]), b2);
-        d_CUDA_CHECK();
-        final_reduce<double><<<1, b1/2, b1*sizeof(double)>>>(&(gIproduct_b1[bid]), &(hIproduct_b1[bid]), &(gI[gid]), &(hI[gid]), b1/2);
-        d_CUDA_CHECK();
-    }
-}
-
-__global__ void naive_recal_G(double* __restrict__ gE,
-                             double* __restrict__ gI,
-                             double* __restrict__ hE,
-                             double* __restrict__ hI,
-                             double* __restrict__ preMat,
-                             double* __restrict__ gactVecE,
-                             double* __restrict__ hactVecE,
-                             double* __restrict__ gactVecI,
-                             double* __restrict__ hactVecI,
-                             double* __restrict__ gEproduct_b1,
-                             double* __restrict__ hEproduct_b1,
-                             double* __restrict__ gIproduct_b1,
-                             double* __restrict__ hIproduct_b1,
-                             unsigned int networkSize, unsigned int ngTypeE, unsigned int ngTypeI, unsigned int b1, unsigned int b2) {
-    unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
-    for (int ig=0; ig<ngTypeE; ig++) {
-        unsigned int aid = networkSize*ig;
-        unsigned int bid = b1*ngTypeE*id + b1*ig;
-        unsigned int gid = aid+id;
-        double gE_t = 0.0f;
-        double hE_t = 0.0f;
-        for (int i=0; i<networkSize; i++) {
-            gE_t += gactVecE[gid]*preMat[i*networkSize+id];
-            hE_t += hactVecE[gid]*preMat[i*networkSize+id];
+__global__ void reduce(double* __restrict__ g,
+                       double* __restrict__ h,
+                       double* __restrict__ g_b1y,
+                       double* __restrict__ h_b1y,
+                       unsigned int ngType, unsigned int n
+) { // n x #(ns)
+    extern __shared__ blk[];
+    double* g_blk = blk;
+    double* h_blk = &(blk[blockDim.x]);
+    for (int ig=0; ig<ngType; ig++) {
+        unsigned int gid = ig*gridDim.x*blockDim.x + blockIdx.x*blockDim.x + threadIdx.x;
+        if (gid < n) {
+            g_blk[threadIdx.x] = g_b1y[gid];
+            h_blk[threadIdx.x] = g_b1y[gid];
+        } else {
+            g_blk[threadIdx.x] = 0.0f;
+            h_blk[threadIdx.x] = 0.0f;
         }
-        gE[gid] += gE_t;
-        hE[gid] += hE_t;
-    }
-    //printf("id-%i: %f -> %f\n", id, bgE, gE[id]);
-    for (int ig=0; ig<ngTypeI; ig++) {
-        unsigned int aid = networkSize*ig;
-        unsigned int bid = b1*ngTypeI*id + b1*ig;
-        unsigned int gid = aid+id;
-        double gI_t = 0.0f;
-        double hI_t = 0.0f;
-        for (int i=0; i<networkSize; i++) {
-            gI_t += gactVecI[gid]*preMat[i*networkSize+id];
-            hI_t += hactVecI[gid]*preMat[i*networkSize+id];
-        }
-        gI[gid] += gI_t;
-        hI[gid] += hI_t;
-    }
-}
+        for (int i=blockDim.x/2; i>=32; i>>=1) {
+             if (threadIdx.x < i) {
+                 g_blk[threadIdx.x] += g_blk[threadIdx.x + i];
+                 h_blk[threadIdx.x] += h_blk[threadIdx.x + i];
+             }
+             __syncthreads();
+         }
 
-__global__ void flat_recal_G(double* __restrict__ gE,
-                             double* __restrict__ gI,
-                             double* __restrict__ hE,
-                             double* __restrict__ hI,
-                             double* __restrict__ preMat,
-                             double* __restrict__ gactVecE,
-                             double* __restrict__ hactVecE,
-                             double* __restrict__ gactVecI,
-                             double* __restrict__ hactVecI,
-                             double* __restrict__ gEproduct_b1,
-                             double* __restrict__ hEproduct_b1,
-                             double* __restrict__ gIproduct_b1,
-                             double* __restrict__ hIproduct_b1,
-                             unsigned int networkSize, unsigned int ngTypeE, unsigned int ngTypeI, unsigned int b1, unsigned int b2) {
-    unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
-    for (int ig=0; ig<ngTypeE; ig++) {
-        unsigned int aid = networkSize*ig;
-        unsigned int bid = b1*ngTypeE*id + b1*ig;
-        unsigned int gid = aid+id;
-        double gE_t = 0.0f;
-        double hE_t = 0.0f;
-        for (int i=0; i<networkSize; i++) {
-            gE_t += gactVecE[gid]*preMat[i*networkSize+id];
-            hE_t += hactVecE[gid]*preMat[i*networkSize+id];
+        double g_warp = g_blk[threadIdx.x];
+        double h_warp = h_blk[threadIdx.x];
+        for (int offset = 16; offset > 0; offset /= 2) {
+            g_warp += __shfl_down_sync(FULL_MASK, g_warp, offset);  
+            h_warp += __shfl_down_sync(FULL_MASK, h_warp, offset);  
         }
-        gE[gid] += gE_t;
-        hE[gid] += hE_t;
-    }
-    //printf("id-%i: %f -> %f\n", id, bgE, gE[id]);
-    for (int ig=0; ig<ngTypeI; ig++) {
-        unsigned int aid = networkSize*ig;
-        unsigned int bid = b1*ngTypeI*id + b1*ig;
-        unsigned int gid = aid+id;
-        double gI_t = 0.0f;
-        double hI_t = 0.0f;
-        for (int i=0; i<networkSize; i++) {
-            gI_t += gactVecI[gid]*preMat[i*networkSize+id];
-            hI_t += hactVecI[gid]*preMat[i*networkSize+id];
+        if (threadIdx.x == 0) {
+            unsigned int id = ig*gridDim.x + blockIdx.x;
+            g[id] = g_warp;
+            h[id] = g_warp;
         }
-        gI[gid] += gI_t;
-        hI[gid] += hI_t;
     }
 }
 
@@ -312,16 +216,14 @@ __global__ void compute_V(double* __restrict__ v,
                           int* __restrict__ eventRate,
                           double* __restrict__ spikeTrain,
                           double* __restrict__ tBack,
-                          double* __restrict__ gactVecE,
-                          double* __restrict__ hactVecE,
-                          double* __restrict__ gactVecI,
-                          double* __restrict__ hactVecI,
+                          double* __restrict__ gactVec,
+                          double* __restrict__ hactVec,
                           double* __restrict__ fE,
                           double* __restrict__ fI,
                           double* __restrict__ leftTimeRate,
                           double* __restrict__ lastNegLogRand,
                           curandStateMRG32k3a* __restrict__ state,
-                          unsigned int ngTypeE, unsigned int ngTypeI, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, bool it) {
+                          unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, bool it) {
 
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
@@ -422,40 +324,31 @@ __global__ void compute_V(double* __restrict__ v,
         if (id < nE) {
             #pragma unroll
             for (int ig=0; ig<ngTypeE; ig++) {
-                g_end = 0.0;
-                h_end = 0.0;
+                g_end = 0.0f;
+                h_end = 0.0f;
                 condE.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif.tsp, ig);
                 gid = networkSize*ig+id;
-                gactVecE[gid] = g_end;
-                hactVecE[gid] = h_end;
+                gactVec[gid] = g_end;
+                hactVec[gid] = h_end;
             }
         } else {
             #pragma unroll
             for (int ig=0; ig<ngTypeI; ig++) {
-                g_end = 0.0;
-                h_end = 0.0;
+                g_end = 0.0f;
+                h_end = 0.0f;
                 condI.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif.tsp, ig);
                 gid = networkSize*ig+id;
-                gactVecI[gid] = g_end;
-                hactVecI[gid] = h_end;
+                gactVec[gid] = g_end;
+                hactVec[gid] = h_end;
             }
         }
     } else {
-        for (int ig=0; ig<ngTypeE; ig++) {
+        for (int ig=0; ig<ngType; ig++) {
             gid = networkSize*ig+id;
-            gactVecE[gid] = 0.0f;
-            hactVecE[gid] = 0.0f;
-        }
-        for (int ig=0; ig<ngTypeI; ig++) {
-            gid = networkSize*ig+id;
-            gactVecI[gid] = 0.0f;
-            hactVecI[gid] = 0.0f;
+            gactVec[gid] = 0.0f;
+            hactVec[gid] = 0.0f;
         }
     }
-    //printf("id-%i, gend %f, hend %f, spiked %i \n",id, g_end, h_end, spiked);
-    //if (id == 0) {
-    //    printf("fml\n");
-    //}
 }
 
 __device__ void Func_RK2::runge_kutta_2(double dt) {
@@ -463,7 +356,6 @@ __device__ void Func_RK2::runge_kutta_2(double dt) {
     double fk1 = eval1(v0 + dt*fk0);
     v = v0 + dt*(fk0+fk1)/2.0f;
 }
-
 
 __device__ double LIF:: compute_spike_time(double dt) {
     return (vT-v0)/(v-v0)*dt;
@@ -498,11 +390,4 @@ __device__ double LIF:: eval1(double _v) {
 
 __device__ void LIF:: reset_v() {
     v = vL;
-}
-
-__device__ unsigned long getIdx_2D_2D() {
-    int blockId = blockIdx.y * gridDim.x +  blockIdx.x;
-    unsigned long id = blockId * (blockDim.x * blockDim.y) 
-                      + (threadIdx.y * blockDim.x) + threadIdx.x;
-    return id;
 }
