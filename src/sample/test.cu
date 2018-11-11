@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
     int *eventRate, *d_eventRate;
     double *d_v, *d_gE, *d_gI, *d_hE, *d_hI, *d_fE, *d_fI, *d_preMat, *d_inputRate;
     double *d_a, *d_b;
-    double *gactVec, *hactVecE;
+    double *gactVec, *hactVec;
     double *leftTimeRate, *lastNegLogRand;
     double *spikeTrain, *d_spikeTrain, *tBack;
     /* to be extended */
@@ -163,17 +163,20 @@ int main(int argc, char *argv[])
         printf("Please make networkSize %i multiples of %i\n", networkSize, s_actVec_length); 
     }
     rg_b1.y = networkSize/rg_b2.x;
-    int r_b1;
+    int r_b2;
+    double *gE_b1y, *gI_b1y, *hE_b1y, *hI_b1y;
     if (rg_b1.x >= 32) {
-        r_b2 = 1<<ceil(ilogb(rg_b1.x));
+        int e = 5;
+        while (rg_b1.x > 1<<e) e++;
+        r_b2 = 1<<e;
+        //r_b2 = 1<<ceil(log2(static_cast<float>(rg_b1.x)));
         printf("blockdims for reduction of %i per thread : %i x %i \n", rg_b1.x, networkSize, r_b2);
+        CUDA_CALL(cudaMalloc((void **)&gE_b1y,  networkSize * r_b2 * ngTypeE * sizeof(double)));
+        CUDA_CALL(cudaMalloc((void **)&gI_b1y,  networkSize * r_b2 * ngTypeI * sizeof(double)));
+        CUDA_CALL(cudaMalloc((void **)&hE_b1y,  networkSize * r_b2 * ngTypeE * sizeof(double)));
+        CUDA_CALL(cudaMalloc((void **)&hI_b1y,  networkSize * r_b2 * ngTypeI * sizeof(double)));
     }
 
-    double *gE_b1y, *gI_b1y, *hE_b1y, *hI_b1y;
-    CUDA_CALL(cudaMalloc((void **)&gE_b1y,  networkSize * rn_b1 * ngTypeE * sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&gI_b1y,  networkSize * rn_b1 * ngTypeE * sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&hE_b1y,  networkSize * rn_b1 * ngTypeE * sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&hI_b1y,  networkSize * rn_b1 * ngTypeI * sizeof(double)));
 
 
 
@@ -246,7 +249,7 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaStreamCreate(&s1));
     CUDA_CALL(cudaStreamCreate(&s2));
     CUDA_CALL(cudaStreamCreate(&s3));
-    unsigned int shared_mem = 48;
+    unsigned int shared_mem = 0;
     v_file.open("v_ictorious.bin", std::ios::out|std::ios::binary);
     spike_file.open("s_uspicious.bin", std::ios::out|std::ios::binary);
     gE_file.open("gE_nerous.bin", std::ios::out|std::ios::binary);
@@ -304,24 +307,24 @@ int main(int argc, char *argv[])
             recal_G<<<rg_b1,rg_b2,rg_shared,s2>>>(d_gE, d_hE, d_preMat,
                                                   gactVec, hactVec,
                                                   gE_b1y, hE_b1y,
-                                                  nE, ngTypeE);
+                                                  networkSize, nE, ngTypeE, s_actVec_length);
             CUDA_CHECK();
             // recal I
             CUDA_CALL(cudaStreamWaitEvent(s3, spikeCorrected, 0));
             recal_G<<<rg_b1,rg_b2,rg_shared,s3>>>(d_gI, d_hI, d_preMat,
                                                   gactVec, hactVec, 
                                                   gI_b1y, hI_b1y,
-                                                  networkSize-nE, ngTypeI);
+                                                  networkSize, networkSize-nE, ngTypeI, s_actVec_length);
             CUDA_CHECK();
             if (rg_b1.x >= 32) {
                 //  reduce sum
-                reduce<<<networkSize, r_b2, rg_shared, s2>>>(d_gE, d_hE,
-                                                                gE_b1y, hE_b1y,
-                                                                ngTypeE, rg_b1.x);
+                reduceS<<<networkSize, r_b2, sizeof(double)*2*r_b2, s2>>>(d_gE, d_hE,
+                                                                          gE_b1y, hE_b1y,
+                                                                          ngTypeE, rg_b1.x);
                 CUDA_CHECK();
-                reduce<<<networkSize, r_b2, rg_shared, s3>>>(d_gI, d_hI,
-                                                                gI_b1y, hI_b1y,
-                                                                ngTypeI, rg_b1.x);
+                reduceS<<<networkSize, r_b2, sizeof(double)*2*r_b2, s3>>>(d_gI, d_hI,
+                                                                          gI_b1y, hI_b1y,
+                                                                          ngTypeI, rg_b1.x);
                 CUDA_CHECK();
             }
             CUDA_CALL(cudaEventRecord(kStop, 0));
@@ -387,6 +390,7 @@ int main(int argc, char *argv[])
     printf("Cleaning up:\n");
     CUDA_CALL(cudaStreamDestroy(s1));
     CUDA_CALL(cudaStreamDestroy(s2));
+    CUDA_CALL(cudaStreamDestroy(s3));
     printf("    CUDA streams destroyed\n");
     if (v_file.is_open()) v_file.close();
     if (spike_file.is_open()) spike_file.close();

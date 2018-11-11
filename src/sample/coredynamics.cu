@@ -1,5 +1,4 @@
 #include "coredynamics.cuh"
-using namespace cooperative_groups;
 
 __forceinline__  __device__ double get_a(double gE, double gI, double gL) {
     return gE + gI + gL;
@@ -9,16 +8,6 @@ __forceinline__  __device__ double get_b(double gE, double gI, double gL) {
     return gE * vE + gI * vI + gL * vL;
 }
 
-template <typename T>
-__device__ __forceinline__ void warpReduce(volatile T* data, int id, int halfLen) {
-    #pragma unroll
-    for (unsigned int i=halfLen; i>0; i>>=1) { 
-        data[id] += data[id + i];
-    }
-}
-
-template <typename T>
-
 __global__ void recal_G(double* __restrict__ g,
                         double* __restrict__ h,
                         double* __restrict__ preMat,
@@ -26,7 +15,7 @@ __global__ void recal_G(double* __restrict__ g,
                         double* __restrict__ hactVec,
                         double* __restrict__ g_b1y,
                         double* __restrict__ h_b1y,
-                        unsigned int n, unsigned int offset, unsigned int ngType, unsigned int ns, int m
+                        unsigned int n, unsigned int offset, unsigned int ngType, unsigned int ns
 ) {
     // 2D blockGrid
     // -> D-1 pieces of actVec 
@@ -36,12 +25,12 @@ __global__ void recal_G(double* __restrict__ g,
     double *gaV = actVec;
     double *haV = &(actVec[ngType*ns]);
     unsigned int id = blockDim.x*blockIdx.y + threadIdx.x;
-    if (m>0) {
+    if (gridDim.x>0) {
         #pragma unroll
         for (int ig=0; ig<ngType; ig++) {
             #pragma unroll
-            for (int i=0; i<m; i++) {
-                // av = double[ngType,m,ns]
+            for (int i=0; i<gridDim.x; i++) {
+                // av = double[ngType,#(ns),ns]
                 // actVec = double[ngType,n]
                 unsigned int sid = ig*ns + (i*blockDim.x + threadIdx.x);
                 unsigned int gid = (n*ig + offset + ns*blockIdx.x) + (i*blockDim.x + threadIdx.x);
@@ -73,8 +62,8 @@ __global__ void recal_G(double* __restrict__ g,
         }
         if (gridDim.x < 32) {
             unsigned int gid = ig*n + id;
-            atomic_add(&(g[gid]), g_t);
-            atomic_add(&(h[gid]), h_t);
+            atomicAdd(&(g[gid]), g_t);
+            atomicAdd(&(h[gid]), h_t);
         } else {
             // b1y = double[ngType, n, #(ns)]
             unsigned int b1yid = ig*n*gridDim.x + id*gridDim.x + blockIdx.x;
@@ -84,13 +73,13 @@ __global__ void recal_G(double* __restrict__ g,
     }
 }
 
-__global__ void reduce(double* __restrict__ g,
-                       double* __restrict__ h,
-                       double* __restrict__ g_b1y,
-                       double* __restrict__ h_b1y,
-                       unsigned int ngType, unsigned int n
+__global__ void reduceS(double* __restrict__ g,
+                        double* __restrict__ h,
+                        double* __restrict__ g_b1y,
+                        double* __restrict__ h_b1y,
+                        unsigned int ngType, unsigned int n
 ) { // n x #(ns)
-    extern __shared__ blk[];
+    extern __shared__ double blk[];
     double* g_blk = blk;
     double* h_blk = &(blk[blockDim.x]);
     for (int ig=0; ig<ngType; ig++) {
@@ -178,7 +167,7 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
     }
 }
 
- __device__  double step(Func_RK2* lif, double dt, double tRef) {
+__device__  double step(Func_RK2* lif, double dt, double tRef) {
     lif->tsp = -1.0f;
     if (lif->tBack <= 0.0f) {
         // not in refractory period
@@ -319,7 +308,6 @@ __global__ void compute_V(double* __restrict__ v,
 
     //setup acting vectors
     double g_end, h_end;
-    int spiked = 0;
     if (spikeTrain[id]>0.0f) {
         if (id < nE) {
             #pragma unroll
@@ -384,6 +372,7 @@ inline  __host__ __device__ double eval_LIF(double a, double b, double v) {
 __device__ double LIF:: eval0(double _v) {
     return eval_LIF(a0,b0,_v);
 }
+
 __device__ double LIF:: eval1(double _v) {
     return eval_LIF(a1,b1,_v);
 }

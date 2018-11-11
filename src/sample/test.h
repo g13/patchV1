@@ -4,4 +4,3 @@
 #include <ctime>
 #include <cmath>
 #include "cpu.h"
-

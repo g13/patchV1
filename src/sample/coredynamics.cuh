@@ -88,13 +88,13 @@ __global__ void recal_G(double* __restrict__ g,
                         double* __restrict__ hactVec,
                         double* __restrict__ g_b1y,
                         double* __restrict__ h_b1y,
-                        unsigned int n, unsigned int offset, unsigned int ngType, unsigned int ns, int m);
+                        unsigned int n, unsigned int offset, unsigned int ngType, unsigned int ns);
 
-__global__ void reduce(double* __restrict__ g,
-                       double* __restrict__ h,
-                       double* __restrict__ g_b1y,
-                       double* __restrict__ h_b1y,
-                       unsigned int ngType);
+__global__ void reduceS(double* __restrict__ g,
+                        double* __restrict__ h,
+                        double* __restrict__ g_b1y,
+                        double* __restrict__ h_b1y,
+                        unsigned int ngType, int n);
 
 __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed);
 
