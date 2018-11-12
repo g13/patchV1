@@ -15,8 +15,8 @@ __global__ void recal_G(double* __restrict__ g,
                         double* __restrict__ hactVec,
                         double* __restrict__ g_b1y,
                         double* __restrict__ h_b1y,
-                        unsigned int n, unsigned int offset, unsigned int ngType, unsigned int ns
-) {
+                        unsigned int n, unsigned int offset, unsigned int ngType, unsigned int ns, int m) 
+{
     // 2D blockGrid
     // -> D-1 pieces of actVec 
     // -> D-2 pieces of post-synaptic neurons 
@@ -25,15 +25,15 @@ __global__ void recal_G(double* __restrict__ g,
     double *gaV = actVec;
     double *haV = &(actVec[ngType*ns]);
     unsigned int id = blockDim.x*blockIdx.y + threadIdx.x;
-    if (gridDim.x>0) {
+    if (m>0) {
         #pragma unroll
         for (int ig=0; ig<ngType; ig++) {
             #pragma unroll
-            for (int i=0; i<gridDim.x; i++) {
+            for (int i=0; i<m; i++) {
                 // av = double[ngType,#(ns),ns]
                 // actVec = double[ngType,n]
                 unsigned int sid = ig*ns + (i*blockDim.x + threadIdx.x);
-                unsigned int gid = (n*ig + offset + ns*blockIdx.x) + (i*blockDim.x + threadIdx.x);
+                unsigned int gid = (ig*n + offset + ns*blockIdx.x) + (i*blockDim.x + threadIdx.x);
                 gaV[sid] = gactVec[gid];
                 haV[sid] = hactVec[gid];
             }
@@ -73,12 +73,13 @@ __global__ void recal_G(double* __restrict__ g,
     }
 }
 
-__global__ void reduceS(double* __restrict__ g,
-                        double* __restrict__ h,
-                        double* __restrict__ g_b1y,
-                        double* __restrict__ h_b1y,
-                        unsigned int ngType, unsigned int n
-) { // n x #(ns)
+__global__ void reduce_G(double* __restrict__ g,
+                         double* __restrict__ h,
+                         double* __restrict__ g_b1y,
+                         double* __restrict__ h_b1y,
+                         unsigned int ngType, unsigned int n) 
+{ 
+    // n x #(ns)
     extern __shared__ double blk[];
     double* g_blk = blk;
     double* h_blk = &(blk[blockDim.x]);
@@ -128,7 +129,8 @@ __device__ int set_input_time(double inputTime[],
                               double rate,
                               double *leftTimeRate,
                               double *lastNegLogRand,
-                              curandStateMRG32k3a* __restrict__ state) {
+                              curandStateMRG32k3a* __restrict__ state)
+{
     int i = 0;
     double tau, dTau, negLogRand;
     tau = (*lastNegLogRand - (*leftTimeRate))/rate;
@@ -158,9 +160,8 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
                                   double* __restrict__ h, 
                                   double* __restrict__ f,
                                   double inputTime[],
-                                  unsigned int nInput, double dt, unsigned int ig
-                                  ) {
-
+                                  unsigned int nInput, double dt, unsigned int ig)
+{
     cond.decay_conductance(g, h, dt, ig); 
     for (int i=0; i<nInput; i++) {
         cond.compute_single_input_conductance(g, h, *f, dt-inputTime[i], ig);
@@ -212,8 +213,8 @@ __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ leftTimeRate,
                           double* __restrict__ lastNegLogRand,
                           curandStateMRG32k3a* __restrict__ state,
-                          unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, bool it) {
-
+                          unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, bool it)
+{
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
     double gL, tRef;

@@ -1,6 +1,3 @@
-#ifndef COREDYNAMICS_CUH
-#define COREDYNAMICS_CUH
-//#include <cooperative_groups.h>
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include <stdio.h>
@@ -88,13 +85,13 @@ __global__ void recal_G(double* __restrict__ g,
                         double* __restrict__ hactVec,
                         double* __restrict__ g_b1y,
                         double* __restrict__ h_b1y,
-                        unsigned int n, unsigned int offset, unsigned int ngType, unsigned int ns);
+                        unsigned int n, unsigned int offset, unsigned int ngType, unsigned int ns, int m);
 
-__global__ void reduceS(double* __restrict__ g,
-                        double* __restrict__ h,
-                        double* __restrict__ g_b1y,
-                        double* __restrict__ h_b1y,
-                        unsigned int ngType, int n);
+__global__ void reduce_G(double* __restrict__ g,
+                         double* __restrict__ h,
+                         double* __restrict__ g_b1y,
+                         double* __restrict__ h_b1y,
+                         unsigned int ngType, int n);
 
 __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed);
 
@@ -103,4 +100,3 @@ __global__ void init(T *array, T value) {
     unsigned long id = blockIdx.x * blockDim.x + threadIdx.x;
     array[id] = value;
 }
-#endif
