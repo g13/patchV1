@@ -75,9 +75,9 @@ __global__ void recal_G(double* __restrict__ g,
 
 __global__ void reduce_G(double* __restrict__ g,
                          double* __restrict__ h,
-                         double* __restrict__ g_b1y,
+                         double* __restrict__ g_b1y, 
                          double* __restrict__ h_b1y,
-                         unsigned int ngType, unsigned int n) 
+                         unsigned int ngType, int n) 
 { 
     // n x #(ns)
     extern __shared__ double blk[];

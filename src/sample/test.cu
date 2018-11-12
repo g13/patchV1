@@ -323,16 +323,16 @@ int main(int argc, char *argv[])
             // recal E
             CUDA_CALL(cudaEventRecord(kStart, 0));
             recal_G<<<rgE_b1,rgE_b2,rgE_shared,s2>>>(d_gE, d_hE, d_preMat,
-                                                  gactVec, hactVec,
-                                                  gE_b1y, hE_b1y,
-                                                  networkSize, 0, ngTypeE, s_actVec_lE, mE);
+                                                     gactVec, hactVec,
+                                                     gE_b1y, hE_b1y,
+                                                     networkSize, 0, ngTypeE, s_actVec_lE, mE);
             CUDA_CHECK();
             // recal I
             CUDA_CALL(cudaStreamWaitEvent(s3, spikeCorrected, 0));
             recal_G<<<rgI_b1,rgI_b2,rgI_shared,s3>>>(d_gI, d_hI, d_preMat,
-                                                  gactVec, hactVec,
-                                                  gI_b1y, hI_b1y,
-                                                  networkSize, nE, ngTypeI, s_actVec_lI, mI);
+                                                     gactVec, hactVec,
+                                                     gI_b1y, hI_b1y,
+                                                     networkSize, nE, ngTypeI, s_actVec_lI, mI);
             CUDA_CHECK();
             if (rgE_b1.x >= 32) {
                 //  reduce sum

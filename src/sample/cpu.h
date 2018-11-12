@@ -287,7 +287,7 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
         high_resolution_clock::time_point gStart = timeNow();
         for (unsigned int i=0; i<networkSize; i++) {
             double g_end, h_end;
-            if (spikeTrain[i] > 0.0f) {
+            //if (spikeTrain[i] > 0.0f) {
                 outputEvents ++;
                 if (i < h_nE) {
                     //printf("exc-%i fired\n", i);
@@ -295,7 +295,9 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
                     for (int ig=0; ig<ngTypeE; ig++) {
                         g_end = 0.0;
                         h_end = 0.0;
-                        condE.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif[i]->tsp, ig);
+                        if (spikeTrain[i] > 0.0f) {
+                            condE.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif[i]->tsp, ig);
+                        }
                         for (int ii = 0; ii < networkSize; ii++) {
                             int gid = networkSize*ig+ii;
                             gE[gid] += g_end * preMat[i*networkSize + ii];
@@ -308,7 +310,9 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
                     for (int ig=0; ig<ngTypeI; ig++) {
                         g_end = 0.0;
                         h_end = 0.0;
-                        condI.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif[i]->tsp, ig);
+                        if (spikeTrain[i] > 0.0f) {
+                            condI.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif[i]->tsp, ig);
+                        }
                         for (int ii = 0; ii < networkSize; ii++) {
                             int gid = networkSize*ig+ii;
                             gI[gid] += g_end * preMat[i*networkSize + ii];
@@ -316,7 +320,7 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
                         }
                     }
                 }
-            }
+            //}
         }
         gTime += static_cast<double>(duration_cast<microseconds>(timeNow()-gStart).count());
         v_file.write((char*)v, networkSize * sizeof(double));
