@@ -253,14 +253,15 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
                 gI_t += gI[gid];
             }
             lif[i]->set_p0(gE_t, gI_t, gL);
-
-            //if (istep==0) {
-            //    nInput[i] = 1;
-            //    inputTime[i*10] = dt*0.9f;
-            //    logRand[i] = 1.0f;
-            //    lTR[i] = 0.0f;
-            //} else {
+        #ifdef TEST_ACCURACY
+                nInput[i] = 2;
+                inputTime[i*10] =  i*dt/networkSize;
+                inputTime[i*10+1] =  dt-(i*dt/networkSize);
+                logRand[i] = 1.0f;
+                lTR[i] = 0.0f;
+        #else
                 nInput[i] = h_set_input_time(&(inputTime[i*10]), dt, flatRate, lTR[i], logRand[i], *randGen[i]);
+        #endif
             //}
             inputEvents += nInput[i];
             /* evolve g to t+dt with ff input only */

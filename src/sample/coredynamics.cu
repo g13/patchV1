@@ -248,15 +248,15 @@ __global__ void compute_V(double* __restrict__ v,
     double inputTime[MAX_FFINPUT_PER_DT];
     curandStateMRG32k3a localState = state[id];
     int nInput;
-    //if (it) {
-    //    //nInput = 1;
-    //    //inputTime[0] = dt*0.9f;
-    //    //lastNegLogRand[id] = 1.0f;
-    //    //leftTimeRate[id] = 0.0f;
-    //    printf("t0 = (%f-%f)/%f\n", lastNegLogRand[id], leftTimeRate[id], inputRate[id]);
-    //}
-    //} else {
+    #ifdef TEST_ACCURACY
+        nInput = 2;
+        inputTime[0] = id*dt/networkSize;
+        inputTime[1] = dt-id*dt/networkSize;
+        lastNegLogRand[id] = 1.0f;
+        leftTimeRate[id] = 0.0f;
+    #else
         nInput = set_input_time(inputTime, dt, inputRate[id], &(leftTimeRate[id]), &(lastNegLogRand[id]), &localState);
+    #endif
     //__syncwarp();
     //if (it) {
     //    printf("nInput = %i\n", nInput);
