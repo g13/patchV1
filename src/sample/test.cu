@@ -42,19 +42,27 @@ int main(int argc, char *argv[])
     printf("%i x %i, %i steps, seed = %i\n", b1, b2, nstep, seed);
 	unsigned int networkSize = b1*b2;
     int warpSize = 32;
+    if (networkSize/float(warpSize) != float(networkSize/warpSize)) {
+        printf("please make networkSize multiples of %i\n", warpSize);
+        return EXIT_FAILURE;
+    }
+    if (networkSize/10.0 != float(networkSize/10)) {
+        printf("To have higher computation occupancy make a factor of 10 in networkSize\n");
+    }
 	int init_b2 = warpSize;
-	int init_b1 = ceil(networkSize / init_b2);
+	int init_b1 = networkSize / init_b2;
     unsigned int nE = networkSize*3/4;
     unsigned int nI = networkSize-nE;
-    double t = 0.25f;
+    double t = 25.0f;
     double dt = t/float(nstep); // ms
     double flatRate = 10000.0f; // Hz
     //double flatRate = 0.0f; // Hz
-    double ffsE = 1e-2;
+    double ffsE = 1e-1;
     double s = 1.0*ffsE/(networkSize);
-    double ffsI = 1e-2;
-    printf("designated rate = %3.1fHz\n", flatRate);
+    double ffsI = 1e-1;
+    printf("designated input rate = %3.1fHz\n", flatRate);
     printf("nE = %i, nI = %i\n", nE, networkSize-nE);
+    printf("t = %f x %i = %f\n", dt, nstep, t);
     cpu_version(networkSize, flatRate/1000.0, nstep, dt, nE, s, seed, ffsE, ffsI);
     struct cudaDeviceProp properties;  
     double *v, *gE, *gI, *preMat; 
@@ -76,14 +84,10 @@ int main(int argc, char *argv[])
     ConductanceShape condE(riseTimeE, decayTimeE, ngTypeE);
     ConductanceShape condI(riseTimeI, decayTimeI, ngTypeI);
 
-    while (init_b2 < 256) {
+    while (init_b2 < 256 && init_b1 > 1) {
         init_b2 = init_b2*2;
         init_b1 = init_b1/2;
     }
-	if (float(networkSize / init_b2) != init_b1) {
-		printf("make networkSize multiples of %i", init_b2);
-		return EXIT_FAILURE;
-	}
     printf("init size %i, %i\n", init_b1, init_b2);
 
 	/* check for double precision support */
@@ -147,35 +151,78 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaMalloc((void **)&leftTimeRate,   networkSize * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&lastNegLogRand, networkSize * sizeof(double)));
     /* Allocate space for partial reduce results on device */
+    
+    int EmaxTPB, ImaxTPB;
+    int mE, mI; 
+    if (properties.maxThreadsPerBlock < nE) {
+        EmaxTPB = properties.maxThreadsPerBlock;
+        mE = (nE+EmaxTPB-1)/EmaxTPB;
+        EmaxTPB = nE/mE;
+    } else {
+        mE = 1;
+        EmaxTPB = nE;
+    }
+    while (EmaxTPB*mE != nE && EmaxTPB > EmaxTPB/2) {
+        mE = mE + 1;
+        EmaxTPB = nI/mE;
+    }
+
+    if (properties.maxThreadsPerBlock < nI) {
+        ImaxTPB = properties.maxThreadsPerBlock;
+        mI = (nI+ImaxTPB-1)/ImaxTPB;
+        ImaxTPB = nI/mI;
+    } else {
+        mI = 1;
+        ImaxTPB = nI;
+    }
+    while (ImaxTPB*mI != nI && ImaxTPB > ImaxTPB/2) {
+        mI = mI + 1;
+        ImaxTPB = nI/mI;
+    }
 
     dim3 rgE_b1, rgI_b1;
-    dim3 rgE_b2(properties.maxThreadsPerBlock*3/4,1);
-    dim3 rgI_b2(properties.maxThreadsPerBlock*1/4,1);
-    int mE = 2;
-    int mI = mE;
-    int s_actVec_lE = mE*properties.maxThreadsPerBlock*3/4;
-    int s_actVec_lI = s_actVec_lE/3*mI/mE;
-    unsigned int rgE_shared = 2*ngTypeE*s_actVec_lE*sizeof(double);
-    unsigned int rgI_shared = 2*ngTypeI*s_actVec_lI*sizeof(double);
+    dim3 rgE_b2(EmaxTPB,1);
+    dim3 rgI_b2(ImaxTPB,1);
+    int msE = 1; // multiple shared actVec load per thread
+    int msI = 1;
+    int s_actVec_lE;
+    int s_actVec_lI;
+    unsigned int rgE_shared;
+    unsigned int rgI_shared;
+
+    s_actVec_lE = EmaxTPB;
+    rgE_shared = 2*ngTypeE*s_actVec_lE*sizeof(double);
     if (rgE_shared > properties.sharedMemPerBlock) {
-        printf("The size of the requested shared memory is not available\n");
+        printf("E: The size of the requested shared memory %iKb by recal_G is not available\n", rgE_shared/1024);
         return EXIT_FAILURE;
     } else {
-        printf("recal_G will be using %i Kb of shared mem for E, %i Kb for I\n", rgE_shared/1024, rgI_shared/1024);
+        while (rgE_shared*2  < properties.sharedMemPerBlock && mE/float(msE*2) == float(mE/(msE*2))) {
+            msE = msE * 2;
+            rgE_shared = rgE_shared * 2;
+        }
     }
+    s_actVec_lE = msE*s_actVec_lE;
+    rgE_b1.x = mE/msE;
+    rgE_b1.y = mE;
+    printf("E: recal_G<<<(%i,%i,%i)x(%i,%i,%i), %iKb>>>\n", rgE_b1.x, rgE_b1.y, rgE_b1.z, rgE_b2.x, rgE_b2.y, rgE_b2.z, rgE_shared/1024);
+
+    s_actVec_lI = ImaxTPB;
+    rgI_shared = 2*ngTypeI*s_actVec_lI*sizeof(double);
+    if (rgI_shared > properties.sharedMemPerBlock) {
+        printf("I: The size of the requested shared memory %iKb by recal_G is not available\n", rgI_shared/1024);
+        return EXIT_FAILURE;
+    } else {
+        while (rgI_shared*2  < properties.sharedMemPerBlock && mI/float(msI*2) == float(mI/(msI*2))) {
+            msI = msI * 2;
+            rgI_shared = rgI_shared * 2;
+        }
+    }
+    s_actVec_lI = msI*s_actVec_lI;
+    rgI_b1.x = mI/msI;
+    rgI_b1.y = mI;
+    printf("I: recal_G<<<(%i,%i,%i)x(%i,%i,%i), %iKb>>>\n", rgI_b1.x, rgI_b1.y, rgI_b1.z, rgI_b2.x, rgI_b2.y, rgI_b2.z, rgI_shared/1024);
+
     cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
-    rgE_b1.x = nE/s_actVec_lE;
-    if (rgE_b1.x != double(nE)/s_actVec_lE) {
-        printf("Please make nE %i multiples of %i\n", nE, s_actVec_lE); 
-    }
-    rgI_b1.x = nI/s_actVec_lI;
-    if (rgI_b1.x != double(nI)/s_actVec_lI) {
-        printf("Please make nE %i multiples of %i\n", nI, s_actVec_lE); 
-    }
-    rgE_b1.y = nE/rgE_b2.x;
-    printf("E: recal_G<<<(%i,%i,%i)x(%i,%i,%i)>>>\n", rgE_b1.x, rgE_b1.y, rgE_b1.z, rgE_b2.x, rgE_b2.y, rgE_b2.z);
-    rgI_b1.y = nI/rgI_b2.x;
-    printf("I: recal_G<<<(%i,%i,%i)x(%i,%i,%i)>>>\n", rgI_b1.x, rgI_b1.y, rgI_b1.z, rgI_b2.x, rgI_b2.y, rgI_b2.z);
     int rE_b2, rI_b2;
     double *gE_b1y, *gI_b1y, *hE_b1y, *hI_b1y;
     if (rgE_b1.x >= 32) {
@@ -325,14 +372,14 @@ int main(int argc, char *argv[])
             recal_G<<<rgE_b1,rgE_b2,rgE_shared,s2>>>(d_gE, d_hE, d_preMat,
                                                      gactVec, hactVec,
                                                      gE_b1y, hE_b1y,
-                                                     networkSize, 0, ngTypeE, s_actVec_lE, mE);
+                                                     networkSize, 0, ngTypeE, s_actVec_lE, msE);
             CUDA_CHECK();
             // recal I
             CUDA_CALL(cudaStreamWaitEvent(s3, spikeCorrected, 0));
             recal_G<<<rgI_b1,rgI_b2,rgI_shared,s3>>>(d_gI, d_hI, d_preMat,
                                                      gactVec, hactVec,
                                                      gI_b1y, hI_b1y,
-                                                     networkSize, nE, ngTypeI, s_actVec_lI, mI);
+                                                     networkSize, nE, ngTypeI, s_actVec_lI, msI);
             CUDA_CHECK();
             if (rgE_b1.x >= 32) {
                 //  reduce sum

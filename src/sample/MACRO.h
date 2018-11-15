@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+//#define NAIVE
+
 #define MAX_FFINPUT_PER_DT 10 // dt in ms
 #define HALF_MEMORY_OCCUPANCY 1 // in Mb
 
