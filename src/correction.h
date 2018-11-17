@@ -10,6 +10,6 @@ __global__ void aim_and_eliminate_PFS()
 
 __device__ void dV(double tr, double td, double dt, double dgt, )
 
-__device__ void dg(double tr, double td, 
+__device__ void dg(double tr, double td, double dt
 
 #endif
