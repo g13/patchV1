@@ -1,3 +1,6 @@
+#ifndef COREDYNAMICS_H
+#define COREDYNAMICS_H
+
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include <stdio.h>
@@ -100,3 +103,5 @@ __global__ void init(T *array, T value) {
     unsigned long id = blockIdx.x * blockDim.x + threadIdx.x;
     array[id] = value;
 }
+
+#endif

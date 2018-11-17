@@ -3,7 +3,8 @@
 rm -f coredynamics.o test.o
 nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c test.cu
 nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c coredynamics.cu 
-nvcc -arch=compute_70 -lcudadevrt -lcudart coredynamics.o test.o -o test
+nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c correction.cu
+nvcc -arch=compute_70 -lcudadevrt -lcudart coredynamics.o correction.o test.o -o test
 
 #nvcc -arch=compute_70 -Xcompiler -Wall,-pedantic -std=c++11 -O0 -c coredynamics.cu 
 #nvcc -arch=compute_70 -Xcompiler -Wall,-pedantic -std=c++11 -O0 -c test.cu 

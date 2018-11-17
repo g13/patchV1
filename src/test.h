@@ -2,5 +2,5 @@
 #include <cassert>
 #include <ctime>
 #include <cmath>
-#include "coredynamics.cuh"
+#include "coredynamics.h"
 #include "cpu.h"
