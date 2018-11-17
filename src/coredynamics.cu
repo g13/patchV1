@@ -168,13 +168,18 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
     }
 }
 
-__device__  double step(Func_RK2* lif, double dt, double tRef) {
+__device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, double gE_t) {
     lif->tsp = -1.0f;
     if (lif->tBack <= 0.0f) {
         // not in refractory period
         lif->runge_kutta_2(dt);
         if (lif->v > vT) {
             // crossed threshold
+
+            if (lif.v > vE) {
+                printf("#%i exc conductance is too high %f\n", id, gE_t);
+            }
+            
             lif->tsp = lif->compute_spike_time(dt); 
             lif->tBack = lif->tsp + tRef;
             //printf("neuron #%i fired initially\n", id);
@@ -303,7 +308,16 @@ __global__ void compute_V(double* __restrict__ v,
     lif.set_p1(gE_t, gI_t, gL);
     // rk2 step
 
-    spikeTrain[id] = step(&lif, dt, tRef);
+    spikeTrain[id] = step(&lif, dt, tRef, id, gE_t);
+    if (lif.v < vI) {
+        lif.v = vI;
+        printf("#%i inh conductance is too high %f\n", id, gI_t);
+    }
+    // check if in the Potential Firing Squad
+    grid.sync();
+    determine_PFS() {
+
+    }
 	v[id] = lif.v;
     tBack[id] = lif.tBack;
 

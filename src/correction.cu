@@ -1,7 +1,7 @@
 #include "correction.h"
 
 // initialize Potential Firing Squad
-__global__ void determine_PFS() {
+__device__ void determine_PFS() {
 
 }
 
