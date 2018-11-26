@@ -1,4 +1,4 @@
-#include "coredynamics.cuh"
+#include "coredynamics.h"
 
 __forceinline__  __device__ double get_a(double gE, double gI, double gL) {
     return gE + gI + gL;
@@ -169,14 +169,14 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
 }
 
 __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, double gE_t) {
-    lif->tsp = -1.0f;
+    lif->tsp = dt;
     if (lif->tBack <= 0.0f) {
         // not in refractory period
         lif->runge_kutta_2(dt);
         if (lif->v > vT) {
             // crossed threshold
 
-            if (lif.v > vE) {
+            if (lif->v > vE) {
                 printf("#%i exc conductance is too high %f\n", id, gE_t);
             }
             
@@ -199,6 +199,62 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
     return lif->tsp;
 }
 
+__global__ void correct_spike(bool* __restrict__ matching,
+                              double* __restrict__ spikeTrain,
+                              double* __restrict__ v_hlf,
+                              double* __restrict__ v,
+                              double* __restrict__ preMat,
+                              unsigned int ngTypeE, unsigned int ngTypeI, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int poolSizeE, unsigned int poolSize) 
+{
+    unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
+    double deltaV = 0.0;
+    double dv0 = vT - v[id];
+    double tsp = spikeTrain[id];
+    double vhlf =  v_hlf[id];
+    double dvE = vhlf - vE;
+    double dvI = vhlf - vI;
+    double minTsp_i = tsp;
+    for (unsigned int i = 0; i < poolSizeE; i++) {
+        double tsp_i = spikeTrain[i]; 
+        if (tsp > tsp_i) {
+            if (tsp_i < minTsp_i) {
+                minTsp_i = tsp_i;
+            }
+            double dtij = dt - tsp_i;
+            #pragma unroll
+            for (unsigned int ig = 0; ig < ngTypeE; ig++) {
+                deltaV += preMat[id*poolSize + i] * condE.dg_approx(dtij, ig) * dvE;
+            }
+        }
+        __syncthreads();
+    }
+    for (unsigned int i = poolSizeE; i < poolSize; i++) {
+        double tsp_i = spikeTrain[i]; 
+        if (tsp > tsp_i) {
+            double dtij = dt - tsp_i;
+            #pragma unroll
+            for (unsigned int ig = 0; ig < ngTypeI; ig++) {
+                deltaV += preMat[id*poolSize + i] * condI.dg_approx(dtij, ig) * dvI;
+            }
+        }
+        __syncthreads();
+    }
+    double old_tsp = tsp;
+    if (deltaV > dv0) {
+        tsp = dt * dv0 /deltaV;
+        if (tsp < minTsp_i) {
+            tsp = minTsp_i;
+        }
+    } else {
+        tsp = dt;
+    }
+    spikeTrain[id] = tsp;
+    double criteria = old_tsp + tsp;
+    if (criteria > dt && criteria < dt + dt) {
+        matching[id] = false;
+    }
+}
+
 __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ gE,
                           double* __restrict__ gI,
@@ -210,13 +266,14 @@ __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ inputRate,
                           int* __restrict__ eventRate,
                           double* __restrict__ spikeTrain,
-                          double* __restrict__ tBack,
+						  double* __restrict__ tBack,
                           double* __restrict__ gactVec,
                           double* __restrict__ hactVec,
                           double* __restrict__ fE,
                           double* __restrict__ fI,
                           double* __restrict__ leftTimeRate,
                           double* __restrict__ lastNegLogRand,
+                          double* __restrict__ v_hlf,
                           curandStateMRG32k3a* __restrict__ state,
                           unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, bool it)
 {
@@ -312,42 +369,39 @@ __global__ void compute_V(double* __restrict__ v,
     if (lif.v < vI) {
         lif.v = vI;
         printf("#%i inh conductance is too high %f\n", id, gI_t);
-    }
-    // check if in the Potential Firing Squad
-    grid.sync();
-    determine_PFS() {
-
-    }
+    }   
+    v_hlf[id] = lif.v_hlf;
 	v[id] = lif.v;
-    tBack[id] = lif.tBack;
-
+    //tBack[id] = lif.tBack;
+}
+__global__ void prepare_cond(double* __restrict__ tBack,
+                             double* __restrict__ spikeTrain,
+                             double* __restrict__ gactVec,
+                             double* __restrict__ hactVec,
+                             ConductanceShape cond, double dt, unsigned int ngType, unsigned int offset, unsigned int networkSize) 
+{
+    unsigned int id = offset + blockIdx.x * blockDim.x + threadIdx.x;
     //setup acting vectors
     double g_end, h_end;
-    if (spikeTrain[id]>0.0f) {
-        if (id < nE) {
-            #pragma unroll
-            for (int ig=0; ig<ngTypeE; ig++) {
-                g_end = 0.0f;
-                h_end = 0.0f;
-                condE.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif.tsp, ig);
-                gid = networkSize*ig+id;
-                gactVec[gid] = g_end;
-                hactVec[gid] = h_end;
-            }
-        } else {
-            #pragma unroll
-            for (int ig=0; ig<ngTypeI; ig++) {
-                g_end = 0.0f;
-                h_end = 0.0f;
-                condI.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif.tsp, ig);
-                gid = networkSize*ig+id;
-                gactVec[gid] = g_end;
-                hactVec[gid] = h_end;
-            }
+    double tsp = spikeTrain[offset + id];
+    if (offset == 0) {
+        tBack[id] = tsp + tRef_E;
+    } else {
+        tBack[id] = tsp + tRef_I;
+    }
+    if (tsp<dt) {
+        #pragma unroll
+        for (int ig=0; ig<ngType; ig++) {
+            g_end = 0.0f;
+            h_end = 0.0f;
+            cond.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-tsp, ig);
+            unsigned int gid = networkSize*ig + id;
+            gactVec[gid] = g_end;
+            hactVec[gid] = h_end;
         }
     } else {
         for (int ig=0; ig<ngType; ig++) {
-            gid = networkSize*ig+id;
+            unsigned int gid = networkSize*ig + id;
             gactVec[gid] = 0.0f;
             hactVec[gid] = 0.0f;
         }
@@ -356,7 +410,8 @@ __global__ void compute_V(double* __restrict__ v,
 
 __device__ void Func_RK2::runge_kutta_2(double dt) {
     double fk0 = eval0(v0);
-    double fk1 = eval1(v0 + dt*fk0);
+    v_hlf = v0 + dt*fk0;
+    double fk1 = eval1(v_hlf);
     v = v0 + dt*(fk0+fk1)/2.0f;
 }
 

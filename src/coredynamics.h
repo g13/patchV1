@@ -33,14 +33,13 @@ struct ConductanceShape {
     }
     
     __host__ __device__ double dg_approx(double dgt, unsigned int ig) {
-        dg =  (1.0 - coef2[ig]*dgt)*dgt/riseTime[ig];
-        return dg;
+        return (1.0 - coef2[ig] * dgt)*dgt / riseTime[ig];
     }
     __host__ __device__ void h_only(double *h, double dgt) {}
 };
 
 struct Func_RK2 {
-    double v, v0;
+    double v, v0, v_hlf;
     // type variable
     double tBack, tsp;
     __device__ Func_RK2(double _v0, double _tBack) : v0(_v0), tBack(_tBack) {};
@@ -56,7 +55,7 @@ struct Func_RK2 {
 
 struct LIF : Func_RK2 {
     double a1, b1;
-    double a0, b0, v_hlf;
+    double a0, b0;
     __device__ LIF(double _v0, double _tBack) : Func_RK2(_v0, _tBack) {};
     __device__ virtual void set_p0(double _gE, double _gI, double _gL);
     __device__ virtual void set_p1(double _gE, double _gI, double _gL);
@@ -66,6 +65,13 @@ struct LIF : Func_RK2 {
     __device__ virtual void compute_pseudo_v0(double dt);
     __device__ virtual double compute_spike_time(double dt);
 };
+
+__global__ void correct_spike(bool* __restrict__ matching,
+                              double* __restrict__ spikeTrain,
+                              double* __restrict__ v_hlf,
+                              double* __restrict__ v,
+                              double* __restrict__ preMat,
+                              unsigned int ngTypeE, unsigned int ngTypeI, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int poolSizeE, unsigned int poolSize);
 
 __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ gE,
@@ -85,8 +91,15 @@ __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ fI,
                           double* __restrict__ leftTimeRate,
                           double* __restrict__ lastNegLogRand,
+                          double* __restrict__ v_hlf,
                           curandStateMRG32k3a* __restrict__ state,
                           unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, bool it);
+
+__global__ void prepare_cond(double* __restrict__ tBack,
+                             double* __restrict__ spikeTrain,
+                             double* __restrict__ gactVec,
+                             double* __restrict__ hactVec,
+                             ConductanceShape cond, double dt, unsigned int ngType, unsigned int offset, unsigned int networkSize);
 
 __global__ void recal_G(double* __restrict__ g,
                         double* __restrict__ h,

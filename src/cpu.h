@@ -156,7 +156,7 @@ void cpu_LIF::reset_v() {
     v = cpu_vL;
 }
 
-void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt, unsigned int h_nE, double s, unsigned long long seed, double ffsE, double ffsI) {
+void cpu_version(int networkSize, double flatRate, unsigned int nstep, double dt, unsigned int h_nE, double s, unsigned long long seed, double ffsE, double ffsI) {
     unsigned int ngTypeE = 2;
     unsigned int ngTypeI = 1;
     double cpu_gL_E = 0.05f, cpu_gL_I = 0.1f; // kHz
