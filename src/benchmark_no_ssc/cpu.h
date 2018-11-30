@@ -1,6 +1,6 @@
-#include <random>
 #include <chrono>
 #include <fstream>
+#include "curand.h"
 
 #define timeNow() std::chrono::high_resolution_clock::now()
 
@@ -32,8 +32,7 @@ struct cConductanceShape {
     }
 };
 
-std::uniform_real_distribution<double> distribution(0.0,1.0);
-int h_set_input_time(double *inputTime, double dt, double rate, double &leftTimeRate, double &lastNegLogRand, std::minstd_rand &randGen) {
+int h_set_input_time(double *inputTime, double dt, double rate, double &leftTimeRate, double &lastNegLogRand, curandGenerator_t &randGen) {
     int i = 0;
     double tau, dTau, negLogRand;
     tau = (lastNegLogRand - leftTimeRate)/rate;
@@ -42,7 +41,8 @@ int h_set_input_time(double *inputTime, double dt, double rate, double &leftTime
         return i;
     } else do {
         inputTime[i] = tau;
-        negLogRand = -log(distribution(randGen));
+        curandGenerateUniformDouble(randGen, &negLogRand, 1);
+        negLogRand = -log(negLogRand);        
         dTau = negLogRand/rate;
         tau += dTau;
         i++;
@@ -176,7 +176,7 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
     spike_file.open("s_CPU.bin", std::ios::out|std::ios::binary);
     gE_file.open("gE_CPU.bin", std::ios::out|std::ios::binary);
     gI_file.open("gI_CPU.bin", std::ios::out|std::ios::binary);
-    std::minstd_rand **randGen = new std::minstd_rand*[networkSize];
+    curandGenerator_t *randGen = new curandGenerator_t[networkSize];
     int *nInput = new int[networkSize];
     double *inputTime = new double[networkSize*10];
     double *logRand = new double[networkSize];
@@ -192,8 +192,10 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
     printf("cpu version started\n");
     cpu_LIF **lif = new cpu_LIF*[networkSize];
     for (unsigned int i=0; i<networkSize; i++) {
-        randGen[i] = new std::minstd_rand(seed+i);
-        logRand[i] = -log(distribution(*randGen[i]));
+        curandCreateGeneratorHost(&randGen[i], CURAND_RNG_PSEUDO_MRG32K3A);
+        curandSetPseudoRandomGeneratorSeed(randGen[i], seed+i);
+        curandGenerateUniformDouble(randGen[i], &(logRand[i]), 1);
+        logRand[i] = -log(logRand[i]);
         v[i] = 0.0f;
         lif[i] = new cpu_LIF(v[i]);
         lTR[i] = 0.0f;
@@ -253,14 +255,14 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
                 gI_t += gI[gid];
             }
             lif[i]->set_p0(gE_t, gI_t, gL);
-        #ifdef TEST_ACCURACY
+        #ifdef TEST_WITH_MANUAL_FFINPUT
                 nInput[i] = 2;
                 inputTime[i*10] =  i*dt/networkSize;
                 inputTime[i*10+1] =  dt-(i*dt/networkSize);
                 logRand[i] = 1.0f;
                 lTR[i] = 0.0f;
         #else
-                nInput[i] = h_set_input_time(&(inputTime[i*10]), dt, flatRate, lTR[i], logRand[i], *randGen[i]);
+                nInput[i] = h_set_input_time(&(inputTime[i*10]), dt, flatRate, lTR[i], logRand[i], randGen[i]);
         #endif
             //}
             inputEvents += nInput[i];

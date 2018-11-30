@@ -117,7 +117,7 @@ __global__ void reduce_G(double* __restrict__ g,
 __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed) {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
-    curand_init(seed, id, 0, &localState);
+    curand_init(seed+id, 0, 0, &localState);
     logRand[id] = -log(curand_uniform_double(&localState));
     //printf("logRand0 = %f\n", logRand[id]);
     //logRand[id] = 1.0f;
@@ -170,10 +170,16 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
 
 __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, double gE_t) {
     lif->tsp = dt;
-    if (lif->tBack <= 0.0f) {
-        // not in refractory period
+    // not in refractory period
+    if (lif->tBack < dt) {
+        // return from refractory period
+        if (lif->tBack > 0.0f) {
+            lif->compute_pseudo_v0(dt);
+            lif->tBack = -1.0f;
+        }
+        __syncthreads();
         lif->runge_kutta_2(dt);
-        if (lif->v > vT) {
+        while (lif->v > vT) {
             // crossed threshold
 
             if (lif->v > vE) {
@@ -183,39 +189,86 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
             lif->tsp = lif->compute_spike_time(dt); 
             lif->tBack = lif->tsp + tRef;
             //printf("neuron #%i fired initially\n", id);
+            //assert(lif->tBack > 0);
+            if (lif->tBack < dt) {
+                // refractory period ended during dt
+                lif->compute_v(dt);
+                lif->tBack = -1.0f;
+                if (lif->v > vT) {
+                    printf("multiple spike in one time step, only the last spike is counted, refractory period = %f ms, dt = %f\n", tRef, dt);
+                    //assert(lif->v <= vT);
+                }
+            } else {
+                lif->reset_v();
+            }
         }
-    } 
-    // return from refractory period
-    if (lif->tBack > 0.0f && lif->tBack < dt) {
-        lif->compute_pseudo_v0(dt);
-        lif->runge_kutta_2(dt);
-        lif->tBack = -1.0f;
-    } 
-    // during refractory period
-    if (lif->tBack > dt) {
+    } else {
+        // during refractory period
         lif->reset_v(); 
         lif->tBack -= dt;
     }
     return lif->tsp;
 }
 
-__global__ void correct_spike(bool* __restrict__ matching,
+__device__  double dab(Func_RK2* lif, double dt, double tRef, unsigned int id, double gE_t) {
+    lif->tsp = dt;
+    // not in refractory period
+    if (lif->tBack < dt) {
+        // return from refractory period
+        if (lif->tBack > 0.0f) {
+            lif->compute_pseudo_v0(dt);
+            lif->tBack = -1.0f;
+        }
+        __syncthreads();
+        lif->runge_kutta_2(dt);
+        if (lif->v > vT) {
+            // crossed threshold
+
+            if (lif->v > vE) {
+                printf("#%i exc conductance is too high %f, v = %f\n", id, gE_t, lif->v);
+                lif->v = vE;
+            }
+            lif->tsp = lif->compute_spike_time(dt); 
+            // dabbing not commiting, doest not reset v or recored tBack, TBD by spike correction.
+        }
+    } else {
+        // during refractory period
+        lif->reset_v(); 
+        lif->tBack -= dt;
+    }
+    return lif->tsp;
+}
+
+__global__ void correct_spike(bool*   __restrict__ not_matched,
                               double* __restrict__ spikeTrain,
                               double* __restrict__ v_hlf,
-                              double* __restrict__ v,
+                              double* __restrict__ v0,
+                              double* __restrict__ dv,
+                              double* __restrict__ a0,
+                              double* __restrict__ b0,
+                              double* __restrict__ a1,
+                              double* __restrict__ b1,
+                              double* __restrict__ vnew,
                               double* __restrict__ preMat,
                               unsigned int ngTypeE, unsigned int ngTypeI, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int poolSizeE, unsigned int poolSize) 
 {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
-    double deltaV = 0.0;
-    double dv0 = vT - v[id];
     double tsp = spikeTrain[id];
+    double tRef;
+    if (id < poolSizeE) {
+        tRef = tRef_E;
+    } else {
+        tRef = tRef_I;
+    }
     double vhlf =  v_hlf[id];
+    double minTsp_i = tsp;
     double dvE = vhlf - vE;
     double dvI = vhlf - vI;
-    double minTsp_i = tsp;
+    double deltaV = dv[id]; // init with old dv to be new dv
+    double dg = 0.0;
+    double dgV = 0.0;
     for (unsigned int i = 0; i < poolSizeE; i++) {
-        double tsp_i = spikeTrain[i]; 
+        double tsp_i = spikeTrain[i];  // possible share_mem optimization
         if (tsp > tsp_i) {
             if (tsp_i < minTsp_i) {
                 minTsp_i = tsp_i;
@@ -223,62 +276,85 @@ __global__ void correct_spike(bool* __restrict__ matching,
             double dtij = dt - tsp_i;
             #pragma unroll
             for (unsigned int ig = 0; ig < ngTypeE; ig++) {
-                deltaV += preMat[id*poolSize + i] * condE.dg_approx(dtij, ig) * dvE;
+                double g = preMat[id*poolSize + i] * condE.dg_approx(dtij, ig);
+                dg += g;
+                dgV += g*vE;
+                deltaV += g * dvE;
             }
         }
         __syncthreads();
     }
     for (unsigned int i = poolSizeE; i < poolSize; i++) {
-        double tsp_i = spikeTrain[i]; 
+        double tsp_i = spikeTrain[i]; // possible share_mem optimization
         if (tsp > tsp_i) {
             double dtij = dt - tsp_i;
             #pragma unroll
             for (unsigned int ig = 0; ig < ngTypeI; ig++) {
-                deltaV += preMat[id*poolSize + i] * condI.dg_approx(dtij, ig) * dvI;
+                double g = preMat[id*poolSize + i] * condI.dg_approx(dtij, ig);
+                dg += g;
+                dgV += g*vI;
+                deltaV += g * dvI;
             }
         }
         __syncthreads();
     }
+    double v0i = v0[id];
     double old_tsp = tsp;
-    if (deltaV > dv0) {
-        tsp = dt * dv0 /deltaV;
+    double dvT = vT - v0i;
+    if (deltaV > dvT) {
+        tsp = dt * dvT / deltaV;
         if (tsp < minTsp_i) {
             tsp = minTsp_i;
         }
+        if (tsp + tRef > dt) {
+            vnew[id] = vL; 
+        } else {
+            // let's hope this branch is never used. 
+            vnew[id] = compute_v1(dt, a0[id], b0[id], a1[id] + dg, b1[id] + dgV, vL, tsp + tRef);
+        }
     } else {
         tsp = dt;
+        vnew[id] = v0i + deltaV;
     }
     spikeTrain[id] = tsp;
-    double criteria = old_tsp + tsp;
-    if (criteria > dt && criteria < dt + dt) {
-        matching[id] = false;
+    bool local_not_matched;
+    if (tsp == dt && old_tsp < dt || tsp < dt && old_tsp == dt) {
+        local_not_matched = true;
+    } else {
+        local_not_matched = false;
     }
+    __syncthreads();
+    not_matched[id] = local_not_matched;
 }
 
-__global__ void compute_V(double* __restrict__ v,
-                          double* __restrict__ gE,
-                          double* __restrict__ gI,
-                          double* __restrict__ hE,
-                          double* __restrict__ hI,
-                          double* __restrict__ a,
-                          double* __restrict__ b,
-                          double* __restrict__ preMat,
-                          double* __restrict__ inputRate,
-                          int* __restrict__ eventRate,
-                          double* __restrict__ spikeTrain,
-						  double* __restrict__ tBack,
-                          double* __restrict__ gactVec,
-                          double* __restrict__ hactVec,
-                          double* __restrict__ fE,
-                          double* __restrict__ fI,
-                          double* __restrict__ leftTimeRate,
-                          double* __restrict__ lastNegLogRand,
-                          double* __restrict__ v_hlf,
-                          curandStateMRG32k3a* __restrict__ state,
-                          unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, bool it)
+__global__ void compute_dV(double* __restrict__ v0,
+                           double* __restrict__ dv,
+                           double* __restrict__ gE,
+                           double* __restrict__ gI,
+                           double* __restrict__ hE,
+                           double* __restrict__ hI,
+                           double* __restrict__ a0,
+                           double* __restrict__ b0,
+                           double* __restrict__ a1,
+                           double* __restrict__ b1,
+                           double* __restrict__ preMat,
+                           double* __restrict__ inputRate,
+                           int* __restrict__ eventRate,
+                           double* __restrict__ spikeTrain,
+						   double* __restrict__ tBack,
+                           double* __restrict__ gactVec,
+                           double* __restrict__ hactVec,
+                           double* __restrict__ fE,
+                           double* __restrict__ fI,
+                           double* __restrict__ leftTimeRate,
+                           double* __restrict__ lastNegLogRand,
+                           double* __restrict__ v_hlf,
+                           curandStateMRG32k3a* __restrict__ state,
+                           unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, bool it)
 {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
+    LIF lif(v0[id], tBack[id]);
     double gL, tRef;
     if (id < nE) {
         tRef = tRef_E;
@@ -287,7 +363,6 @@ __global__ void compute_V(double* __restrict__ v,
         tRef = tRef_I;
         gL = gL_I;
     }
-    LIF lif(v[id], tBack[id]);
     /* set a0 b0 for the first step */
     double gI_t;
     double gE_t;
@@ -304,13 +379,15 @@ __global__ void compute_V(double* __restrict__ v,
         gI_t += gI[networkSize*ig + id];
     }
     lif.set_p0(gE_t, gI_t, gL);
-
+    // storing for spike correction
+    a0[id] = lif.a0;
+    b0[id] = lif.b0;
     /* Get feedforward input */
     // consider use shared memory for dynamic allocation
     double inputTime[MAX_FFINPUT_PER_DT];
     curandStateMRG32k3a localState = state[id];
     int nInput;
-    #ifdef TEST_ACCURACY
+    #ifdef TEST_WITH_MANUAL_FFINPUT
         nInput = 2;
         inputTime[0] = id*dt/networkSize;
         inputTime[1] = dt-id*dt/networkSize;
@@ -363,16 +440,20 @@ __global__ void compute_V(double* __restrict__ v,
         //fI[gid] = f_i;
     }
     lif.set_p1(gE_t, gI_t, gL);
+    // storing for spike correction
+    a1[id] = lif.a1;
+    b1[id] = lif.b1;
     // rk2 step
 
-    spikeTrain[id] = step(&lif, dt, tRef, id, gE_t);
-    if (lif.v < vI) {
-        lif.v = vI;
-        printf("#%i inh conductance is too high %f\n", id, gI_t);
-    }   
+    spikeTrain[id] = dab(&lif, dt, tRef, /*the last 2 args are for deugging*/ id, gE_t);
+    __syncthreads();
     v_hlf[id] = lif.v_hlf;
-	v[id] = lif.v;
-    //tBack[id] = lif.tBack;
+	tBack[id] = lif.tBack; // TBD after spike correction, comment this line if SSC is naive.
+    if (lif.v < vI) {
+        printf("#%i inh conductance is too high %f, v = %f\n", id, gI_t, lif.v);
+        lif.v = vI;
+    }   
+	dv[id] = lif.v - lif.v0; // TBD after spike correction to reset etc.
 }
 __global__ void prepare_cond(double* __restrict__ tBack,
                              double* __restrict__ spikeTrain,
@@ -384,12 +465,12 @@ __global__ void prepare_cond(double* __restrict__ tBack,
     //setup acting vectors
     double g_end, h_end;
     double tsp = spikeTrain[offset + id];
-    if (offset == 0) {
-        tBack[id] = tsp + tRef_E;
-    } else {
-        tBack[id] = tsp + tRef_I;
-    }
     if (tsp<dt) {
+        if (offset == 0) {
+            tBack[id] = tsp + tRef_E;
+        } else {
+            tBack[id] = tsp + tRef_I;
+        }
         #pragma unroll
         for (int ig=0; ig<ngType; ig++) {
             g_end = 0.0f;
@@ -400,6 +481,7 @@ __global__ void prepare_cond(double* __restrict__ tBack,
             hactVec[gid] = h_end;
         }
     } else {
+        tBack[id] = -1.0f;
         for (int ig=0; ig<ngType; ig++) {
             unsigned int gid = networkSize*ig + id;
             gactVec[gid] = 0.0f;
@@ -419,9 +501,18 @@ __device__ double LIF:: compute_spike_time(double dt) {
     return (vT-v0)/(v-v0)*dt;
 }
 
-__device__ void LIF:: compute_pseudo_v0(double dt) {
+__device__ double compute_v1(double dt, double a0, double b0, double a1, double b1, double v, double t) {
+    double A = 1.0 + (a0*a1*dt - a0 - a1) * dt/2.0f;
+    double B = (b0 + b1 - a1*b0*dt) * dt/2.0f;
+    return (B*(t-dt) - A*v*dt)/(t-dt-A*t);
+}
+
+__device__ void LIF::compute_v(double dt) {
+    v = compute_v1(dt, a0, b0, a1, b1, vL, tBack);
+}
+
+__device__ void LIF::compute_pseudo_v0(double dt) {
     v0 = (vL-tBack*(b0 + b1 - a1*b0*dt)/2.0f)/(1.0f+tBack*(-a0 - a1 + a1*a0*dt)/2.0f);
-    runge_kutta_2(dt);
 }
 
 

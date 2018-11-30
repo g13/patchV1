@@ -1,4 +1,4 @@
-#include "coredynamics.cuh"
+#include "coredynamics.h"
 
 __forceinline__  __device__ double get_a(double gE, double gI, double gL) {
     return gE + gI + gL;
@@ -117,7 +117,7 @@ __global__ void reduce_G(double* __restrict__ g,
 __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed) {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
-    curand_init(seed, id, 0, &localState);
+    curand_init(seed+id, 0, 0, &localState);
     logRand[id] = -log(curand_uniform_double(&localState));
     //printf("logRand0 = %f\n", logRand[id]);
     //logRand[id] = 1.0f;
@@ -248,7 +248,7 @@ __global__ void compute_V(double* __restrict__ v,
     double inputTime[MAX_FFINPUT_PER_DT];
     curandStateMRG32k3a localState = state[id];
     int nInput;
-    #ifdef TEST_ACCURACY
+    #ifdef TEST_WITH_MANUAL_FFINPUT
         nInput = 2;
         inputTime[0] = id*dt/networkSize;
         inputTime[1] = dt-id*dt/networkSize;

@@ -34,12 +34,12 @@ int main(int argc, char *argv[])
         sscanf(argv[argc-3],"%d",&nstep);
     }
     if (argc == 5) {
-        sscanf(argv[argc-1],"%d",&seed);
+        sscanf(argv[argc-1],"%u",&seed);
         sscanf(argv[argc-2],"%d",&b2);
         sscanf(argv[argc-3],"%d",&b1);
         sscanf(argv[argc-4],"%d",&nstep);
     }
-    printf("%i x %i, %i steps, seed = %i\n", b1, b2, nstep, seed);
+    printf("%i x %i, %i steps, seed = %u\n", b1, b2, nstep, seed);
 	unsigned int networkSize = b1*b2;
     int warpSize = 32;
     if (networkSize/float(warpSize) != float(networkSize/warpSize)) {
@@ -61,6 +61,7 @@ int main(int argc, char *argv[])
     double s = 1.0*ffsE/(networkSize);
     double ffsI = 1e-1;
     printf("designated input rate = %3.1fHz\n", flatRate);
+	printf("dt = %f ms\n", dt);
     printf("nE = %i, nI = %i\n", nE, networkSize-nE);
     printf("t = %f x %i = %f\n", dt, nstep, t);
     cpu_version(networkSize, flatRate/1000.0, nstep, dt, nE, s, seed, ffsE, ffsI);

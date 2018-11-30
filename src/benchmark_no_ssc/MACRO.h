@@ -19,7 +19,7 @@
 
 #define FULL_MASK 0xffffffff
 
-#define TEST_ACCURACY
+//#define TEST_WITH_MANUAL_FFINPUT
 #define CUDA_ERROR_CHECK
 //#define CUDA_DEEP_ERROR_CHECK
 

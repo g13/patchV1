@@ -7,36 +7,9 @@
 #include <stdlib.h>
 #include <curand_kernel.h>
 #include <cuda.h>
+#include <cassert>
 #include "MACRO.h"
-
-struct ConductanceShape {
-    double riseTime[5], decayTime[5], deltaTau[5], coef2[5];
-    __host__ __device__ ConductanceShape() {};
-    __host__ __device__ ConductanceShape(double rt[], double dt[], unsigned int ng) {
-        for (int i = 0; i < ng; i++) {
-            riseTime[i] = rt[i];
-            decayTime[i] = dt[i];
-            deltaTau[i] = dt[i] - rt[i];
-            coef2[i] = (rt[i] + dt[i])/(rt[i]*dt[i]*2.0);
-        }
-    }
-    __host__ __device__ __forceinline__ void compute_single_input_conductance(double *g, double *h, double f, double dt, unsigned int ig) {
-        double etr = exp(-dt / riseTime[ig]);
-        (*g) += f * decayTime[ig] * (exp(-dt / decayTime[ig]) - etr) / deltaTau[ig];
-        (*h) += f * etr;
-    }
-    __host__ __device__ __forceinline__ void decay_conductance(double *g, double *h, double dt, unsigned int ig) {
-        double etr = exp(-dt / riseTime[ig]);
-        double etd = exp(-dt / decayTime[ig]);
-        (*g) = (*g)*etd + (*h)*decayTime[ig] * (etd - etr) / deltaTau[ig];
-        (*h) = (*h)*etr;
-    }
-    
-    __host__ __device__ double dg_approx(double dgt, unsigned int ig) {
-        return (1.0 - coef2[ig] * dgt)*dgt / riseTime[ig];
-    }
-    __host__ __device__ void h_only(double *h, double dgt) {}
-};
+#include "condShape.h"
 
 struct Func_RK2 {
     double v, v0, v_hlf;
@@ -50,6 +23,7 @@ struct Func_RK2 {
     __device__ virtual double eval1(double _v) = 0;
     __device__ virtual void reset_v() = 0;
     __device__ virtual void compute_pseudo_v0(double dt) = 0;
+    __device__ virtual void compute_v(double dt) = 0;
     __device__ virtual double compute_spike_time(double dt) = 0;
 };
 
@@ -63,37 +37,34 @@ struct LIF : Func_RK2 {
     __device__ virtual double eval1(double _v);
     __device__ virtual void reset_v();
     __device__ virtual void compute_pseudo_v0(double dt);
+    __device__ virtual void compute_v(double dt);
     __device__ virtual double compute_spike_time(double dt);
 };
 
-__global__ void correct_spike(bool* __restrict__ matching,
-                              double* __restrict__ spikeTrain,
-                              double* __restrict__ v_hlf,
-                              double* __restrict__ v,
-                              double* __restrict__ preMat,
-                              unsigned int ngTypeE, unsigned int ngTypeI, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int poolSizeE, unsigned int poolSize);
-
-__global__ void compute_V(double* __restrict__ v,
-                          double* __restrict__ gE,
-                          double* __restrict__ gI,
-                          double* __restrict__ hE,
-                          double* __restrict__ hI,
-                          double* __restrict__ a,
-                          double* __restrict__ b,
-                          double* __restrict__ preMat,
-                          double* __restrict__ inputRate,
-                          int* __restrict__ eventRate,
-                          double* __restrict__ spikeTrain,
-                          double* __restrict__ tBack,
-                          double* __restrict__ gactVec,
-                          double* __restrict__ hactVec,
-                          double* __restrict__ fE,
-                          double* __restrict__ fI,
-                          double* __restrict__ leftTimeRate,
-                          double* __restrict__ lastNegLogRand,
-                          double* __restrict__ v_hlf,
-                          curandStateMRG32k3a* __restrict__ state,
-                          unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, bool it);
+__global__ void compute_dV(double* __restrict__ v0,
+                           double* __restrict__ dv,
+                           double* __restrict__ gE,
+                           double* __restrict__ gI,
+                           double* __restrict__ hE,
+                           double* __restrict__ hI,
+                           double* __restrict__ a0,
+                           double* __restrict__ b0,
+                           double* __restrict__ a1,
+                           double* __restrict__ b1,
+                           double* __restrict__ preMat,
+                           double* __restrict__ inputRate,
+                           int* __restrict__ eventRate,
+                           double* __restrict__ spikeTrain,
+						   double* __restrict__ tBack,
+                           double* __restrict__ gactVec,
+                           double* __restrict__ hactVec,
+                           double* __restrict__ fE,
+                           double* __restrict__ fI,
+                           double* __restrict__ leftTimeRate,
+                           double* __restrict__ lastNegLogRand,
+                           double* __restrict__ v_hlf,
+                           curandStateMRG32k3a* __restrict__ state,
+                           unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, bool it);
 
 __global__ void prepare_cond(double* __restrict__ tBack,
                              double* __restrict__ spikeTrain,
@@ -115,6 +86,19 @@ __global__ void reduce_G(double* __restrict__ g,
                          double* __restrict__ g_b1y,
                          double* __restrict__ h_b1y,
                          unsigned int ngType, int n);
+
+__global__ void correct_spike(bool*   __restrict__ not_matched,
+                              double* __restrict__ spikeTrain,
+                              double* __restrict__ v_hlf,
+                              double* __restrict__ v0,
+                              double* __restrict__ dv,
+                              double* __restrict__ a0,
+                              double* __restrict__ b0,
+                              double* __restrict__ a1,
+                              double* __restrict__ b1,
+                              double* __restrict__ vnew,
+                              double* __restrict__ preMat,
+                              unsigned int ngTypeE, unsigned int ngTypeI, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int poolSizeE, unsigned int poolSize);
 
 __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed);
 

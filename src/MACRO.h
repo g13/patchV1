@@ -3,10 +3,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-//#define NAIVE
 
 #define MAX_FFINPUT_PER_DT 10 // dt in ms
 #define HALF_MEMORY_OCCUPANCY 1 // in Mb
+#define KERNEL_PERFORMANCE
+//#define NAIVE // for naive summation of conductance
 
 #define vE 14.0f/3.0f
 #define vI -2.0f/3.0f
@@ -19,7 +20,7 @@
 
 #define FULL_MASK 0xffffffff
 
-#define TEST_ACCURACY
+//#define TEST_WITH_MANUAL_FFINPUT
 #define CUDA_ERROR_CHECK
 //#define CUDA_DEEP_ERROR_CHECK
 

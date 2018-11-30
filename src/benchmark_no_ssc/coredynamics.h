@@ -31,12 +31,6 @@ struct ConductanceShape {
         (*g) = (*g)*etd + (*h)*decayTime[ig] * (etd - etr) / deltaTau[ig];
         (*h) = (*h)*etr;
     }
-    
-    __host__ __device__ double dg_approx(double dgt, unsigned int ig) {
-        dg =  (1.0 - coef2[ig]*dgt)*dgt/riseTime[ig];
-        return dg;
-    }
-    __host__ __device__ void h_only(double *h, double dgt) {}
 };
 
 struct Func_RK2 {

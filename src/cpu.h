@@ -1,6 +1,7 @@
-#include <random>
 #include <chrono>
 #include <fstream>
+#include "condShape.h"
+#include "curand.h"
 
 #define timeNow() std::chrono::high_resolution_clock::now()
 
@@ -9,31 +10,8 @@ double cpu_vE = 14.0f/3.0f; // dimensionaless (non-dimensionalized)
 double cpu_vI = -2.0f/3.0f;
 double cpu_vL = 0.0f, cpu_vT = 1.0f;
 
-struct cConductanceShape {
-    double riseTime[5], decayTime[5], deltaTau[5];
-    cConductanceShape() {};
-    cConductanceShape(double rt[], double dt[], unsigned int ng) {
-        for (int i=0; i<ng; i++) {
-            riseTime[i] = rt[i];
-            decayTime[i] = dt[i];
-            deltaTau[i] = dt[i] - rt[i];
-        }
-    }
-    inline void compute_single_input_conductance(double *g, double *h, double f, double dt, unsigned int ig) {
-        double etr = exp(-dt/riseTime[ig]);
-        (*g) += f*decayTime[ig]*(exp(-dt/decayTime[ig])-etr)/deltaTau[ig];
-        (*h) += f*etr;
-    }
-    inline void decay_conductance(double *g, double *h, double dt, unsigned int ig) {
-        double etr = exp(-dt/riseTime[ig]);
-        double etd = exp(-dt/decayTime[ig]);
-        (*g) = (*g)*etd + (*h)*decayTime[ig]*(etd-etr)/deltaTau[ig];
-        (*h) = (*h)*etr;
-    }
-};
-
-std::uniform_real_distribution<double> distribution(0.0,1.0);
-int h_set_input_time(double *inputTime, double dt, double rate, double &leftTimeRate, double &lastNegLogRand, std::minstd_rand &randGen) {
+//std::uniform_real_distribution<double> distribution(0.0,1.0);
+int h_set_input_time(double *inputTime, double dt, double rate, double &leftTimeRate, double &lastNegLogRand, /*std::minstd_rand*/ curandGenerator_t &randGen) {
     int i = 0;
     double tau, dTau, negLogRand;
     tau = (lastNegLogRand - leftTimeRate)/rate;
@@ -42,7 +20,8 @@ int h_set_input_time(double *inputTime, double dt, double rate, double &leftTime
         return i;
     } else do {
         inputTime[i] = tau;
-        negLogRand = -log(distribution(randGen));
+        curandGenerateUniformDouble(randGen, &negLogRand, 1);
+        negLogRand = -log(negLogRand);        
         dTau = negLogRand/rate;
         tau += dTau;
         i++;
@@ -56,7 +35,7 @@ int h_set_input_time(double *inputTime, double dt, double rate, double &leftTime
     return i;
 }
 
-void h_evolve_g(cConductanceShape &cond, double *g, double *h, double *f, double *inputTime, unsigned int nInput, double dt, unsigned int ig) {
+void h_evolve_g(ConductanceShape &cond, double *g, double *h, double *f, double *inputTime, unsigned int nInput, double dt, unsigned int ig) {
     cond.decay_conductance(g, h, dt, ig); 
     for (int i=0; i<nInput; i++) {
         cond.compute_single_input_conductance(g, h, *f, dt-inputTime[i], ig);
@@ -83,7 +62,7 @@ struct cpu_LIF {
 };
 
 double cpu_step(cpu_LIF* lif, double dt, double tRef, unsigned int id) {
-    lif->tsp = -1.0f;
+    lif->tsp = dt;
     if (lif->tBack <= 0.0f) {
         // not in refractory period
         lif->runge_kutta_2(dt);
@@ -156,13 +135,50 @@ void cpu_LIF::reset_v() {
     v = cpu_vL;
 }
 
-void cpu_version(int networkSize, double flatRate, unsigned int nstep, double dt, unsigned int h_nE, double s, unsigned long long seed, double ffsE, double ffsI) {
+unsigned int find1stAfter(double spikeTrain[], unsigned int n, double min) {
+    // in case no spike i=0
+    unsigned int i = 0;
+    for (int j=0; j<n; j++) {
+        if (spikeTrain[j] < 0.0f) continue;
+        if (spikeTrain[j] < min) {
+            min = spikeTrain[j];
+            i = j;
+        }
+    }
+    return i;
+}
+
+// Spike-spike correction
+void cpu_ssc(double* v_old, double spikeTrain[], double wSpikeTrain[], unsigned int idTrain[], unsigned int nE, unsigned int networkSize, double dt) {
+    for (i=0; i<networkSize; i++) {
+        wSpikeTrain[i] = spikeTrain[i];
+        idTrain[i] = i;
+    }
+    unsigned int n = networkSize;
+    for (i=0; i<networkSize; i++) {
+        unsigned int head = find1stAfter(wSpikeTrain, n, dt);
+        spikeTrain[idTrain[head]] = wSpikeTrain[head];
+        ii = 0;
+        for (j=0; j<networkSize; j++) {
+            if (tsp) {
+                idTrain[ii] = i;
+                wSpikeTrain[ii] = step
+                ii++;
+            }
+        }
+        n--;
+    }
+}
+
+void cpu_version(int networkSize, double flatRate, unsigned int nstep, double dt, unsigned int nE, double s, unsigned long long seed, double ffsE, double ffsI) {
     unsigned int ngTypeE = 2;
     unsigned int ngTypeI = 1;
     double cpu_gL_E = 0.05f, cpu_gL_I = 0.1f; // kHz
     double gL, tRef;
     double cpu_tRef_E = 0.5f, cpu_tRef_I = 0.25f; // ms
-    double *v = new double[networkSize];
+    double *v1 = new double[networkSize];
+    double *v2 = new double[networkSize];
+    double v_current, v_old;
     double *gE = new double[networkSize*ngTypeE];
     double *gI = new double[networkSize*ngTypeI];
     double *hE = new double[networkSize*ngTypeE];
@@ -171,12 +187,13 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, double dt
     double *fI = new double[networkSize*ngTypeI];
     double *spikeTrain = new double[networkSize];
     double *preMat = new double[networkSize*networkSize];
+    double *wSpikeTrain = new double[networkSize];
     std::ofstream v_file, spike_file, gE_file, gI_file;
     v_file.open("v_CPU.bin", std::ios::out|std::ios::binary);
     spike_file.open("s_CPU.bin", std::ios::out|std::ios::binary);
     gE_file.open("gE_CPU.bin", std::ios::out|std::ios::binary);
     gI_file.open("gI_CPU.bin", std::ios::out|std::ios::binary);
-    std::minstd_rand **randGen = new std::minstd_rand*[networkSize];
+    curandGenerator_t *randGen = new curandCreateGenerator_t[networkSize];
     int *nInput = new int[networkSize];
     double *inputTime = new double[networkSize*10];
     double *logRand = new double[networkSize];
@@ -186,16 +203,19 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, double dt
     double riseTimeI[1] = {1.0f};
     double decayTimeE[2] = {3.0f, 80.0f};
     double decayTimeI[1] = {5.0f};
-    cConductanceShape condE(riseTimeE, decayTimeE, ngTypeE);
-    cConductanceShape condI(riseTimeI, decayTimeI, ngTypeI);
+    ConductanceShape condE(riseTimeE, decayTimeE, ngTypeE);
+    ConductanceShape condI(riseTimeI, decayTimeI, ngTypeI);
 
     printf("cpu version started\n");
     cpu_LIF **lif = new cpu_LIF*[networkSize];
     for (unsigned int i=0; i<networkSize; i++) {
-        randGen[i] = new std::minstd_rand(seed+i);
-        logRand[i] = -log(distribution(*randGen[i]));
-        v[i] = 0.0f;
-        lif[i] = new cpu_LIF(v[i]);
+        curandCreateGenerator(&randGen[i], CURAND_RNG_PSEUDO_MRG32K3A);
+        curandSetPseudoRandomGeneratorSeed(randGen[i], seed+i);
+        curandGenerateUniformDouble(randGen[i], &(logRand[i]), 1);
+        logRand[i] = -log(logRand[i]);
+        v1[i] = 0.0f;
+        v2[i] = 0.0f;
+        lif[i] = new cpu_LIF(v1[i]);
         lTR[i] = 0.0f;
         for (int j=0; j<networkSize; j++) {
             preMat[i*networkSize+j] = s;
@@ -219,19 +239,28 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, double dt
     }
     //printf("cpu initialized\n");
     high_resolution_clock::time_point start = timeNow();
-    v_file.write((char*)v, networkSize * sizeof(double));
+    v_file.write((char*)v1, networkSize * sizeof(double));
     gE_file.write((char*)gE, networkSize * ngTypeE * sizeof(double));
     gI_file.write((char*)gI, networkSize * ngTypeI * sizeof(double));
     int inputEvents = 0;
     int outputEvents = 0;
     bool InhFired = false;
     double vTime = 0.0f;
+    double sTime = 0.0f;
     double gTime = 0.0f;
     for (unsigned int istep=0; istep<nstep; istep++) {
+        if (istep%2 == 0) {
+            v_current = v2;
+            v_old = v1;
+        } else {
+            v_current = v1;
+            v_old = v2;
+        }
+
         high_resolution_clock::time_point vStart = timeNow();
         for (unsigned int i=0; i<networkSize; i++) {
             lif[i]->v0 = lif[i]->v;
-            if (i<h_nE) {
+            if (i<nE) {
                 gL = cpu_gL_E;
                 tRef = cpu_tRef_E;
             } else {
@@ -253,14 +282,14 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, double dt
                 gI_t += gI[gid];
             }
             lif[i]->set_p0(gE_t, gI_t, gL);
-        #ifdef TEST_ACCURACY
+        #ifdef TEST_WITH_MANUAL_FFINPUT
                 nInput[i] = 2;
                 inputTime[i*10] =  i*dt/networkSize;
                 inputTime[i*10+1] =  dt-(i*dt/networkSize);
                 logRand[i] = 1.0f;
                 lTR[i] = 0.0f;
         #else
-                nInput[i] = h_set_input_time(&(inputTime[i*10]), dt, flatRate, lTR[i], logRand[i], *randGen[i]);
+                nInput[i] = h_set_input_time(&(inputTime[i*10]), dt, flatRate, lTR[i], logRand[i], randGen[i]);
         #endif
             //}
             inputEvents += nInput[i];
@@ -282,24 +311,31 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, double dt
             }
             lif[i]->set_p1(gE_t, gI_t, gL);
             spikeTrain[i] = cpu_step(lif[i], dt, tRef, i);
-            v[i] = lif[i]->v;
+            v_current[i] = lif[i]->v;
         }
         vTime += static_cast<double>(duration_cast<microseconds>(timeNow()-vStart).count());
+        // spike-spike correction
+        high_resolution_clock::time_point sStart = timeNow();
+        #ifdef TEST_SCC
+            cpu_ssc(v_old, 
+        #endif
+        sTime += static_cast<double>(duration_cast<microseconds>(timeNow()-vStart).count());
+        // recal_G
         high_resolution_clock::time_point gStart = timeNow();
         for (unsigned int i=0; i<networkSize; i++) {
             double g_end, h_end;
             #ifndef NAIVE
-            if (spikeTrain[i] > 0.0f) {
+            if (spikeTrain[i] < dt) {
             #endif
                 outputEvents ++;
-                if (i < h_nE) {
+                if (i < nE) {
                     //printf("exc-%i fired\n", i);
                     #pragma unroll
                     for (int ig=0; ig<ngTypeE; ig++) {
                         g_end = 0.0;
                         h_end = 0.0;
                         #ifdef NAIVE
-                        if (spikeTrain[i] > 0.0f) {
+                        if (spikeTrain[i] < dt) {
                         #endif
                             condE.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif[i]->tsp, ig);
                         #ifdef NAIVE
@@ -318,7 +354,7 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, double dt
                         g_end = 0.0;
                         h_end = 0.0;
                         #ifdef NAIVE
-                        if (spikeTrain[i] > 0.0f) {
+                        if (spikeTrain[i] < dt) {
                         #endif
                             condI.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif[i]->tsp, ig);
                         #ifdef NAIVE
@@ -336,7 +372,7 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, double dt
             #endif
         }
         gTime += static_cast<double>(duration_cast<microseconds>(timeNow()-gStart).count());
-        v_file.write((char*)v, networkSize * sizeof(double));
+        v_file.write((char*)v_current, networkSize * sizeof(double));
         spike_file.write((char*)spikeTrain, networkSize * sizeof(int));
         gE_file.write((char*)gE, networkSize * ngTypeE * sizeof(double));
         gI_file.write((char*)gI, networkSize * ngTypeI * sizeof(double));
@@ -352,13 +388,17 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, double dt
     printf("cpu version time cost: %3.1fms\n", static_cast<double>(cpuTime)/1000.0f);
     printf("compute_V cost: %fms\n", vTime/1000.0f);
     printf("recal_G cost: %fms\n", gTime/1000.0f);
+    #ifdef TEST_SCC
+    printf("correct_spike cost: %fms\n", sTime/1000.0f);
+    #endif
     /* Cleanup */
     printf("Cleaning up\n");
     if (v_file.is_open()) v_file.close();
     if (spike_file.is_open()) spike_file.close();
     if (gE_file.is_open()) gE_file.close();
     if (gI_file.is_open()) gI_file.close();
-    delete []v;
+    delete []v1;
+    delete []v2;
     delete []gE;
     delete []gI;
     delete []hE;
@@ -379,5 +419,6 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, double dt
     delete []inputTime;
     delete []logRand;
     delete []lTR;
+    delete []wSpikeTrain;
     printf("Memories freed\n");
 }
