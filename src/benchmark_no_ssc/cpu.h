@@ -369,9 +369,6 @@ void cpu_version(int networkSize, double flatRate, unsigned int nstep, float dt,
     delete []fI;
     delete []preMat;
     delete []spikeTrain;
-    for (unsigned int i=0; i<networkSize; i++) {
-        delete []randGen[i];
-    }
     delete []randGen;
     for (unsigned int i=0; i<networkSize; i++) {
         delete []lif[i];
