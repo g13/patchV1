@@ -1,13 +1,5 @@
 #include "coredynamics.h"
 
-__forceinline__  __device__ double get_a(double gE, double gI, double gL) {
-    return gE + gI + gL;
-}
-
-__forceinline__  __device__ double get_b(double gE, double gI, double gL) {
-    return gE * vE + gI * vI + gL * vL;
-}
-
 __global__ void recal_G(double* __restrict__ g,
                         double* __restrict__ h,
                         double* __restrict__ preMat,
@@ -350,7 +342,7 @@ __global__ void compute_dV(double* __restrict__ v0,
                            double* __restrict__ lastNegLogRand,
                            double* __restrict__ v_hlf,
                            curandStateMRG32k3a* __restrict__ state,
-                           unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, bool it)
+                           unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, int nInput, bool it)
 {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
@@ -386,11 +378,12 @@ __global__ void compute_dV(double* __restrict__ v0,
     // consider use shared memory for dynamic allocation
     double inputTime[MAX_FFINPUT_PER_DT];
     curandStateMRG32k3a localState = state[id];
-    int nInput;
     #ifdef TEST_WITH_MANUAL_FFINPUT
-        nInput = 2;
-        inputTime[0] = id*dt/networkSize;
-        inputTime[1] = dt-id*dt/networkSize;
+        #pragma unroll
+        for (int iInput = 0; iInput < nInput; iInput++) {
+            inputTime[iInput] = (iInput + double(id)/networkSize)*dt/nInput;
+        }
+        // not used if not RAND
         lastNegLogRand[id] = 1.0f;
         leftTimeRate[id] = 0.0f;
     #else
@@ -501,12 +494,6 @@ __device__ double LIF:: compute_spike_time(double dt) {
     return (vT-v0)/(v-v0)*dt;
 }
 
-__device__ double compute_v1(double dt, double a0, double b0, double a1, double b1, double v, double t) {
-    double A = 1.0 + (a0*a1*dt - a0 - a1) * dt/2.0f;
-    double B = (b0 + b1 - a1*b0*dt) * dt/2.0f;
-    return (B*(t-dt) - A*v*dt)/(t-dt-A*t);
-}
-
 __device__ void LIF::compute_v(double dt) {
     v = compute_v1(dt, a0, b0, a1, b1, vL, tBack);
 }
@@ -514,7 +501,6 @@ __device__ void LIF::compute_v(double dt) {
 __device__ void LIF::compute_pseudo_v0(double dt) {
     v0 = (vL-tBack*(b0 + b1 - a1*b0*dt)/2.0f)/(1.0f+tBack*(-a0 - a1 + a1*a0*dt)/2.0f);
 }
-
 
 __device__ void LIF::set_p0(double gE, double gI, double gL) {
     a0 = get_a(gE, gI, gL);
@@ -524,10 +510,6 @@ __device__ void LIF::set_p0(double gE, double gI, double gL) {
 __device__ void LIF::set_p1(double gE, double gI, double gL) {
     a1 = get_a(gE, gI, gL);
     b1 = get_b(gE, gI, gL); 
-}
-
-inline  __host__ __device__ double eval_LIF(double a, double b, double v) {
-    return -a * v + b;
 }
 
 __device__ double LIF:: eval0(double _v) {

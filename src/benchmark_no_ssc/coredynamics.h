@@ -2,36 +2,13 @@
 #define COREDYNAMICS_H
 
 #include "cuda_runtime.h"
-#include "device_launch_parameters.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <curand_kernel.h>
 #include <cuda.h>
+#include "condShape.h"
+#include "LIF_inlines.h"
 #include "MACRO.h"
-
-struct ConductanceShape {
-    double riseTime[5], decayTime[5], deltaTau[5], coef2[5];
-    __host__ __device__ ConductanceShape() {};
-    __host__ __device__ ConductanceShape(double rt[], double dt[], unsigned int ng) {
-        for (int i = 0; i < ng; i++) {
-            riseTime[i] = rt[i];
-            decayTime[i] = dt[i];
-            deltaTau[i] = dt[i] - rt[i];
-            coef2[i] = (rt[i] + dt[i])/(rt[i]*dt[i]*2.0);
-        }
-    }
-    __host__ __device__ __forceinline__ void compute_single_input_conductance(double *g, double *h, double f, double dt, unsigned int ig) {
-        double etr = exp(-dt / riseTime[ig]);
-        (*g) += f * decayTime[ig] * (exp(-dt / decayTime[ig]) - etr) / deltaTau[ig];
-        (*h) += f * etr;
-    }
-    __host__ __device__ __forceinline__ void decay_conductance(double *g, double *h, double dt, unsigned int ig) {
-        double etr = exp(-dt / riseTime[ig]);
-        double etd = exp(-dt / decayTime[ig]);
-        (*g) = (*g)*etd + (*h)*decayTime[ig] * (etd - etr) / deltaTau[ig];
-        (*h) = (*h)*etr;
-    }
-};
 
 struct Func_RK2 {
     double v, v0;
@@ -45,12 +22,13 @@ struct Func_RK2 {
     __device__ virtual double eval1(double _v) = 0;
     __device__ virtual void reset_v() = 0;
     __device__ virtual void compute_pseudo_v0(double dt) = 0;
+    __device__ virtual void compute_v(double dt) = 0;
     __device__ virtual double compute_spike_time(double dt) = 0;
 };
 
-struct LIF : Func_RK2 {
+struct LIF: Func_RK2 {
     double a1, b1;
-    double a0, b0, v_hlf;
+    double a0, b0;
     __device__ LIF(double _v0, double _tBack) : Func_RK2(_v0, _tBack) {};
     __device__ virtual void set_p0(double _gE, double _gI, double _gL);
     __device__ virtual void set_p1(double _gE, double _gI, double _gL);
@@ -58,6 +36,7 @@ struct LIF : Func_RK2 {
     __device__ virtual double eval1(double _v);
     __device__ virtual void reset_v();
     __device__ virtual void compute_pseudo_v0(double dt);
+    __device__ virtual void compute_v(double dt);
     __device__ virtual double compute_spike_time(double dt);
 };
 
@@ -80,7 +59,7 @@ __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ leftTimeRate,
                           double* __restrict__ lastNegLogRand,
                           curandStateMRG32k3a* __restrict__ state,
-                          unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, bool it);
+                          unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, int nInput, bool it);
 
 __global__ void recal_G(double* __restrict__ g,
                         double* __restrict__ h,

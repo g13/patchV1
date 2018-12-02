@@ -62,9 +62,9 @@ int main(int argc, char *argv[])
     double dt = t/float(nstep); // ms
     double flatRate = 10000.0f; // Hz
     //double flatRate = 0.0f; // Hz
-    double ffsE = 1e-1;
-    double s = 1.0*ffsE/(networkSize);
-    double ffsI = 1e-1;
+    double ffsE = 2e-3;
+    double s = 1e-2*ffsE/(networkSize);
+    double ffsI = 2e-2;
     /* to be extended */
     bool presetInit = false;
     unsigned int ngTypeE = 2;
@@ -77,9 +77,15 @@ int main(int argc, char *argv[])
     ConductanceShape condE(riseTimeE, decayTimeE, ngTypeE);
     ConductanceShape condI(riseTimeI, decayTimeI, ngTypeI);
     printf("designated input rate = %3.1fHz\n", flatRate);
+	printf("dt = %f ms\n", dt);
     printf("nE = %i, nI = %i\n", nE, networkSize-nE);
     printf("t = %f x %i = %f\n", dt, nstep, t);
-    cpu_version(networkSize, flatRate/1000.0, nstep, dt, nE, s, seed, ffsE, ffsI);
+	int nInput = ceil(flatRate / 1000.0f * dt);
+	#ifdef TEST_WITH_MANUAL_FFINPUT
+		printf("for testing purpose, feedforward input is set to %i per %fms\n", nInput, dt);
+		printf("for manual testing, please change the inputTime manually in source and recompile\n");
+        cpu_version(networkSize, nInput, nstep, dt, nE, s, ffsE, ffsI);
+    #endif
     struct cudaDeviceProp properties;  
     double *v, *gE, *gI, *preMat; 
     int *eventRate, *d_eventRate;
@@ -127,6 +133,10 @@ int main(int argc, char *argv[])
     nbatch = nstep/batchStep; 
     batchEnd = nstep - batchStep*nbatch;
     int alt = 1;
+    cudaEvent_t iStart, iStop;
+    cudaEventCreate(&iStart);
+    cudaEventCreate(&iStop);
+    CUDA_CALL(cudaEventRecord(iStart, 0));
     /* Allocate space for results on host */
     //pinned memory
     CUDA_CALL(cudaMallocHost((void**)&v,          networkSize * sizeof(double) * batchStep * alt));
@@ -179,7 +189,7 @@ int main(int argc, char *argv[])
     }
     while (EmaxTPB*mE != nE && EmaxTPB > EmaxTPB/2) {
         mE = mE + 1;
-        EmaxTPB = nI/mE;
+        EmaxTPB = nE/mE;
     }
 
     if (properties.maxThreadsPerBlock < nI) {
@@ -200,7 +210,7 @@ int main(int argc, char *argv[])
     dim3 rgI_b2(ImaxTPB,1);
     int msE = 1; // multiple shared actVec load per thread
     int msI = 1;
-    int s_actVec_lE;
+    int s_actVec_lE; // length of shared actVec
     int s_actVec_lI;
     unsigned int rgE_shared;
     unsigned int rgI_shared;
@@ -216,9 +226,9 @@ int main(int argc, char *argv[])
             rgE_shared = rgE_shared * 2;
         }
     }
-    s_actVec_lE = msE*s_actVec_lE;
-    rgE_b1.x = mE/msE;
-    rgE_b1.y = mE;
+    rgE_b1.x = mE/msE; // chunks of maxTPB neurons
+    s_actVec_lE = msE*s_actVec_lE; // number of actVec each chunk dump into shared mem, msE multiples of maxTPB
+    rgE_b1.y = networkSize/EmaxTPB; // total number of presynaptic neurons divided by the the shared actVec
     printf("E: recal_G<<<(%i,%i,%i)x(%i,%i,%i), %iKb>>>\n", rgE_b1.x, rgE_b1.y, rgE_b1.z, rgE_b2.x, rgE_b2.y, rgE_b2.z, rgE_shared/1024);
 
     s_actVec_lI = ImaxTPB;
@@ -232,9 +242,9 @@ int main(int argc, char *argv[])
             rgI_shared = rgI_shared * 2;
         }
     }
-    s_actVec_lI = msI*s_actVec_lI;
     rgI_b1.x = mI/msI;
-    rgI_b1.y = mI;
+    s_actVec_lI = msI*s_actVec_lI;
+    rgI_b1.y = networkSize/ImaxTPB;
     printf("I: recal_G<<<(%i,%i,%i)x(%i,%i,%i), %iKb>>>\n", rgI_b1.x, rgI_b1.y, rgI_b1.z, rgI_b2.x, rgI_b2.y, rgI_b2.z, rgI_shared/1024);
 
     cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
@@ -336,6 +346,9 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaStreamDestroy(i5));
     CUDA_CALL(cudaStreamDestroy(i6));
     CUDA_CALL(cudaStreamDestroy(i7));
+    CUDA_CALL(cudaEventRecord(iStop, 0));
+    CUDA_CALL(cudaEventElapsedTime(&time, iStart, iStop));
+    printf("initialization cost %fms\n", time);
 
     /* Create CUDA streams */
     cudaStream_t s1, s2, s3, s4, s5;
@@ -383,7 +396,7 @@ int main(int argc, char *argv[])
             CUDA_CALL(cudaEventSynchronize(gReadyE));
             gE_file.write((char*)&(gE[n*ngTypeE*batchOffset]),     n*ngTypeE*sizeof(double));
             CUDA_CALL(cudaEventSynchronize(gReadyI));
-            gI_file.write((char*)&(gI[n*ngTypeE*batchOffset]),     n*ngTypeI*sizeof(double));
+            gI_file.write((char*)&(gI[n*ngTypeI*batchOffset]),     n*ngTypeI*sizeof(double));
             /* Compute voltage (acquire initial spikes) */
             if (i%2 == 0) {
                 v_current = d_v2;

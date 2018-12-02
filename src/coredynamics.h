@@ -2,14 +2,14 @@
 #define COREDYNAMICS_H
 
 #include "cuda_runtime.h"
-#include "device_launch_parameters.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <curand_kernel.h>
 #include <cuda.h>
 #include <cassert>
-#include "MACRO.h"
 #include "condShape.h"
+#include "LIF_inlines.h"
+#include "MACRO.h"
 
 struct Func_RK2 {
     double v, v0, v_hlf;
@@ -27,7 +27,7 @@ struct Func_RK2 {
     __device__ virtual double compute_spike_time(double dt) = 0;
 };
 
-struct LIF : Func_RK2 {
+struct LIF: Func_RK2 {
     double a1, b1;
     double a0, b0;
     __device__ LIF(double _v0, double _tBack) : Func_RK2(_v0, _tBack) {};
@@ -64,7 +64,7 @@ __global__ void compute_dV(double* __restrict__ v0,
                            double* __restrict__ lastNegLogRand,
                            double* __restrict__ v_hlf,
                            curandStateMRG32k3a* __restrict__ state,
-                           unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, bool it);
+                           unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, int nInput, bool it);
 
 __global__ void prepare_cond(double* __restrict__ tBack,
                              double* __restrict__ spikeTrain,
