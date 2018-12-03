@@ -11,9 +11,11 @@ int main(int argc, char *argv[])
     seed = std::time(0);
     int device;
     int b1,b2;
+	int ms = 1;
     b1 = 160;
     b2 = 128;
     bool printStep = false;
+    bool moreSharedMemThanBlocks = true;
     unsigned int nstep = 200;
     /* Overwrite parameters */
     for (int i = 0; i<argc; i++) {
@@ -39,6 +41,13 @@ int main(int argc, char *argv[])
         sscanf(argv[argc-3],"%d",&b1);
         sscanf(argv[argc-4],"%d",&nstep);
     }
+	if (argc == 6) {
+		sscanf(argv[argc - 1], "%d", &ms);
+		sscanf(argv[argc - 2], "%u", &seed);
+		sscanf(argv[argc - 3], "%d", &b2);
+		sscanf(argv[argc - 4], "%d", &b1);
+		sscanf(argv[argc - 5], "%d", &nstep);
+	}
     printf("%i x %i, %i steps, seed = %u\n", b1, b2, nstep, seed);
 	unsigned int networkSize = b1*b2;
     int warpSize = 32;
@@ -55,7 +64,7 @@ int main(int argc, char *argv[])
     unsigned int nI = networkSize-nE;
     double t = 25.0f;
     double dt = t/float(nstep); // ms
-    double flatRate = 10000.0f; // Hz
+    double flatRate = 1000.0f; // Hz
     //double flatRate = 0.0f; // Hz
     double ffsE = 2e-3;
     double s = 1e-2*ffsE/(networkSize);
@@ -162,10 +171,11 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaMalloc((void **)&lastNegLogRand, networkSize * sizeof(double)));
     /* Allocate space for partial reduce results on device */
     
+    int maxTPB = properties.maxThreadsPerBlock/ms;
     int EmaxTPB, ImaxTPB;
     int mE, mI; 
-    if (properties.maxThreadsPerBlock < nE) {
-        EmaxTPB = properties.maxThreadsPerBlock;
+    if (maxTPB < nE) {
+        EmaxTPB = maxTPB;
         mE = (nE+EmaxTPB-1)/EmaxTPB;
         EmaxTPB = nE/mE;
     } else {
@@ -177,8 +187,8 @@ int main(int argc, char *argv[])
         EmaxTPB = nE/mE;
     }
 
-    if (properties.maxThreadsPerBlock < nI) {
-        ImaxTPB = properties.maxThreadsPerBlock;
+    if (maxTPB < nI) {
+        ImaxTPB = maxTPB;
         mI = (nI+ImaxTPB-1)/ImaxTPB;
         ImaxTPB = nI/mI;
     } else {
@@ -191,8 +201,19 @@ int main(int argc, char *argv[])
     }
 
     dim3 rgE_b1, rgI_b1;
-    dim3 rgE_b2(EmaxTPB,1);
-    dim3 rgI_b2(ImaxTPB,1);
+    int EnTPB = networkSize/(networkSize/EmaxTPB);
+    int InTPB = networkSize/(networkSize/ImaxTPB);
+    if (EnTPB > maxTPB) {
+        EnTPB = maxTPB;
+    }
+    if (InTPB > maxTPB) {
+        InTPB = maxTPB;
+    }
+    dim3 rgE_b2(EnTPB,1);
+    dim3 rgI_b2(InTPB,1);
+    printf("mE = %i, mI = %i\n", mE, mI);
+    //dim3 rgE_b2(EmaxTPB,1);
+    //dim3 rgI_b2(ImaxTPB,1);
     int msE = 1; // multiple shared actVec load per thread
     int msI = 1;
     int s_actVec_lE; // length of shared actVec
@@ -206,15 +227,17 @@ int main(int argc, char *argv[])
         printf("E: The size of the requested shared memory %iKb by recal_G is not available\n", rgE_shared/1024);
         return EXIT_FAILURE;
     } else {
-        while (rgE_shared*2  < properties.sharedMemPerBlock && mE/float(msE*2) == float(mE/(msE*2))) {
-            msE = msE * 2;
-            rgE_shared = rgE_shared * 2;
+        if (moreSharedMemThanBlocks) {
+            while (rgE_shared*2  < properties.sharedMemPerBlock && mE/float(msE*2) == float(mE/(msE*2))) {
+                msE = msE * 2;
+                rgE_shared = rgE_shared * 2;
+            }
         }
     }
-    rgE_b1.x = mE/msE; // chunks of maxTPB neurons
     s_actVec_lE = msE*s_actVec_lE; // number of actVec each chunk dump into shared mem, msE multiples of maxTPB
-    rgE_b1.y = networkSize/EmaxTPB; // total number of presynaptic neurons divided by the the shared actVec
-    printf("E: recal_G<<<(%i,%i,%i)x(%i,%i,%i), %iKb>>>\n", rgE_b1.x, rgE_b1.y, rgE_b1.z, rgE_b2.x, rgE_b2.y, rgE_b2.z, rgE_shared/1024);
+    rgE_b1.x = nE/s_actVec_lE; // chunks of maxTPB neurons
+    rgE_b1.y = networkSize/EnTPB; // total number of presynaptic neurons divided by the the shared actVec
+    printf("E: recal_G<<<(%i,%i,%i)x(%i,%i,%i), %iKb>>>, msE = %i\n", rgE_b1.x, rgE_b1.y, rgE_b1.z, rgE_b2.x, rgE_b2.y, rgE_b2.z, rgE_shared/1024, msE);
 
     s_actVec_lI = ImaxTPB;
     rgI_shared = 2*ngTypeI*s_actVec_lI*sizeof(double);
@@ -222,15 +245,17 @@ int main(int argc, char *argv[])
         printf("I: The size of the requested shared memory %iKb by recal_G is not available\n", rgI_shared/1024);
         return EXIT_FAILURE;
     } else {
-        while (rgI_shared*2  < properties.sharedMemPerBlock && mI/float(msI*2) == float(mI/(msI*2))) {
-            msI = msI * 2;
-            rgI_shared = rgI_shared * 2;
+        if (moreSharedMemThanBlocks) {
+            while (rgI_shared*2  < properties.sharedMemPerBlock && mI/float(msI*2) == float(mI/(msI*2))) {
+                msI = msI * 2;
+                rgI_shared = rgI_shared * 2;
+            }
         }
     }
-    rgI_b1.x = mI/msI;
     s_actVec_lI = msI*s_actVec_lI;
-    rgI_b1.y = networkSize/ImaxTPB;
-    printf("I: recal_G<<<(%i,%i,%i)x(%i,%i,%i), %iKb>>>\n", rgI_b1.x, rgI_b1.y, rgI_b1.z, rgI_b2.x, rgI_b2.y, rgI_b2.z, rgI_shared/1024);
+    rgI_b1.x = nI/s_actVec_lI;
+    rgI_b1.y = networkSize/InTPB;
+    printf("I: recal_G<<<(%i,%i,%i)x(%i,%i,%i), %iKb>>>, msI = %i\n", rgI_b1.x, rgI_b1.y, rgI_b1.z, rgI_b2.x, rgI_b2.y, rgI_b2.z, rgI_shared/1024, msI);
 
     cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
     int rE_b2, rI_b2;
@@ -319,6 +344,7 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaStreamDestroy(i2));
     CUDA_CALL(cudaStreamDestroy(i3));
     CUDA_CALL(cudaEventRecord(iStop, 0));
+    CUDA_CALL(cudaEventSynchronize(iStop));
     CUDA_CALL(cudaEventElapsedTime(&time, iStart, iStop));
     printf("initialization cost %fms\n", time);
 

@@ -17,26 +17,15 @@ __global__ void recal_G(double* __restrict__ g,
     double *gaV = actVec;
     double *haV = &(actVec[ngType*ns]);
     unsigned int id = blockDim.x*blockIdx.y + threadIdx.x;
-    if (m>0) {
+    #pragma unroll
+    for (int ig=0; ig<ngType; ig++) {
         #pragma unroll
-        for (int ig=0; ig<ngType; ig++) {
-            #pragma unroll
-            for (int i=0; i<m; i++) {
-                // av = double[ngType,#(ns),ns]
-                // actVec = double[ngType,n]
+        for (int i=0; i<m; i++) {
+            // av = double[ngType,#(ns),ns]
+            // actVec = double[ngType,n]
+            if (threadIdx.x < ns) {
                 unsigned int sid = ig*ns + (i*blockDim.x + threadIdx.x);
                 unsigned int gid = (ig*n + offset + ns*blockIdx.x) + (i*blockDim.x + threadIdx.x);
-                gaV[sid] = gactVec[gid];
-                haV[sid] = hactVec[gid];
-            }
-        }
-    } else {
-        if (threadIdx.x < ns) {
-            #pragma unroll
-            for (int ig=0; ig<ngType; ig++) {
-                // av = double[ngType,ns]
-                unsigned int sid = ig*ns + threadIdx.x;
-                unsigned int gid = (n*ig + offset + ns*blockIdx.x) + threadIdx.x;
                 gaV[sid] = gactVec[gid];
                 haV[sid] = hactVec[gid];
             }
@@ -57,8 +46,8 @@ __global__ void recal_G(double* __restrict__ g,
             atomicAdd(&(g[gid]), g_t);
             atomicAdd(&(h[gid]), h_t);
         } else {
-            // b1y = double[ngType, n, #(ns)]
-            unsigned int b1yid = ig*n*gridDim.x + id*gridDim.x + blockIdx.x;
+            // b1y = double[ngType, m, n]
+            unsigned int b1yid = ig*n*gridDim.x + n*blockIdx.x + id;
             g_b1y[b1yid] = g_t;
             h_b1y[b1yid] = h_t;
         }
