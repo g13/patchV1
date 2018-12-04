@@ -15,6 +15,7 @@ struct Func_RK2 {
     double v, v0, v_hlf;
     // type variable
     double tBack, tsp;
+    bool correctMe;
     __device__ Func_RK2(double _v0, double _tBack) : v0(_v0), tBack(_tBack) {};
     __device__ void runge_kutta_2(double dt);
     __device__ virtual void set_p0(double _gE, double _gI, double _gL) = 0;

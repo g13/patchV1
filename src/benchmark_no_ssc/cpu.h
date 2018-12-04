@@ -75,7 +75,6 @@ double cpu_step(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE
         lif->runge_kutta_2(dt);
         while (lif->v > vT) {
             // crossed threshold
-
             if (lif->v > vE) {
                 printf("#%i exc conductance is too high %f\n", id, gE);
             }
@@ -92,11 +91,10 @@ double cpu_step(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE
                     printf("multiple spike in one time step, only the last spike is counted, refractory period = %f ms, dt = %f\n", tRef, dt);
                     //assert(lif->v <= vT);
                 }
-            } else {
-                lif->reset_v();
             }
         }
-    } else {
+    } 
+    if (lif->tBack >= dt) {
         // during refractory period
         lif->reset_v(); 
         lif->tBack -= dt;

@@ -179,11 +179,10 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
                     printf("multiple spike in one time step, only the last spike is counted, refractory period = %f ms, dt = %f\n", tRef, dt);
                     //assert(lif->v <= vT);
                 }
-            } else {
-                lif->reset_v();
             }
         }
-    } else {
+    } 
+    if (lif->tBack >= dt) {
         // during refractory period
         lif->reset_v(); 
         lif->tBack -= dt;

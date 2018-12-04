@@ -149,7 +149,7 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
     }
 }
 
-__device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, double gE_t) {
+__device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, double gE) {
     lif->tsp = dt;
     // not in refractory period
     if (lif->tBack < dt) {
@@ -164,7 +164,8 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
             // crossed threshold
 
             if (lif->v > vE) {
-                printf("#%i exc conductance is too high %f\n", id, gE_t);
+                printf("#%i exc conductance is too high %f\n", id, gE);
+                lif->v = vE;
             }
             
             lif->tsp = lif->compute_spike_time(dt); 
@@ -179,11 +180,10 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
                     printf("multiple spike in one time step, only the last spike is counted, refractory period = %f ms, dt = %f\n", tRef, dt);
                     //assert(lif->v <= vT);
                 }
-            } else {
-                lif->reset_v();
-            }
+            } 
         }
-    } else {
+    } 
+    if (lif->tBack >= dt) {
         // during refractory period
         lif->reset_v(); 
         lif->tBack -= dt;
@@ -191,10 +191,11 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
     return lif->tsp;
 }
 
-__device__  double dab(Func_RK2* lif, double dt, double tRef, unsigned int id, double gE_t) {
+__device__  double dab(Func_RK2* lif, double dt, double tRef, unsigned int id, double gE) {
     lif->tsp = dt;
     // not in refractory period
     if (lif->tBack < dt) {
+        lif->correctMe = true;
         // return from refractory period
         if (lif->tBack > 0.0f) {
             lif->compute_pseudo_v0(dt);
@@ -206,7 +207,7 @@ __device__  double dab(Func_RK2* lif, double dt, double tRef, unsigned int id, d
             // crossed threshold
 
             if (lif->v > vE) {
-                printf("#%i exc conductance is too high %f, v = %f\n", id, gE_t, lif->v);
+                printf("#%i exc conductance is too high %f, v = %f\n", id, gE, lif->v);
                 lif->v = vE;
             }
             lif->tsp = lif->compute_spike_time(dt); 
@@ -216,6 +217,7 @@ __device__  double dab(Func_RK2* lif, double dt, double tRef, unsigned int id, d
         // during refractory period
         lif->reset_v(); 
         lif->tBack -= dt;
+        lif->correctMe = false;
     }
     return lif->tsp;
 }
@@ -231,78 +233,83 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
                               double* __restrict__ b1,
                               double* __restrict__ vnew,
                               double* __restrict__ preMat,
+                              bool*   __restrict__ correctMe,
                               unsigned int ngTypeE, unsigned int ngTypeI, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int poolSizeE, unsigned int poolSize) 
 {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
-    double tsp = spikeTrain[id];
-    double tRef;
-    if (id < poolSizeE) {
-        tRef = tRef_E;
-    } else {
-        tRef = tRef_I;
-    }
-    double vhlf =  v_hlf[id];
-    double minTsp_i = tsp;
-    double dvE = vhlf - vE;
-    double dvI = vhlf - vI;
-    double deltaV = dv[id]; // init with old dv to be new dv
-    double dg = 0.0;
-    double dgV = 0.0;
-    for (unsigned int i = 0; i < poolSizeE; i++) {
-        double tsp_i = spikeTrain[i];  // possible share_mem optimization
-        if (tsp > tsp_i) {
-            if (tsp_i < minTsp_i) {
-                minTsp_i = tsp_i;
-            }
-            double dtij = dt - tsp_i;
-            #pragma unroll
-            for (unsigned int ig = 0; ig < ngTypeE; ig++) {
-                double g = preMat[id*poolSize + i] * condE.dg_approx(dtij, ig);
-                dg += g;
-                dgV += g*vE;
-                deltaV += g * dvE;
-            }
-        }
-        __syncthreads();
-    }
-    for (unsigned int i = poolSizeE; i < poolSize; i++) {
-        double tsp_i = spikeTrain[i]; // possible share_mem optimization
-        if (tsp > tsp_i) {
-            double dtij = dt - tsp_i;
-            #pragma unroll
-            for (unsigned int ig = 0; ig < ngTypeI; ig++) {
-                double g = preMat[id*poolSize + i] * condI.dg_approx(dtij, ig);
-                dg += g;
-                dgV += g*vI;
-                deltaV += g * dvI;
-            }
-        }
-        __syncthreads();
-    }
-    double v0i = v0[id];
-    double old_tsp = tsp;
-    double dvT = vT - v0i;
-    if (deltaV > dvT) {
-        tsp = dt * dvT / deltaV;
-        if (tsp < minTsp_i) {
-            tsp = minTsp_i;
-        }
-        if (tsp + tRef > dt) {
-            vnew[id] = vL; 
-        } else {
-            // let's hope this branch is never used. 
-            vnew[id] = compute_v1(dt, a0[id], b0[id], a1[id] + dg, b1[id] + dgV, vL, tsp + tRef);
-        }
-    } else {
-        tsp = dt;
-        vnew[id] = v0i + deltaV;
-    }
-    spikeTrain[id] = tsp;
     bool local_not_matched;
-    if (tsp == dt && old_tsp < dt || tsp < dt && old_tsp == dt) {
-        local_not_matched = true;
+    if (correctMe[id]) {
+        double tsp = spikeTrain[id];
+        double tRef;
+        if (id < poolSizeE) {
+            tRef = tRef_E;
+        } else {
+            tRef = tRef_I;
+        }
+        double vhlf =  v_hlf[id];
+        double minTsp_i = tsp;
+        double dvE = vhlf - vE;
+        double dvI = vhlf - vI;
+        double deltaV = dv[id]; // init with old dv to be new dv
+        double dg = 0.0;
+        double dgV = 0.0;
+        for (unsigned int i = 0; i < poolSizeE; i++) {
+            double tsp_i = spikeTrain[i];  // possible share_mem optimization
+            if (tsp > tsp_i) {
+                if (tsp_i < minTsp_i) {
+                    minTsp_i = tsp_i;
+                }
+                double dtij = dt - tsp_i;
+                #pragma unroll
+                for (unsigned int ig = 0; ig < ngTypeE; ig++) {
+                    double g = preMat[id*poolSize + i] * condE.dg_approx(dtij, ig);
+                    dg += g;
+                    dgV += g*vE;
+                    deltaV += g * dvE;
+                }
+            }
+            __syncthreads();
+        }
+        for (unsigned int i = poolSizeE; i < poolSize; i++) {
+            double tsp_i = spikeTrain[i]; // possible share_mem optimization
+            if (tsp > tsp_i) {
+                double dtij = dt - tsp_i;
+                #pragma unroll
+                for (unsigned int ig = 0; ig < ngTypeI; ig++) {
+                    double g = preMat[id*poolSize + i] * condI.dg_approx(dtij, ig);
+                    dg += g;
+                    dgV += g*vI;
+                    deltaV += g * dvI;
+                }
+            }
+            __syncthreads();
+        }
+        double v0i = v0[id];
+        double old_tsp = tsp;
+        double dvT = vT - v0i;
+        if (deltaV > dvT) {
+            tsp = dt * dvT / deltaV;
+            if (tsp < minTsp_i) {
+                tsp = minTsp_i;
+            }
+            if (tsp + tRef > dt) {
+                vnew[id] = vL; 
+            } else {
+                // let's hope this branch is never used. 
+                vnew[id] = compute_v1(dt, a0[id], b0[id], a1[id] + dg, b1[id] + dgV, vL, tsp + tRef);
+            }
+        } else {
+            tsp = dt;
+            vnew[id] = v0i + deltaV;
+        }
+        spikeTrain[id] = tsp;
+        if (tsp == dt && old_tsp < dt || tsp < dt && old_tsp == dt) {
+            local_not_matched = true;
+        } else {
+            local_not_matched = false;
+        }
     } else {
-        local_not_matched = false;
+        local_not_matched = false;    
     }
     __syncthreads();
     not_matched[id] = local_not_matched;
@@ -426,7 +433,6 @@ __global__ void compute_dV(double* __restrict__ v0,
     a1[id] = lif.a1;
     b1[id] = lif.b1;
     // rk2 step
-
     spikeTrain[id] = dab(&lif, dt, tRef, /*the last 2 args are for deugging*/ id, gE_t);
     __syncthreads();
     v_hlf[id] = lif.v_hlf;
