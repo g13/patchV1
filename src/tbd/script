@@ -1,0 +1,33 @@
+#!/bin/bash
+
+b=32
+trial=100
+log=log$trial_$b
+./randTest $b 1 $trial > $log 2>&1
+./randTest $b 2 $trial >> $log 2>&1
+./randTest $b 4 $trial >> $log 2>&1
+./randTest $b 8 $trial >> $log 2>&1
+./randTest $b 16 $trial >> $log 2>&1
+./randTest $b 32 $trial >> $log 2>&1
+./randTest $b 64 $trial >> $log 2>&1
+
+b=64
+log=log$trial_$b
+./randTest $b 1 $trial > $log 2>&1
+./randTest $b 2 $trial >> $log 2>&1
+./randTest $b 4 $trial >> $log 2>&1
+./randTest $b 8 $trial >> $log 2>&1
+./randTest $b 16 $trial >> $log 2>&1
+./randTest $b 32 $trial >> $log 2>&1
+./randTest $b 64 $trial >> $log 2>&1
+
+b=80
+log=log$trial_$b
+./randTest $b 1 $trial > $log 2>&1
+./randTest $b 2 $trial >> $log 2>&1
+./randTest $b 4 $trial >> $log 2>&1
+./randTest $b 8 $trial >> $log 2>&1
+./randTest $b 16 $trial >> $log 2>&1
+./randTest $b 32 $trial >> $log 2>&1
+./randTest $b 64 $trial >> $log 2>&1
+
