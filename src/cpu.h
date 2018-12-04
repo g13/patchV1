@@ -75,7 +75,7 @@ double cpu_step(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE
             lif->tBack = -1.0f;
         }
         lif->runge_kutta_2(dt);
-        while (lif->v > vT) {
+        while (lif->v > vT && lif->tBack < 0.0f) {
             // crossed threshold
             if (lif->v > vE) {
                 printf("#%i exc conductance is too high %f\n", id, gE);
@@ -354,7 +354,8 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
     double *inputTime = new double[networkSize*nInput];
     /* === RAND === 
         curandGenerator_t *randGen = new curandGenerator_t[networkSize];
-        int *nInput = new int[networkSize];*/
+        int *nInput = new int[networkSize];
+    */
 	/* not used if not RAND */
     double *logRand = new double[networkSize];
     double *lTR = new double[networkSize];

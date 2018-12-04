@@ -160,7 +160,7 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
         }
         __syncthreads();
         lif->runge_kutta_2(dt);
-        while (lif->v > vT) {
+        while (lif->v > vT && lif->tBack < 0.0f) {
             // crossed threshold
 
             if (lif->v > vE) {

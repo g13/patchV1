@@ -73,7 +73,7 @@ double cpu_step(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE
             lif->tBack = -1.0f;
         }
         lif->runge_kutta_2(dt);
-        while (lif->v > vT) {
+        while (lif->v > vT && lif->tBack < 0.0f) {
             // crossed threshold
             if (lif->v > vE) {
                 printf("#%i exc conductance is too high %f\n", id, gE);
@@ -161,9 +161,11 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
     spike_file.open("s_CPU.bin", std::ios::out|std::ios::binary);
     gE_file.open("gE_CPU.bin", std::ios::out|std::ios::binary);
     gI_file.open("gI_CPU.bin", std::ios::out|std::ios::binary);
-    curandGenerator_t *randGen = new curandGenerator_t[networkSize];
-    /* === RAND === int *nInput = new int[networkSize];*/
     double *inputTime = new double[networkSize*nInput];
+    /* === RAND === 
+        curandGenerator_t *randGen = new curandGenerator_t[networkSize];
+        int *nInput = new int[networkSize];
+    */
 	/* not used if not RAND */
     double *logRand = new double[networkSize];
     double *lTR = new double[networkSize];
@@ -371,7 +373,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
     delete []fI;
     delete []preMat;
     delete []spikeTrain;
-    delete []randGen;
+    /* === RAND === delete []randGen; */
     for (unsigned int i=0; i<networkSize; i++) {
         delete []lif[i];
     }
