@@ -172,7 +172,7 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
             lif->tBack = lif->tsp + tRef;
             //printf("neuron #%i fired initially\n", id);
             //assert(lif->tBack > 0);
-            if (lif->tBack < dt) {
+            if (lif->tBack < dt && lif->tBack < 0.0f) {
                 // refractory period ended during dt
                 lif->compute_v(dt);
                 lif->tBack = -1.0f;
