@@ -58,3 +58,5 @@ __forceinline__  __device__ void __cudaDeviceCheckError( const char *file, const
     }
 #endif
 }
+
+#endif
