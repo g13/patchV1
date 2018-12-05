@@ -452,18 +452,26 @@ int main(int argc, char *argv[])
             bool no_match = true;
             unsigned int imatch = 0;
             CUDA_CALL(cudaEventRecord(kStart, 0));
-            while (no_match || imatch < networkSize) {
+            while (no_match && imatch < networkSize) {
+                printf("correct_spike <<< %i x %i >>>\n", b1, b2);
                 correct_spike <<<b1, b2, 0, s1>>> (d_not_matched, d_spikeTrain, d_v_hlf, v_old, dv, d_a0, d_b0, d_a1, d_b1, v_current, d_preMat, tBack, ngTypeE, ngTypeI, condE, condI, dt, nE, networkSize);
                 CUDA_CHECK();
-                CUDA_CALL(cudaMemcpy(&not_matched, d_not_matched, networkSize * sizeof(bool), cudaMemcpyDeviceToHost));
-                //CUDA_CALL(cudaEventRecord(spikeCorrected, s1));
+                printf("correct_spike <<< %i x %i >>> finished\n", b1, b2);
+                CUDA_CALL(cudaMemcpyAsync(&not_matched, d_not_matched, networkSize * sizeof(bool), cudaMemcpyDeviceToHost,s1));
+                CUDA_CALL(cudaEventRecord(spikeCorrected, s1));
                 no_match = false;
-                //CUDA_CALL(cudaEventSynchronize(spikeCorrected)); 
-				CUDA_CALL(cudaDeviceSynchronize());
+                CUDA_CALL(cudaEventSynchronize(spikeCorrected)); 
+                printf("synchronized\n");
+				//CUDA_CALL(cudaDeviceSynchronize());
                 for (int iw = 0; iw < warpSize; iw ++) {
+					printf("iw = %i\n", iw);
                     bool iw_no_match = false;
                     for (unsigned int j=0; j<networkSize/warpSize; j++) {
-						fprintf(stderr, "%i = %i*%i + %i\n", j*warpSize + iw, j, warpSize, iw);
+                        unsigned int wid = j*warpSize + iw;
+						printf("%i = %i*%i + %i\n", wid, j, warpSize, iw);
+                        if (wid > networkSize) {
+                            break;
+                        }
                         if (not_matched[j*warpSize + iw]) {
                             iw_no_match = true;
                             break;
