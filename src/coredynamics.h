@@ -99,6 +99,7 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
                               double* __restrict__ b1,
                               double* __restrict__ vnew,
                               double* __restrict__ preMat,
+                              double* __restrict__ tBack,
                               unsigned int ngTypeE, unsigned int ngTypeI, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int poolSizeE, unsigned int poolSize);
 
 __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed);

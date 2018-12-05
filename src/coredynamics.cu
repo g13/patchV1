@@ -216,7 +216,6 @@ __device__  double dab(Func_RK2* lif, double dt, double tRef, unsigned int id, d
     } else {
         // during refractory period
         lif->reset_v(); 
-        lif->tBack -= dt;
         lif->correctMe = false;
     }
     return lif->tsp;
@@ -233,12 +232,12 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
                               double* __restrict__ b1,
                               double* __restrict__ vnew,
                               double* __restrict__ preMat,
-                              bool*   __restrict__ correctMe,
+                              double* __restrict__ tBack,
                               unsigned int ngTypeE, unsigned int ngTypeI, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int poolSizeE, unsigned int poolSize) 
 {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     bool local_not_matched;
-    if (correctMe[id]) {
+    if (tBack[id] > dt) {
         double tsp = spikeTrain[id];
         double tRef;
         if (id < poolSizeE) {
@@ -454,11 +453,13 @@ __global__ void prepare_cond(double* __restrict__ tBack,
     double g_end, h_end;
     double tsp = spikeTrain[offset + id];
     if (tsp<dt) {
+        double tB;
         if (offset == 0) {
-            tBack[id] = tsp + tRef_E;
+            tB = tsp + tRef_E - dt;
         } else {
-            tBack[id] = tsp + tRef_I;
+            tB = tsp + tRef_I - dt;
         }
+        tBack[id] = tB;
         #pragma unroll
         for (int ig=0; ig<ngType; ig++) {
             g_end = 0.0f;
@@ -469,7 +470,11 @@ __global__ void prepare_cond(double* __restrict__ tBack,
             hactVec[gid] = h_end;
         }
     } else {
-        tBack[id] = -1.0f;
+        if (tBack[id] > dt) {
+            tBack[id] -= dt;
+        } else {
+            tBack[id] = -1.0f;
+        }
         for (int ig=0; ig<ngType; ig++) {
             unsigned int gid = networkSize*ig + id;
             gactVec[gid] = 0.0f;

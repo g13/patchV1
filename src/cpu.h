@@ -107,6 +107,7 @@ double cpu_step(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE
 
 double cpu_dab(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE) {
     lif->tsp = dt;
+    lif->correctMe = true;
     lif->spikeCount = 0;
     // not in refractory period
     if (lif->tBack < dt) {
@@ -121,7 +122,7 @@ double cpu_dab(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE)
             // crossed threshold
 
             if (lif->v > vE) {
-                printf("#%i exc conductance is too high %f, v = %f\n", id, gE_t, lif->v);
+                printf("#%i exc conductance is too high %f, v = %f\n", id, gE, lif->v);
                 lif->v = vE;
             }
             lif->tsp = lif->compute_spike_time(dt); 
@@ -191,16 +192,15 @@ unsigned int find1stAfter(double spikeTrain[], unsigned int n, double min) {
 }
 
 // Spike-spike correction
-void cpu_ssc(cpu_LIF* lif, double v[], double gE0[], double gI0[], double hE0[], double hI0[], double gE1[], double gI1[], double hE1[], double hI1[], double preMat[], unsigned int networkSize, ConductanceShape condE, ConductanceShape condI, int ngTypeE, int ngTypeI, double inputTime[], int nInput, double wSpikeTrain[], double spikeTrain[], unsigned int idTrain[], unsigned int nE, double dt) {
+void cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[], double hI0[], double gE1[], double gI1[], double hE1[], double hI1[], double fE[], double fI[], double preMat[], unsigned int networkSize, ConductanceShape condE, ConductanceShape condI, int ngTypeE, int ngTypeI, double inputTime[], int nInput, double wSpikeTrain[], double spikeTrain[], unsigned int idTrain[], unsigned int nE, double dt) {
     unsigned int n = 0;
-    for (i=0; i<networkSize; i++) {
+    for (unsigned int i=0; i<networkSize; i++) {
         if (lif[i]->tsp < dt) {
             wSpikeTrain[n] = lif[i]->tsp;
             idTrain[n] = i;
             n++;
         }
     }
-    double ddt = dt; // varying dt
     double *g_end, *h_end;
     if (ngTypeE > ngTypeI) {
         g_end = new double[ngTypeE];
@@ -217,7 +217,7 @@ void cpu_ssc(cpu_LIF* lif, double v[], double gE0[], double gI0[], double hE0[],
         ConductanceShape *cond;
         int ngType;
         double *g, *h;
-        double tRef;
+        double gL, tRef;
         if (i < nE) {
             cond = &condE;
             ngType = ngTypeE;
@@ -242,12 +242,12 @@ void cpu_ssc(cpu_LIF* lif, double v[], double gE0[], double gI0[], double hE0[],
             lif[i]->correctMe = false;
         }
         v[i] = lif[i]->v;
-        // rerun rk2 to fill-up the wSpikeTrain
-        ii = 0;
-        pdt = lif[i]->tsp;
-        ddt = dt - pdt;
+        // restep to fill-up the wSpikeTrain
+        unsigned int ii = 0;
+        double pdt = lif[i]->tsp;
+        double ddt = dt - pdt;
         for (int ig = 0; ig<ngType; ig++) {
-            cond->compute_single_input_conductance(&(g_end[ig]), &(h_end[ig]), 1.0f, ddt, ig)
+            cond->compute_single_input_conductance(&(g_end[ig]), &(h_end[ig]), 1.0f, ddt, ig);
         }
         for (int j=0; j<networkSize; j++) {
             // new cortical input
@@ -285,6 +285,9 @@ void cpu_ssc(cpu_LIF* lif, double v[], double gE0[], double gI0[], double hE0[],
                     evolve_g(condI, &(gI0[gid]), &(hI0[gid]), &(fI[gid]), &(inputTime[j*nInput]), 0, pdt, ig);
                     gI_t += gI0[gid];
                 }
+                lif[j]->set_p1(gE_t, gI_t, gL);
+                assert(pdt == cpu_step(lif[j], pdt, tRef, j, gE_t));
+                lif[j]->v0 = lif[j]->v;
                 lif[j]->set_p0(gE_t, gI_t, gL);
                 
                 gE_t = 0.0f;
@@ -321,9 +324,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
     unsigned int ngTypeE = 2;
     unsigned int ngTypeI = 1;
     double gL, tRef;
-    double *v1 = new double[networkSize];
-    double *v2 = new double[networkSize];
-    double *v_current, *v_old;
+    double *v = new double[networkSize];
     double *gE0 = new double[networkSize*ngTypeE];
     double *gI0 = new double[networkSize*ngTypeI];
     double *gE1 = new double[networkSize*ngTypeE];
@@ -383,9 +384,8 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
     cpu_LIF **lif = new cpu_LIF*[networkSize];
 	high_resolution_clock::time_point iStart = timeNow();
     for (unsigned int i=0; i<networkSize; i++) {
-        v1[i] = 0.0f;
-        v2[i] = 0.0f;
-        lif[i] = new cpu_LIF(v1[i]);
+        v[i] = 0.0f;
+        lif[i] = new cpu_LIF(v[i]);
         lTR[i] = 0.0f;
         for (int j=0; j<networkSize; j++) {
             preMat[i*networkSize+j] = s;
@@ -412,7 +412,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
     }
     //printf("cpu initialized\n");
     high_resolution_clock::time_point start = timeNow();
-    v_file.write((char*)v1, networkSize * sizeof(double));
+    v_file.write((char*)v, networkSize * sizeof(double));
     gE_file.write((char*)gE0, networkSize * ngTypeE * sizeof(double));
     gI_file.write((char*)gI0, networkSize * ngTypeI * sizeof(double));
 	/* === RAND ===
@@ -421,11 +421,10 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
     int outputEvents = 0;
     bool InhFired = false;
     double vTime = 0.0f;
+    double sTime = 0.0f;
     double gTime = 0.0f;
     for (unsigned int istep=0; istep<nstep; istep++) {
         if (istep%2 == 0) {
-            v_current = v2;
-            v_old = v1;
             gE_current = gE1;
             hE_current = hE1;
             gE_old = gE0;
@@ -435,8 +434,6 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
             gI_old = gI0;
             hI_old = hI0;
         } else {
-            v_current = v1;
-            v_old = v2;
             gE_current = gE0;
             hE_current = hE0;
             gE_old = gE1;
@@ -512,17 +509,16 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
             spikeTrain[i] = cpu_dab(lif[i], dt, tRef, /*the last 2 args are for deugging*/ i, gE_t);
             if (spikeTrain[i] < dt) spiked = true;
             if (lif[i]->v < vI) {
-                printf("#%i inh conductance is too high %f, v = %f\n", i, gI_t, lif->v);
+                printf("#%i inh conductance is too high %f, v = %f\n", i, gI_t, lif[i]->v);
                 lif[i]->v = vI;
             }   
-            v_current[i] = lif[i]->v;
         }
         vTime += static_cast<double>(duration_cast<microseconds>(timeNow()-vStart).count());
             // spike-spike correction
         if (spiked) {
             high_resolution_clock::time_point sStart = timeNow();
             #ifdef TEST_SCC
-                cpu_ssc(lif, v_current, gE_old, gI_old, hE_old, hI_old, gE_current, gI_current, preMat, networkSize, condE, condI, ngTypeE, ngTypeI, inputTime, nInput, wSpikeTrain, spikeTrain, idTrain, nE, dt); 
+                cpu_ssc(lif, v, gE_old, gI_old, hE_old, hI_old, gE_current, gI_current, fE, fI, preMat, networkSize, condE, condI, ngTypeE, ngTypeI, inputTime, nInput, wSpikeTrain, spikeTrain, idTrain, nE, dt); 
             #endif
             sTime += static_cast<double>(duration_cast<microseconds>(timeNow()-vStart).count());
         }
@@ -579,7 +575,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
         }
         gTime += static_cast<double>(duration_cast<microseconds>(timeNow()-gStart).count());
         */
-        v_file.write((char*)v_current, networkSize * sizeof(double));
+        v_file.write((char*)v, networkSize * sizeof(double));
         spike_file.write((char*)spikeTrain, networkSize * sizeof(int));
         gE_file.write((char*)gE_current, networkSize * ngTypeE * sizeof(double));
         gI_file.write((char*)gI_current, networkSize * ngTypeI * sizeof(double));
@@ -604,8 +600,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
     if (spike_file.is_open()) spike_file.close();
     if (gE_file.is_open()) gE_file.close();
     if (gI_file.is_open()) gI_file.close();
-    delete []v1;
-    delete []v2;
+    delete []v;
     delete []gE0;
     delete []gI0;
     delete []gE1;
