@@ -149,12 +149,12 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaEventRecord(iStart, 0));
     /* Allocate space for results on host */
     //pinned memory
-    CUDA_CALL(cudaMallocHost((void**)&v,          networkSize * sizeof(double) * batchStep * alt));
-    CUDA_CALL(cudaMallocHost((void**)&gE,         networkSize * ngTypeE * sizeof(double) * batchStep * alt));
-    CUDA_CALL(cudaMallocHost((void**)&gI,         networkSize * ngTypeI *sizeof(double) * batchStep * alt));
-    CUDA_CALL(cudaMallocHost((void**)&spikeTrain, networkSize * sizeof(double) * batchStep * alt));
-    CUDA_CALL(cudaMallocHost((void**)&eventRate,  networkSize * sizeof(int) * batchStep * alt));
-    CUDA_CALL(cudaMallocHost((void **)&not_matched,   networkSize * sizeof(bool)));
+    CUDA_CALL(cudaMallocHost((void**)&v,           networkSize * sizeof(double) * batchStep * alt));
+    CUDA_CALL(cudaMallocHost((void**)&gE,          networkSize * ngTypeE * sizeof(double) * batchStep * alt));
+    CUDA_CALL(cudaMallocHost((void**)&gI,          networkSize * ngTypeI *sizeof(double) * batchStep * alt));
+    CUDA_CALL(cudaMallocHost((void**)&spikeTrain,  networkSize * sizeof(double) * batchStep * alt));
+    CUDA_CALL(cudaMallocHost((void**)&eventRate,   networkSize * sizeof(int) * batchStep * alt));
+    CUDA_CALL(cudaMallocHost((void**)&not_matched, networkSize * sizeof(bool)));
     preMat = (double *)calloc(networkSize, sizeof(double));
 
     /* Allocate space for results on device */
@@ -455,13 +455,15 @@ int main(int argc, char *argv[])
             while (no_match || imatch < networkSize) {
                 correct_spike <<<b1, b2, 0, s1>>> (d_not_matched, d_spikeTrain, d_v_hlf, v_old, dv, d_a0, d_b0, d_a1, d_b1, v_current, d_preMat, tBack, ngTypeE, ngTypeI, condE, condI, dt, nE, networkSize);
                 CUDA_CHECK();
-                CUDA_CALL(cudaMemcpyAsync(&not_matched, d_not_matched, networkSize*sizeof(bool), cudaMemcpyDeviceToHost, s1));
-                CUDA_CALL(cudaEventRecord(spikeCorrected, s1));
+                CUDA_CALL(cudaMemcpy(&not_matched, d_not_matched, networkSize * sizeof(bool), cudaMemcpyDeviceToHost));
+                //CUDA_CALL(cudaEventRecord(spikeCorrected, s1));
                 no_match = false;
-                CUDA_CALL(cudaEventSynchronize(spikeCorrected));
+                //CUDA_CALL(cudaEventSynchronize(spikeCorrected)); 
+				CUDA_CALL(cudaDeviceSynchronize());
                 for (int iw = 0; iw < warpSize; iw ++) {
                     bool iw_no_match = false;
                     for (unsigned int j=0; j<networkSize/warpSize; j++) {
+						fprintf(stderr, "%i = %i*%i + %i\n", j*warpSize + iw, j, warpSize, iw);
                         if (not_matched[j*warpSize + iw]) {
                             iw_no_match = true;
                             break;
@@ -647,6 +649,7 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaFree(d_inputRate));
     CUDA_CALL(cudaFree(d_eventRate));
     CUDA_CALL(cudaFree(d_spikeTrain));
+	CUDA_CALL(cudaFree(d_not_matched));
     CUDA_CALL(cudaFree(tBack));
     printf("    Device memory freed\n");
     CUDA_CALL(cudaFreeHost(v));
@@ -654,6 +657,7 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaFreeHost(gI));
     CUDA_CALL(cudaFreeHost(eventRate));
     CUDA_CALL(cudaFreeHost(spikeTrain));
+	CUDA_CALL(cudaFreeHost(not_matched));
     free(preMat);
     printf("    Host memory freed\n");
     return EXIT_SUCCESS;
