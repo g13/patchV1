@@ -103,6 +103,11 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
 
 __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed);
 
+__global__ void randInit(double* __restrict__ preMat, 
+						 double* __restrict__ v, 
+						 curandStateMRG32k3a* __restrict__ state,
+double s, unsigned int networkSize, unsigned long long seed);
+
 template <typename T>
 __global__ void init(T *array, T value) {
     unsigned long id = blockIdx.x * blockDim.x + threadIdx.x;

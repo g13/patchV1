@@ -110,6 +110,19 @@ __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsign
     state[id] = localState;
 }
 
+__global__ void randInit(double* __restrict__ preMat, 
+						 double* __restrict__ v, 
+						 curandStateMRG32k3a* __restrict__ state,
+double s, unsigned int networkSize, unsigned long long seed) {
+    unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
+    curandStateMRG32k3a localState = state[id];
+    curand_init(seed+id, 0, 0, &localState);
+    v[id] = vL + curand_uniform_double(&localState) * (vT-vL);
+    for (unsigned int i=0; i<networkSize; i++) {
+        preMat[i*networkSize + id] = curand_uniform_double(&localState) * s;
+    }
+}
+
 __device__ int set_input_time(double inputTime[],
                               double dt,
                               double rate,

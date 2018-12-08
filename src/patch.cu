@@ -5,7 +5,7 @@ int main(int argc, char *argv[])
     std::ofstream v_file, spike_file, gE_file, gI_file;
     float time;
     //cudaEventCreateWithFlags(&gReady, cudaEventDisableTiming);
-    curandStateMRG32k3a *state;
+    curandStateMRG32k3a *state, *randState;
     unsigned long long seed;
     //seed = 183765712;
     seed = std::time(0);
@@ -16,13 +16,15 @@ int main(int argc, char *argv[])
     b2 = 128;
     bool printStep = false;
     bool moreSharedMemThanBlocks = true;
-    double flatRate = 32.0f; // kHz
+    double flatRate = 80.0f; // kHz
     double t = 2.5f;
+	unsigned int mt = 1;
     unsigned int nstep = 200;
-    double ffsE = 3e-3;
-    double s0 = 1e-2*ffsE;
-    double ffsI = 5e-2;
+    double ffsE = 1e-3;
+    double s0 = 0e-2*ffsE;
+    double ffsI = 5e-2; // no effect here for 1st layer ffw inputs
     int iFlatRate = -1;
+	char tmp[101];
     /* Overwrite parameters */
     for (int i = 0; i<argc; i++) {
         printf(argv[i]);
@@ -54,9 +56,21 @@ int main(int argc, char *argv[])
 		sscanf(argv[argc-4], "%d", &b1);
 		sscanf(argv[argc-5], "%d", &nstep);
 	}
+	if (argc == 8) {
+		sscanf(argv[argc-1], "%100s", tmp);
+		sscanf(argv[argc-2], "%d", &mt);
+		sscanf(argv[argc-3], "%d", &iFlatRate);
+		sscanf(argv[argc-4], "%u", &seed);
+		sscanf(argv[argc-5], "%d", &b2);
+		sscanf(argv[argc-6], "%d", &b1);
+		sscanf(argv[argc-7], "%d", &nstep);
+	}
+	std::string theme = tmp;
+	std::cout << "theme = " << theme << "\n";
     printf("%i x %i, %i steps, seed = %u\n", b1, b2, nstep, seed);
 	unsigned int networkSize = b1*b2;
 	double s = s0/(networkSize);
+	assert(s == 0);
     if (networkSize/10.0 != float(networkSize/10)) {
         printf("To have higher computation occupancy make a factor of 10 in networkSize\n");
     }
@@ -70,6 +84,7 @@ int main(int argc, char *argv[])
     int b2I = b2*(1-eiRatio);
     unsigned int nE = networkSize*eiRatio;
     unsigned int nI = networkSize-nE;
+	t = mt * t;
     double dt = t/float(nstep); // ms
     if (iFlatRate < 0) {
         flatRate = flatRate*1000.0; // Hz
@@ -92,19 +107,11 @@ int main(int argc, char *argv[])
     printf("nE = %i, nI = %i\n", nE, networkSize-nE);
     printf("t = %f x %i = %f\n", dt, nstep, t);
 	double fInput = flatRate / 1000.0f * dt;
-	int _nInput = round(fInput);
+	int _nInput = ceil(fInput);
     int nskip = 1;
-    if (fInput < 1.0) {
-        assert(_nInput == 1);
-        nskip = ceil(_nInput/fInput);
+	if (fInput < 1.0) {
+        nskip = round(_nInput/fInput);
     }
-	#ifdef TEST_WITH_MANUAL_FFINPUT
-		printf("for testing purpose, feedforward input is set to %i per %fms\n", _nInput, dt*nskip);
-        printf("realized input rate = %f kHz\n", _nInput/(dt*nskip));
-		printf("for manual testing, please change the inputTime manually in source and recompile\n");
-        cpu_version(networkSize, _nInput, nskip, nstep, dt, nE, s, ffsE, ffsI);
-    #endif
-
 	if (networkSize / float(warpSize) != float(networkSize / warpSize)) {
 		printf("please make networkSize multiples of %i to run on GPU\n", warpSize);
 		return EXIT_FAILURE;
@@ -133,6 +140,32 @@ int main(int argc, char *argv[])
 		printf(" double precision not supported\n");
 		return EXIT_FAILURE;
 	}
+    /* inits that used by both cpu and gpu */
+    CUDA_CALL(cudaMalloc((void **)&randState, networkSize * sizeof(curandStateMRG32k3a)));
+
+    preMat = new double[networkSize * networkSize];
+    CUDA_CALL(cudaMalloc((void **)&d_preMat, networkSize * networkSize * sizeof(double)));
+
+    CUDA_CALL(cudaMallocHost((void**)&v, networkSize * sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&d_v1,           networkSize * sizeof(double)));
+
+    randInit<<<init_b1,init_b2>>>(d_preMat, d_v1, randState, s, networkSize, seed);
+    CUDA_CHECK();
+    CUDA_CALL(cudaMemcpy(preMat, d_preMat, networkSize*networkSize*sizeof(double),cudaMemcpyDeviceToHost));
+	double sum = 0;
+	for (unsigned int i = 0; i < networkSize*networkSize; i++) {
+		sum += preMat[i];
+	}
+	printf("sum of preMat = %f\n", sum);
+    CUDA_CALL(cudaMemcpy(v, d_v1, networkSize*sizeof(double),cudaMemcpyDeviceToHost));
+    printf("storage size of preMat %.1fMb\n", float(networkSize*networkSize*sizeof(double))/1024.0/1024.0);
+
+	#ifdef TEST_WITH_MANUAL_FFINPUT
+		printf("for testing purpose, feedforward input is set to %i per %fms\n", _nInput, dt*nskip);
+        printf("realized input rate = %f kHz\n", _nInput/(dt*nskip));
+		printf("for manual testing, please change the inputTime manually in source and recompile\n");
+        cpu_version(networkSize, _nInput, nskip, nstep, dt, nE, preMat, v, ffsE, ffsI, theme);
+    #endif
 
     unsigned int nbatch, batchEnd, batchStep;
     unsigned int ngType;
@@ -162,16 +195,13 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaEventRecord(iStart, 0));
     /* Allocate space for results on host */
     //pinned memory
-    CUDA_CALL(cudaMallocHost((void**)&v,           networkSize * sizeof(double) * batchStep * alt));
     CUDA_CALL(cudaMallocHost((void**)&gE,          networkSize * ngTypeE * sizeof(double) * batchStep * alt));
     CUDA_CALL(cudaMallocHost((void**)&gI,          networkSize * ngTypeI *sizeof(double) * batchStep * alt));
     CUDA_CALL(cudaMallocHost((void**)&spikeTrain,  networkSize * sizeof(double) * batchStep * alt));
     CUDA_CALL(cudaMallocHost((void**)&eventRate,   networkSize * sizeof(int) * batchStep * alt));
     CUDA_CALL(cudaMallocHost((void**)&not_matched, networkSize * sizeof(bool)));
-    preMat = (double *)calloc(networkSize, sizeof(double));
 
     /* Allocate space for results on device */
-    CUDA_CALL(cudaMalloc((void **)&d_v1,           networkSize * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&d_v2,           networkSize * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&dv,             networkSize * sizeof(double)));
 	CUDA_CALL(cudaMalloc((void **)&d_v_hlf,        networkSize * sizeof(double)));
@@ -191,7 +221,6 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaMalloc((void **)&tBack,          networkSize * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&gactVec,        networkSize * ngType * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&hactVec,        networkSize * ngType * sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&d_preMat,       networkSize * networkSize * sizeof(double)));
     /* Allocate space for rng on device */
     CUDA_CALL(cudaMalloc((void **)&state,          networkSize * sizeof(curandStateMRG32k3a)));
     CUDA_CALL(cudaMalloc((void **)&leftTimeRate,   networkSize * sizeof(double)));
@@ -333,10 +362,8 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaStreamCreate(&i5));
     CUDA_CALL(cudaStreamCreate(&i6));
     CUDA_CALL(cudaStreamCreate(&i7));
-    if (presetInit) {
-    } else {
+    if (!presetInit) {
         for (unsigned int i=0; i<networkSize; i++) {
-            v[i] = 0.0f;
             gE[i] = 0.0f;
             gI[i] = 0.0f;
             spikeTrain[i] = dt;
@@ -345,8 +372,6 @@ int main(int argc, char *argv[])
         logRand_init<<<init_b1,init_b2,0,i1>>>(lastNegLogRand, state, seed);
         CUDA_CHECK();
         init<double><<<init_b1,init_b2,0,i2>>>(d_inputRate, flatRate/1000.0f);
-        CUDA_CHECK();
-        init<double><<<init_b1,init_b2,0,i3>>>(d_v1, 0.0f);
         CUDA_CHECK();
         init<double><<<init_b1,init_b2,0,i4>>>(d_v2, 0.0f);
         CUDA_CHECK();
@@ -371,9 +396,6 @@ int main(int argc, char *argv[])
         init<double><<<init_b1*ngType,init_b2,0,i7>>>(hactVec, 0.0f);
         CUDA_CHECK();
         //CUDA_CALL(cudaEventRecord(kStart, 0));
-        printf("storage size of preMat %.1fMb\n", float(networkSize*networkSize*sizeof(double))/1024.0/1024.0);
-        init<<<init_b1*init_b1*init_b2,init_b2,0,i1>>>(d_preMat, s);
-        CUDA_CHECK();
         //CUDA_CALL(cudaEventRecord(kStop, 0));
         //CUDA_CALL(cudaEventSynchronize(kStop));
         //CUDA_CALL(cudaEventElapsedTime(&time, kStart, kStop));
@@ -399,10 +421,10 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaStreamCreate(&s4));
     CUDA_CALL(cudaStreamCreate(&s5));
     unsigned int shared_mem = 0;
-    v_file.open("v_ictorious.bin", std::ios::out|std::ios::binary);
-    spike_file.open("s_uspicious.bin", std::ios::out|std::ios::binary);
-    gE_file.open("gE_nerous.bin", std::ios::out|std::ios::binary);
-    gI_file.open("gI_berish.bin", std::ios::out|std::ios::binary);
+    v_file.open("v_ictorious" + theme + ".bin", std::ios::out|std::ios::binary);
+    spike_file.open("s_uspicious" + theme + ".bin", std::ios::out|std::ios::binary);
+    gE_file.open("gE_nerous" + theme + ".bin", std::ios::out|std::ios::binary);
+    gI_file.open("gI_berish" + theme + ".bin", std::ios::out|std::ios::binary);
     CUDA_CALL(cudaEventRecord(start, 0));
     double events = 0.0f;
     int spikes = 0;
@@ -693,7 +715,7 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaFreeHost(eventRate));
     CUDA_CALL(cudaFreeHost(spikeTrain));
 	CUDA_CALL(cudaFreeHost(not_matched));
-    free(preMat);
+    delete []preMat;
     printf("    Host memory freed\n");
     return EXIT_SUCCESS;
 }

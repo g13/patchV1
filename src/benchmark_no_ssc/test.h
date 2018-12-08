@@ -1,4 +1,6 @@
 #include <fstream>
+#include <string>
+#include <iostream>
 #include <cassert>
 #include <ctime>
 #include <cmath>

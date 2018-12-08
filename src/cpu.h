@@ -204,11 +204,11 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
     }
     double *g_end, *h_end;
     if (ngTypeE > ngTypeI) {
-        g_end = new double[ngTypeE]();
-        h_end = new double[ngTypeE]();
+        g_end = new double[ngTypeE];
+        h_end = new double[ngTypeE];
     } else {
-        g_end = new double[ngTypeI]();
-        h_end = new double[ngTypeI]();
+        g_end = new double[ngTypeI];
+        h_end = new double[ngTypeI];
     }
     double pdt0 = 0.0f;
     int* iInput = new int[networkSize]();
@@ -258,6 +258,8 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
         //printf("spike correction dt forward dt = %f\n", dpdt);
         pdt0 = pdt;
         for (int ig = 0; ig<ngType; ig++) {
+            g_end[ig] = 0.0f;
+            h_end[ig] = 0.0f;
             cond->compute_single_input_conductance(&(g_end[ig]), &(h_end[ig]), 1.0f, ddt, ig);
         }
         // refill wSpiketrain
@@ -341,7 +343,7 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
     return corrected_n;
 }
 
-void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int nskip, unsigned int nstep, double dt, unsigned int nE, double s, /* === RAND === unsigned long long seed, */ double ffsE, double ffsI) {
+void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int nskip, unsigned int nstep, double dt, unsigned int nE, double preMat0[], double v0[], /* === RAND === unsigned long long seed, */ double ffsE, double ffsI, std::string theme) {
     unsigned int ngTypeE = 2;
     unsigned int ngTypeI = 1;
     double gL, tRef;
@@ -369,10 +371,10 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int ns
     double *wSpikeTrain = new double[networkSize];
     unsigned int *idTrain = new unsigned int[networkSize];
     std::ofstream v_file, spike_file, gE_file, gI_file;
-    v_file.open("v_CPU.bin", std::ios::out|std::ios::binary);
-    spike_file.open("s_CPU.bin", std::ios::out|std::ios::binary);
-    gE_file.open("gE_CPU.bin", std::ios::out|std::ios::binary);
-    gI_file.open("gI_CPU.bin", std::ios::out|std::ios::binary);
+    v_file.open("v_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+    spike_file.open("s_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+    gE_file.open("gE_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+    gI_file.open("gI_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
     double *inputTime = new double[networkSize*_nInput];
     /* === RAND === 
         curandGenerator_t *randGen = new curandGenerator_t[networkSize];
@@ -405,11 +407,11 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int ns
     cpu_LIF **lif = new cpu_LIF*[networkSize];
 	high_resolution_clock::time_point iStart = timeNow();
     for (unsigned int i=0; i<networkSize; i++) {
-        v[i] = 0.0f;
+        v[i] = v0[i];
         lif[i] = new cpu_LIF(v[i]);
         lTR[i] = 0.0f;
         for (int j=0; j<networkSize; j++) {
-            preMat[i*networkSize+j] = s;
+            preMat[i*networkSize+j] = preMat0[i*networkSize+j];
         }
     }
 	double iTime = static_cast<double>(duration_cast<microseconds>(timeNow() - iStart).count());

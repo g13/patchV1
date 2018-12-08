@@ -22,6 +22,7 @@ int main(int argc, char *argv[])
     double ffsE = 3e-3;
     double s0 = 1e-2*ffsE;
     double ffsI = 5e-2;
+	char tmp[101];
     /* Overwrite parameters */
     for (int i = 0; i<argc; i++) {
         printf(argv[i]);
@@ -47,12 +48,23 @@ int main(int argc, char *argv[])
         sscanf(argv[argc-4],"%d",&nstep);
     }
 	if (argc == 6) {
-		sscanf(argv[argc - 1], "%d", &ms);
-		sscanf(argv[argc - 2], "%u", &seed);
-		sscanf(argv[argc - 3], "%d", &b2);
-		sscanf(argv[argc - 4], "%d", &b1);
-		sscanf(argv[argc - 5], "%d", &nstep);
+		sscanf(argv[argc-1], "%d", &iFlatRate);
+		sscanf(argv[argc-2], "%u", &seed);
+		sscanf(argv[argc-3], "%d", &b2);
+		sscanf(argv[argc-4], "%d", &b1);
+		sscanf(argv[argc-5], "%d", &nstep);
 	}
+	if (argc == 7) {
+		sscanf(argv[argc-1], "%100s", tmp);
+		sscanf(argv[argc-2], "%d", &iFlatRate);
+		sscanf(argv[argc-3], "%u", &seed);
+		sscanf(argv[argc-4], "%d", &b2);
+		sscanf(argv[argc-5], "%d", &b1);
+		sscanf(argv[argc-6], "%d", &nstep);
+	}
+	std::string theme = tmp;
+	std::cout << "theme = " << theme << "\n";
+    printf("theme = %s", theme);
     printf("%i x %i, %i steps, seed = %u\n", b1, b2, nstep, seed);
 	unsigned int networkSize = b1*b2;
 	double s = s0/ (networkSize);
@@ -71,17 +83,16 @@ int main(int argc, char *argv[])
     printf("nE = %i, nI = %i\n", nE, networkSize-nE);
     printf("t = %f x %i = %f\n", dt, nstep, t);
 	double fInput = flatRate / 1000.0f * dt;
-	int _nInput = ceil(flatRate / 1000.0f * dt);
+	int _nInput = ceil(fInput);
     int nskip = 1;
-    if (fInput < 1.0) {
-        assert(_nInput == 1);
-        nskip = ceil(_nInput/fInput);
+	if (fInput < 1.0) {
+        nskip = round(_nInput/fInput);
     }
 	#ifdef TEST_WITH_MANUAL_FFINPUT
 		printf("for testing purpose, feedforward input is set to %i per %fms\n", _nInput, nskip*dt);
         printf("realized input rate = %fkHz\n", float(_nInput)/(dt*nskip));
 		printf("for manual testing, please change the inputTime manually in source and recompile\n");
-		cpu_version(networkSize, _nInput, nskip, nstep, dt, nE, s, ffsE, ffsI);
+		cpu_version(networkSize, _nInput, nskip, nstep, dt, nE, s, ffsE, ffsI, theme);
 	#endif
 	if (networkSize / float(warpSize) != float(networkSize / warpSize)) {
 		printf("please make networkSize multiples of %i to run the gpu test.\n", warpSize);
@@ -362,10 +373,10 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaStreamCreate(&s2));
     CUDA_CALL(cudaStreamCreate(&s3));
     unsigned int shared_mem = 0;
-    v_file.open("v_ictorious.bin", std::ios::out|std::ios::binary);
-    spike_file.open("s_uspicious.bin", std::ios::out|std::ios::binary);
-    gE_file.open("gE_nerous.bin", std::ios::out|std::ios::binary);
-    gI_file.open("gI_berish.bin", std::ios::out|std::ios::binary);
+    v_file.open("v_ictorious" + theme + ".bin", std::ios::out|std::ios::binary);
+    spike_file.open("s_uspicious" + theme + ".bin", std::ios::out|std::ios::binary);
+    gE_file.open("gE_nerous" + theme + ".bin", std::ios::out|std::ios::binary);
+    gI_file.open("gI_berish" + theme + ".bin", std::ios::out|std::ios::binary);
     CUDA_CALL(cudaEventRecord(start, 0));
     double events = 0.0f;
     int spikes = 0;

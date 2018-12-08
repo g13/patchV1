@@ -2,6 +2,7 @@
 #include <fstream>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string>
 #include "LIF_inlines.h"
 #include "DIRECTIVE.h"
 #include "CONST.h"
@@ -142,7 +143,7 @@ void cpu_LIF::reset_v() {
 }
 
 
-void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int nskip, unsigned int nstep, double dt, unsigned int nE, double s, /* === RAND === unsigned long long seed, */ double ffsE, double ffsI) {
+void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int nskip, unsigned int nstep, double dt, unsigned int nE, double s, /* === RAND === unsigned long long seed, */ double ffsE, double ffsI, std::string theme) {
     unsigned int ngTypeE = 2;
     unsigned int ngTypeI = 1;
     double gL, tRef;
@@ -156,10 +157,10 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int ns
     double *spikeTrain = new double[networkSize];
     double *preMat = new double[networkSize*networkSize];
     std::ofstream v_file, spike_file, gE_file, gI_file;
-    v_file.open("v_CPU.bin", std::ios::out|std::ios::binary);
-    spike_file.open("s_CPU.bin", std::ios::out|std::ios::binary);
-    gE_file.open("gE_CPU.bin", std::ios::out|std::ios::binary);
-    gI_file.open("gI_CPU.bin", std::ios::out|std::ios::binary);
+    v_file.open("v_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+    spike_file.open("s_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+    gE_file.open("gE_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+    gI_file.open("gI_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
     double *inputTime = new double[networkSize*_nInput];
     /* === RAND === 
         curandGenerator_t *randGen = new curandGenerator_t[networkSize];
