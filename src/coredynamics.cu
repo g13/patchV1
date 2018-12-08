@@ -5,8 +5,8 @@ __global__ void recal_G(double* __restrict__ g,
                         double* __restrict__ preMat,
                         double* __restrict__ gactVec,
                         double* __restrict__ hactVec,
-                        double* __restrict__ g_b1y,
-                        double* __restrict__ h_b1y,
+                        double* __restrict__ g_b1x,
+                        double* __restrict__ h_b1x,
                         unsigned int n, unsigned int offset, unsigned int ngType, unsigned int ns, int m) 
 {
     // 2D blockGrid
@@ -17,15 +17,16 @@ __global__ void recal_G(double* __restrict__ g,
     double *gaV = actVec;
     double *haV = &(actVec[ngType*ns]);
     unsigned int id = blockDim.x*blockIdx.y + threadIdx.x;
+    unsigned int ss = ns/m;
     #pragma unroll
     for (int ig=0; ig<ngType; ig++) {
         #pragma unroll
         for (int i=0; i<m; i++) {
             // av = double[ngType,#(ns),ns]
             // actVec = double[ngType,n]
-            if (threadIdx.x < ns) {
-                unsigned int sid = ig*ns + (i*blockDim.x + threadIdx.x);
-                unsigned int gid = (ig*n + offset + ns*blockIdx.x) + (i*blockDim.x + threadIdx.x);
+            if (threadIdx.x < ss) {
+                unsigned int sid = ig*ns + (i*ss + threadIdx.x);
+                unsigned int gid = (ig*n + offset + ns*blockIdx.x) + (i*ss + threadIdx.x);
                 gaV[sid] = gactVec[gid];
                 haV[sid] = hactVec[gid];
             }
@@ -46,51 +47,55 @@ __global__ void recal_G(double* __restrict__ g,
             atomicAdd(&(g[gid]), g_t);
             atomicAdd(&(h[gid]), h_t);
         } else {
-            // b1y = double[ngType, m, n]
-            unsigned int b1yid = ig*n*gridDim.x + n*blockIdx.x + id;
-            g_b1y[b1yid] = g_t;
-            h_b1y[b1yid] = h_t;
+            // b1x = double[ngType, n/ns(gridDim.x), n]
+            unsigned int b1xid = ig*n*gridDim.x + blockIdx.x*n + id;
+            g_b1x[b1xid] = g_t;
+            h_b1x[b1xid] = h_t;
         }
     }
 }
 
 __global__ void reduce_G(double* __restrict__ g,
                          double* __restrict__ h,
-                         double* __restrict__ g_b1y, 
-                         double* __restrict__ h_b1y,
+                         double* __restrict__ g_b1x, 
+                         double* __restrict__ h_b1x,
                          unsigned int ngType, int n) 
 { 
+    // b1x = double[ngType, n/ns(gridDim.x), n]
     // n x #(ns)
     extern __shared__ double blk[];
     double* g_blk = blk;
     double* h_blk = &(blk[blockDim.x]);
     for (int ig=0; ig<ngType; ig++) {
-        unsigned int gid = ig*gridDim.x*blockDim.x + blockIdx.x*blockDim.x + threadIdx.x;
+        unsigned int gid = ig*blockDim.x*gridDim.x + threadIdx.x*gridDim.x + blockIdx.x;
         if (gid < n) {
-            g_blk[threadIdx.x] = g_b1y[gid];
-            h_blk[threadIdx.x] = g_b1y[gid];
+            // can do coalesce read optimization here (transpose in shared mem)
+            g_blk[threadIdx.x] = g_b1x[gid];
+            h_blk[threadIdx.x] = g_b1x[gid];
         } else {
             g_blk[threadIdx.x] = 0.0f;
             h_blk[threadIdx.x] = 0.0f;
         }
+        __syncthreads();
         for (int i=blockDim.x/2; i>=32; i>>=1) {
-             if (threadIdx.x < i) {
-                 g_blk[threadIdx.x] += g_blk[threadIdx.x + i];
-                 h_blk[threadIdx.x] += h_blk[threadIdx.x + i];
-             }
-             __syncthreads();
-         }
-
-        double g_warp = g_blk[threadIdx.x];
-        double h_warp = h_blk[threadIdx.x];
-        for (int offset = 16; offset > 0; offset /= 2) {
-            g_warp += __shfl_down_sync(FULL_MASK, g_warp, offset);  
-            h_warp += __shfl_down_sync(FULL_MASK, h_warp, offset);  
+            if (threadIdx.x < i) {
+                g_blk[threadIdx.x] += g_blk[threadIdx.x + i];
+                h_blk[threadIdx.x] += h_blk[threadIdx.x + i];
+            }
+            __syncthreads();
         }
-        if (threadIdx.x == 0) {
-            unsigned int id = ig*gridDim.x + blockIdx.x;
-            g[id] = g_warp;
-            h[id] = g_warp;
+        if (threadIdx.x < 32) {
+            double g_warp = g_blk[threadIdx.x];
+            double h_warp = h_blk[threadIdx.x];
+            for (int offset = 16; offset > 0; offset /= 2) {
+                g_warp += __shfl_down_sync(FULL_MASK, g_warp, offset);  
+                h_warp += __shfl_down_sync(FULL_MASK, h_warp, offset);  
+            }
+            if (threadIdx.x == 0) {
+                unsigned int id = ig*gridDim.x + blockIdx.x;
+                g[id] += g_warp;
+                h[id] += g_warp;
+            }
         }
     }
 }
@@ -149,7 +154,7 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
     }
 }
 
-__device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, double gE) {
+__device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, double gE, double gI) {
     lif->tsp = dt;
     // not in refractory period
     if (lif->tBack < dt) {
@@ -158,13 +163,12 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
             lif->compute_pseudo_v0(dt);
             lif->tBack = -1.0f;
         }
-        __syncthreads();
         lif->runge_kutta_2(dt);
         while (lif->v > vT) {
             // crossed threshold
 
             if (lif->v > vE) {
-                printf("#%i exc conductance is too high %f\n", id, gE);
+                printf("#%i something is off gE = %f, gI = %f, v = %f\n", id, gE, gI, lif->v);
                 lif->v = vE;
             }
             
@@ -191,23 +195,21 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
     return lif->tsp;
 }
 
-__device__  double dab(Func_RK2* lif, double dt, double tRef, unsigned int id, double gE) {
+__device__  double dab(Func_RK2* lif, double dt, double tRef, unsigned int id, double gE, double gI) {
     lif->tsp = dt;
     // not in refractory period
     if (lif->tBack < dt) {
-        lif->correctMe = true;
         // return from refractory period
         if (lif->tBack > 0.0f) {
             lif->compute_pseudo_v0(dt);
             lif->tBack = -1.0f;
         }
-        __syncthreads();
         lif->runge_kutta_2(dt);
         if (lif->v > vT) {
             // crossed threshold
 
             if (lif->v > vE) {
-                printf("#%i exc conductance is too high %f, v = %f\n", id, gE, lif->v);
+				printf("#%i something is off gE = %f, gI = %f, v = %f\n", id, gE, gI, lif->v);
                 lif->v = vE;
             }
             lif->tsp = lif->compute_spike_time(dt); 
@@ -216,7 +218,6 @@ __device__  double dab(Func_RK2* lif, double dt, double tRef, unsigned int id, d
     } else {
         // during refractory period
         lif->reset_v(); 
-        lif->correctMe = false;
     }
     return lif->tsp;
 }
@@ -237,7 +238,8 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
 {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     bool local_not_matched;
-    if (tBack[id] > dt) {
+    double v_new = vnew[id];
+    if (tBack[id] < dt) {
         double tsp = spikeTrain[id];
         double tRef;
         if (id < poolSizeE) {
@@ -267,7 +269,6 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
                     deltaV += g * dvE;
                 }
             }
-            __syncthreads();
         }
         for (unsigned int i = poolSizeE; i < poolSize; i++) {
             double tsp_i = spikeTrain[i]; // possible share_mem optimization
@@ -281,7 +282,6 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
                     deltaV += g * dvI;
                 }
             }
-            __syncthreads();
         }
         double v0i = v0[id];
         double old_tsp = tsp;
@@ -292,14 +292,14 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
                 tsp = minTsp_i;
             }
             if (tsp + tRef > dt) {
-                vnew[id] = vL; 
+                v_new = vL; 
             } else {
                 // let's hope this branch is never used. 
-                vnew[id] = compute_v1(dt, a0[id], b0[id], a1[id] + dg, b1[id] + dgV, vL, tsp + tRef);
+                v_new = compute_v1(dt, a0[id], b0[id], a1[id] + dg, b1[id] + dgV, vL, tsp + tRef);
             }
         } else {
             tsp = dt;
-            vnew[id] = v0i + deltaV;
+            v_new = v0i + deltaV;
         }
         spikeTrain[id] = tsp;
         if (tsp == dt && old_tsp < dt || tsp < dt && old_tsp == dt) {
@@ -308,10 +308,15 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
             local_not_matched = false;
         }
     } else {
+        v_new = vL;
         local_not_matched = false;    
     }
+	//if (id == 0 || id == poolSizeE) {
+	//	printf("#%i: v1 = %f\n", id, v_new);
+	//}
     __syncthreads();
     not_matched[id] = local_not_matched;
+    vnew[id] = v_new;
 }
 
 __global__ void compute_dV(double* __restrict__ v0,
@@ -432,14 +437,19 @@ __global__ void compute_dV(double* __restrict__ v0,
     a1[id] = lif.a1;
     b1[id] = lif.b1;
     // rk2 step
-    spikeTrain[id] = dab(&lif, dt, tRef, /*the last 2 args are for deugging*/ id, gE_t);
+    spikeTrain[id] = dab(&lif, dt, tRef, /*the last 2 args are for deugging*/ id, gE_t, gI_t);
     __syncthreads();
     v_hlf[id] = lif.v_hlf;
-	tBack[id] = lif.tBack; // TBD after spike correction, comment this line if SSC is naive.
+	//tBack[id] = lif.tBack; // TBD after spike correction, comment this line if SSC is naive.
     if (lif.v < vI) {
-        printf("#%i inh conductance is too high %f, v = %f\n", id, gI_t, lif.v);
+		printf("#%i something is off gE = %f, gI = %f, v = %f\n", id, gE_t, gI_t, lif.v);
         lif.v = vI;
     }   
+	//if (id == 0 || id == nE) {
+	//	printf("#%i: v old = %f, v est = %f\n", id, lif.v0, lif.v);
+	//	printf("#%i: tsp = %f, tb = %f\n", id, lif.tsp, tBack[id]);
+    //    printf("#%i: gE = %f, gI = %f\n", id, gE_t, gI_t);
+	//}
 	dv[id] = lif.v - lif.v0; // TBD after spike correction to reset etc.
 }
 __global__ void prepare_cond(double* __restrict__ tBack,
@@ -451,15 +461,14 @@ __global__ void prepare_cond(double* __restrict__ tBack,
     unsigned int id = offset + blockIdx.x * blockDim.x + threadIdx.x;
     //setup acting vectors
     double g_end, h_end;
-    double tsp = spikeTrain[offset + id];
+    double tsp = spikeTrain[id];
+    double tB;
     if (tsp<dt) {
-        double tB;
         if (offset == 0) {
             tB = tsp + tRef_E - dt;
         } else {
             tB = tsp + tRef_I - dt;
         }
-        tBack[id] = tB;
         #pragma unroll
         for (int ig=0; ig<ngType; ig++) {
             g_end = 0.0f;
@@ -470,10 +479,11 @@ __global__ void prepare_cond(double* __restrict__ tBack,
             hactVec[gid] = h_end;
         }
     } else {
-        if (tBack[id] > dt) {
-            tBack[id] -= dt;
+        tB = tBack[id];
+        if (tB >= dt) {
+            tB -= dt;
         } else {
-            tBack[id] = -1.0f;
+            tB = -1.0f;
         }
         for (int ig=0; ig<ngType; ig++) {
             unsigned int gid = networkSize*ig + id;
@@ -481,6 +491,11 @@ __global__ void prepare_cond(double* __restrict__ tBack,
             hactVec[gid] = 0.0f;
         }
     }
+    __syncthreads();
+	//if (id == 0 || id == offset) {
+	//	printf("#%i: tsp = %f, tB = %f -> tB = %f\n", id, tsp, tBack[id], tB);
+	//}
+    tBack[id] = tB;
 }
 
 __device__ void Func_RK2::runge_kutta_2(double dt) {

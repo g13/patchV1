@@ -5,8 +5,8 @@ __global__ void recal_G(double* __restrict__ g,
                         double* __restrict__ preMat,
                         double* __restrict__ gactVec,
                         double* __restrict__ hactVec,
-                        double* __restrict__ g_b1y,
-                        double* __restrict__ h_b1y,
+                        double* __restrict__ g_b1x,
+                        double* __restrict__ h_b1x,
                         unsigned int n, unsigned int offset, unsigned int ngType, unsigned int ns, int m) 
 {
     // 2D blockGrid
@@ -17,14 +17,15 @@ __global__ void recal_G(double* __restrict__ g,
     double *gaV = actVec;
     double *haV = &(actVec[ngType*ns]);
     unsigned int id = blockDim.x*blockIdx.y + threadIdx.x;
+    unsigned int ss = ns/m;
     #pragma unroll
     for (int ig=0; ig<ngType; ig++) {
         #pragma unroll
         for (int i=0; i<m; i++) {
             // av = double[ngType,#(ns),ns]
             // actVec = double[ngType,n]
-            if (threadIdx.x < ns) {
-                unsigned int sid = ig*ns + (i*blockDim.x + threadIdx.x);
+            if (threadIdx.x < ss) {
+                unsigned int sid = ig*ns + (i*ss + threadIdx.x);
                 unsigned int gid = (ig*n + offset + ns*blockIdx.x) + (i*blockDim.x + threadIdx.x);
                 gaV[sid] = gactVec[gid];
                 haV[sid] = hactVec[gid];
@@ -46,18 +47,18 @@ __global__ void recal_G(double* __restrict__ g,
             atomicAdd(&(g[gid]), g_t);
             atomicAdd(&(h[gid]), h_t);
         } else {
-            // b1y = double[ngType, m, n]
-            unsigned int b1yid = ig*n*gridDim.x + n*blockIdx.x + id;
-            g_b1y[b1yid] = g_t;
-            h_b1y[b1yid] = h_t;
+            // b1x = double[ngType, n/ns(gridDim.x), n]
+            unsigned int b1xid = ig*n*gridDim.x + blockIdx.x*n + id;
+            g_b1x[b1xid] = g_t;
+            h_b1x[b1xid] = h_t;
         }
     }
 }
 
 __global__ void reduce_G(double* __restrict__ g,
                          double* __restrict__ h,
-                         double* __restrict__ g_b1y, 
-                         double* __restrict__ h_b1y,
+                         double* __restrict__ g_b1x, 
+                         double* __restrict__ h_b1x,
                          unsigned int ngType, int n) 
 { 
     // n x #(ns)
@@ -65,32 +66,35 @@ __global__ void reduce_G(double* __restrict__ g,
     double* g_blk = blk;
     double* h_blk = &(blk[blockDim.x]);
     for (int ig=0; ig<ngType; ig++) {
-        unsigned int gid = ig*gridDim.x*blockDim.x + blockIdx.x*blockDim.x + threadIdx.x;
+        unsigned int gid = ig*blockDim.x*gridDim.x + threadIdx.x*gridDim.x + blockIdx.x;
         if (gid < n) {
-            g_blk[threadIdx.x] = g_b1y[gid];
-            h_blk[threadIdx.x] = g_b1y[gid];
+            // can do coalesce read optimization here (transpose in shared mem)
+            g_blk[threadIdx.x] = g_b1x[gid];
+            h_blk[threadIdx.x] = g_b1x[gid];
         } else {
             g_blk[threadIdx.x] = 0.0f;
             h_blk[threadIdx.x] = 0.0f;
         }
+        __syncthreads();
         for (int i=blockDim.x/2; i>=32; i>>=1) {
-             if (threadIdx.x < i) {
-                 g_blk[threadIdx.x] += g_blk[threadIdx.x + i];
-                 h_blk[threadIdx.x] += h_blk[threadIdx.x + i];
-             }
-             __syncthreads();
-         }
-
-        double g_warp = g_blk[threadIdx.x];
-        double h_warp = h_blk[threadIdx.x];
-        for (int offset = 16; offset > 0; offset /= 2) {
-            g_warp += __shfl_down_sync(FULL_MASK, g_warp, offset);  
-            h_warp += __shfl_down_sync(FULL_MASK, h_warp, offset);  
+            if (threadIdx.x < i) {
+                g_blk[threadIdx.x] += g_blk[threadIdx.x + i];
+                h_blk[threadIdx.x] += h_blk[threadIdx.x + i];
+            }
+            __syncthreads();
         }
-        if (threadIdx.x == 0) {
-            unsigned int id = ig*gridDim.x + blockIdx.x;
-            g[id] = g_warp;
-            h[id] = g_warp;
+        if (threadIdx.x < 32) {
+            double g_warp = g_blk[threadIdx.x];
+            double h_warp = h_blk[threadIdx.x];
+            for (int offset = 16; offset > 0; offset /= 2) {
+                g_warp += __shfl_down_sync(FULL_MASK, g_warp, offset);  
+                h_warp += __shfl_down_sync(FULL_MASK, h_warp, offset);  
+            }
+            if (threadIdx.x == 0) {
+                unsigned int id = ig*gridDim.x + blockIdx.x;
+                g[id] += g_warp;
+                h[id] += g_warp;
+            }
         }
     }
 }
@@ -213,6 +217,7 @@ __global__ void compute_V(double* __restrict__ v,
 {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
+    LIF lif(v[id], tBack[id]);
     double gL, tRef;
     if (id < nE) {
         tRef = tRef_E;
@@ -221,7 +226,6 @@ __global__ void compute_V(double* __restrict__ v,
         tRef = tRef_I;
         gL = gL_I;
     }
-    LIF lif(v[id], tBack[id]);
     /* set a0 b0 for the first step */
     double gI_t;
     double gE_t;
@@ -353,7 +357,6 @@ __device__ void LIF::compute_v(double dt) {
 
 __device__ void LIF:: compute_pseudo_v0(double dt) {
     v0 = (vL-tBack*(b0 + b1 - a1*b0*dt)/2.0f)/(1.0f+tBack*(-a0 - a1 + a1*a0*dt)/2.0f);
-    runge_kutta_2(dt);
 }
 
 __device__ void LIF::set_p0(double gE, double gI, double gL) {

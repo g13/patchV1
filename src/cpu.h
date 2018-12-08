@@ -65,7 +65,7 @@ struct cpu_LIF {
     double compute_spike_time(double dt);
 };
 
-double cpu_step(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE) {
+double cpu_step(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE, double gI) {
     lif->tsp = dt;
     // not in refractory period
     if (lif->tBack < dt) {
@@ -78,7 +78,7 @@ double cpu_step(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE
         while (lif->v > vT && lif->tBack < 0.0f) {
             // crossed threshold
             if (lif->v > vE) {
-                printf("#%i exc conductance is too high %f\n", id, gE);
+				printf("#%i something is off gE = %f, gI = %f, v = %f\n", id, gE, gI, lif->v);
                 lif->v = vE;
             }
 
@@ -105,7 +105,7 @@ double cpu_step(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE
     return lif->tsp;
 }
 
-double cpu_dab(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE) {
+double cpu_dab(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE, double gI) {
     lif->tsp = dt;
     lif->correctMe = true;
     lif->spikeCount = 0;
@@ -122,7 +122,7 @@ double cpu_dab(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE)
             // crossed threshold
 
             if (lif->v > vE) {
-                printf("#%i exc conductance is too high %f, v = %f\n", id, gE, lif->v);
+				printf("#%i something is off gE = %f, gI = %f, v = %f\n", id, gE, gI, lif->v);
                 lif->v = vE;
             }
             lif->tsp = lif->compute_spike_time(dt); 
@@ -192,7 +192,8 @@ unsigned int find1stAfter(double spikeTrain[], unsigned int n, double min) {
 }
 
 // Spike-spike correction
-void cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[], double hI0[], double gE1[], double gI1[], double hE1[], double hI1[], double fE[], double fI[], double preMat[], unsigned int networkSize, ConductanceShape condE, ConductanceShape condI, int ngTypeE, int ngTypeI, double inputTime[], int nInput, double wSpikeTrain[], double spikeTrain[], unsigned int idTrain[], unsigned int nE, double dt) {
+unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[], double hI0[], double gE1[], double gI1[], double hE1[], double hI1[], double fE[], double fI[], double preMat[], unsigned int networkSize, ConductanceShape condE, ConductanceShape condI, int ngTypeE, int ngTypeI, double inputTime[], int nInput, int _nInput, double wSpikeTrain[], double spikeTrain[], unsigned int idTrain[], unsigned int nE, double dt) {
+    unsigned int corrected_n = 0;
     unsigned int n = 0;
     for (unsigned int i=0; i<networkSize; i++) {
         if (lif[i]->tsp < dt) {
@@ -203,17 +204,21 @@ void cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[
     }
     double *g_end, *h_end;
     if (ngTypeE > ngTypeI) {
-        g_end = new double[ngTypeE];
-        h_end = new double[ngTypeE];
+        g_end = new double[ngTypeE]();
+        h_end = new double[ngTypeE]();
     } else {
-        g_end = new double[ngTypeI];
-        h_end = new double[ngTypeI];
+        g_end = new double[ngTypeI]();
+        h_end = new double[ngTypeI]();
     }
+    double pdt0 = 0.0f;
+    int* iInput = new int[networkSize]();
     while (n>0) {
+        //printf("%i spikes to correct\n", n);
         unsigned int head = find1stAfter(wSpikeTrain, n, dt);
         // the first spike is accurate and set to output spikeTrain
         unsigned int i = idTrain[head];
         spikeTrain[i] = wSpikeTrain[head];
+        corrected_n++;
         ConductanceShape *cond;
         int ngType;
         double *g, *h;
@@ -222,11 +227,13 @@ void cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[
             cond = &condE;
             ngType = ngTypeE;
             g = gE1;
+			h = hE1;
             tRef = tRef_E;
         } else {
             cond = &condI;
             ngType = ngTypeI;
             g = gI1;
+			h = hI1;
             tRef = tRef_I;
         }
         lif[i]->spikeCount++;
@@ -234,6 +241,7 @@ void cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[
             printf("multiple spikes in one dt, consider smaller time step than %fms\n", dt);
         }
         lif[i]->tBack = lif[i]->tsp + tRef;
+		//printf("#%i, v1 old = %f", i, lif[i]->v);
         if (lif[i]->tBack < dt) {
             lif[i]->compute_v(dt);
         } else {
@@ -241,14 +249,19 @@ void cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[
             lif[i]->tBack -= dt;
             lif[i]->correctMe = false;
         }
+		//printf(", v1 new = %f\n", lif[i]->v);
         v[i] = lif[i]->v;
         // restep to fill-up the wSpikeTrain
-        unsigned int ii = 0;
         double pdt = lif[i]->tsp;
         double ddt = dt - pdt;
+        double dpdt = pdt - pdt0;
+        //printf("spike correction dt forward dt = %f\n", dpdt);
+        pdt0 = pdt;
         for (int ig = 0; ig<ngType; ig++) {
             cond->compute_single_input_conductance(&(g_end[ig]), &(h_end[ig]), 1.0f, ddt, ig);
         }
+        // refill wSpiketrain
+        n = 0;
         for (int j=0; j<networkSize; j++) {
             // new cortical input
             for (int ig=0; ig<ngType; ig++) {
@@ -267,14 +280,16 @@ void cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[
                 }
                 double gE_t, gI_t;
                 gE_t = 0.0f;
-                int iInput = 0;
-                while (inputTime[j*nInput+iInput] < pdt && iInput < nInput) {
-                    iInput++;
+                int lastInput = iInput[j];
+                if  (iInput[j] < nInput) {
+                    while (inputTime[j*_nInput+iInput[j]] < pdt && iInput[j] < nInput) {
+                        iInput[j]++;
+                    }
                 }
                 #pragma unroll
                 for (int ig=0; ig<ngTypeE; ig++) {
                     unsigned int gid = networkSize*ig + j;
-                    evolve_g(condE, &(gE0[gid]), &(hE0[gid]), &(fE[gid]), &(inputTime[j*nInput]), iInput, pdt, ig);
+                    evolve_g(condE, &(gE0[gid]), &(hE0[gid]), &(fE[gid]), &(inputTime[j*_nInput+lastInput]), iInput[j]-lastInput, pdt, ig);
                     gE_t += gE0[gid];
                 }
                 // no feed-forward inhibitory input (setting nInput = 0)
@@ -282,45 +297,51 @@ void cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[
                 #pragma unroll
                 for (int ig=0; ig<ngTypeI; ig++) {
                     unsigned int gid = networkSize*ig + j;
-                    evolve_g(condI, &(gI0[gid]), &(hI0[gid]), &(fI[gid]), &(inputTime[j*nInput]), 0, pdt, ig);
+                    evolve_g(condI, &(gI0[gid]), &(hI0[gid]), &(fI[gid]), inputTime, 0, pdt, ig);
                     gI_t += gI0[gid];
                 }
                 lif[j]->set_p1(gE_t, gI_t, gL);
-                assert(pdt == cpu_step(lif[j], pdt, tRef, j, gE_t));
-                lif[j]->v0 = lif[j]->v;
-                lif[j]->set_p0(gE_t, gI_t, gL);
-                
-                gE_t = 0.0f;
-                #pragma unroll
-                for (int ig = 0; ig < ngTypeE; ig++) {
-                    int gid = networkSize*ig + j;
-                    gE_t += gE1[gid];
+                cpu_dab(lif[j], dpdt, tRef, j, gE_t, gI_t); 
+                if (lif[j]->tsp < dpdt) {
+                    lif[j]->tsp += pdt0;
+                    printf("a down-spin-missing spike reclaimed\n");
+                } else {
+                    lif[j]->v0 = lif[j]->v;
+                    lif[j]->set_p0(gE_t, gI_t, gL);
+
+                    gE_t = 0.0f;
+                    #pragma unroll
+                    for (int ig = 0; ig < ngTypeE; ig++) {
+                        int gid = networkSize*ig + j;
+                        gE_t += gE1[gid];
+                    }
+                    gI_t = 0.0f;
+                    #pragma unroll
+                    for (int ig = 0; ig < ngTypeI; ig++) {
+                        int gid = networkSize*ig + j;
+                        gI_t += gI1[gid];
+                    }
+                    lif[j]->set_p1(gE_t, gI_t, gL);
+                    // dab
+                    cpu_dab(lif[j], ddt, tRef, j, gE_t, gI_t);
+                    // put back to [0,dt]
+                    lif[j]->tsp += pdt;
                 }
-                gI_t = 0.0f;
-                #pragma unroll
-                for (int ig = 0; ig < ngTypeI; ig++) {
-                    int gid = networkSize*ig + j;
-                    gI_t += gI1[gid];
-                }
-                lif[j]->set_p1(gE_t, gI_t, gL);
-                // dab
-                cpu_dab(lif[j], ddt, tRef, j, gE_t);
-                // put back to [0,dt]
-                lif[j]->tsp += pdt;
                 if (lif[j]->tsp < dt) {
-                    idTrain[ii] = j;
-                    wSpikeTrain[ii] = lif[j]->tsp;
-                    ii++;
+                    idTrain[n] = j;
+                    wSpikeTrain[n] = lif[j]->tsp;
+                    n++;
                 }
             }
         }
-        n--;
     }
     delete []g_end;
     delete []h_end;
+    delete []iInput;
+    return corrected_n;
 }
 
-void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigned int nstep, double dt, unsigned int nE, double s, /* === RAND === unsigned long long seed, */ double ffsE, double ffsI) {
+void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int nskip, unsigned int nstep, double dt, unsigned int nE, double s, /* === RAND === unsigned long long seed, */ double ffsE, double ffsI) {
     unsigned int ngTypeE = 2;
     unsigned int ngTypeI = 1;
     double gL, tRef;
@@ -352,7 +373,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
     spike_file.open("s_CPU.bin", std::ios::out|std::ios::binary);
     gE_file.open("gE_CPU.bin", std::ios::out|std::ios::binary);
     gI_file.open("gI_CPU.bin", std::ios::out|std::ios::binary);
-    double *inputTime = new double[networkSize*nInput];
+    double *inputTime = new double[networkSize*_nInput];
     /* === RAND === 
         curandGenerator_t *randGen = new curandGenerator_t[networkSize];
         int *nInput = new int[networkSize];
@@ -415,35 +436,40 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
     v_file.write((char*)v, networkSize * sizeof(double));
     gE_file.write((char*)gE0, networkSize * ngTypeE * sizeof(double));
     gI_file.write((char*)gI0, networkSize * ngTypeI * sizeof(double));
-	/* === RAND ===
-		int inputEvents = 0;
-	*/
+	int inputEvents = 0;
     int outputEvents = 0;
     bool InhFired = false;
     double vTime = 0.0f;
+	double wTime = 0.0f;
     double sTime = 0.0f;
-    double gTime = 0.0f;
-    for (unsigned int istep=0; istep<nstep; istep++) {
-        if (istep%2 == 0) {
-            gE_current = gE1;
-            hE_current = hE1;
-            gE_old = gE0;
-            hE_old = hE0;
-            gI_current = gI1;
-            hI_current = hI1;
-            gI_old = gI0;
-            hI_old = hI0;
-        } else {
-            gE_current = gE0;
-            hE_current = hE0;
-            gE_old = gE1;
-            hE_old = hE1;
-            gI_current = gI0;
-            hI_current = hI0;
-            gI_old = gI1;
-            hI_old = hI1;
-        }
-
+    int iskip = 1;
+    int nInput;
+	for (unsigned int istep = 0; istep < nstep; istep++) {
+		if (istep % 2 == 0) {
+			gE_current = gE1;
+			hE_current = hE1;
+			gE_old = gE0;
+			hE_old = hE0;
+			gI_current = gI1;
+			hI_current = hI1;
+			gI_old = gI0;
+			hI_old = hI0;
+		}
+		else {
+			gE_current = gE0;
+			hE_current = hE0;
+			gE_old = gE1;
+			hE_old = hE1;
+			gI_current = gI0;
+			hI_current = hI0;
+			gI_old = gI1;
+			hI_old = hI1;
+		}
+		if (iskip % nskip == 0) {
+			nInput = _nInput;
+		} else {
+			nInput = 0;
+		}
         high_resolution_clock::time_point vStart = timeNow();
         bool spiked = false;
         for (unsigned int i=0; i<networkSize; i++) {
@@ -477,11 +503,12 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
 			/* === RAND === #ifdef TEST_WITH_MANUAL_FFINPUT */
                 #pragma unroll
                 for (int iInput = 0; iInput < nInput; iInput++) {
-                    inputTime[iInput*nInput] = (iInput + double(i)/networkSize)*dt/nInput;
+                    inputTime[i*_nInput + iInput] = (iInput + double(i)/networkSize)*dt/_nInput;
                 }
                 // not used if not RAND
                 logRand[i] = 1.0f;
                 lTR[i] = 0.0f;
+				inputEvents += nInput;
 			/* === RAND === 
 				#else
 					nInput[i] = set_input_time(&(inputTime[i*MAX_FFINPUT_PER_DT]), dt, flatRate, lTR[i], logRand[i], randGen[i]);
@@ -493,7 +520,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
             #pragma unroll
             for (int ig=0; ig<ngTypeE; ig++) {
                 unsigned int gid = networkSize*ig + i;
-                evolve_g(condE, &(gE_current[gid]), &(hE_current[gid]), &(fE[gid]), &(inputTime[i*nInput]), nInput, dt, ig);
+                evolve_g(condE, &(gE_current[gid]), &(hE_current[gid]), &(fE[gid]), &(inputTime[i*_nInput]), nInput, dt, ig);
                 gE_t += gE_current[gid];
             }
             gI_t = 0.0f; 
@@ -501,99 +528,50 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
             #pragma unroll
             for (int ig=0; ig<ngTypeI; ig++) {
                 unsigned int gid = networkSize*ig + i;
-                evolve_g(condI, &(gI_current[gid]), &(hI_current[gid]), &(fI[gid]), &(inputTime[i*nInput]), 0, dt, ig);
+                evolve_g(condI, &(gI_current[gid]), &(hI_current[gid]), &(fI[gid]), inputTime, 0, dt, ig);
                 gI_t += gI_current[gid];
             }
             lif[i]->set_p1(gE_t, gI_t, gL);
             // rk2 step
-            spikeTrain[i] = cpu_dab(lif[i], dt, tRef, /*the last 2 args are for deugging*/ i, gE_t);
+		    //printf("#%i v0 old = %f", i, lif[i]->v0);
+            spikeTrain[i] = cpu_dab(lif[i], dt, tRef, /*the last 2 args are for deugging*/ i, gE_t, gI_t);
+		    //printf(", v1 old = %f\n", lif[i]->v);
             if (spikeTrain[i] < dt) spiked = true;
             if (lif[i]->v < vI) {
-                printf("#%i inh conductance is too high %f, v = %f\n", i, gI_t, lif[i]->v);
+				printf("#%i something is off gE = %f, gI = %f, v = %f\n", i, gE_t, gI_t, lif[i]->v);
                 lif[i]->v = vI;
             }   
+            v[i] = lif[i]->v;
         }
         vTime += static_cast<double>(duration_cast<microseconds>(timeNow()-vStart).count());
             // spike-spike correction
         if (spiked) {
+            //printf("spiked:\n");
             high_resolution_clock::time_point sStart = timeNow();
-            #ifdef TEST_SCC
-                cpu_ssc(lif, v, gE_old, gI_old, hE_old, hI_old, gE_current, gI_current, fE, fI, preMat, networkSize, condE, condI, ngTypeE, ngTypeI, inputTime, nInput, wSpikeTrain, spikeTrain, idTrain, nE, dt); 
-            #endif
+            outputEvents += cpu_ssc(lif, v, gE_old, gI_old, hE_old, hI_old, gE_current, gI_current, hE_current, hI_current, fE, fI, preMat, networkSize, condE, condI, ngTypeE, ngTypeI, inputTime, nInput, _nInput, wSpikeTrain, spikeTrain, idTrain, nE, dt); 
             sTime += static_cast<double>(duration_cast<microseconds>(timeNow()-vStart).count());
         }
-        /* recal_G
-        high_resolution_clock::time_point gStart = timeNow();
-        for (unsigned int i=0; i<networkSize; i++) {
-            double g_end, h_end;
-            #ifndef NAIVE
-            if (spikeTrain[i] < dt) {
-            #endif
-                outputEvents ++;
-                if (i < nE) {
-                    //printf("exc-%i fired\n", i);
-                    #pragma unroll
-                    for (int ig=0; ig<ngTypeE; ig++) {
-                        #ifdef NAIVE
-                        g_end = 0.0;
-                        h_end = 0.0;
-                        if (spikeTrain[i] < dt) {
-                        #endif
-                            condE.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif[i]->tsp, ig);
-                        #ifdef NAIVE
-                        }
-                        #endif
-                        for (int ii = 0; ii < networkSize; ii++) {
-                            int gid = networkSize*ig+ii;
-                            gE_current[gid] += g_end * preMat[i*networkSize + ii];
-                            hE_current[gid] += h_end * preMat[i*networkSize + ii];
-                        }
-                    }
-                } else {
-                    InhFired = true;
-                    #pragma unroll
-                    for (int ig=0; ig<ngTypeI; ig++) {
-                        #ifdef NAIVE
-                        g_end = 0.0;
-                        h_end = 0.0;
-                        if (spikeTrain[i] < dt) {
-                        #endif
-                            condI.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif[i]->tsp, ig);
-                        #ifdef NAIVE
-                        }
-                        #endif
-                        for (int ii = 0; ii < networkSize; ii++) {
-                            int gid = networkSize*ig+ii;
-                            gI_current[gid] += g_end * preMat[i*networkSize + ii];
-                            hI_current[gid] += h_end * preMat[i*networkSize + ii];
-                        }
-                    }
-                }
-            #ifndef NAIVE
-            }
-            #endif
-        }
-        gTime += static_cast<double>(duration_cast<microseconds>(timeNow()-gStart).count());
-        */
+		high_resolution_clock::time_point wStart = timeNow();
         v_file.write((char*)v, networkSize * sizeof(double));
-        spike_file.write((char*)spikeTrain, networkSize * sizeof(int));
+        spike_file.write((char*) spikeTrain, networkSize * sizeof(double));
         gE_file.write((char*)gE_current, networkSize * ngTypeE * sizeof(double));
         gI_file.write((char*)gI_current, networkSize * ngTypeI * sizeof(double));
+		wTime += static_cast<double>(duration_cast<microseconds>(timeNow() - wStart).count());
         printf("\r stepping %3.1f%%", 100.0f*float(istep+1)/nstep);
+        iskip++;
+		//printf("gE0 = %f, v = %f \n", gE_current[0], v[0]);
     }
     printf("\n");
     if (InhFired) {
         printf("    inh fired\n");
     }
-    printf("input events rate %fkHz\n", /* === RAND === float(inputEvents)/(dt*nstep*networkSize)*/ float(nInput/dt));
+    printf("input events rate %fkHz\n", float(inputEvents)/(dt*nstep*networkSize));
     printf("output events rate %fHz\n", float(outputEvents)*1000.0f/(dt*nstep*networkSize));
     auto cpuTime = duration_cast<microseconds>(timeNow()-start).count();
     printf("cpu version time cost: %3.1fms\n", static_cast<double>(cpuTime)/1000.0f);
     printf("compute_V cost: %fms\n", vTime/1000.0f);
-    printf("recal_G cost: %fms\n", gTime/1000.0f);
-    #ifdef TEST_SCC
     printf("correct_spike cost: %fms\n", sTime/1000.0f);
-    #endif
+	printf("writing data to disk cost: %fms\n", wTime/1000.0f);
     /* Cleanup */
     printf("Cleaning up\n");
     if (v_file.is_open()) v_file.close();

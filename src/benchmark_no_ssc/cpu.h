@@ -1,4 +1,4 @@
-#include <chrono>
+﻿#include <chrono>
 #include <fstream>
 #include <stdio.h>
 #include <stdlib.h>
@@ -118,7 +118,6 @@ void cpu_LIF::compute_v(double dt) {
 
 void cpu_LIF::compute_pseudo_v0(double dt) {
     v0 = (vL-tBack*(b0 + b1 - a1*b0*dt)/2.0f)/(1.0f+tBack*(-a0 - a1 + a1*a0*dt)/2.0f);
-    runge_kutta_2(dt);
 }
 
 void cpu_LIF::set_p0(double gE, double gI, double gL ) {
@@ -143,7 +142,7 @@ void cpu_LIF::reset_v() {
 }
 
 
-void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigned int nstep, double dt, unsigned int nE, double s, /* === RAND === unsigned long long seed, */ double ffsE, double ffsI) {
+void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int nskip, unsigned int nstep, double dt, unsigned int nE, double s, /* === RAND === unsigned long long seed, */ double ffsE, double ffsI) {
     unsigned int ngTypeE = 2;
     unsigned int ngTypeI = 1;
     double gL, tRef;
@@ -161,7 +160,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
     spike_file.open("s_CPU.bin", std::ios::out|std::ios::binary);
     gE_file.open("gE_CPU.bin", std::ios::out|std::ios::binary);
     gI_file.open("gI_CPU.bin", std::ios::out|std::ios::binary);
-    double *inputTime = new double[networkSize*nInput];
+    double *inputTime = new double[networkSize*_nInput];
     /* === RAND === 
         curandGenerator_t *randGen = new curandGenerator_t[networkSize];
         int *nInput = new int[networkSize];
@@ -229,8 +228,16 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
     int outputEvents = 0;
     bool InhFired = false;
     double vTime = 0.0f;
-    double gTime = 0.0f;
+	double gTime = 0.0f;
+    int iskip = 1;
+    int nInput = _nInput;
     for (unsigned int istep=0; istep<nstep; istep++) {
+		if (iskip % nskip == 0) {
+			nInput = _nInput;
+		}
+		else {
+			nInput = 0;
+		}
         high_resolution_clock::time_point vStart = timeNow();
         for (unsigned int i=0; i<networkSize; i++) {
             lif[i]->v0 = lif[i]->v;
@@ -259,7 +266,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
 			/* === RAND === #ifdef TEST_WITH_MANUAL_FFINPUT */
                 #pragma unroll
                 for (int iInput = 0; iInput < nInput; iInput++) {
-                    inputTime[iInput + i*nInput] = (iInput + double(i)/networkSize)*dt/nInput;
+                    inputTime[i*_nInput + iInput] = (iInput + double(i)/networkSize)*dt/_nInput;
                 }
                 // not used if not RAND
                 logRand[i] = 1.0f;
@@ -275,7 +282,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
             #pragma unroll
             for (int ig=0; ig<ngTypeE; ig++) {
                 unsigned int gid = networkSize*ig + i;
-                evolve_g(condE, &(gE[gid]), &(hE[gid]), &(fE[gid]), &(inputTime[i*nInput]), nInput, dt, ig);
+                evolve_g(condE, &(gE[gid]), &(hE[gid]), &(fE[gid]), &(inputTime[i*_nInput]), nInput, dt, ig);
                 gE_t += gE[gid];
             }
             gI_t = 0.0f; 
@@ -283,7 +290,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
             #pragma unroll
             for (int ig=0; ig<ngTypeI; ig++) {
                 unsigned int gid = networkSize*ig + i;
-                evolve_g(condI, &(gI[gid]), &(hI[gid]), &(fI[gid]), &(inputTime[i*nInput]), 0, dt, ig);
+                evolve_g(condI, &(gI[gid]), &(hI[gid]), &(fI[gid]), &(inputTime[i*_nInput]), 0, dt, ig);
                 gI_t += gI[gid];
             }
             lif[i]->set_p1(gE_t, gI_t, gL);
@@ -347,12 +354,14 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int nInput, unsigne
         gE_file.write((char*)gE, networkSize * ngTypeE * sizeof(double));
         gI_file.write((char*)gI, networkSize * ngTypeI * sizeof(double));
         printf("\r stepping %3.1f%%", 100.0f*float(istep+1)/nstep);
+        iskip++;
+		//printf("gE0 = %f, v = %f \n", gE[0], v[0]);
     }
     printf("\n");
     if (InhFired) {
         printf("    inh fired\n");
     }
-    printf("input events rate %fkHz\n", /* === RAND === float(inputEvents)/(dt*nstep*networkSize)*/ float(nInput/dt));
+    printf("input events rate %fkHz\n", /* === RAND === float(inputEvents)/(dt*nstep*networkSize)*/ float(_nInput)/(dt*nskip));
     printf("output events rate %fHz\n", float(outputEvents)*1000.0f/(dt*nstep*networkSize));
     auto cpuTime = duration_cast<microseconds>(timeNow()-start).count();
     printf("cpu version time cost: %3.1fms\n", static_cast<double>(cpuTime)/1000.0f);
