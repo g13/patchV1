@@ -16,12 +16,13 @@ int main(int argc, char *argv[])
     b2 = 128;
     bool printStep = false;
     bool moreSharedMemThanBlocks = true;
-    double flatRate = 32000.0f; // Hz
+    double flatRate = 32.0f; // kHz
     double t = 2.5f;
-    unsigned int nstep = 20000;
+    unsigned int nstep = 200;
     double ffsE = 3e-3;
     double s0 = 1e-2*ffsE;
     double ffsI = 5e-2;
+    int iFlatRate = -1;
     /* Overwrite parameters */
     for (int i = 0; i<argc; i++) {
         printf(argv[i]);
@@ -47,11 +48,11 @@ int main(int argc, char *argv[])
         sscanf(argv[argc-4],"%d",&nstep);
     }
 	if (argc == 6) {
-		sscanf(argv[argc - 1], "%d", &ms);
-		sscanf(argv[argc - 2], "%u", &seed);
-		sscanf(argv[argc - 3], "%d", &b2);
-		sscanf(argv[argc - 4], "%d", &b1);
-		sscanf(argv[argc - 5], "%d", &nstep);
+		sscanf(argv[argc-1], "%d", &iFlatRate);
+		sscanf(argv[argc-2], "%u", &seed);
+		sscanf(argv[argc-3], "%d", &b2);
+		sscanf(argv[argc-4], "%d", &b1);
+		sscanf(argv[argc-5], "%d", &nstep);
 	}
     printf("%i x %i, %i steps, seed = %u\n", b1, b2, nstep, seed);
 	unsigned int networkSize = b1*b2;
@@ -70,7 +71,11 @@ int main(int argc, char *argv[])
     unsigned int nE = networkSize*eiRatio;
     unsigned int nI = networkSize-nE;
     double dt = t/float(nstep); // ms
-    //double flatRate = 0.0f; // Hz
+    if (iFlatRate < 0) {
+        flatRate = flatRate*1000.0; // Hz
+    } else {
+        flatRate = iFlatRate*1000.0;
+    }
     /* to be extended */
     bool presetInit = false;
     unsigned int ngTypeE = 2;
@@ -87,7 +92,7 @@ int main(int argc, char *argv[])
     printf("nE = %i, nI = %i\n", nE, networkSize-nE);
     printf("t = %f x %i = %f\n", dt, nstep, t);
 	double fInput = flatRate / 1000.0f * dt;
-	int _nInput = ceil(fInput);
+	int _nInput = round(fInput);
     int nskip = 1;
     if (fInput < 1.0) {
         assert(_nInput == 1);
