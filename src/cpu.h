@@ -440,7 +440,6 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int ns
     gI_file.write((char*)gI0, networkSize * ngTypeI * sizeof(double));
 	int inputEvents = 0;
     int outputEvents = 0;
-    bool InhFired = false;
     double vTime = 0.0f;
 	double wTime = 0.0f;
     double sTime = 0.0f;
@@ -564,9 +563,6 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int ns
 		//printf("gE0 = %f, v = %f \n", gE_current[0], v[0]);
     }
     printf("\n");
-    if (InhFired) {
-        printf("    inh fired\n");
-    }
     printf("input events rate %fkHz\n", float(inputEvents)/(dt*nstep*networkSize));
     printf("output events rate %fHz\n", float(outputEvents)*1000.0f/(dt*nstep*networkSize));
     auto cpuTime = duration_cast<microseconds>(timeNow()-start).count();

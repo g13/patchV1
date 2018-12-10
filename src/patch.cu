@@ -67,6 +67,9 @@ int main(int argc, char *argv[])
 	}
 	std::string theme = tmp;
 	std::cout << "theme = " << theme << "\n";
+    if (!theme.empty()) {
+        theme = '-'+theme;
+    }
     printf("%i x %i, %i steps, seed = %u\n", b1, b2, nstep, seed);
 	unsigned int networkSize = b1*b2;
 	double s = s0/(networkSize);
