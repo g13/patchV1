@@ -176,8 +176,9 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
             lif->compute_pseudo_v0(dt);
             lif->tBack = -1.0f;
         }
+        __syncthreads();
         lif->runge_kutta_2(dt);
-        while (lif->v > vT) {
+        while (lif->v > vT && lif->tBack < 0.0f) {
             // crossed threshold
 
             if (lif->v > vE) {
@@ -189,7 +190,7 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
             lif->tBack = lif->tsp + tRef;
             //printf("neuron #%i fired initially\n", id);
             //assert(lif->tBack > 0);
-            if (lif->tBack < dt && lif->tBack < 0.0f) {
+            if (lif->tBack < dt) {
                 // refractory period ended during dt
                 lif->compute_v(dt);
                 lif->tBack = -1.0f;
@@ -197,7 +198,7 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
                     printf("multiple spike in one time step, only the last spike is counted, refractory period = %f ms, dt = %f\n", tRef, dt);
                     //assert(lif->v <= vT);
                 }
-            } 
+            }
         }
     } 
     if (lif->tBack >= dt) {
@@ -206,6 +207,47 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
         lif->tBack -= dt;
     }
     return lif->tsp;
+}
+
+__device__ void Func_RK2::runge_kutta_2(double dt) {
+    double fk0 = eval0(v0);
+    v_hlf = v0 + dt*fk0;
+    double fk1 = eval1(v_hlf);
+    v = v0 + dt*(fk0+fk1)/2.0f;
+}
+
+__device__ double LIF::compute_spike_time(double dt) {
+    return (vT-v0)/(v-v0)*dt;
+}
+
+__device__ void LIF::compute_v(double dt) {
+    v = compute_v1(dt, a0, b0, a1, b1, vL, tBack);
+}
+
+__device__ void LIF::compute_pseudo_v0(double dt) {
+    v0 = (vL-tBack*(b0 + b1 - a1*b0*dt)/2.0f)/(1.0f+tBack*(-a0 - a1 + a1*a0*dt)/2.0f);
+}
+
+__device__ void LIF::set_p0(double gE, double gI, double gL) {
+    a0 = get_a(gE, gI, gL);
+    b0 = get_b(gE, gI, gL); 
+}
+
+__device__ void LIF::set_p1(double gE, double gI, double gL) {
+    a1 = get_a(gE, gI, gL);
+    b1 = get_b(gE, gI, gL); 
+}
+
+__device__ double LIF::eval0(double _v) {
+    return eval_LIF(a0,b0,_v);
+}
+
+__device__ double LIF::eval1(double _v) {
+    return eval_LIF(a1,b1,_v);
+}
+
+__device__ void LIF::reset_v() {
+    v = vL;
 }
 
 __device__  double dab(Func_RK2* lif, double dt, double tRef, unsigned int id, double gE, double gI) {
@@ -233,6 +275,135 @@ __device__  double dab(Func_RK2* lif, double dt, double tRef, unsigned int id, d
         lif->reset_v(); 
     }
     return lif->tsp;
+}
+
+__global__ void compute_dV(double* __restrict__ v0,
+                           double* __restrict__ dv,
+                           double* __restrict__ gE,
+                           double* __restrict__ gI,
+                           double* __restrict__ hE,
+                           double* __restrict__ hI,
+                           double* __restrict__ a0,
+                           double* __restrict__ b0,
+                           double* __restrict__ a1,
+                           double* __restrict__ b1,
+                           double* __restrict__ preMat,
+                           double* __restrict__ inputRate,
+                           int* __restrict__ eventRate,
+                           double* __restrict__ spikeTrain,
+						   double* __restrict__ tBack,
+                           double* __restrict__ gactVec,
+                           double* __restrict__ hactVec,
+                           double* __restrict__ fE,
+                           double* __restrict__ fI,
+                           double* __restrict__ leftTimeRate,
+                           double* __restrict__ lastNegLogRand,
+                           double* __restrict__ v_hlf,
+                           curandStateMRG32k3a* __restrict__ state,
+                           unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, int nInput)
+{
+    unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
+    // if #E neurons comes in warps (size of 32) then there is no branch divergence.
+    LIF lif(v0[id], tBack[id]);
+    double gL, tRef;
+    if (id < nE) {
+        tRef = tRef_E;
+        gL = gL_E;
+    } else {
+        tRef = tRef_I;
+        gL = gL_I;
+    }
+    /* set a0 b0 for the first step */
+    double gI_t;
+    double gE_t;
+    // init cond E 
+    gE_t = 0.0f;
+    #pragma unroll
+    for (int ig=0; ig<ngTypeE; ig++) {
+        gE_t += gE[networkSize*ig + id];
+    }
+    //  cond I 
+    gI_t = 0.0f;
+    #pragma unroll
+    for (int ig=0; ig<ngTypeI; ig++) {
+        gI_t += gI[networkSize*ig + id];
+    }
+    lif.set_p0(gE_t, gI_t, gL);
+    // storing for spike correction
+    a0[id] = lif.a0;
+    b0[id] = lif.b0;
+    /* Get feedforward input */
+    // consider use shared memory for dynamic allocation
+    double inputTime[MAX_FFINPUT_PER_DT];
+    curandStateMRG32k3a localState = state[id];
+    #ifdef TEST_WITH_MANUAL_FFINPUT
+        #pragma unroll
+        for (int iInput = 0; iInput < nInput; iInput++) {
+            inputTime[iInput] = (iInput + double(id)/networkSize)*dt/nInput;
+        }
+        // not used if not RAND
+        lastNegLogRand[id] = 1.0f;
+        leftTimeRate[id] = 0.0f;
+    #else
+        nInput = set_input_time(inputTime, dt, inputRate[id], &(leftTimeRate[id]), &(lastNegLogRand[id]), &localState);
+    #endif
+    //__syncwarp();
+    // return a realization of Poisson input rate
+    eventRate[id] = nInput;
+    // update rng state 
+    state[id] = localState;
+    /* evolve g to t+dt with ff input only */
+    unsigned int gid;
+    gE_t = 0.0f;
+    #pragma unroll
+    for (int ig=0; ig<ngTypeE; ig++) {
+        gid = networkSize*ig + id;
+        double g_i = gE[gid];
+        double h_i = hE[gid];
+        double f_i = fE[gid];
+        evolve_g(condE, &g_i, &h_i, &f_i, inputTime, nInput, dt, ig);
+        //__syncwarp();
+        gE_t += g_i;
+        gE[gid] = g_i;
+        hE[gid] = h_i;
+        // for learning
+        //fE[gid] = f_i;
+    }
+    //printf("id %i, exc cond ready.\n",id);
+    gI_t = 0.0f;
+    /* no feed-forward inhibitory input (setting nInput = 0) */
+    #pragma unroll
+    for (int ig=0; ig<ngTypeI; ig++) {
+        gid = networkSize*ig + id;
+        double g_i = gI[gid];
+        double h_i = hI[gid];
+        double f_i = fI[gid];
+        evolve_g(condI, &g_i, &h_i, &f_i, inputTime, 0, dt, ig);
+        //__syncwarp();
+        gI_t += g_i;
+        gI[gid] = g_i;
+        hI[gid] = h_i;
+        // for learning
+        //fI[gid] = f_i;
+    }
+    lif.set_p1(gE_t, gI_t, gL);
+    // storing for spike correction
+    a1[id] = lif.a1;
+    b1[id] = lif.b1;
+    // rk2 step
+    spikeTrain[id] = dab(&lif, dt, tRef, /*the last 2 args are for deugging*/ id, gE_t, gI_t);
+    v_hlf[id] = lif.v_hlf;
+	//tBack[id] = lif.tBack; // TBD after spike correction, comment this line if SSC is naive.
+    if (lif.v < vI) {
+		printf("#%i something is off gE = %f, gI = %f, v = %f\n", id, gE_t, gI_t, lif.v);
+        lif.v = vI;
+    }   
+	//if (id == 0 || id == nE) {
+	//	printf("#%i: v old = %f, v est = %f\n", id, lif.v0, lif.v);
+	//	printf("#%i: tsp = %f, tb = %f\n", id, lif.tsp, tBack[id]);
+    //    printf("#%i: gE = %f, gI = %f\n", id, gE_t, gI_t);
+	//}
+	dv[id] = lif.v - lif.v0; // TBD after spike correction to reset etc.
 }
 
 __global__ void correct_spike(bool*   __restrict__ not_matched,
@@ -332,139 +503,6 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
     vnew[id] = v_new;
 }
 
-__global__ void compute_dV(double* __restrict__ v0,
-                           double* __restrict__ dv,
-                           double* __restrict__ gE,
-                           double* __restrict__ gI,
-                           double* __restrict__ hE,
-                           double* __restrict__ hI,
-                           double* __restrict__ a0,
-                           double* __restrict__ b0,
-                           double* __restrict__ a1,
-                           double* __restrict__ b1,
-                           double* __restrict__ preMat,
-                           double* __restrict__ inputRate,
-                           int* __restrict__ eventRate,
-                           double* __restrict__ spikeTrain,
-						   double* __restrict__ tBack,
-                           double* __restrict__ gactVec,
-                           double* __restrict__ hactVec,
-                           double* __restrict__ fE,
-                           double* __restrict__ fI,
-                           double* __restrict__ leftTimeRate,
-                           double* __restrict__ lastNegLogRand,
-                           double* __restrict__ v_hlf,
-                           curandStateMRG32k3a* __restrict__ state,
-                           unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, int nInput, bool it)
-{
-    unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
-    // if #E neurons comes in warps (size of 32) then there is no branch divergence.
-    LIF lif(v0[id], tBack[id]);
-    double gL, tRef;
-    if (id < nE) {
-        tRef = tRef_E;
-        gL = gL_E;
-    } else {
-        tRef = tRef_I;
-        gL = gL_I;
-    }
-    /* set a0 b0 for the first step */
-    double gI_t;
-    double gE_t;
-    // init cond E 
-    gE_t = 0.0f;
-    #pragma unroll
-    for (int ig=0; ig<ngTypeE; ig++) {
-        gE_t += gE[networkSize*ig + id];
-    }
-    //  cond I 
-    gI_t = 0.0f;
-    #pragma unroll
-    for (int ig=0; ig<ngTypeI; ig++) {
-        gI_t += gI[networkSize*ig + id];
-    }
-    lif.set_p0(gE_t, gI_t, gL);
-    // storing for spike correction
-    a0[id] = lif.a0;
-    b0[id] = lif.b0;
-    /* Get feedforward input */
-    // consider use shared memory for dynamic allocation
-    double inputTime[MAX_FFINPUT_PER_DT];
-    curandStateMRG32k3a localState = state[id];
-    #ifdef TEST_WITH_MANUAL_FFINPUT
-        #pragma unroll
-        for (int iInput = 0; iInput < nInput; iInput++) {
-            inputTime[iInput] = (iInput + double(id)/networkSize)*dt/nInput;
-        }
-        // not used if not RAND
-        lastNegLogRand[id] = 1.0f;
-        leftTimeRate[id] = 0.0f;
-    #else
-        nInput = set_input_time(inputTime, dt, inputRate[id], &(leftTimeRate[id]), &(lastNegLogRand[id]), &localState);
-    #endif
-    //__syncwarp();
-    //if (it) {
-    //    printf("nInput = %i\n", nInput);
-    //}
-    //}
-    // return a realization of Poisson input rate
-    eventRate[id] = nInput;
-    // update rng state 
-    state[id] = localState;
-    /* evolve g to t+dt with ff input only */
-    unsigned int gid;
-    gE_t = 0.0f;
-    #pragma unroll
-    for (int ig=0; ig<ngTypeE; ig++) {
-        gid = networkSize*ig + id;
-        double g_i = gE[gid];
-        double h_i = hE[gid];
-        double f_i = fE[gid];
-        evolve_g(condE, &g_i, &h_i, &f_i, inputTime, nInput, dt, ig);
-        //__syncwarp();
-        gE_t += g_i;
-        gE[gid] = g_i;
-        hE[gid] = h_i;
-        // for learning
-        //fE[gid] = f_i;
-    }
-    //printf("id %i, exc cond ready.\n",id);
-    gI_t = 0.0f;
-    /* no feed-forward inhibitory input (setting nInput = 0) */
-    #pragma unroll
-    for (int ig=0; ig<ngTypeI; ig++) {
-        gid = networkSize*ig + id;
-        double g_i = gI[gid];
-        double h_i = hI[gid];
-        double f_i = fI[gid];
-        evolve_g(condI, &g_i, &h_i, &f_i, inputTime, 0, dt, ig);
-        //__syncwarp();
-        gI_t += g_i;
-        gI[gid] = g_i;
-        hI[gid] = h_i;
-        // for learning
-        //fI[gid] = f_i;
-    }
-    lif.set_p1(gE_t, gI_t, gL);
-    // storing for spike correction
-    a1[id] = lif.a1;
-    b1[id] = lif.b1;
-    // rk2 step
-    spikeTrain[id] = dab(&lif, dt, tRef, /*the last 2 args are for deugging*/ id, gE_t, gI_t);
-    __syncthreads();
-    v_hlf[id] = lif.v_hlf;
-	//tBack[id] = lif.tBack; // TBD after spike correction, comment this line if SSC is naive.
-    if (lif.v < vI) {
-		printf("#%i something is off gE = %f, gI = %f, v = %f\n", id, gE_t, gI_t, lif.v);
-        lif.v = vI;
-    }   
-	//if (id == 0 || id == nE) {
-	//	printf("#%i: v old = %f, v est = %f\n", id, lif.v0, lif.v);
-	//	printf("#%i: tsp = %f, tb = %f\n", id, lif.tsp, tBack[id]);
-    //    printf("#%i: gE = %f, gI = %f\n", id, gE_t, gI_t);
-	//}
-	dv[id] = lif.v - lif.v0; // TBD after spike correction to reset etc.
-}
 __global__ void prepare_cond(double* __restrict__ tBack,
                              double* __restrict__ spikeTrain,
                              double* __restrict__ gactVec,
@@ -511,43 +549,3 @@ __global__ void prepare_cond(double* __restrict__ tBack,
     tBack[id] = tB;
 }
 
-__device__ void Func_RK2::runge_kutta_2(double dt) {
-    double fk0 = eval0(v0);
-    v_hlf = v0 + dt*fk0;
-    double fk1 = eval1(v_hlf);
-    v = v0 + dt*(fk0+fk1)/2.0f;
-}
-
-__device__ double LIF:: compute_spike_time(double dt) {
-    return (vT-v0)/(v-v0)*dt;
-}
-
-__device__ void LIF::compute_v(double dt) {
-    v = compute_v1(dt, a0, b0, a1, b1, vL, tBack);
-}
-
-__device__ void LIF::compute_pseudo_v0(double dt) {
-    v0 = (vL-tBack*(b0 + b1 - a1*b0*dt)/2.0f)/(1.0f+tBack*(-a0 - a1 + a1*a0*dt)/2.0f);
-}
-
-__device__ void LIF::set_p0(double gE, double gI, double gL) {
-    a0 = get_a(gE, gI, gL);
-    b0 = get_b(gE, gI, gL); 
-}
-
-__device__ void LIF::set_p1(double gE, double gI, double gL) {
-    a1 = get_a(gE, gI, gL);
-    b1 = get_b(gE, gI, gL); 
-}
-
-__device__ double LIF:: eval0(double _v) {
-    return eval_LIF(a0,b0,_v);
-}
-
-__device__ double LIF:: eval1(double _v) {
-    return eval_LIF(a1,b1,_v);
-}
-
-__device__ void LIF:: reset_v() {
-    v = vL;
-}

@@ -116,15 +116,14 @@ double cpu_dab(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE,
             lif->compute_pseudo_v0(dt);
             lif->tBack = -1.0f;
         }
-
         lif->runge_kutta_2(dt);
         if (lif->v > vT) {
             // crossed threshold
-
             if (lif->v > vE) {
 				printf("#%i something is off gE = %f, gI = %f, v = %f\n", id, gE, gI, lif->v);
                 lif->v = vE;
             }
+
             lif->tsp = lif->compute_spike_time(dt); 
             // dabbing not commiting, doest not reset v or recored tBack, TBD by spike correction.
         }
@@ -154,7 +153,6 @@ void cpu_LIF::compute_v(double dt) {
 
 void cpu_LIF::compute_pseudo_v0(double dt) {
     v0 = (vL-tBack*(b0 + b1 - a1*b0*dt)/2.0f)/(1.0f+tBack*(-a0 - a1 + a1*a0*dt)/2.0f);
-    runge_kutta_2(dt);
 }
 
 void cpu_LIF::set_p0(double gE, double gI, double gL ) {
@@ -182,7 +180,6 @@ unsigned int find1stAfter(double spikeTrain[], unsigned int n, double min) {
     // in case no spike i=0
     unsigned int i = 0;
     for (int j=0; j<n; j++) {
-        if (spikeTrain[j] < 0.0f) continue;
         if (spikeTrain[j] < min) {
             min = spikeTrain[j];
             i = j;
@@ -192,7 +189,7 @@ unsigned int find1stAfter(double spikeTrain[], unsigned int n, double min) {
 }
 
 // Spike-spike correction
-unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[], double hI0[], double gE1[], double gI1[], double hE1[], double hI1[], double fE[], double fI[], double preMat[], unsigned int networkSize, ConductanceShape condE, ConductanceShape condI, int ngTypeE, int ngTypeI, double inputTime[], int nInput, int _nInput, double wSpikeTrain[], double spikeTrain[], unsigned int idTrain[], unsigned int nE, double dt) {
+unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[], double hI0[], double gE1[], double gI1[], double hE1[], double hI1[], double fE[], double fI[], double preMat[], unsigned int networkSize, ConductanceShape condE, ConductanceShape condI, int ngTypeE, int ngTypeI, double inputTime[], int nInput, int _nInput, double wSpikeTrain[], double spikeTrain[], unsigned int idTrain[], unsigned int nE, double dt, unsigned int &reclaimedSpike) {
     unsigned int corrected_n = 0;
     unsigned int n = 0;
     for (unsigned int i=0; i<networkSize; i++) {
@@ -306,7 +303,7 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                 cpu_dab(lif[j], dpdt, tRef, j, gE_t, gI_t); 
                 if (lif[j]->tsp < dpdt) {
                     lif[j]->tsp += pdt0;
-                    printf("a down-spin-missing spike reclaimed\n");
+                    reclaimedSpike++;
                 } else {
                     lif[j]->v0 = lif[j]->v;
                     lif[j]->set_p0(gE_t, gI_t, gL);
@@ -343,7 +340,7 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
     return corrected_n;
 }
 
-void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int nskip, unsigned int nstep, double dt, unsigned int nE, double preMat0[], double v0[], /* === RAND === unsigned long long seed, */ double ffsE, double ffsI, std::string theme) {
+void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int nskip, unsigned int nstep, double dt, unsigned int nE, double preMat0[], double v0[], /* === RAND === unsigned long long seed, */ double ffsE, double ffsI, std::string theme, double inputRate) {
     unsigned int ngTypeE = 2;
     unsigned int ngTypeI = 1;
     double gL, tRef;
@@ -370,11 +367,38 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int ns
     double *preMat = new double[networkSize*networkSize];
     double *wSpikeTrain = new double[networkSize];
     unsigned int *idTrain = new unsigned int[networkSize];
-    std::ofstream v_file, spike_file, gE_file, gI_file;
+    std::ofstream p_file, v_file, spike_file, gE_file, gI_file;
+    p_file.open("p_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
     v_file.open("v_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
     spike_file.open("s_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
     gE_file.open("gE_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
     gI_file.open("gI_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+
+    unsigned int nI = networkSize - nE;
+    p_file.write((char*)&nE, sizeof(unsigned int));
+    p_file.write((char*)&nI, sizeof(unsigned int));
+    p_file.write((char*)&ngTypeE, sizeof(unsigned int));
+    p_file.write((char*)&ngTypeI, sizeof(unsigned int));
+    double dtmp = vL;
+    p_file.write((char*)&dtmp, sizeof(double));
+    dtmp = vT;
+    p_file.write((char*)&dtmp, sizeof(double));
+    dtmp = vE;
+    p_file.write((char*)&dtmp, sizeof(double));
+    dtmp = vI;
+    p_file.write((char*)&dtmp, sizeof(double));
+    dtmp = gL_E;
+    p_file.write((char*)&dtmp, sizeof(double));
+    dtmp = gL_I;
+    p_file.write((char*)&dtmp, sizeof(double));
+    dtmp = tRef_E;
+    p_file.write((char*)&dtmp, sizeof(double));
+    dtmp = tRef_I;
+    p_file.write((char*)&dtmp, sizeof(double));
+    p_file.write((char*)&nstep, sizeof(unsigned int));
+    p_file.write((char*)&dt, sizeof(double));
+    p_file.write((char*)&inputRate, sizeof(double));
+
     double *inputTime = new double[networkSize*_nInput];
     /* === RAND === 
         curandGenerator_t *randGen = new curandGenerator_t[networkSize];
@@ -443,6 +467,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int ns
     double vTime = 0.0f;
 	double wTime = 0.0f;
     double sTime = 0.0f;
+    unsigned int reclaimedSpike = 0;
     int iskip = 1;
     int nInput;
 	for (unsigned int istep = 0; istep < nstep; istep++) {
@@ -549,7 +574,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int ns
         if (spiked) {
             //printf("spiked:\n");
             high_resolution_clock::time_point sStart = timeNow();
-            outputEvents += cpu_ssc(lif, v, gE_old, gI_old, hE_old, hI_old, gE_current, gI_current, hE_current, hI_current, fE, fI, preMat, networkSize, condE, condI, ngTypeE, ngTypeI, inputTime, nInput, _nInput, wSpikeTrain, spikeTrain, idTrain, nE, dt); 
+            outputEvents += cpu_ssc(lif, v, gE_old, gI_old, hE_old, hI_old, gE_current, gI_current, hE_current, hI_current, fE, fI, preMat, networkSize, condE, condI, ngTypeE, ngTypeI, inputTime, nInput, _nInput, wSpikeTrain, spikeTrain, idTrain, nE, dt, reclaimedSpike); 
             sTime += static_cast<double>(duration_cast<microseconds>(timeNow()-vStart).count());
         }
 		high_resolution_clock::time_point wStart = timeNow();
@@ -570,8 +595,15 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int ns
     printf("compute_V cost: %fms\n", vTime/1000.0f);
     printf("correct_spike cost: %fms\n", sTime/1000.0f);
 	printf("writing data to disk cost: %fms\n", wTime/1000.0f);
+    printf("reclaimed spikes %u\n", reclaimedSpike);
     /* Cleanup */
     printf("Cleaning up\n");
+    int nTimer = 2;
+    p_file.write((char*)&nTimer, sizeof(int));
+    p_file.write((char*)&vTime, sizeof(double));
+    p_file.write((char*)&sTime, sizeof(double));
+    
+    if (p_file.is_open()) p_file.close();
     if (v_file.is_open()) v_file.close();
     if (spike_file.is_open()) spike_file.close();
     if (gE_file.is_open()) gE_file.close();

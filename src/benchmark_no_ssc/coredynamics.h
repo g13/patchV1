@@ -59,7 +59,7 @@ __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ leftTimeRate,
                           double* __restrict__ lastNegLogRand,
                           curandStateMRG32k3a* __restrict__ state,
-                          unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, int nInput, bool it);
+                          unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, int nInput);
 
 __global__ void recal_G(double* __restrict__ g,
                         double* __restrict__ h,
@@ -77,6 +77,11 @@ __global__ void reduce_G(double* __restrict__ g,
                          unsigned int ngType, int n);
 
 __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed);
+
+__global__ void randInit(double* __restrict__ preMat, 
+						 double* __restrict__ v, 
+						 curandStateMRG32k3a* __restrict__ state,
+double s, unsigned int networkSize, unsigned long long seed);
 
 template <typename T>
 __global__ void init(T *array, T value) {

@@ -64,7 +64,7 @@ __global__ void compute_dV(double* __restrict__ v0,
                            double* __restrict__ lastNegLogRand,
                            double* __restrict__ v_hlf,
                            curandStateMRG32k3a* __restrict__ state,
-                           unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, int nInput, bool it);
+                           unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, int nInput);
 
 __global__ void prepare_cond(double* __restrict__ tBack,
                              double* __restrict__ spikeTrain,
