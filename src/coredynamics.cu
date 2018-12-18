@@ -112,14 +112,19 @@ __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsign
 
 __global__ void randInit(double* __restrict__ preMat, 
 						 double* __restrict__ v, 
+						 double* __restrict__ lTR, 
 						 curandStateMRG32k3a* __restrict__ state,
-double s, unsigned int networkSize, unsigned long long seed) {
+double s, unsigned int networkSize, unsigned long long seed, double dInput) {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
     curand_init(seed+id, 0, 0, &localState);
     v[id] = vL + curand_uniform_double(&localState) * (vT-vL);
     for (unsigned int i=0; i<networkSize; i++) {
         preMat[i*networkSize + id] = curand_uniform_double(&localState) * s;
+        #ifdef TEST_WITH_MANUAL_FFINPUT
+            // lTR works as firstInputTime
+            lTR[id] = curand_uniform_double(&localState)*dInput;
+        #endif
     }
 }
 
@@ -300,7 +305,7 @@ __global__ void compute_dV(double* __restrict__ v0,
                            double* __restrict__ lastNegLogRand,
                            double* __restrict__ v_hlf,
                            curandStateMRG32k3a* __restrict__ state,
-                           unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, int nInput)
+                           unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInput)
 {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
@@ -336,14 +341,22 @@ __global__ void compute_dV(double* __restrict__ v0,
     // consider use shared memory for dynamic allocation
     double inputTime[MAX_FFINPUT_PER_DT];
     curandStateMRG32k3a localState = state[id];
+    int nInput;
     #ifdef TEST_WITH_MANUAL_FFINPUT
-        #pragma unroll
-        for (int iInput = 0; iInput < nInput; iInput++) {
-            inputTime[iInput] = (iInput + double(id)/networkSize)*dt/nInput;
+        nInput = 0;
+        if (leftTimeRate[id] < dt) {
+            inputTime[nInput] = leftTimeRate[id];
+            nInput++;
+            double tmp = leftTimeRate[id] + dInput;
+            while (tmp < dt){
+                inputTime[nInput] = tmp;
+                nInput++;
+                tmp += dInput;
+            }
+            leftTimeRate[id] = tmp - dt;
+        } else {
+            leftTimeRate[id] -= dt;
         }
-        // not used if not RAND
-        lastNegLogRand[id] = 1.0f;
-        leftTimeRate[id] = 0.0f;
     #else
         nInput = set_input_time(inputTime, dt, inputRate[id], &(leftTimeRate[id]), &(lastNegLogRand[id]), &localState);
     #endif
@@ -447,7 +460,7 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
                 double dtij = dt - tsp_i;
                 #pragma unroll
                 for (unsigned int ig = 0; ig < ngTypeE; ig++) {
-                    double g = preMat[id*poolSize + i] * condE.dg_approx(dtij, ig);
+                    double g = preMat[id*poolSize + i] * condE.dg(dtij, ig);
                     dg += g;
                     dgV += g*vE;
                     deltaV += g * dvE;
@@ -460,7 +473,7 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
                 double dtij = dt - tsp_i;
                 #pragma unroll
                 for (unsigned int ig = 0; ig < ngTypeI; ig++) {
-                    double g = preMat[id*poolSize + i] * condI.dg_approx(dtij, ig);
+                    double g = preMat[id*poolSize + i] * condI.dg(dtij, ig);
                     dg += g;
                     dgV += g*vI;
                     deltaV += g * dvI;
@@ -486,7 +499,7 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
             v_new = v0i + deltaV;
         }
         spikeTrain[id] = tsp;
-        if (tsp == dt && old_tsp < dt || tsp < dt && old_tsp == dt) {
+        if (tsp == dt && dt - old_tsp > EPS || dt - tsp > EPS && old_tsp == dt) {
             local_not_matched = true;
         } else {
             local_not_matched = false;

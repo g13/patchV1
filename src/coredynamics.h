@@ -6,7 +6,6 @@
 #include <stdlib.h>
 #include <curand_kernel.h>
 #include <cuda.h>
-#include <cassert>
 #include "condShape.h"
 #include "LIF_inlines.h"
 #include "MACRO.h"
@@ -41,6 +40,35 @@ struct LIF: Func_RK2 {
     __device__ virtual double compute_spike_time(double dt);
 };
 
+__global__ void recal_G(double* __restrict__ g,
+                        double* __restrict__ h,
+                        double* __restrict__ preMat,
+                        double* __restrict__ gactVec,
+                        double* __restrict__ hactVec,
+                        double* __restrict__ g_b1x,
+                        double* __restrict__ h_b1x,
+                        unsigned int n, unsigned int offset, unsigned int ngType, unsigned int ns, int m);
+
+__global__ void reduce_G(double* __restrict__ g,
+                         double* __restrict__ h,
+                         double* __restrict__ g_b1x,
+                         double* __restrict__ h_b1x,
+                         unsigned int ngType, int n);
+
+__global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed);
+
+__global__ void randInit(double* __restrict__ preMat, 
+						 double* __restrict__ v, 
+						 double* __restrict__ lTR, 
+						 curandStateMRG32k3a* __restrict__ state,
+double s, unsigned int networkSize, unsigned long long seed, double dInput);
+
+template <typename T>
+__global__ void init(T *array, T value) {
+    unsigned long id = blockIdx.x * blockDim.x + threadIdx.x;
+    array[id] = value;
+}
+
 __global__ void compute_dV(double* __restrict__ v0,
                            double* __restrict__ dv,
                            double* __restrict__ gE,
@@ -64,28 +92,7 @@ __global__ void compute_dV(double* __restrict__ v0,
                            double* __restrict__ lastNegLogRand,
                            double* __restrict__ v_hlf,
                            curandStateMRG32k3a* __restrict__ state,
-                           unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, int nInput);
-
-__global__ void prepare_cond(double* __restrict__ tBack,
-                             double* __restrict__ spikeTrain,
-                             double* __restrict__ gactVec,
-                             double* __restrict__ hactVec,
-                             ConductanceShape cond, double dt, unsigned int ngType, unsigned int offset, unsigned int networkSize);
-
-__global__ void recal_G(double* __restrict__ g,
-                        double* __restrict__ h,
-                        double* __restrict__ preMat,
-                        double* __restrict__ gactVec,
-                        double* __restrict__ hactVec,
-                        double* __restrict__ g_b1y,
-                        double* __restrict__ h_b1y,
-                        unsigned int n, unsigned int offset, unsigned int ngType, unsigned int ns, int m);
-
-__global__ void reduce_G(double* __restrict__ g,
-                         double* __restrict__ h,
-                         double* __restrict__ g_b1y,
-                         double* __restrict__ h_b1y,
-                         unsigned int ngType, int n);
+                           unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInput);
 
 __global__ void correct_spike(bool*   __restrict__ not_matched,
                               double* __restrict__ spikeTrain,
@@ -101,17 +108,10 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
                               double* __restrict__ tBack,
                               unsigned int ngTypeE, unsigned int ngTypeI, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int poolSizeE, unsigned int poolSize);
 
-__global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed);
-
-__global__ void randInit(double* __restrict__ preMat, 
-						 double* __restrict__ v, 
-						 curandStateMRG32k3a* __restrict__ state,
-double s, unsigned int networkSize, unsigned long long seed);
-
-template <typename T>
-__global__ void init(T *array, T value) {
-    unsigned long id = blockIdx.x * blockDim.x + threadIdx.x;
-    array[id] = value;
-}
+__global__ void prepare_cond(double* __restrict__ tBack,
+                             double* __restrict__ spikeTrain,
+                             double* __restrict__ gactVec,
+                             double* __restrict__ hactVec,
+                             ConductanceShape cond, double dt, unsigned int ngType, unsigned int offset, unsigned int networkSize);
 
 #endif

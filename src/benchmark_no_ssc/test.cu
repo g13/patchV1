@@ -15,12 +15,12 @@ int main(int argc, char *argv[])
     b2 = 128;
     bool printStep = false;
     bool moreSharedMemThanBlocks = true;
-    double flatRate = 80.0f; // kHz
-    double t = 2.5f;
+    double flatRate = 100.0f; // Hz
+    double t = 1.0f;
 	unsigned int mt = 1;
     unsigned int nstep = 200;
-    double ffsE = 3e-3;
-    double s0 = 1.0f*ffsE;
+    double ffsE = 1e-3;
+    double s0 = 1e-2*ffsE;
     double ffsI = 5e-2;
     int iFlatRate = -1;
 	char tmp[101];
@@ -72,7 +72,6 @@ int main(int argc, char *argv[])
     printf("%i x %i, %i steps, seed = %u\n", b1, b2, nstep, seed);
 	unsigned int networkSize = b1*b2;
 	double s = s0/(networkSize);
-	assert(s == 0);
     if (networkSize/10.0 != float(networkSize/10)) {
         printf("To have higher computation occupancy make a factor of 10 in networkSize\n");
     }
@@ -88,10 +87,8 @@ int main(int argc, char *argv[])
     unsigned int nI = networkSize-nE;
 	t = mt * t;
     double dt = t/float(nstep); // ms
-    if (iFlatRate < 0) {
-        flatRate = flatRate*1000.0; // Hz
-    } else {
-        flatRate = iFlatRate*1000.0;
+    if (iFlatRate > 0) {
+        flatRate = iFlatRate*1.0f;
     }
     /* to be extended */
     bool presetInit = false;
@@ -108,19 +105,17 @@ int main(int argc, char *argv[])
 	printf("dt = %f ms\n", dt);
     printf("nE = %i, nI = %i\n", nE, networkSize-nE);
     printf("t = %f x %i = %f\n", dt, nstep, t);
-	double fInput = flatRate / 1000.0f * dt;
-	int _nInput = ceil(fInput);
-    int nskip = 1;
-	if (fInput < 1.0) {
-        nskip = round(_nInput/fInput);
+	double dInput = 1000.0f/flatRate;
+    if (dt/dInput > MAX_FFINPUT_PER_DT) {
+        printf("increase MAX_FFINPUT_PER_DT, or decrease input rate.\n");
+        return EXIT_FAILURE;
     }
-    double inputRate = _nInput/(dt*nskip);
 	if (networkSize / float(warpSize) != float(networkSize / warpSize)) {
 		printf("please make networkSize multiples of %i to run on GPU\n", warpSize);
 		return EXIT_FAILURE;
 	}
     struct cudaDeviceProp properties;  
-    double *v, *gE, *gI, *preMat; 
+    double *v, *gE, *gI, *preMat, *firstInput; 
     int *eventRate, *d_eventRate;
     double *d_v, *d_gE, *d_gI, *d_hE, *d_hI, *d_fE, *d_fI, *d_preMat, *d_inputRate;
     double *d_a, *d_b;
@@ -142,6 +137,9 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
     /* inits that used by both cpu and gpu */
+    firstInput = new double[networkSize];
+    CUDA_CALL(cudaMalloc((void **)&leftTimeRate,   networkSize * sizeof(double)));
+
     CUDA_CALL(cudaMalloc((void **)&randState, networkSize * sizeof(curandStateMRG32k3a)));
 
     preMat = new double[networkSize * networkSize];
@@ -150,9 +148,10 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaMallocHost((void**)&v, networkSize * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&d_v,           networkSize * sizeof(double)));
 
-    randInit<<<init_b1,init_b2>>>(d_preMat, d_v, randState, s, networkSize, seed);
+    randInit<<<init_b1,init_b2>>>(d_preMat, d_v, leftTimeRate, randState, s, networkSize, seed, dInput);
     CUDA_CHECK();
     CUDA_CALL(cudaMemcpy(preMat, d_preMat, networkSize*networkSize*sizeof(double),cudaMemcpyDeviceToHost));
+    CUDA_CALL(cudaMemcpy(firstInput, leftTimeRate, networkSize*sizeof(double),cudaMemcpyDeviceToHost));
 	double sum = 0;
 	for (unsigned int i = 0; i < networkSize*networkSize; i++) {
 		sum += preMat[i];
@@ -163,10 +162,8 @@ int main(int argc, char *argv[])
 
     #ifndef GPU_ONLY
 	    #ifdef TEST_WITH_MANUAL_FFINPUT
-	    	printf("for testing purpose, feedforward input is set to %i per %fms\n", _nInput, dt*nskip);
-            printf("realized input rate = %f kHz\n", inputRate);
-	    	printf("for manual testing, please change the inputTime manually in source and recompile\n");
-            cpu_version(networkSize, _nInput, nskip, nstep, dt, nE, preMat, v, ffsE, ffsI, theme, inputRate);
+		    printf("    dInput = %f ms\n", dInput);
+            cpu_version(networkSize, dInput, nstep, dt, nE, preMat, v, firstInput, ffsE, ffsI, theme, flatRate);
         #endif
     #endif
 
@@ -220,7 +217,6 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaMalloc((void **)&hactVec,        networkSize * ngType * sizeof(double)));
     /* Allocate space for rng on device */
     CUDA_CALL(cudaMalloc((void **)&state,          networkSize * sizeof(curandStateMRG32k3a)));
-    CUDA_CALL(cudaMalloc((void **)&leftTimeRate,   networkSize * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&lastNegLogRand, networkSize * sizeof(double)));
     /* Allocate space for partial reduce results on device */
     
@@ -366,8 +362,6 @@ int main(int argc, char *argv[])
         CUDA_CHECK();
         init<double><<<init_b1,init_b2,0,i2>>>(d_inputRate, flatRate/1000.0f);
         CUDA_CHECK();
-        init<double><<<init_b1,init_b2,0,i2>>>(leftTimeRate, 0.0f);
-        CUDA_CHECK();
         init<double><<<init_b1,init_b2,0,i3>>>(tBack, -1.0f); 
         CUDA_CHECK();
         init<double><<<init_b1*ngTypeE,init_b2,0,i2>>>(d_fE, ffsE);
@@ -434,7 +428,7 @@ int main(int argc, char *argv[])
     p_file.write((char*)&tmp, sizeof(double));
     p_file.write((char*)&nstep, sizeof(unsigned int));
     p_file.write((char*)&dt, sizeof(double));
-    p_file.write((char*)&inputRate, sizeof(double));
+    p_file.write((char*)&flatRate, sizeof(double));
 
 
     CUDA_CALL(cudaEventRecord(start, 0));
@@ -455,14 +449,7 @@ int main(int argc, char *argv[])
     //    }
         double timeV = 0.0f;
         double timeG = 0.0f;
-        int iskip = 1;
-        int nInput;
         for (int i=0; i<nstep; i++) {
-            if (iskip % nskip == 0) {
-                nInput = _nInput;
-            } else {
-                nInput = 0;
-            }
             unsigned int offset;
             //offset = networkSize*(batchOffset + i);
             offset = 0;
@@ -478,7 +465,7 @@ int main(int argc, char *argv[])
             #ifdef KERNEL_PERFORMANCE
                 CUDA_CALL(cudaEventRecord(kStart, 0));
             #endif
-            compute_V<<<b1, b2, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_a, d_b, d_preMat, d_inputRate, d_eventRate, d_spikeTrain, tBack, gactVec, hactVec, d_fE, d_fI, leftTimeRate, lastNegLogRand, state, ngTypeE, ngTypeI, ngType, condE, condI, dt, networkSize, nE, seed, nInput);
+            compute_V<<<b1, b2, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_a, d_b, d_preMat, d_inputRate, d_eventRate, d_spikeTrain, tBack, gactVec, hactVec, d_fE, d_fI, leftTimeRate, lastNegLogRand, state, ngTypeE, ngTypeI, ngType, condE, condI, dt, networkSize, nE, seed, dInput);
             CUDA_CHECK();
             CUDA_CALL(cudaEventRecord(vComputed, s1));
             #ifdef KERNEL_PERFORMANCE
@@ -567,7 +554,6 @@ int main(int argc, char *argv[])
             } else {
                 batchOffset = 0;
             }
-            iskip++;
         }
         /* WHen hit HALF_MEMORY_OCCUPANCY, write half of the array to disk, the other half left to receive from device */
         // Alternating
@@ -640,6 +626,7 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaFreeHost(eventRate));
     CUDA_CALL(cudaFreeHost(spikeTrain));
     delete []preMat;
+    delete []firstInput;
     printf("    Host memory freed\n");
     return EXIT_SUCCESS;
 }

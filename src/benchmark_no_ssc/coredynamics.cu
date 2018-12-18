@@ -112,14 +112,17 @@ __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsign
 
 __global__ void randInit(double* __restrict__ preMat, 
 						 double* __restrict__ v, 
+						 double* __restrict__ lTR, 
 						 curandStateMRG32k3a* __restrict__ state,
-double s, unsigned int networkSize, unsigned long long seed) {
+double s, unsigned int networkSize, unsigned long long seed, double dInput) {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
     curand_init(seed+id, 0, 0, &localState);
     v[id] = vL + curand_uniform_double(&localState) * (vT-vL);
     for (unsigned int i=0; i<networkSize; i++) {
         preMat[i*networkSize + id] = curand_uniform_double(&localState) * s;
+        // lTR works as firstInputTime
+        lTR[id] = curand_uniform_double(&localState)*dInput;
     }
 }
 
@@ -268,7 +271,7 @@ __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ leftTimeRate,
                           double* __restrict__ lastNegLogRand,
                           curandStateMRG32k3a* __restrict__ state,
-                          unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, int nInput)
+                          unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInput)
 {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
@@ -302,14 +305,22 @@ __global__ void compute_V(double* __restrict__ v,
     // consider use shared memory for dynamic allocation
     double inputTime[MAX_FFINPUT_PER_DT];
     curandStateMRG32k3a localState = state[id];
+    int nInput;
     #ifdef TEST_WITH_MANUAL_FFINPUT
-        #pragma unroll
-        for (int iInput = 0; iInput < nInput; iInput++) {
-            inputTime[iInput] = (iInput + double(id)/networkSize)*dt/nInput;
+        nInput = 0;
+        if (leftTimeRate[id] < dt) {
+            inputTime[nInput] = leftTimeRate[id];
+            nInput++;
+            double tmp = leftTimeRate[id] + dInput;
+            while (tmp < dt){
+                inputTime[nInput] = tmp;
+                nInput++;
+                tmp += dInput;
+            }
+            leftTimeRate[id] = tmp - dt;
+        } else {
+            leftTimeRate[id] -= dt;
         }
-        // not used if not RAND
-        lastNegLogRand[id] = 1.0f;
-        leftTimeRate[id] = 0.0f;
     #else
         nInput = set_input_time(inputTime, dt, inputRate[id], &(leftTimeRate[id]), &(lastNegLogRand[id]), &localState);
     #endif
@@ -394,4 +405,3 @@ __global__ void compute_V(double* __restrict__ v,
         }
     }
 }
-

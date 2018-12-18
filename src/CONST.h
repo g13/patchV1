@@ -10,4 +10,6 @@
 #define tRef_E 0.5f
 #define tRef_I 0.25f
 
+#define EPS 1.11e-16 // machine precision
+
 #endif

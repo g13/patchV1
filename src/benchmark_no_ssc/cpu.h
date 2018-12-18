@@ -2,6 +2,7 @@
 #include <fstream>
 #include <stdio.h>
 #include <stdlib.h>
+#include <cassert>
 #include "LIF_inlines.h"
 #include "DIRECTIVE.h"
 #include "CONST.h"
@@ -142,7 +143,7 @@ void cpu_LIF::reset_v() {
     v = vL;
 }
 
-void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int nskip, unsigned int nstep, double dt, unsigned int nE, double preMat0[], double v0[], /* === RAND === unsigned long long seed, */ double ffsE, double ffsI, std::string theme, double inputRate) {
+void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsigned int nstep, double dt, unsigned int nE, double preMat0[], double v0[], double firstInput[], /* === RAND === unsigned long long seed, */ double ffsE, double ffsI, std::string theme, double inputRate) {
     unsigned int ngTypeE = 2;
     unsigned int ngTypeI = 1;
     double gL, tRef;
@@ -187,7 +188,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int ns
     p_file.write((char*)&dt, sizeof(double));
     p_file.write((char*)&inputRate, sizeof(double));
 
-    double *inputTime = new double[networkSize*_nInput];
+    double *inputTime = new double[networkSize*MAX_FFINPUT_PER_DT];
     /* === RAND === 
         curandGenerator_t *randGen = new curandGenerator_t[networkSize];
         int *nInput = new int[networkSize];
@@ -221,7 +222,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int ns
     for (unsigned int i=0; i<networkSize; i++) {
         v[i] = v0[i];
         lif[i] = new cpu_LIF(v[i]);
-        lTR[i] = 0.0f;
+        lTR[i] = firstInput[i];
         for (int j=0; j<networkSize; j++) {
             preMat[i*networkSize+j] = preMat0[i*networkSize+j];
         }
@@ -254,16 +255,11 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int ns
     int outputEvents = 0;
     double vTime = 0.0f;
 	double gTime = 0.0f;
-    int iskip = 1;
-    int nInput;
+    int *nInput = new int[networkSize];
     for (unsigned int istep = 0; istep < nstep; istep++) {
-		if (iskip % nskip == 0) {
-			nInput = _nInput;
-		} else {
-			nInput = 0;
-		}
         high_resolution_clock::time_point vStart = timeNow();
         for (unsigned int i=0; i<networkSize; i++) {
+            assert(gI[i] == 0.0f);
             lif[i]->v0 = lif[i]->v;
             if (i<nE) {
                 gL = gL_E;
@@ -288,14 +284,21 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int ns
             }
             lif[i]->set_p0(gE_t, gI_t, gL);
 			/* === RAND === #ifdef TEST_WITH_MANUAL_FFINPUT */
-                #pragma unroll
-                for (int iInput = 0; iInput < nInput; iInput++) {
-                    inputTime[i*_nInput + iInput] = (iInput + double(i)/networkSize)*dt/_nInput;
+                nInput[i] = 0;
+                if (lTR[i] < dt) {
+                    inputTime[i*MAX_FFINPUT_PER_DT] = lTR[i];
+                    nInput[i]++;
+                    double tmp = lTR[i] + dInput;
+                    while (tmp < dt){
+                        inputTime[i*MAX_FFINPUT_PER_DT + nInput[i]] = tmp;
+                        nInput[i]++;
+                        tmp += dInput;
+                    }
+                    lTR[i] = tmp - dt;
+                } else {
+                    lTR[i] -= dt;
                 }
-                // not used if not RAND
-                logRand[i] = 1.0f;
-                lTR[i] = 0.0f;
-				inputEvents += nInput;
+				inputEvents += nInput[i];
 			/* === RAND === 
 				#else
 					nInput[i] = set_input_time(&(inputTime[i*MAX_FFINPUT_PER_DT]), dt, flatRate, lTR[i], logRand[i], randGen[i]);
@@ -307,7 +310,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int ns
             #pragma unroll
             for (int ig=0; ig<ngTypeE; ig++) {
                 unsigned int gid = networkSize*ig + i;
-                evolve_g(condE, &(gE[gid]), &(hE[gid]), &(fE[gid]), &(inputTime[i*_nInput]), nInput, dt, ig);
+                evolve_g(condE, &(gE[gid]), &(hE[gid]), &(fE[gid]), &(inputTime[i*MAX_FFINPUT_PER_DT]), nInput[i], dt, ig);
                 gE_t += gE[gid];
             }
             gI_t = 0.0f; 
@@ -315,10 +318,11 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int ns
             #pragma unroll
             for (int ig=0; ig<ngTypeI; ig++) {
                 unsigned int gid = networkSize*ig + i;
-                evolve_g(condI, &(gI[gid]), &(hI[gid]), &(fI[gid]), &(inputTime[i*_nInput]), 0, dt, ig);
+                evolve_g(condI, &(gI[gid]), &(hI[gid]), &(fI[gid]), inputTime, 0, dt, ig);
                 gI_t += gI[gid];
             }
             lif[i]->set_p1(gE_t, gI_t, gL);
+            // rk2 step
             spikeTrain[i] = cpu_step(lif[i], dt, tRef, i, gE_t, gI_t);
             v[i] = lif[i]->v;
         }
@@ -374,11 +378,10 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int ns
         }
         gTime += static_cast<double>(duration_cast<microseconds>(timeNow()-gStart).count());
         v_file.write((char*)v, networkSize * sizeof(double));
-        spike_file.write((char*)spikeTrain, networkSize * sizeof(int));
+        spike_file.write((char*)spikeTrain, networkSize * sizeof(double));
         gE_file.write((char*)gE, networkSize * ngTypeE * sizeof(double));
         gI_file.write((char*)gI, networkSize * ngTypeI * sizeof(double));
         printf("\r stepping %3.1f%%", 100.0f*float(istep+1)/nstep);
-        iskip++;
 		//printf("gE0 = %f, v = %f \n", gE[0], v[0]);
     }
     printf("\n");
@@ -416,10 +419,8 @@ void cpu_version(int networkSize, /* === RAND === flatRate */int _nInput, int ns
     delete []lif;
 
     delete []inputTime;
-	/* === RAND === 
-		delete []nInput;
-    */
 	delete []logRand;
 	delete []lTR;
+    delete []nInput;
     printf("Memories freed\n");
 }
