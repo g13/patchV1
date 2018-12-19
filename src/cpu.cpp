@@ -96,7 +96,7 @@ double cpu_dab(cpu_LIF* lif, double pdt0, double dt, double pdt, double dt0, dou
         if (lif->v > vT) {
             // crossed threshold
             if (lif->v > vE) {
-				//printf("#%i shoots above vE, something is off gE = %f, gI = %f, v = %f\n", id, gE, gI, lif->v);
+				printf("#%i shoots above vE, something is off gE = %f, gI = %f, v0 = %f, v = %f\n", id, gE, gI, lif->v0, lif->v);
                 lif->v = vE;
             }
 
@@ -104,7 +104,7 @@ double cpu_dab(cpu_LIF* lif, double pdt0, double dt, double pdt, double dt0, dou
             // dabbing not commiting, doest not reset v or recored tBack, TBD by spike correction.
         } else {
             if (lif->v < vI) {
-			    //printf("#%i shoots below vI, something is off gE = %f, gI = %f, v = %f\n", id, gE, gI, lif->v);
+			    printf("#%i shoots below vI, something is off gE = %f, gI = %f, v0 = %f, v = %f\n", id, gE, gI, lif->v0, lif->v);
                 lif->v = vI;
             }
         }
@@ -186,12 +186,15 @@ void cpu_LIF::reset_v() {
 unsigned int find1stAfter(double spikeTrain[], unsigned int n, double min) {
     // in case no spike i=0
     unsigned int i = 0;
+    printf("spikeTrain: ");
     for (int j=0; j<n; j++) {
+        printf("%f, ", spikeTrain[j]);
         if (min - spikeTrain[j] > EPS) {
             min = spikeTrain[j];
             i = j;
         }
     }
+    printf("min: #%i = %f\n", i, min);
     return i;
 }
 
@@ -235,6 +238,7 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
         unsigned int head = find1stAfter(wSpikeTrain, n, dt);
         // candidate index = i
         unsigned int i = idTrain[head];
+        assert(i<nE);
         double pdt = wSpikeTrain[head]; // relative to [0, dt] 
         double dpdt = pdt - pdt0;
         printf("pdt - pdt0  = %e, %i, %f, %f, %i, %i, %i\n", pdt - pdt0, i, gE0[i], gI0[i], corrected_n, r, n);
@@ -260,13 +264,13 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                     #pragma unroll
                     for (int ig=0; ig<ngTypeE; ig++) {
                         unsigned int gid = networkSize*ig + j;
-                        gE_t = gE0[gid];
+                        gE_t += gE0[gid];
                     }
                     double gI_t = 0.0f;
                     #pragma unroll
                     for (int ig=0; ig<ngTypeI; ig++) {
                         unsigned int gid = networkSize*ig + j;
-                        gI_t = gI0[gid];
+                        gI_t += gI0[gid];
                     }
                     lif[j]->set_p0(gE_t, gI_t, gL);
                 }
@@ -284,6 +288,10 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                     gE[gid] = gE0[gid];
                     hE[gid] = hE0[gid];
                     evolve_g(condE, &(gE[gid]), &(hE[gid]), &(fE[gid]), &(inputTime[j*MAX_FFINPUT_PER_DT+lastInput[j]]), iInput[j]-lastInput[j], dpdt, pdt, ig);
+                    if (gE[gid] < 0.0f || gE[gid] > 10.0f) {
+                        printf("#%i gE0 = %f\n", j, gE[gid]);
+                        assert(gE[gid]>= 0.0f && gE[gid] < 10.0f);
+                    }
                 }
                 // no feed-forward inhibitory input (setting nInput = 0)
                 for (int ig=0; ig<ngTypeI; ig++) {
@@ -291,6 +299,10 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                     gI[gid] = gI0[gid];
                     hI[gid] = hI0[gid];
                     evolve_g(condI, &(gI[gid]), &(hI[gid]), &(fI[gid]), inputTime, 0, dpdt, pdt, ig);
+                    if (gI[gid] != 0.0f) {
+                        printf("#%i gI0 = %e\n", j, gI[gid]);
+                        assert(gI[gid] == 0.0f);
+                    }
                 }
                 double gE_t = 0.0f;
                 #pragma unroll
@@ -321,7 +333,7 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
             }
         }
         if (!reclaimed) {
-            // if ndeed no spike comes before neuron i with the smaller pdt interpolation, commit into spikeTrain
+            // if indeed no spike comes before neuron i with the smaller pdt interpolation, commit into spikeTrain
             corrected_n++;
             spikeTrain[i] = wSpikeTrain[head];
             // realign tsp to be relative to the start of the time step, 0
@@ -366,29 +378,49 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                 h_end[ig] = 0.0f;
                 cond->compute_single_input_conductance(&(g_end[ig]), &(h_end[ig]), 1.0f, ddt, ig);
             }
+            printf("#%i, confirmed g = %f, h = %f\n", i, g_end[0], h_end[0]);
             // update v, tsp and conductance for the time interval of [pdt, dt]
             n = 0;
             for (int j=0; j<networkSize; j++) {
-                // commit g0 h0
-                for (int ig=0; ig<ngTypeE; ig++) {
-                    unsigned int gid = networkSize*ig + j;
-                    gE0[gid] += gE[ig];
-                    hE0[gid] += hE[ig];
-                }
-                for (int ig=0; ig<ngTypeI; ig++) {
-                    unsigned int gid = networkSize*ig + j;
-                    gI0[gid] += gI[ig];
-                    hI0[gid] += hI[ig];
-                }
-                // commit lastInput
-                lastInput[j] = iInput[j];
                 // new cortical input
                 for (int ig=0; ig<ngType; ig++) {
                     unsigned int gid = networkSize*ig + j;
                     g[gid] += g_end[ig] * preMat[i*networkSize + j];
                     h[gid] += h_end[ig] * preMat[i*networkSize + j];
+                    if (i < nE) {
+                        if (gE1[gid] < 0.0f || gE1[gid] > 10.0f) {
+                            printf("#%i gE0 = %f, gE1 = %f\n", j, gE0[gid], gE1[gid]);
+                            assert(gE1[gid]>= 0.0f && gE1[gid] < 10.0f);
+                        }
+                    } else {
+                        if (gI1[gid] != 0.0f) {
+                            printf("#%i gI1 = %f\n", j, gI1[gid]);
+                            assert(gI1[gid] == 0.0f);
+                        }
+                    }
                 }
                 if (lif[j]->correctMe) {
+                    // commit g0 h0
+                    for (int ig=0; ig<ngTypeE; ig++) {
+                        unsigned int gid = networkSize*ig + j;
+                        gE0[gid] = gE[gid];
+                        hE0[gid] = hE[gid];
+                        if (gE0[gid] < 0.0f || gE0[gid] > 10.0f) {
+                            printf("#%i gE0 = %f, gE1 = %f\n", j, gE0[gid], gE1[gid]);
+                            assert(gE0[gid]>= 0.0f && gE0[gid] < 10.0f);
+                        }
+                    }
+                    for (int ig=0; ig<ngTypeI; ig++) {
+                        unsigned int gid = networkSize*ig + j;
+                        gI0[gid] = gI[gid];
+                        hI0[gid] = hI[gid];
+                        if (gI0[gid] != 0.0f) {
+                            printf("#%i gI0 = %e\n", j, gI0[gid]);
+                            assert(gI0[gid] == 0.0f);
+                        }
+                    }
+                    // commit lastInput
+                    lastInput[j] = iInput[j];
                     double gL, tRef;
                     if (j<nE) {
                         gL = gL_E;
@@ -437,7 +469,7 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
     for (unsigned int i=0; i<networkSize; i++) {
         if (v[i] < -0.1f) {
             printf("%i here to destroy, tBack = %f, tsp = %f, v = %f\n", i, lif[i]->tBack, lif[i]->tsp, v[i]);
-            assert(v[i]>=0.0f);
+            assert(v[i]>=vL);
         }
     }
     delete []g_end;
@@ -607,6 +639,10 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
                 printf("%i here to spy, v = %e, gI = %e, hI = %e\n", i, lif[i]->v, gI_old[i], hI_old[i]);
                 assert(gI_old[i] == 0.0f);
             }
+            if (gE_old[i] > 10.0f) {
+                printf("%i here to spy, v = %e, gE = %e, hE = %e\n", i, lif[i]->v, gE_old[i], hE_old[i]);
+                assert(gE_old[i] < 10.0f);
+            }
             lif[i]->v0 = lif[i]->v;
             if (i<nE) {
                 gL = gL_E;
@@ -677,7 +713,17 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
             spikeTrain[i] = cpu_dab(lif[i], 0, dt, dt, dt, tRef, i, gE_t, gI_t);
             if (dt - spikeTrain[i] > EPS) spiked = true;
             v[i] = lif[i]->v;
-            assert(v[i]>0.0);
+            if (v[i] < vL) {
+                assert(v[i]>=vL);
+            }
+            if (gE_current[i] < 0.0f || gE_current[i] > 10.0f) {
+                printf("#%i gE0 = %f, gE1 = %f\n", i, gE_old[i], gE_current[i]);
+                assert(gE_current[i]>= 0.0f && gE_current[i] < 10.0f);
+            }
+            if (gI_current[i] != 0.0f) {
+                printf("#%i gI0 = %e, gI1 = %e\n", i, gI_old[i], gI_current[i]);
+                assert(gI_current[i] == 0.0f);
+            }
         }
         vTime += static_cast<double>(duration_cast<microseconds>(timeNow()-vStart).count());
             // spike-spike correction
@@ -693,7 +739,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
         gE_file.write((char*)gE_current, networkSize * ngTypeE * sizeof(double));
         gI_file.write((char*)gI_current, networkSize * ngTypeI * sizeof(double));
 		wTime += static_cast<double>(duration_cast<microseconds>(timeNow() - wStart).count());
-        printf("\r stepping %3.1f%%", 100.0f*float(istep+1)/nstep);
+        printf("\r stepping %3.1f%%, t = %f", 100.0f*float(istep+1)/nstep, istep*dt);
 		//printf("gE0 = %f, v = %f \n", gE_current[0], v[0]);
     }
     printf("\n");

@@ -158,7 +158,7 @@ int main(int argc, char *argv[])
 	for (unsigned int i = 0; i < networkSize*networkSize; i++) {
 		sum += preMat[i];
 	}
-	printf("sum of preMat = %f\n", sum);
+	printf("sum of presynaptic strength = %f, fE = %f\n", sum/networkSize, ffsE);
     CUDA_CALL(cudaMemcpy(v, d_v1, networkSize*sizeof(double),cudaMemcpyDeviceToHost));
     printf("storage size of preMat %.1fMb\n", float(networkSize*networkSize*sizeof(double))/1024.0/1024.0);
 
@@ -491,7 +491,7 @@ int main(int argc, char *argv[])
             CUDA_CALL(cudaEventSynchronize(gReadyE));
             gE_file.write((char*)gE, networkSize*ngTypeE*sizeof(double));
             CUDA_CALL(cudaEventSynchronize(gReadyI));
-            gI_file.write((char*)&gI, networkSize*ngTypeI*sizeof(double));
+            gI_file.write((char*)gI, networkSize*ngTypeI*sizeof(double));
             /* Compute voltage (acquire initial spikes) */
             #ifdef KERNEL_PERFORMANCE
                 CUDA_CALL(cudaEventRecord(kStart, 0));

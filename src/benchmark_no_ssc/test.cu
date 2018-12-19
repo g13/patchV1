@@ -460,7 +460,7 @@ int main(int argc, char *argv[])
             CUDA_CALL(cudaEventSynchronize(gReadyE));
             gE_file.write((char*)gE, networkSize*ngTypeE*sizeof(double));
             CUDA_CALL(cudaEventSynchronize(gReadyI));
-            gI_file.write((char*)&gI, networkSize*ngTypeI*sizeof(double));
+            gI_file.write((char*)gI, networkSize*ngTypeI*sizeof(double));
             /* Compute voltage */
             #ifdef KERNEL_PERFORMANCE
                 CUDA_CALL(cudaEventRecord(kStart, 0));
