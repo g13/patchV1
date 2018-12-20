@@ -330,46 +330,39 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
         high_resolution_clock::time_point gStart = timeNow();
         for (unsigned int i=0; i<networkSize; i++) {
             double g_end, h_end;
+            double *g, *h;
+            int ngType;
+            ConductanceShape *cond;
             #ifndef NAIVE
             if (spikeTrain[i] < dt) {
             #endif
-                outputEvents ++;
                 if (i < nE) {
-                    //printf("exc-%i fired\n", i);
-                    #pragma unroll
-                    for (int ig=0; ig<ngTypeE; ig++) {
-                        g_end = 0.0;
-                        h_end = 0.0;
-                        #ifdef NAIVE
-                        if (spikeTrain[i] < dt) {
-                        #endif
-                            condE.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif[i]->tsp, ig);
-                        #ifdef NAIVE
-                        }
-                        #endif
-                        for (int ii = 0; ii < networkSize; ii++) {
-                            int gid = networkSize*ig+ii;
-                            gE[gid] += g_end * preMat[i*networkSize + ii];
-                            hE[gid] += h_end * preMat[i*networkSize + ii];
-                        }
-                    }
+                    cond = &condE;
+                    ngType = ngTypeE;
+                    g = gE;
+		        	h = hE;
                 } else {
-                    #pragma unroll
-                    for (int ig=0; ig<ngTypeI; ig++) {
-                        g_end = 0.0;
-                        h_end = 0.0;
-                        #ifdef NAIVE
-                        if (spikeTrain[i] < dt) {
-                        #endif
-                            condI.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif[i]->tsp, ig);
-                        #ifdef NAIVE
-                        }
-                        #endif
-                        for (int ii = 0; ii < networkSize; ii++) {
-                            int gid = networkSize*ig+ii;
-                            gI[gid] += g_end * preMat[i*networkSize + ii];
-                            hI[gid] += h_end * preMat[i*networkSize + ii];
-                        }
+                    cond = &condI;
+                    ngType = ngTypeI;
+                    g = gI;
+		        	h = hI;
+                }
+                outputEvents ++;
+                #pragma unroll
+                for (int ig=0; ig<ngType; ig++) {
+                    g_end = 0.0;
+                    h_end = 0.0;
+                    #ifdef NAIVE
+                    if (spikeTrain[i] < dt) {
+                    #endif
+                        cond->compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif[i]->tsp, ig);
+                    #ifdef NAIVE
+                    }
+                    #endif
+                    for (int ii = 0; ii < networkSize; ii++) {
+                        int gid = networkSize*ig+ii;
+                        g[gid] += g_end * preMat[i*networkSize + ii];
+                        h[gid] += h_end * preMat[i*networkSize + ii];
                     }
                 }
             #ifndef NAIVE

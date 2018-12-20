@@ -183,20 +183,21 @@ void cpu_LIF::reset_v() {
 unsigned int find1stAfter(double spikeTrain[], unsigned int n, double min) {
     // in case no spike i=0
     unsigned int i = 0;
-    printf("spikeTrain: ");
+    //printf("spikeTrain: ");
     for (int j=0; j<n; j++) {
-        printf("%f, ", spikeTrain[j]);
+        //printf("%f, ", spikeTrain[j]);
         if (min - spikeTrain[j] > EPS) {
             min = spikeTrain[j];
             i = j;
         }
     }
-    printf("min: #%i = %f\n", i, min);
+    //printf("min: #%i = %f\n", i, min);
     return i;
 }
 
 // Spike-spike correction
 unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[], double hI0[], double gE1[], double gI1[], double hE1[], double hI1[], double fE[], double fI[], double preMat[], unsigned int networkSize, cConductanceShape condE, cConductanceShape condI, int ngTypeE, int ngTypeI, double inputTime[], int nInput[], double spikeTrain[], unsigned int nE, double dt) {
+    static unsigned int c2_n = 0;
     double *v0 = new double[networkSize];
     double *wSpikeTrain = new double[networkSize];
     unsigned int *idTrain = new unsigned int[networkSize];
@@ -219,6 +220,9 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
         g_end = new double[ngTypeI];
         h_end = new double[ngTypeI];
     }
+    int ngType;
+    double *g, *h;
+    cConductanceShape *cond;
     double pdt0 = 0.0f; // old pdt
     int* iInput = new int[networkSize];
     int* lastInput = new int[networkSize]();
@@ -226,25 +230,40 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
     double* hE = new double[networkSize*ngTypeE];
     double* gI = new double[networkSize*ngTypeI];
     double* hI = new double[networkSize*ngTypeI];
-    int r = 0;
+    unsigned int r = 0;
+    unsigned int last_i;
     while (n>0) {
-        if (r>2*networkSize) {
-            printf("fucked\n");
-        }
+        //if (r>2*networkSize) {
+        //    printf("fucked\n");
+        //}
         // get the first spike, candidate to output spikeTrain
         unsigned int head = find1stAfter(wSpikeTrain, n, dt);
         // candidate index = i
         unsigned int i = idTrain[head];
         double pdt = wSpikeTrain[head]; // relative to [0, dt] 
         double dpdt = pdt - pdt0;
-        printf("pdt - pdt0  = %e, %i, %f, %f, %i, %i, %i\n", pdt - pdt0, i, gE0[i], gI0[i], corrected_n, r, n);
+        //printf("pdt - pdt0  = %e, %i, %f, %f, %i, %i, %i\n", pdt - pdt0, i, gE0[i], gI0[i], corrected_n, r, n);
         // |      |             |             |
         // 0     pdt0<--dpdt-->pdt<---ddt---->dt
         // candidate will be cancelled if another spike reclaimed before the candidate
         bool reclaimed = false;
         // restep to fill-up the wSpikeTrain
         n = 0;
-        for (int j=0; j<networkSize; j++) {
+        if (corrected_n > 0) {
+            if (last_i < nE) {
+                cond = &condE;
+                ngType = ngTypeE;
+            } else {
+                cond = &condI;
+                ngType = ngTypeI;
+            }
+            for (int ig = 0; ig<ngType; ig++) {
+                g_end[ig] = 0.0f;
+                h_end[ig] = 0.0f;
+                cond->compute_single_input_conductance(&(g_end[ig]), &(h_end[ig]), 1.0f, dpdt, ig);
+            }
+        }
+        for (unsigned int j=0; j<networkSize; j++) {
             if (lif[j]->correctMe) {
                 double gL, tRef;
                 if (j<nE) {
@@ -276,40 +295,46 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                 if  (iInput[j] < nInput[j]) {
                     while (inputTime[j*MAX_FFINPUT_PER_DT+iInput[j]] < pdt) {
                         iInput[j]++;
-                        if (iInput[j] < nInput[j]) break;
-                    }
-                }
-                for (int ig=0; ig<ngTypeE; ig++) {
-                    unsigned int gid = networkSize*ig + j;
-                    gE[gid] = gE0[gid];
-                    hE[gid] = hE0[gid];
-                    evolve_g(condE, &(gE[gid]), &(hE[gid]), &(fE[gid]), &(inputTime[j*MAX_FFINPUT_PER_DT+lastInput[j]]), iInput[j]-lastInput[j], dpdt, pdt, ig);
-                    if (gE[gid] < 0.0f) {
-                        printf("#%i gE0 = %f\n", j, gE[gid]);
-                        assert(gE[gid] >= 0.0f);
-                    }
-                }
-                // no feed-forward inhibitory input (setting nInput = 0)
-                for (int ig=0; ig<ngTypeI; ig++) {
-                    unsigned int gid = networkSize*ig + j;
-                    gI[gid] = gI0[gid];
-                    hI[gid] = hI0[gid];
-                    evolve_g(condI, &(gI[gid]), &(hI[gid]), &(fI[gid]), inputTime, 0, dpdt, pdt, ig);
-                    if (gI[gid] < 0.0f) {
-                        printf("#%i gI0 = %e\n", j, gI[gid]);
-                        assert(gI[gid] >= 0.0f);
+                        if (iInput[j] == nInput[j]) break;
                     }
                 }
                 double gE_t = 0.0f;
                 #pragma unroll
                 for (int ig=0; ig<ngTypeE; ig++) {
                     unsigned int gid = networkSize*ig + j;
+                    gE[gid] = gE0[gid];
+                    hE[gid] = hE0[gid];
+                    evolve_g(condE, &(gE[gid]), &(hE[gid]), &(fE[gid]), &(inputTime[j*MAX_FFINPUT_PER_DT+lastInput[j]]), iInput[j]-lastInput[j], dpdt, pdt, ig);
+                    if (corrected_n > 0) {
+                        if (last_i < nE) {
+                            gE[gid] += g_end[ig] * preMat[last_i*networkSize + j];
+                            hE[gid] += h_end[ig] * preMat[last_i*networkSize + j];
+                        }
+                    }
+                    if (gE[gid] < 0.0f) {
+                        printf("#%i gE0 = %f\n", j, gE[gid]);
+                        assert(gE[gid] >= 0.0f);
+                    }
                     gE_t += gE[gid];
                 }
+                // no feed-forward inhibitory input (setting nInput = 0)
                 double gI_t = 0.0f; 
                 #pragma unroll
                 for (int ig=0; ig<ngTypeI; ig++) {
                     unsigned int gid = networkSize*ig + j;
+                    gI[gid] = gI0[gid];
+                    hI[gid] = hI0[gid];
+                    evolve_g(condI, &(gI[gid]), &(hI[gid]), &(fI[gid]), inputTime, 0, dpdt, pdt, ig);
+                    if (corrected_n > 0) {
+                        if (last_i >= nE) {
+                            gI[gid] += g_end[ig] * preMat[last_i*networkSize + j];
+                            hI[gid] += h_end[ig] * preMat[last_i*networkSize + j];
+                        }
+                    }
+                    if (gI[gid] < 0.0f) {
+                        printf("#%i gI0 = %e\n", j, gI[gid]);
+                        assert(gI[gid] >= 0.0f);
+                    }
                     gI_t += gI[gid];
                 }
                 lif[j]->set_p1(gE_t, gI_t, gL);
@@ -334,7 +359,6 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
             spikeTrain[i] = wSpikeTrain[head];
             // realign tsp to be relative to the start of the time step, 0
             lif[i]->tsp = wSpikeTrain[head];
-            cConductanceShape *cond;
             lif[i]->spikeCount++;
             if (lif[i]->spikeCount > 1) {
                 printf("multiple spikes in one dt, consider smaller time step than %fms\n", dt);
@@ -356,8 +380,6 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
             // move on to next pdt period
             double ddt = dt - pdt;
             // prepare the conductance changes caused by the confirmed spike from neuron i
-            int ngType;
-            double *g, *h;
             if (i < nE) {
                 cond = &condE;
                 ngType = ngTypeE;
@@ -374,10 +396,11 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                 h_end[ig] = 0.0f;
                 cond->compute_single_input_conductance(&(g_end[ig]), &(h_end[ig]), 1.0f, ddt, ig);
             }
-            printf("#%i, confirmed g = %f, h = %f\n", i, g_end[0], h_end[0]);
+            //printf("#%i, confirmed g = %f, h = %f\n", i, g_end[0], h_end[0]);
             // update v, tsp and conductance for the time interval of [pdt, dt]
+            last_i = i;
             n = 0;
-            for (int j=0; j<networkSize; j++) {
+            for (unsigned int j=0; j<networkSize; j++) {
                 // new cortical input
                 for (int ig=0; ig<ngType; ig++) {
                     unsigned int gid = networkSize*ig + j;
@@ -472,6 +495,11 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
     delete []v0;
     delete []wSpikeTrain;
     delete []idTrain;
+    //if (corrected_n > 1) {
+    //    c2_n++;
+    //    printf("%u corrected, more-than-2 total %u\n", corrected_n, c2_n);
+
+    //}
     return corrected_n;
 }
 
@@ -713,7 +741,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
         }
 		high_resolution_clock::time_point wStart = timeNow();
         v_file.write((char*)v, networkSize * sizeof(double));
-        spike_file.write((char*) spikeTrain, networkSize * sizeof(double));
+        spike_file.write((char*)spikeTrain, networkSize * sizeof(double));
         gE_file.write((char*)gE_current, networkSize * ngTypeE * sizeof(double));
         gI_file.write((char*)gI_current, networkSize * ngTypeI * sizeof(double));
 		wTime += static_cast<double>(duration_cast<microseconds>(timeNow() - wStart).count());
