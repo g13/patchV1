@@ -1,4 +1,4 @@
-#include "coredynamics.h"
+
 
 __global__ void recal_G(double* __restrict__ g,
                         double* __restrict__ h,
@@ -170,8 +170,9 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
     }
 }
 
-__device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, double gE, double gI) {
+__device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, double gE, double gI, double tsp[]) {
     lif->tsp = dt;
+    lif->spikeCount = 0;
     // not in refractory period
     if (lif->tBack < dt) {
         // return from refractory period
@@ -183,31 +184,29 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
         lif->runge_kutta_2(dt);
         while (lif->v > vT && lif->tBack < 0.0f) {
             // crossed threshold
-
-            if (lif->v > vE) {
-                printf("#%i something is off gE = %f, gI = %f, v = %f\n", id, gE, gI, lif->v);
-                lif->v = vE;
-            }
-            
             lif->tsp = lif->compute_spike_time(dt); 
+            tsp[lif->spikeCount] = lif->tsp;
+            lif->spikeCount++;
             lif->tBack = lif->tsp + tRef;
-            //printf("neuron #%i fired initially\n", id);
-            //assert(lif->tBack > 0);
             if (lif->tBack < dt) {
                 // refractory period ended during dt
-                lif->compute_v(dt);
+                lif->compute_pseudo_v0(dt);
+                lif->runge_kutta_2(dt);
                 lif->tBack = -1.0f;
-                if (lif->v > vT) {
-                    printf("multiple spike in one time step, only the last spike is counted, refractory period = %f ms, dt = %f\n", tRef, dt);
-                    //assert(lif->v <= vT);
-                }
             }
+        }
+        if (lif->v < vI) {
+		    printf("#%i shoots below vI, something is off gE = %f, gI = %f, v0 = %f, v = %f\n", id, gE, gI, lif->v0, lif->v);
+            lif->v = vI;
         }
     } 
     if (lif->tBack >= dt) {
         // during refractory period
         lif->reset_v(); 
         lif->tBack -= dt;
+    }
+    if (lif->spikeCount > 1) {
+        printf("#%i spiked %i in one time step %f, refractory period = %f ms, only the last tsp is recorded\n", id, lif->spikeCount, dt, tRef);
     }
     return lif->tsp;
 }
@@ -263,6 +262,7 @@ __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ inputRate,
                           int* __restrict__ eventRate,
                           double* __restrict__ spikeTrain,
+                          unsigned int* __restrict__ nSpike,
                           double* __restrict__ tBack,
                           double* __restrict__ gactVec,
                           double* __restrict__ hactVec,
@@ -365,7 +365,9 @@ __global__ void compute_V(double* __restrict__ v,
     }
     lif.set_p1(gE_t, gI_t, gL);
     // rk2 step
-    spikeTrain[id] = step(&lif, dt, tRef, /*the last 2 args are for deugging*/ id, gE_t, gI_t);
+    double tsp[MAX_SPIKE_PER_DT];
+    spikeTrain[id] = step(&lif, dt, tRef, /*the last 2 args are for deugging*/ id, gE_t, gI_t, tsp);
+    nSpike[id] = lif.spikeCount;
 	v[id] = lif.v;
     tBack[id] = lif.tBack;
     if (lif.v < vI) {
@@ -375,26 +377,27 @@ __global__ void compute_V(double* __restrict__ v,
 
     //setup acting vectors
     double g_end, h_end;
-    if (spikeTrain[id]<dt) {
+    if (lif.spikeCount > 0) {
+        int ngType;
+        ConductanceShape *cond; 
         if (id < nE) {
-            #pragma unroll
-            for (int ig=0; ig<ngTypeE; ig++) {
-                g_end = 0.0f;
-                h_end = 0.0f;
-                condE.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif.tsp, ig);
-                gid = networkSize*ig+id;
-                gactVec[gid] = g_end;
-                hactVec[gid] = h_end;
-            }
+            ngType = ngTypeE;
+            cond = &condE;
         } else {
-            #pragma unroll
-            for (int ig=0; ig<ngTypeI; ig++) {
+            ngType = ngTypeI;
+            cond = &condI;
+        }
+        #pragma unroll
+        for (int ig=0; ig<ngType; ig++) {
+            gid = networkSize*ig+id;
+            gactVec[gid] = 0.0f;
+            hactVec[gid] = 0.0f;
+            for (int i=0; i<lif.spikeCount; i++) {
                 g_end = 0.0f;
                 h_end = 0.0f;
-                condI.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif.tsp, ig);
-                gid = networkSize*ig+id;
-                gactVec[gid] = g_end;
-                hactVec[gid] = h_end;
+                cond->compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-tsp[i], ig);
+                gactVec[gid] += g_end;
+                hactVec[gid] += h_end;
             }
         }
     } else {
@@ -404,4 +407,5 @@ __global__ void compute_V(double* __restrict__ v,
             hactVec[gid] = 0.0f;
         }
     }
+    delete []tsp;
 }

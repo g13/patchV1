@@ -48,6 +48,7 @@ struct cpu_LIF {
     double v, v0;
     // type variable
     double tBack, tsp;
+    unsigned int spikeCount;
     double a1, b1;
     double a0, b0;
     cpu_LIF(double _v0): v(_v0) {
@@ -64,8 +65,9 @@ struct cpu_LIF {
     double compute_spike_time(double dt);
 };
 
-double cpu_step(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE, double gI) {
+double cpu_step(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE, double gI, double tsp[]) {
     lif->tsp = dt;
+	lif->spikeCount = 0;
     // not in refractory period
     if (lif->tBack < dt) {
         // return from refractory period
@@ -76,24 +78,20 @@ double cpu_step(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE
         lif->runge_kutta_2(dt);
         while (lif->v > vT && lif->tBack < 0.0f) {
             // crossed threshold
-            if (lif->v > vE) {
-				printf("#%i something is off gE = %f, gI = %f, v = %f\n", id, gE, gI, lif->v);
-                lif->v = vE;
-            }
-
             lif->tsp = lif->compute_spike_time(dt); 
+            tsp[lif->spikeCount] = lif->tsp;
+            lif->spikeCount++;
             lif->tBack = lif->tsp + tRef;
-            //printf("neuron #%i fired initially\n", id);
-            //assert(lif->tBack > 0);
             if (lif->tBack < dt) {
                 // refractory period ended during dt
-                lif->compute_v(dt);
+                lif->compute_pseudo_v0(dt);
+                lif->runge_kutta_2(dt);
                 lif->tBack = -1.0f;
-                if (lif->v > vT) {
-                    printf("multiple spike in one time step, only the last spike is counted, refractory period = %f ms, dt = %f\n", tRef, dt);
-                    //assert(lif->v <= vT);
-                }
             }
+        }
+        if (lif->v < vI) {
+		    printf("#%i shoots below vI, something is off gE = %f, gI = %f, v0 = %f, v = %f\n", id, gE, gI, lif->v0, lif->v);
+            lif->v = vI;
         }
     } 
     if (lif->tBack >= dt) {
@@ -101,6 +99,9 @@ double cpu_step(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE
         lif->reset_v(); 
         lif->tBack -= dt;
     } 
+    if (lif->spikeCount > 1) {
+        printf("#%i spiked %i in one time step %f, refractory period = %f ms, only the last tsp is recorded\n", id, lif->spikeCount, dt, tRef);
+    }
     return lif->tsp;
 }
 
@@ -155,11 +156,13 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
     double *fE = new double[networkSize*ngTypeE];
     double *fI = new double[networkSize*ngTypeI];
     double *spikeTrain = new double[networkSize];
+    unsigned int *nSpike = new unsigned int[networkSize];
     double *preMat = new double[networkSize*networkSize];
-    std::ofstream p_file, v_file, spike_file, gE_file, gI_file;
+    std::ofstream p_file, v_file, spike_file, nSpike_file, gE_file, gI_file;
     p_file.open("p_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
     v_file.open("v_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
     spike_file.open("s_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+    nSpike_file.open("n_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
     gE_file.open("gE_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
     gI_file.open("gI_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
 
@@ -189,6 +192,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
     p_file.write((char*)&inputRate, sizeof(double));
 
     double *inputTime = new double[networkSize*MAX_FFINPUT_PER_DT];
+    double *tsp = new double[networkSize*MAX_SPIKE_PER_DT];
     /* === RAND === 
         curandGenerator_t *randGen = new curandGenerator_t[networkSize];
         int *nInput = new int[networkSize];
@@ -323,7 +327,8 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
             }
             lif[i]->set_p1(gE_t, gI_t, gL);
             // rk2 step
-            spikeTrain[i] = cpu_step(lif[i], dt, tRef, i, gE_t, gI_t);
+            spikeTrain[i] = cpu_step(lif[i], dt, tRef, i, gE_t, gI_t, &(tsp[i*MAX_SPIKE_PER_DT]));
+			nSpike[i] = lif[i]->spikeCount;
             v[i] = lif[i]->v;
         }
         vTime += static_cast<double>(duration_cast<microseconds>(timeNow()-vStart).count());
@@ -334,7 +339,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
             int ngType;
             ConductanceShape *cond;
             #ifndef NAIVE
-            if (spikeTrain[i] < dt) {
+            if (nSpike[i] > 0) {
             #endif
                 if (i < nE) {
                     cond = &condE;
@@ -347,24 +352,30 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
                     g = gI;
 		        	h = hI;
                 }
-                outputEvents ++;
-                #pragma unroll
-                for (int ig=0; ig<ngType; ig++) {
-                    g_end = 0.0;
-                    h_end = 0.0;
-                    #ifdef NAIVE
-                    if (spikeTrain[i] < dt) {
-                    #endif
-                        cond->compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-lif[i]->tsp, ig);
-                    #ifdef NAIVE
+                outputEvents += nSpike[i];
+                #ifdef NAIVE
+                if (lif[i].spikeCount > 0) {
+                #endif
+                    #pragma unroll
+                    for (int ig=0; ig<ngType; ig++) {
+                        g_end = 0.0;
+                        h_end = 0.0;
+                        for (int j=0; j<nSpike[i]; j++) {
+                            double g0 = 0.0f;
+                            double h0 = 0.0f;
+                            cond->compute_single_input_conductance(&g0, &h0, 1.0f, dt-tsp[i], ig);
+                            g_end += g0;
+                            h_end += h0;
+                        }
+                        for (int ii = 0; ii < networkSize; ii++) {
+                            int gid = networkSize*ig+ii;
+                            g[gid] += g_end * preMat[i*networkSize + ii];
+                            h[gid] += h_end * preMat[i*networkSize + ii];
+                        }
                     }
-                    #endif
-                    for (int ii = 0; ii < networkSize; ii++) {
-                        int gid = networkSize*ig+ii;
-                        g[gid] += g_end * preMat[i*networkSize + ii];
-                        h[gid] += h_end * preMat[i*networkSize + ii];
-                    }
+                #ifdef NAIVE
                 }
+                #endif
             #ifndef NAIVE
             }
             #endif
@@ -372,6 +383,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
         gTime += static_cast<double>(duration_cast<microseconds>(timeNow()-gStart).count());
         v_file.write((char*)v, networkSize * sizeof(double));
         spike_file.write((char*)spikeTrain, networkSize * sizeof(double));
+        nSpike_file.write((char*)nSpike, networkSize * sizeof(unsigned int));
         gE_file.write((char*)gE, networkSize * ngTypeE * sizeof(double));
         gI_file.write((char*)gI, networkSize * ngTypeI * sizeof(double));
         printf("\r stepping %3.1f%%", 100.0f*float(istep+1)/nstep);
@@ -393,6 +405,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
     
     if (p_file.is_open()) p_file.close();
     if (v_file.is_open()) v_file.close();
+    if (nSpike_file.is_open()) nSpike_file.close();
     if (spike_file.is_open()) spike_file.close();
     if (gE_file.is_open()) gE_file.close();
     if (gI_file.is_open()) gI_file.close();
@@ -405,6 +418,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
     delete []fI;
     delete []preMat;
     delete []spikeTrain;
+    delete []nSpike;
     /* === RAND === delete []randGen; */
     for (unsigned int i=0; i<networkSize; i++) {
         delete []lif[i];
@@ -412,6 +426,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
     delete []lif;
 
     delete []inputTime;
+    delete []tsp;
 	delete []logRand;
 	delete []lTR;
     delete []nInput;

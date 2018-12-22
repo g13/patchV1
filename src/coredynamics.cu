@@ -38,14 +38,19 @@ __global__ void recal_G(double* __restrict__ g,
         double h_t = 0.0f;
         for (int i = 0; i<ns; i++) {
             unsigned sid = ig*ns + i;
-            unsigned pid = (offset + blockIdx.x*ns + i)*n + id;
-            g_t += gaV[sid] * preMat[pid];
-            h_t += haV[sid] * preMat[pid];
+            if (gaV[sid] > 0) {
+                unsigned pid = (offset + blockIdx.x*ns + i)*n + id;
+                double s = preMat[pid];
+                g_t += gaV[sid] * s;
+                h_t += haV[sid] * s;
+            }
         }
         if (gridDim.x < 32) {
-            unsigned int gid = ig*n + id;
-            atomicAdd(&(g[gid]), g_t);
-            atomicAdd(&(h[gid]), h_t);
+            if (g_t > 0) {
+                unsigned int gid = ig*n + id;
+                atomicAdd(&(g[gid]), g_t);
+                atomicAdd(&(h[gid]), h_t);
+            }
         } else {
             // b1x = double[ngType, n/ns(gridDim.x), n]
             unsigned int b1xid = ig*n*gridDim.x + blockIdx.x*n + id;
@@ -172,8 +177,9 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
     }
 }
 
-__device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, double gE, double gI) {
+__device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, double gE, double gI, double tsp[]) {
     lif->tsp = dt;
+    lif->spikeCount = 0;
     // not in refractory period
     if (lif->tBack < dt) {
         // return from refractory period
@@ -185,24 +191,15 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
         lif->runge_kutta_2(dt);
         while (lif->v > vT && lif->tBack < 0.0f) {
             // crossed threshold
-
-            if (lif->v > vE) {
-                printf("#%i something is off gE = %f, gI = %f, v = %f\n", id, gE, gI, lif->v);
-                lif->v = vE;
-            }
-            
             lif->tsp = lif->compute_spike_time(dt); 
+            tsp[lif->spikeCount] = lif->tsp;
+            lif->spikeCount++;
             lif->tBack = lif->tsp + tRef;
-            //printf("neuron #%i fired initially\n", id);
-            //assert(lif->tBack > 0);
             if (lif->tBack < dt) {
                 // refractory period ended during dt
-                lif->compute_v(dt);
+                lif->compute_pseudo_v0(dt);
+                lif->runge_kutta_2(dt);
                 lif->tBack = -1.0f;
-                if (lif->v > vT) {
-                    printf("multiple spike in one time step, only the last spike is counted, refractory period = %f ms, dt = %f\n", tRef, dt);
-                    //assert(lif->v <= vT);
-                }
             }
         }
     } 
@@ -210,6 +207,9 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
         // during refractory period
         lif->reset_v(); 
         lif->tBack -= dt;
+    }
+    if (lif->spikeCount > 1) {
+        printf("#%i spiked %i in one time step %f, refractory period = %f ms, only the last tsp is recorded\n", id, lif->spikeCount, dt, tRef);
     }
     return lif->tsp;
 }
@@ -265,16 +265,12 @@ __device__  double dab(Func_RK2* lif, double dt, double tRef, unsigned int id, d
             lif->tBack = -1.0f;
         }
         lif->runge_kutta_2(dt);
-        if (lif->v > vT) {
-            // crossed threshold
+		if (lif->v > vT) {
+			// crossed threshold
 
-            if (lif->v > vE) {
-				printf("#%i something is off gE = %f, gI = %f, v = %f\n", id, gE, gI, lif->v);
-                lif->v = vE;
-            }
-            lif->tsp = lif->compute_spike_time(dt); 
-            // dabbing not commiting, doest not reset v or recored tBack, TBD by spike correction.
-        }
+			lif->tsp = lif->compute_spike_time(dt);
+			// dabbing not commiting, doest not reset v or recored tBack, TBD by spike correction.
+		}
     } else {
         // during refractory period
         lif->reset_v(); 
@@ -408,9 +404,13 @@ __global__ void compute_dV(double* __restrict__ v0,
     v_hlf[id] = lif.v_hlf;
 	//tBack[id] = lif.tBack; // TBD after spike correction, comment this line if SSC is naive.
     if (lif.v < vI) {
-		printf("#%i something is off gE = %f, gI = %f, v = %f\n", id, gE_t, gI_t, lif.v);
+		printf("#%i something is off gE = %f, gI = %f, v0 = %f, v1/2 = %f, v = %f, a0 = %f, b0 = %f, a1 = %f, b1 = %f\n", id, gE_t, gI_t, lif.v0, lif.v_hlf, lif.v, lif.a0, lif.b0, lif.a1, lif.b1);
         lif.v = vI;
     }   
+    if (lif.tsp < 0.0f) {
+		printf("#%i backfired v0 = %f, v1/2 = %f, v = %f, tsp = %f\n", id, lif.v0, lif.v_hlf, lif.v, lif.tsp);
+        assert(lif.tsp >= 0.0f);
+    }
 	//if (id == 0 || id == nE) {
 	//	printf("#%i: v old = %f, v est = %f\n", id, lif.v0, lif.v);
 	//	printf("#%i: tsp = %f, tb = %f\n", id, lif.tsp, tBack[id]);
@@ -431,86 +431,80 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
                               double* __restrict__ vnew,
                               double* __restrict__ preMat,
                               double* __restrict__ tBack,
+                              unsigned int* __restrict__ nSpike,
                               unsigned int ngTypeE, unsigned int ngTypeI, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int poolSizeE, unsigned int poolSize) 
 {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
-    bool local_not_matched;
-    double v_new = vnew[id];
-    if (tBack[id] < dt) {
-        double tsp = spikeTrain[id];
-        double tRef;
-        if (id < poolSizeE) {
-            tRef = tRef_E;
-        } else {
-            tRef = tRef_I;
-        }
-        double vhlf =  v_hlf[id];
-        double minTsp_i = tsp;
-        double dvE = vhlf - vE;
-        double dvI = vhlf - vI;
-        double deltaV = dv[id]; // init with old dv to be new dv
-        double dg = 0.0;
-        double dgV = 0.0;
-        for (unsigned int i = 0; i < poolSizeE; i++) {
-            double tsp_i = spikeTrain[i];  // possible share_mem optimization
-            if (tsp > tsp_i) {
-                if (tsp_i < minTsp_i) {
-                    minTsp_i = tsp_i;
-                }
-                double dtij = dt - tsp_i;
-                #pragma unroll
-                for (unsigned int ig = 0; ig < ngTypeE; ig++) {
-                    double g = preMat[id*poolSize + i] * condE.dg(dtij, ig);
-                    dg += g;
-                    dgV += g*vE;
-                    deltaV += g * dvE;
-                }
-            }
-        }
-        for (unsigned int i = poolSizeE; i < poolSize; i++) {
-            double tsp_i = spikeTrain[i]; // possible share_mem optimization
-            if (tsp > tsp_i) {
-                double dtij = dt - tsp_i;
-                #pragma unroll
-                for (unsigned int ig = 0; ig < ngTypeI; ig++) {
-                    double g = preMat[id*poolSize + i] * condI.dg(dtij, ig);
-                    dg += g;
-                    dgV += g*vI;
-                    deltaV += g * dvI;
-                }
-            }
-        }
-        double v0i = v0[id];
-        double old_tsp = tsp;
-        double dvT = vT - v0i;
-        if (deltaV > dvT) {
-            tsp = dt * dvT / deltaV;
-            if (tsp < minTsp_i) {
-                tsp = minTsp_i;
-            }
-            if (tsp + tRef > dt) {
-                v_new = vL; 
-            } else {
-                // let's hope this branch is never used. 
-                v_new = compute_v1(dt, a0[id], b0[id], a1[id] + dg, b1[id] + dgV, vL, tsp + tRef);
-            }
-        } else {
-            tsp = dt;
-            v_new = v0i + deltaV;
-        }
-        spikeTrain[id] = tsp;
-        if (tsp == dt && dt - old_tsp > EPS || dt - tsp > EPS && old_tsp == dt) {
-            local_not_matched = true;
-        } else {
-            local_not_matched = false;
-        }
+    bool local_not_matched = false;
+    double v_new = vL;
+    double tsp = spikeTrain[id];
+    double tRef;
+    if (id < poolSizeE) {
+        tRef = tRef_E;
     } else {
-        v_new = vL;
-        local_not_matched = false;    
+        tRef = tRef_I;
     }
-	//if (id == 0 || id == poolSizeE) {
-	//	printf("#%i: v1 = %f\n", id, v_new);
-	//}
+    double vhlf =  v_hlf[id];
+    double minTsp_i = tsp;
+    double dvE = vhlf - vE;
+    double dvI = vhlf - vI;
+    double deltaV = dv[id]; // init with old dv to be new dv
+    double dg = 0.0;
+    double dgV = 0.0;
+    unsigned ns = nSpike[id];
+    for (unsigned int i = 0; i < poolSizeE; i++) {
+        double tsp_i = spikeTrain[i];  // possible share_mem optimization
+        if (tsp > tsp_i) {
+            if (tsp_i < minTsp_i) {
+                minTsp_i = tsp_i;
+            }
+            double dtij = dt - tsp_i;
+            #pragma unroll
+            for (unsigned int ig = 0; ig < ngTypeE; ig++) {
+                double g = preMat[i*poolSize + id] * condE.dg(dtij, ig);
+                dg += g;
+                dgV += g*vE;
+                deltaV += g * dvE;
+            }
+        }
+    }
+    for (unsigned int i = poolSizeE; i < poolSize; i++) {
+        double tsp_i = spikeTrain[i]; // possible share_mem optimization
+        if (tsp > tsp_i) {
+            double dtij = dt - tsp_i;
+            #pragma unroll
+            for (unsigned int ig = 0; ig < ngTypeI; ig++) {
+                double g = preMat[i*poolSize + id] * condI.dg(dtij, ig);
+                dg += g;
+                dgV += g*vI;
+                deltaV += g * dvI;
+            }
+        }
+    }
+    double v0i = v0[id];
+    double old_tsp = tsp;
+    tsp = dt;
+    v_new = v0i + deltaV;
+    if (v_new > vT) {
+        tsp = dt * (vT - v0i) / deltaV;
+        if (tsp < minTsp_i) {
+            tsp = minTsp_i;
+        }
+        if (tsp + tRef > dt) {
+            v_new = vL; 
+        } else {
+            while(tsp + tRef > dt) {
+                v_new = compute_v1(dt, a0[id], b0[id], a1[id] + dg, b1[id] + dgV, vL, tsp + tRef);
+                tsp = dt*(vT-v0i)/deltaV;
+                assert(tsp>=0.0f);
+            }
+        }
+    }
+    assert(tsp>=0.0f);
+    spikeTrain[id] = tsp;
+    if (tsp == dt && dt - old_tsp > EPS || dt - tsp > EPS && old_tsp == dt) {
+        local_not_matched = true;
+    }
     __syncthreads();
     not_matched[id] = local_not_matched;
     vnew[id] = v_new;
@@ -520,45 +514,36 @@ __global__ void prepare_cond(double* __restrict__ tBack,
                              double* __restrict__ spikeTrain,
                              double* __restrict__ gactVec,
                              double* __restrict__ hactVec,
+                             unsigned int* __restrict__ nSpike,
                              ConductanceShape cond, double dt, unsigned int ngType, unsigned int offset, unsigned int networkSize) 
 {
     unsigned int id = offset + blockIdx.x * blockDim.x + threadIdx.x;
     //setup acting vectors
     double g_end, h_end;
     double tsp = spikeTrain[id];
-    double tB;
-    if (tsp<dt) {
+    double tB = -1.0f;
+    if (tsp < dt) {
         if (offset == 0) {
             tB = tsp + tRef_E - dt;
         } else {
             tB = tsp + tRef_I - dt;
         }
-        #pragma unroll
-        for (int ig=0; ig<ngType; ig++) {
-            g_end = 0.0f;
-            h_end = 0.0f;
-            cond.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-tsp, ig);
-            unsigned int gid = networkSize*ig + id;
-            gactVec[gid] = g_end;
-            hactVec[gid] = h_end;
-        }
-    } else {
-        tB = tBack[id];
-        if (tB >= dt) {
-            tB -= dt;
-        } else {
-            tB = -1.0f;
-        }
-        for (int ig=0; ig<ngType; ig++) {
-            unsigned int gid = networkSize*ig + id;
-            gactVec[gid] = 0.0f;
-            hactVec[gid] = 0.0f;
-        }
     }
     __syncthreads();
-	//if (id == 0 || id == offset) {
-	//	printf("#%i: tsp = %f, tB = %f -> tB = %f\n", id, tsp, tBack[id], tB);
-	//}
     tBack[id] = tB;
+    #pragma unroll
+    for (int ig=0; ig<ngType; ig++) {
+        g_end = 0.0f;
+        h_end = 0.0f;
+        if (tsp < dt) {
+            unsigned int ns = nSpike[id];
+            cond.compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-tsp, ig);
+            g_end *= ns;
+            h_end *= ns;
+        }
+        unsigned int gid = networkSize*ig + id;
+        gactVec[gid] = g_end;
+        hactVec[gid] = h_end;
+    }
 }
 

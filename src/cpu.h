@@ -19,7 +19,7 @@ struct cpu_LIF {
     // type variable
     double tBack, tsp;
     bool correctMe;
-    int spikeCount;
+    unsigned int spikeCount;
     double a1, b1;
     double a0, b0;
     cpu_LIF(double _v0): v(_v0) {

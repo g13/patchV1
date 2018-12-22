@@ -14,6 +14,7 @@ struct Func_RK2 {
     double v, v0;
     // type variable
     double tBack, tsp;
+    unsigned int spikeCount;
     __device__ Func_RK2(double _v0, double _tBack) : v0(_v0), tBack(_tBack) {};
     __device__ void runge_kutta_2(double dt);
     __device__ virtual void set_p0(double _gE, double _gI, double _gL) = 0;
@@ -80,6 +81,7 @@ __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ inputRate,
                           int* __restrict__ eventRate,
                           double* __restrict__ spikeTrain,
+                          unsigned int* __restrict__ nSpike,
                           double* __restrict__ tBack,
                           double* __restrict__ gactVec,
                           double* __restrict__ hactVec,

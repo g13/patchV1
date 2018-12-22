@@ -2,7 +2,7 @@
 
 int main(int argc, char *argv[])
 {
-    std::ofstream p_file, v_file, spike_file, gE_file, gI_file;
+    std::ofstream p_file, v_file, spike_file, nSpike_file, gE_file, gI_file;
     float time;
     curandStateMRG32k3a *state, *randState;
     unsigned long long seed;
@@ -122,6 +122,7 @@ int main(int argc, char *argv[])
     double *gactVec, *hactVec;
     double *leftTimeRate, *lastNegLogRand;
     double *spikeTrain, *d_spikeTrain, *tBack;
+    unsigned int *nSpike, *d_nSpike;
     bool *not_matched;
     bool *d_not_matched;
 
@@ -198,6 +199,7 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaMallocHost((void**)&gE,          networkSize * ngTypeE * sizeof(double) * batchStep * alt));
     CUDA_CALL(cudaMallocHost((void**)&gI,          networkSize * ngTypeI *sizeof(double) * batchStep * alt));
     CUDA_CALL(cudaMallocHost((void**)&spikeTrain,  networkSize * sizeof(double) * batchStep * alt));
+    CUDA_CALL(cudaMallocHost((void**)&nSpike,  networkSize * sizeof(unsigned int) * batchStep * alt));
     CUDA_CALL(cudaMallocHost((void**)&eventRate,   networkSize * sizeof(int) * batchStep * alt));
     CUDA_CALL(cudaMallocHost((void**)&not_matched, networkSize * sizeof(bool)));
 
@@ -218,6 +220,7 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaMalloc((void **)&d_inputRate,    networkSize * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&d_eventRate,    networkSize * sizeof(int)));
     CUDA_CALL(cudaMalloc((void **)&d_spikeTrain,   networkSize * sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&d_nSpike,       networkSize * sizeof(unsigned int)));
     CUDA_CALL(cudaMalloc((void **)&tBack,          networkSize * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&gactVec,        networkSize * ngType * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&hactVec,        networkSize * ngType * sizeof(double)));
@@ -424,6 +427,7 @@ int main(int argc, char *argv[])
     p_file.open("p_ushy" + theme + ".bin", std::ios::out|std::ios::binary);
     v_file.open("v_ictorious" + theme + ".bin", std::ios::out|std::ios::binary);
     spike_file.open("s_uspicious" + theme + ".bin", std::ios::out|std::ios::binary);
+    nSpike_file.open("n_arcotic" + theme + ".bin", std::ios::out|std::ios::binary);
     gE_file.open("gE_nerous" + theme + ".bin", std::ios::out|std::ios::binary);
     gI_file.open("gI_berish" + theme + ".bin", std::ios::out|std::ios::binary);
 
@@ -518,7 +522,7 @@ int main(int argc, char *argv[])
             CUDA_CALL(cudaEventRecord(kStart, 0));
             while (no_match && imatch < networkSize) {
                 //printf("correct_spike <<< %i x %i >>>\n", b1, b2);
-                correct_spike <<<b1, b2, 0, s1>>> (d_not_matched, d_spikeTrain, d_v_hlf, v_old, dv, d_a0, d_b0, d_a1, d_b1, v_current, d_preMat, tBack, ngTypeE, ngTypeI, condE, condI, dt, nE, networkSize);
+                correct_spike <<<b1, b2, 0, s1>>> (d_not_matched, d_spikeTrain, d_v_hlf, v_old, dv, d_a0, d_b0, d_a1, d_b1, v_current, d_preMat, tBack, d_nSpike, ngTypeE, ngTypeI, condE, condI, dt, nE, networkSize);
                 CUDA_CHECK();
 	            //printf("correct_spike <<< %i x %i >>> finished\n", b1, b2);
                 CUDA_CALL(cudaMemcpyAsync(not_matched, d_not_matched, networkSize * sizeof(bool), cudaMemcpyDeviceToHost,s1));
@@ -568,13 +572,14 @@ int main(int argc, char *argv[])
             CUDA_CALL(cudaEventRecord(vReady, s1));
             /* Copy spikeTrain to host */
             CUDA_CALL(cudaMemcpyAsync(spikeTrain, d_spikeTrain, networkSize * sizeof(double), cudaMemcpyDeviceToHost, s1));
+            CUDA_CALL(cudaMemcpyAsync(nSpike, d_nSpike, networkSize * sizeof(unsigned int), cudaMemcpyDeviceToHost, s1));
             CUDA_CALL(cudaEventRecord(spikeRateReady, s1));
             /* Get presynaptic conductance ready */
             //printf("prepare_cond <<< %i x %i >>> %i, %i, %f \n", b1E, b2E, b1, b2, eiRatio);
-            prepare_cond <<<b1E, b2E, 0, s2>>> (tBack, d_spikeTrain, gactVec, hactVec, condE, dt, ngTypeE, 0, networkSize);
+            prepare_cond <<<b1E, b2E, 0, s2>>> (tBack, d_spikeTrain, gactVec, hactVec, nSpike, condE, dt, ngTypeE, 0, networkSize);
             CUDA_CHECK();
             CUDA_CALL(cudaEventRecord(gReadyE, s2));
-            prepare_cond <<<b1I, b2I, 0, s3>>> (tBack, d_spikeTrain, gactVec, hactVec, condI, dt, ngTypeE, nE, networkSize);
+            prepare_cond <<<b1I, b2I, 0, s3>>> (tBack, d_spikeTrain, gactVec, hactVec, nSpike, condI, dt, ngTypeE, nE, networkSize);
             CUDA_CHECK();
             CUDA_CALL(cudaEventRecord(gReadyI, s3));
             #ifdef KERNEL_PERFORMANCE
@@ -636,15 +641,19 @@ int main(int argc, char *argv[])
             printf("\r stepping: %3.1f%%", 100.0f*float(i+1)/nstep);
             //printf("stepping: %3.1f%%\n", 100.0f*float(i+1)/nstep);
             double _events = 0.0f;
-            int _spikes = 0;
+            unsigned int _spikes = 0;
             for (int j=0; j<networkSize; j++) {
                 _events += eventRate[j];
-                if (spikeTrain[j] < dt) {
-                    _spikes++;
+                if (dt-spikeTrain[j]>EPS) {
+                    nSpike[j] = 1;
+                    _spikes += nSpike[j];
+                } else {
+                    nSpike[j] = 0;
                 }
             }
             events += _events;
             spikes += _spikes;
+            nSpike_file.write((char*)nSpike,     n*sizeof(unsigned int));
             if (printStep) {
                 printf("instant input rate = %fkHz, dt = %f, networkSize = %i\n", _events/(dt*networkSize), dt, networkSize);
                 printf("instant firing rate = %fHz\n", _spikes/(dt*networkSize)*1000.0);
@@ -694,6 +703,7 @@ int main(int argc, char *argv[])
     if (p_file.is_open()) p_file.close();
     if (v_file.is_open()) v_file.close();
     if (spike_file.is_open()) spike_file.close();
+    if (nSpike_file.is_open()) nSpike_file.close();
     if (gE_file.is_open()) gE_file.close();
     if (gI_file.is_open()) gI_file.close();
     printf("    Output files closed\n");
@@ -728,6 +738,7 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaFree(d_inputRate));
     CUDA_CALL(cudaFree(d_eventRate));
     CUDA_CALL(cudaFree(d_spikeTrain));
+    CUDA_CALL(cudaFree(d_nSpike));
 	CUDA_CALL(cudaFree(d_not_matched));
     CUDA_CALL(cudaFree(tBack));
     printf("    Device memory freed\n");
@@ -736,6 +747,7 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaFreeHost(gI));
     CUDA_CALL(cudaFreeHost(eventRate));
     CUDA_CALL(cudaFreeHost(spikeTrain));
+    CUDA_CALL(cudaFreeHost(nSpike));
 	CUDA_CALL(cudaFreeHost(not_matched));
     delete []preMat;
     delete []firstInput;
