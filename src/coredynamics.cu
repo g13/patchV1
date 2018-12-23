@@ -255,6 +255,17 @@ __device__ void LIF::reset_v() {
     v = vL;
 }
 
+__device__ double compute_pseudo_v0(double a0, double b0, double a1, double b1, double dt, double tBack) {
+    return (vL-tBack*(b0 + b1 - a1*b0*dt)/2.0f)/(1.0f+tBack*(-a0 - a1 + a1*a0*dt)/2.0f);
+}
+
+__device__ double runge_kutta_2(double a0, double b0, double a1, double b1, double v0, double dt, double &v_hlf) {
+    double fk0 = eval_LIF(a0, b0, v0);
+    v_hlf = v0 + dt*fk0;
+    double fk1 = eval_LIF(a1, b1, v_hlf);
+    return v0 + dt*(fk0+fk1)/2.0f;
+}
+
 __device__  double dab(Func_RK2* lif, double dt, double tRef, unsigned int id, double gE, double gI) {
     lif->tsp = dt;
     // not in refractory period
@@ -493,10 +504,20 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
         if (tsp + tRef > dt) {
             v_new = vL; 
         } else {
-            while(tsp + tRef > dt) {
-                v_new = compute_v1(dt, a0[id], b0[id], a1[id] + dg, b1[id] + dgV, vL, tsp + tRef);
-                tsp = dt*(vT-v0i)/deltaV;
-                assert(tsp>=0.0f);
+            while(tsp + tRef < dt) {
+                double v_old = v_new;
+                double v_hlf;
+                //v_new = compute_v1(dt, a0[id], b0[id], a1[id] + dg, b1[id] + dgV, vL, tsp + tRef);
+                double pseudo_v0 = compute_pseudo_v0(a0[id], b0[id], a1[id] + dg, b1[id] + dgV, dt, tsp + tRef);
+                v_new = runge_kutta_2(a0[id], b0[id], a1[id] + dg, b1[id] + dgV, pseudo_v0, dt, v_hlf);
+                if (v_new > vT) {
+                    tsp = dt*(vT-pseudo_v0)/(v_new-pseudo_v0);
+                    printf("# %i, v_old = %e, v0 = %e, v_hlf = %e, v_new = %e, tsp + tRef = %e, dt = %e, tsp = %e, tsp0 = %e\n", id, v_old, pseudo_v0, v_hlf, v_new, tsp + tRef, dt, tsp, old_tsp);
+                    assert(tsp > old_tsp);
+                    old_tsp = tsp;
+                } else {
+                    break;
+                }
             }
         }
     }
