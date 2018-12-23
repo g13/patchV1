@@ -462,7 +462,7 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
     double deltaV = dv[id]; // init with old dv to be new dv
     double dg = 0.0;
     double dgV = 0.0;
-    unsigned ns = nSpike[id];
+    unsigned ns = 0;
     for (unsigned int i = 0; i < poolSizeE; i++) {
         double tsp_i = spikeTrain[i];  // possible share_mem optimization
         if (tsp > tsp_i) {
@@ -497,6 +497,7 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
     tsp = dt;
     v_new = v0i + deltaV;
     if (v_new > vT) {
+        ns = 1;
         tsp = dt * (vT - v0i) / deltaV;
         if (tsp < minTsp_i) {
             tsp = minTsp_i;
@@ -529,6 +530,7 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
     __syncthreads();
     not_matched[id] = local_not_matched;
     vnew[id] = v_new;
+    nSpike[id] = ns;
 }
 
 __global__ void prepare_cond(double* __restrict__ tBack,

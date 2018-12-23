@@ -576,10 +576,10 @@ int main(int argc, char *argv[])
             CUDA_CALL(cudaEventRecord(spikeRateReady, s1));
             /* Get presynaptic conductance ready */
             //printf("prepare_cond <<< %i x %i >>> %i, %i, %f \n", b1E, b2E, b1, b2, eiRatio);
-            prepare_cond <<<b1E, b2E, 0, s2>>> (tBack, d_spikeTrain, gactVec, hactVec, nSpike, condE, dt, ngTypeE, 0, networkSize);
+            prepare_cond <<<b1E, b2E, 0, s2>>> (tBack, d_spikeTrain, gactVec, hactVec, d_nSpike, condE, dt, ngTypeE, 0, networkSize);
             CUDA_CHECK();
             CUDA_CALL(cudaEventRecord(gReadyE, s2));
-            prepare_cond <<<b1I, b2I, 0, s3>>> (tBack, d_spikeTrain, gactVec, hactVec, nSpike, condI, dt, ngTypeE, nE, networkSize);
+            prepare_cond <<<b1I, b2I, 0, s3>>> (tBack, d_spikeTrain, gactVec, hactVec, d_nSpike, condI, dt, ngTypeE, nE, networkSize);
             CUDA_CHECK();
             CUDA_CALL(cudaEventRecord(gReadyI, s3));
             #ifdef KERNEL_PERFORMANCE
