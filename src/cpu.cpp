@@ -120,8 +120,13 @@ double compute_v1(double dt, double a0, double b0, double a1, double b1, double 
 
 void cpu_LIF::runge_kutta_2(double dt) {
     double fk0 = eval0(v0);
+    double fk1;
     v_hlf = v0 + dt*fk0;
-    double fk1 = eval1(v_hlf);
+    //if (v_hlf > vE) {
+    //    fk1 = fk0; // reduced to euler
+    //} else {
+        fk1 = eval1(v_hlf);
+    //}
     v = v0 + dt*(fk0+fk1)/2.0f;
 }
 
@@ -183,6 +188,9 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
     static unsigned int c2_n = 0;
     double *v0 = new double[networkSize];
     double *wSpikeTrain = new double[networkSize];
+    double *old_tsp = new double[networkSize];
+    double *v0old = new double[networkSize];
+    double *vold = new double[networkSize];
     unsigned int *idTrain = new unsigned int[networkSize];
     unsigned int n = 0;
     for (unsigned int i=0; i<networkSize; i++) {
@@ -195,6 +203,9 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
         // collect v0 in case of reclaim
         v0[i] = lif[i]->v0;
 		// reset the spikeTrain for refill REMEMBER THIS BUG!
+        old_tsp[i] = spikeTrain[i];
+        v0old[i] = lif[i]->v0;
+        vold[i] = lif[i]->v;
 		spikeTrain[i] = dt;
     }
     double *g_end, *h_end;
@@ -361,6 +372,15 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                 tRef = tRef_I;
             }
             lif[i]->tBack = lif[i]->tsp + tRef;
+            //if (i == 0) {
+            //    printf(" chere tsp = %e, tB = %e,", lif[i]->tsp, lif[i]->tBack);
+            //    if (lif[i]->tBack > dt) {
+            //        printf(" next_tB = %e", lif[i]->tBack-dt);
+            //    }
+            //}
+            if (i == 14 || i == 436) {
+                printf("#%i, old_tsp = %e, dvold = %.15e, deltaV = %e, v0 = %e, dvhlf = %e, dvnew = %.15e; dtChange = %e, v0old = %.15e, vold = %.15e\n", i, old_tsp[i], v[i]-lif[i]->v0, lif[i]->v - v[i], lif[i]->v0, lif[i]->v_hlf-lif[i]->v0, lif[i]->v-lif[i]->v0, (dt-pdt0)/dt, v0old[i], vold[i]);
+            }
             if (lif[i]->tBack > dt) {
                 lif[i]->reset_v();
                 lif[i]->tBack -= dt;
@@ -408,6 +428,9 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                             printf("#%i gI0 = %e, gI1 = %e\n", j, gI0[gid], gI1[gid]);
                             assert(gI1[gid] >= 0.0f);
                         }
+                    }
+                    if ((j == 14 || j == 436) && (i == 11 || i == 436)) {
+                        printf("g-%i frome %i = %e\n", j, i, g_end[ig] * preMat[i*networkSize + j]);
                     }
                 }
                 if (lif[j]->correctMe) {
@@ -491,6 +514,9 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
     delete []hI;
     delete []v0;
     delete []wSpikeTrain;
+    delete []old_tsp;
+    delete []vold;
+    delete []v0old;
     delete []idTrain;
     //if (corrected_n > 1) {
     //    c2_n++;

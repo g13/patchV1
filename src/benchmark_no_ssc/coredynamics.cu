@@ -1,4 +1,4 @@
-
+#include "coredynamics.h"
 
 __global__ void recal_G(double* __restrict__ g,
                         double* __restrict__ h,
@@ -38,14 +38,19 @@ __global__ void recal_G(double* __restrict__ g,
         double h_t = 0.0f;
         for (int i = 0; i<ns; i++) {
             unsigned sid = ig*ns + i;
-            unsigned pid = (offset + blockIdx.x*ns + i)*n + id;
-            g_t += gaV[sid] * preMat[pid];
-            h_t += haV[sid] * preMat[pid];
+            if (gaV[sid] > 0) {
+                unsigned pid = (offset + blockIdx.x*ns + i)*n + id;
+                double s = preMat[pid];
+                g_t += gaV[sid] * s;
+                h_t += haV[sid] * s;
+            }
         }
         if (gridDim.x < 32) {
-            unsigned int gid = ig*n + id;
-            atomicAdd(&(g[gid]), g_t);
-            atomicAdd(&(h[gid]), h_t);
+            if (g_t > 0) {
+                unsigned int gid = ig*n + id;
+                atomicAdd(&(g[gid]), g_t);
+                atomicAdd(&(h[gid]), h_t);
+            }
         } else {
             // b1x = double[ngType, n/ns(gridDim.x), n]
             unsigned int b1xid = ig*n*gridDim.x + blockIdx.x*n + id;
@@ -162,7 +167,7 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
                                   double* __restrict__ h, 
                                   double* __restrict__ f,
                                   double inputTime[],
-                                  unsigned int nInput, double dt, unsigned int ig)
+                                  int nInput, double dt, unsigned int ig)
 {
     cond.decay_conductance(g, h, dt, ig); 
     for (int i=0; i<nInput; i++) {
@@ -194,10 +199,6 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
                 lif->runge_kutta_2(dt);
                 lif->tBack = -1.0f;
             }
-        }
-        if (lif->v < vI) {
-		    printf("#%i shoots below vI, something is off gE = %f, gI = %f, v0 = %f, v = %f\n", id, gE, gI, lif->v0, lif->v);
-            lif->v = vI;
         }
     } 
     if (lif->tBack >= dt) {
@@ -290,17 +291,16 @@ __global__ void compute_V(double* __restrict__ v,
     // init cond E 
     gE_t = 0.0f;
     #pragma unroll
-    for (int ig=0; ig<ngTypeE; ig++) {
+    for (unsigned int ig=0; ig<ngTypeE; ig++) {
         gE_t += gE[networkSize*ig + id];
     }
     //  cond I 
     gI_t = 0.0f;
     #pragma unroll
-    for (int ig=0; ig<ngTypeI; ig++) {
+    for (unsigned int ig=0; ig<ngTypeI; ig++) {
         gI_t += gI[networkSize*ig + id];
     }
     lif.set_p0(gE_t, gI_t, gL);
-
     /* Get feedforward input */
     // consider use shared memory for dynamic allocation
     double inputTime[MAX_FFINPUT_PER_DT];
@@ -368,12 +368,12 @@ __global__ void compute_V(double* __restrict__ v,
     double tsp[MAX_SPIKE_PER_DT];
     spikeTrain[id] = step(&lif, dt, tRef, /*the last 2 args are for deugging*/ id, gE_t, gI_t, tsp);
     nSpike[id] = lif.spikeCount;
-	v[id] = lif.v;
-    tBack[id] = lif.tBack;
     if (lif.v < vI) {
 		printf("#%i something is off gE = %f, gI = %f, v = %f\n", id, gE_t, gI_t, lif.v);
         lif.v = vI;
     }   
+	v[id] = lif.v;
+    tBack[id] = lif.tBack;
 
     //setup acting vectors
     double g_end, h_end;

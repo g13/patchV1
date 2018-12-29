@@ -6,7 +6,7 @@ struct ConductanceShape {
     double riseTime[5], decayTime[5], dod[5], coef2[5];
     __host__ __device__ ConductanceShape() {};
     __host__ __device__ ConductanceShape(double rt[], double dt[], unsigned int ng) {
-        for (int i = 0; i < ng; i++) {
+        for (unsigned int i = 0; i < ng; i++) {
             riseTime[i] = rt[i];
             decayTime[i] = dt[i];
             dod[i] = dt[i]/ (dt[i] - rt[i]);
