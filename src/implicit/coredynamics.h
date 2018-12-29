@@ -11,35 +11,22 @@
 #include "MACRO.h"
 #include <cassert>
 
-struct Func_RK2 {
-    double v, v0, v_hlf;
-    // type variable
-    double tBack, tsp;
+struct LIF {
     unsigned int spikeCount;
-    __device__ Func_RK2(double _v0, double _tBack) : v0(_v0), tBack(_tBack) {};
-    __device__ void runge_kutta_2(double dt);
-    __device__ virtual void set_p0(double _gE, double _gI, double _gL) = 0;
-    __device__ virtual void set_p1(double _gE, double _gI, double _gL) = 0;
-    __device__ virtual double eval0(double _v) = 0;
-    __device__ virtual double eval1(double _v) = 0;
-    __device__ virtual void reset_v() = 0;
-    __device__ virtual void compute_pseudo_v0(double dt) = 0;
-    __device__ virtual void compute_v(double dt) = 0;
-    __device__ virtual double compute_spike_time(double dt) = 0;
-};
-
-struct LIF: Func_RK2 {
-    double a1, b1;
+    double v, v0;
+    double tBack, tsp;
     double a0, b0;
-    __device__ LIF(double _v0, double _tBack) : Func_RK2(_v0, _tBack) {};
+    double a1, b1;
+    double denorm;
+    __device__ LIF(double _v0, double _tBack): v0(_v0), tBack(_tBack) {};
     __device__ virtual void set_p0(double _gE, double _gI, double _gL);
     __device__ virtual void set_p1(double _gE, double _gI, double _gL);
-    __device__ virtual double eval0(double _v);
-    __device__ virtual double eval1(double _v);
+    __device__ virtual void implicit_rk2(double dt);
+    __device__ virtual void compute_spike_time(double dt, double t0 = 0.0f);
+    __device__ virtual void recompute(double dt, double t0=0.0f);
+    __device__ virtual void recompute_v0(double dt, double t0=0.0f);
+    __device__ virtual void recompute_v(double dt, double t0=0.0f);
     __device__ virtual void reset_v();
-    __device__ virtual void compute_pseudo_v0(double dt);
-    __device__ virtual void compute_v(double dt);
-    __device__ virtual double compute_spike_time(double dt);
 };
 
 __global__ void recal_G(double* __restrict__ g,
@@ -93,13 +80,11 @@ __global__ void compute_dV(double* __restrict__ v0,
                            double* __restrict__ fI,
                            double* __restrict__ leftTimeRate,
                            double* __restrict__ lastNegLogRand,
-                           double* __restrict__ v_hlf,
                            curandStateMRG32k3a* __restrict__ state,
                            unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInput);
 
 __global__ void correct_spike(bool*   __restrict__ not_matched,
                               double* __restrict__ spikeTrain,
-                              double* __restrict__ v_hlf,
                               double* __restrict__ v0,
                               double* __restrict__ dv,
                               double* __restrict__ a0,
