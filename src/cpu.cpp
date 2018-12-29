@@ -120,13 +120,8 @@ double compute_v1(double dt, double a0, double b0, double a1, double b1, double 
 
 void cpu_LIF::runge_kutta_2(double dt) {
     double fk0 = eval0(v0);
-    double fk1;
     v_hlf = v0 + dt*fk0;
-    //if (v_hlf > vE) {
-    //    fk1 = fk0; // reduced to euler
-    //} else {
-        fk1 = eval1(v_hlf);
-    //}
+    double fk1 = eval1(v_hlf);
     v = v0 + dt*(fk0+fk1)/2.0f;
 }
 
