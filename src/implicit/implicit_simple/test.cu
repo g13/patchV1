@@ -531,8 +531,8 @@ int main(int argc, char *argv[])
             /* Write spikeTrain of current step to disk */
             spike_file.write((char*)spikeTrain,  n*sizeof(double));
             nSpike_file.write((char*)nSpike,      n*sizeof(unsigned int));
-            //printf("\r stepping: %3.1f%%", 100.0f*float(i+1)/nstep);
-            printf("stepping: %3.1f%%, t = %f \n", 100.0f*float(i+1)/nstep, (i+1)*dt);
+            printf("\r stepping: %3.1f%%", 100.0f*float(i+1)/nstep);
+            //printf("stepping: %3.1f%%, t = %f \n", 100.0f*float(i+1)/nstep, (i+1)*dt);
             double _events = 0.0f;
             unsigned int _spikes = 0;
             for (int j=0; j<networkSize; j++) {

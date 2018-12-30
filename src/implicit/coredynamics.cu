@@ -188,7 +188,7 @@ __device__  double step(LIF* lif, double dt, double tRef, unsigned int id, doubl
         }
         __syncthreads();
         lif->implicit_rk2(dt);
-        while (lif->v > vT) {
+        while (lif->v > vT && lif->tBack < dt) {
             // crossed threshold
             lif->compute_spike_time(dt); 
             tsp[lif->spikeCount] = lif->tsp;
