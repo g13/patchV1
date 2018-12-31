@@ -119,15 +119,28 @@ __global__ void randInit(double* __restrict__ preMat,
 						 double* __restrict__ v, 
 						 double* __restrict__ lTR, 
 						 curandStateMRG32k3a* __restrict__ state,
-double s, unsigned int networkSize, unsigned long long seed, double dInput) {
+double sE, double sI, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInput) {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
     curand_init(seed+id, 0, 0, &localState);
     v[id] = vL + curand_uniform_double(&localState) * (vT-vL);
-    for (unsigned int i=0; i<networkSize; i++) {
-        preMat[i*networkSize + id] = curand_uniform_double(&localState) * s;
+    double mean = log(sI/sqrt(1.0f+1.0f/sI));
+    double std = sqrt(log(1.0f+1.0f/sI));
+    for (unsigned int i=0; i<nE; i++) {
+        preMat[i*networkSize + id] = curand_log_normal_double(&localState, mean, std);
         // lTR works as firstInputTime
-        lTR[id] = curand_uniform_double(&localState)*dInput;
+        #ifdef TEST_WITH_MANUAL_FFINPUT
+            lTR[id] = curand_uniform_double(&localState)*dInput;
+        #endif
+    }
+    mean = log(sI/sqrt(1.0f+1.0f/sI));
+    std = sqrt(log(1.0f+1.0f/sI));
+    for (unsigned int i=nE; i<networkSize; i++) {
+        preMat[i*networkSize + id] = curand_log_normal_double(&localState, mean, std);
+
+        #ifdef TEST_WITH_MANUAL_FFINPUT
+            lTR[id] = curand_uniform_double(&localState)*dInput;
+        #endif
     }
 }
 
@@ -203,12 +216,16 @@ __device__  double step(LIF* lif, double dt, double tRef, unsigned int id, doubl
     } 
     if (lif->tBack >= dt) {
         // during refractory period
-        lif->reset_v(); 
+        lif->reset_v();
     }
     lif->tBack -= dt;
     if (lif->spikeCount > 1) {
         printf("#%i spiked %i in one time step %f, refractory period = %f ms, only the last tsp is recorded\n", id, lif->spikeCount, dt, tRef);
     }
+    //if (lif->v < vI) {
+		//printf("#%i implicit rk2 is A-Stable! something is off gE1 = %f, gI1 = %f, v = %f, v0 = %f, a0 = %f, b0 = %f, a1 = %f, b1 = %f\n", id, gE, gI, lif->v, lif->v0, lif->a0, lif->b0, lif->a1, lif->b1);
+        //lif->v = vI;
+    //}   
     return lif->tsp;
 }
 
@@ -375,10 +392,6 @@ __global__ void compute_V(double* __restrict__ v,
     double tsp[MAX_SPIKE_PER_DT];
     spikeTrain[id] = step(&lif, dt, tRef, /*the last 2 args are for deugging*/ id, gE_t, gI_t, tsp);
     nSpike[id] = lif.spikeCount;
-    if (lif.v < vI) {
-		printf("#%i implicit rk2 is A-Stable! something is off gE = %f, gI = %f, v = %f\n", id, gE_t, gI_t, lif.v);
-        lif.v = vI;
-    }   
 	v[id] = lif.v;
     tBack[id] = lif.tBack;
 

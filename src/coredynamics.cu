@@ -119,15 +119,26 @@ __global__ void randInit(double* __restrict__ preMat,
 						 double* __restrict__ v, 
 						 double* __restrict__ lTR, 
 						 curandStateMRG32k3a* __restrict__ state,
-double s, unsigned int networkSize, unsigned long long seed, double dInput) {
+double sE, double sI, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInput) {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
     curand_init(seed+id, 0, 0, &localState);
     v[id] = vL + curand_uniform_double(&localState) * (vT-vL);
-    for (unsigned int i=0; i<networkSize; i++) {
-        preMat[i*networkSize + id] = curand_uniform_double(&localState) * s;
+    double mean = log(sI/sqrt(1.0f+1.0f/sI));
+    double std = sqrt(log(1.0f+1.0f/sI));
+    for (unsigned int i=0; i<nE; i++) {
+        preMat[i*networkSize + id] = curand_log_normal_double(&localState, mean, std);
+        // lTR works as firstInputTime
         #ifdef TEST_WITH_MANUAL_FFINPUT
-            // lTR works as firstInputTime
+            lTR[id] = curand_uniform_double(&localState)*dInput;
+        #endif
+    }
+    mean = log(sI/sqrt(1.0f+1.0f/sI));
+    std = sqrt(log(1.0f+1.0f/sI));
+    for (unsigned int i=nE; i<networkSize; i++) {
+        preMat[i*networkSize + id] = curand_log_normal_double(&localState, mean, std);
+
+        #ifdef TEST_WITH_MANUAL_FFINPUT
             lTR[id] = curand_uniform_double(&localState)*dInput;
         #endif
     }
@@ -503,10 +514,10 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
         }
         double v0i = v0[id];
         double v_hlf0;
-        double wtf_v = runge_kutta_2(a0[id], b0[id], a1[id] + dg, b1[id] + dgV, v0i, dt, v_hlf0)
-        if (tsp < dt && (id == 14 || id == 436)) {
-            printf("#%i, old_tsp = %e, dvold = %.15e, deltaV = %e, v0 = %e, dvhlf = %e, dvnew = %.15e, wtfv = %.15e\n", id, tsp, dv[id], deltaV/2.0f*dt, v0i, vhlf-v0i, dv[id] + deltaV/2.0f*dt, wtf_v);
-        }
+        //double wtf_v = runge_kutta_2(a0[id], b0[id], a1[id] + dg, b1[id] + dgV, v0i, dt, v_hlf0);
+        //if (tsp < dt && (id == 14 || id == 436)) {
+        //    printf("#%i, old_tsp = %e, dvold = %.15e, deltaV = %e, v0 = %e, dvhlf = %e, dvnew = %.15e, wtfv = %.15e\n", id, tsp, dv[id], deltaV/2.0f*dt, v0i, vhlf-v0i, dv[id] + deltaV/2.0f*dt, wtf_v);
+        //}
         tsp = dt;
         deltaV = dv[id] + deltaV/2.0f*dt;
         v_new = v0i + deltaV;

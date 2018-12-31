@@ -20,8 +20,9 @@ int main(int argc, char *argv[])
 	unsigned int mt = 1;
     unsigned int nstep = 200;
     double ffsE = 1e-3;
-    double s0 = 1e-2*ffsE;
-    double ffsI = 5e-2;
+    double ffsI = 0.0;
+    double sE0 = 2.0;
+    double sI0 = 6.0;
     int iFlatRate = -1;
 	char tmp[101];
     /* Overwrite parameters */
@@ -71,7 +72,6 @@ int main(int argc, char *argv[])
     }
     printf("%i x %i, %i steps, seed = %u\n", b1, b2, nstep, seed);
 	unsigned int networkSize = b1*b2;
-	double s = s0/(networkSize);
     if (networkSize/10.0 != float(networkSize/10)) {
         printf("To have higher computation occupancy make a factor of 10 in networkSize\n");
     }
@@ -85,6 +85,8 @@ int main(int argc, char *argv[])
     int b2I = b2*(1-eiRatio);
     unsigned int nE = networkSize*eiRatio;
     unsigned int nI = networkSize-nE;
+    double sE = sE0*ffsE/nE;
+    double sI = sI0*ffsE/nI;
 	t = mt * t;
     double dt = t/float(nstep); // ms
     if (iFlatRate > 0) {
@@ -149,7 +151,7 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaMallocHost((void**)&v, networkSize * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&d_v,           networkSize * sizeof(double)));
 
-    randInit<<<init_b1,init_b2>>>(d_preMat, d_v, leftTimeRate, randState, s, networkSize, seed, dInput);
+    randInit<<<init_b1,init_b2>>>(d_preMat, d_v, leftTimeRate, randState, sE, sI, networkSize, nE, seed, dInput);
     CUDA_CHECK();
     CUDA_CALL(cudaMemcpy(preMat, d_preMat, networkSize*networkSize*sizeof(double),cudaMemcpyDeviceToHost));
     CUDA_CALL(cudaMemcpy(firstInput, leftTimeRate, networkSize*sizeof(double),cudaMemcpyDeviceToHost));

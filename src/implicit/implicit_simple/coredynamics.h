@@ -50,7 +50,7 @@ __global__ void randInit(double* __restrict__ preMat,
 						 double* __restrict__ v, 
 						 double* __restrict__ lTR, 
 						 curandStateMRG32k3a* __restrict__ state,
-double s, unsigned int networkSize, unsigned long long seed, double dInput);
+double sE, double sI, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInput);
 
 template <typename T>
 __global__ void init(T *array, T value) {

@@ -119,15 +119,26 @@ __global__ void randInit(double* __restrict__ preMat,
 						 double* __restrict__ v, 
 						 double* __restrict__ lTR, 
 						 curandStateMRG32k3a* __restrict__ state,
-double s, unsigned int networkSize, unsigned long long seed, double dInput) {
+double sE, double sI, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInput) {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
     curand_init(seed+id, 0, 0, &localState);
     v[id] = vL + curand_uniform_double(&localState) * (vT-vL);
-    for (unsigned int i=0; i<networkSize; i++) {
-        preMat[i*networkSize + id] = curand_uniform_double(&localState) * s;
+    double mean = log(sI/sqrt(1.0f+1.0f/sI));
+    double std = sqrt(log(1.0f+1.0f/sI));
+    for (unsigned int i=0; i<nE; i++) {
+        preMat[i*networkSize + id] = curand_log_normal_double(&localState, mean, std);
+        // lTR works as firstInputTime
         #ifdef TEST_WITH_MANUAL_FFINPUT
-            // lTR works as firstInputTime
+            lTR[id] = curand_uniform_double(&localState)*dInput;
+        #endif
+    }
+    mean = log(sI/sqrt(1.0f+1.0f/sI));
+    std = sqrt(log(1.0f+1.0f/sI));
+    for (unsigned int i=nE; i<networkSize; i++) {
+        preMat[i*networkSize + id] = curand_log_normal_double(&localState, mean, std);
+
+        #ifdef TEST_WITH_MANUAL_FFINPUT
             lTR[id] = curand_uniform_double(&localState)*dInput;
         #endif
     }
