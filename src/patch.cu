@@ -527,7 +527,7 @@ int main(int argc, char *argv[])
                 correct_spike <<<b1, b2, 0, s1>>> (d_not_matched, d_spikeTrain, d_v_hlf, v_old, dv, d_a0, d_b0, d_a1, d_b1, v_current, d_preMat, tBack, d_nSpike, ngTypeE, ngTypeI, condE, condI, dt, nE, networkSize);
                 CUDA_CHECK();
 	            //printf("correct_spike <<< %i x %i >>> finished\n", b1, b2);
-                CUDA_CALL(cudaMemcpyAsync(not_matched, d_not_matched, networkSize * sizeof(bool), cudaMemcpyDeviceToHost,s1));
+                CUDA_CALL(cudaMemcpy(not_matched, d_not_matched, networkSize * sizeof(bool), cudaMemcpyDeviceToHost));
                 CUDA_CALL(cudaEventRecord(spikeCorrected, s1));
                 no_match = false;
                 CUDA_CALL(cudaEventSynchronize(spikeCorrected)); 
@@ -680,7 +680,7 @@ int main(int argc, char *argv[])
     printf("CUDA takes %fms, runtime/realtime ratio ms %fms\n", time, time/(dt*nstep));
     printf("compute_V takes %fms, ratio ms %fms\n", timeV, timeV/(dt*nstep));
     printf("correct_spike takes %fms, ratio ms %fms\n", timeS, timeS/(dt*nstep));
-    printf("prepare_cond and establish_v takes %fms, ratio ms %fms\n", timeP, timeP/(dt*nstep));
+    printf("prepare_cond takes %fms, ratio ms %fms\n", timeP, timeP/(dt*nstep));
     printf("recal_G takes %fms, ratio ms %fms\n", timeG, timeG/(dt*nstep));
     printf("matching %i times, %f per step\n", nmatch, float(nmatch)/nstep);
     int nTimer = 4;

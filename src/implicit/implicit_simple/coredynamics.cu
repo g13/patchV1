@@ -110,8 +110,6 @@ __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsign
     curandStateMRG32k3a localState = state[id];
     curand_init(seed+id, 0, 0, &localState);
     logRand[id] = -log(curand_uniform_double(&localState));
-    //printf("logRand0 = %f\n", logRand[id]);
-    //logRand[id] = 1.0f;
     state[id] = localState;
 }
 
@@ -219,13 +217,17 @@ __device__  double step(LIF* lif, double dt, double tRef, unsigned int id, doubl
         lif->reset_v();
     }
     lif->tBack -= dt;
+#ifdef DEBUG
     if (lif->spikeCount > 1) {
         printf("#%i spiked %i in one time step %f, refractory period = %f ms, only the last tsp is recorded\n", id, lif->spikeCount, dt, tRef);
     }
-    //if (lif->v < vI) {
-		//printf("#%i implicit rk2 is A-Stable! something is off gE1 = %f, gI1 = %f, v = %f, v0 = %f, a0 = %f, b0 = %f, a1 = %f, b1 = %f\n", id, gE, gI, lif->v, lif->v0, lif->a0, lif->b0, lif->a1, lif->b1);
-        //lif->v = vI;
-    //}   
+#endif
+    if (lif->v < vI) {
+#ifdef DEBUG
+		printf("#%i implicit rk2 is A-Stable! something is off gE1 = %f, gI1 = %f, v = %f, v0 = %f, a0 = %f, b0 = %f, a1 = %f, b1 = %f\n", id, gE, gI, lif->v, lif->v0, lif->a0, lif->b0, lif->a1, lif->b1);
+#endif
+        lif->v = vI;
+    }   
     return lif->tsp;
 }
 
@@ -370,7 +372,6 @@ __global__ void compute_V(double* __restrict__ v,
         // for learning
         //fE[gid] = f_i;
     }
-    //printf("id %i, exc cond ready.\n",id);
     gI_t = 0.0f;
     /* no feed-forward inhibitory input (setting nInput = 0) */
     #pragma unroll

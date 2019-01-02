@@ -197,7 +197,6 @@ __device__  double step(LIF* lif, double dt, double tRef, unsigned int id, doubl
         if (lif->tBack > 0.0f) {
             lif->recompute_v0(dt);
         }
-        __syncthreads();
         lif->implicit_rk2(dt);
         while (lif->v > vT && lif->tBack < dt) {
             // crossed threshold

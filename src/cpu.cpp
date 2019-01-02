@@ -34,39 +34,38 @@ void evolve_g(cConductanceShape &cond, double *g, double *h, double *f, double *
     }
 }
 
-double cpu_step(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE, double gI) {
-    lif->tsp = dt;
+double cpu_dab(cpu_LIF* lif, double pdt0, double dt, double pdt, double dt0, double tRef, unsigned int id, double gE, double gI) {
+    // dt0: with respect to the original start of time step (0) 
+    // dt: with respect to time frame of actual integration 
+    // time --->
+    // |      |              |           |
+    // 0    pdt0 <---dt---->pdt        dt0
+    // tsp is set to be relative to t=0 (of the current step instead of the beginning of the simulation)
+    lif->tsp = dt0;
+    lif->correctMe = true;
     // not in refractory period
-    if (lif->tBack < dt) {
+    if (lif->tBack < pdt) {
         // return from refractory period
-        if (lif->tBack > 0.0f) {
-            lif->compute_pseudo_v0(dt, 0);
-            lif->tBack = -1.0f;
+        if (lif->tBack > pdt0) {
+            lif->compute_pseudo_v0(dt, pdt0);
         }
         lif->runge_kutta_2(dt);
-        while (lif->v > vT && lif->tBack < 0.0f) {
+        if (lif->v > vT) {
             // crossed threshold
-            lif->compute_spike_time(dt, 0); 
-            lif->tBack = lif->tsp + tRef;
-            if (lif->tBack < dt) {
-                // refractory period ended during dt
-                lif->compute_v(dt, 0);
-                lif->tBack = -1.0f;
-                if (lif->v > vT) {
-                    printf("multiple spike in one time step, only the last spike is counted, refractory period = %f ms, dt = %f\n", tRef, dt);
-                }
-            }
-        }
-    } 
-    if (lif->tBack >= dt) {
-        // during refractory period
+            lif->compute_spike_time(dt, pdt0); 
+            // dabbing not commiting, doest not reset v or recored tBack, TBD by spike correction.
+        } 
+    } else {
         lif->reset_v(); 
-        lif->tBack -= dt;
+        if (lif->tBack >= dt0) {
+            // during refractory period
+            lif->correctMe = false;
+        }
     } 
     return lif->tsp;
 }
 
-double cpu_dab(cpu_LIF* lif, double pdt0, double dt, double pdt, double dt0, double tRef, unsigned int id, double gE, double gI) {
+double cpu_simple(cpu_LIF* lif, double pdt0, double dt, double pdt, double dt0, double tRef, unsigned int id) {
     // dt0: with respect to the original start of time step (0) 
     // dt: with respect to time frame of actual integration 
     // time --->
@@ -83,16 +82,24 @@ double cpu_dab(cpu_LIF* lif, double pdt0, double dt, double pdt, double dt0, dou
             lif->tBack = -1.0f;
         }
         lif->runge_kutta_2(dt);
-        if (lif->v > vT) {
+        while (lif->v > vT) {
             // crossed threshold
             lif->compute_spike_time(dt, pdt0); 
+            lif->spikeCount++;
+            lif->tBack = lif->tsp + tRef;
+            if (lif->tBack < pdt) {
+                lif->compute_pseudo_v0(dt, pdt0);
+				lif->runge_kutta_2(dt);
+                lif->tBack = -1.0f;
+            } else {
+                lif->reset_v();
+            }
             // dabbing not commiting, doest not reset v or recored tBack, TBD by spike correction.
         } 
     } else {
         lif->reset_v(); 
         if (lif->tBack >= dt0) {
             // during refractory period
-            lif->tBack -= dt0;
             lif->correctMe = false;
         }
     } 
@@ -137,11 +144,6 @@ void cpu_LIF::compute_pseudo_v0(double dt, double pdt0) {
     v0 = (vL-(tBack-pdt0)*(b0 + b1 - a1*b0*dt)/2.0f)/(1.0f+(tBack-pdt0)*(-a0 - a1 + a1*a0*dt)/2.0f);
 }
 
-void cpu_LIF::trans_p1_to_p0() {
-    a0 = a1;
-    b0 = b1;
-}
-
 void cpu_LIF::set_p0(double gE, double gI, double gL ) {
     a0 = get_a(gE, gI, gL);
     b0 = get_b(gE, gI, gL); 
@@ -163,44 +165,28 @@ void cpu_LIF::reset_v() {
     v = vL;
 }
 
-unsigned int find1stAfter(double spikeTrain[], unsigned int n, double min) {
-    // in case no spike i=0
-    unsigned int i = 0;
-    //printf("spikeTrain: ");
-    for (int j=0; j<n; j++) {
-        //printf("%f, ", spikeTrain[j]);
-        if (min - spikeTrain[j] > EPS) {
-            min = spikeTrain[j];
-            i = j;
-        }
-    }
-    //printf("min: #%i = %f\n", i, min);
-    return i;
-}
-
+#ifdef RECLAIM
 // Spike-spike correction
 unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[], double hI0[], double gE1[], double gI1[], double hE1[], double hI1[], double fE[], double fI[], double preMat[], unsigned int networkSize, cConductanceShape condE, cConductanceShape condI, int ngTypeE, int ngTypeI, double inputTime[], int nInput[], double spikeTrain[], unsigned int nE, double dt) {
     static unsigned int c2_n = 0;
     double *v0 = new double[networkSize];
-    double *wSpikeTrain = new double[networkSize];
-    double *old_tsp = new double[networkSize];
-    double *v0old = new double[networkSize];
-    double *vold = new double[networkSize];
-    unsigned int *idTrain = new unsigned int[networkSize];
+    double *a1 = new double[networkSize];
+    double *b1 = new double[networkSize];
     unsigned int n = 0;
+    double minTsp = dt;
+    unsigned int imin;
     for (unsigned int i=0; i<networkSize; i++) {
+        // get the first spike, candidate to output spikeTrain
         if (dt - lif[i]->tsp > EPS) {
-            wSpikeTrain[n] = lif[i]->tsp;
-			
-            idTrain[n] = i;
+            if (lif[i]->tsp < minTsp) {
+                minTsp = lif[i]->tsp;
+                imin = i;
+            }
             n++;
         }
         // collect v0 in case of reclaim
         v0[i] = lif[i]->v0;
 		// reset the spikeTrain for refill REMEMBER THIS BUG!
-        old_tsp[i] = spikeTrain[i];
-        v0old[i] = lif[i]->v0;
-        vold[i] = lif[i]->v;
 		spikeTrain[i] = dt;
     }
     double *g_end, *h_end;
@@ -228,11 +214,9 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
         //if (r>2*networkSize) {
         //    printf("fucked\n");
         //}
-        // get the first spike, candidate to output spikeTrain
-        unsigned int head = find1stAfter(wSpikeTrain, n, dt);
         // candidate index = i
-        unsigned int i = idTrain[head];
-        double pdt = wSpikeTrain[head]; // relative to [0, dt] 
+        double pdt = minTsp;
+        unsigned int i = imin;
         double dpdt = pdt - pdt0;
         //printf("pdt - pdt0  = %e, %i, %f, %f, %i, %i, %i\n", pdt - pdt0, i, gE0[i], gI0[i], corrected_n, r, n);
         // |      |             |             |
@@ -253,11 +237,191 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
             }
         }
         // restep to fill-up the wSpikeTrain
-        n = 0;
         // candidate will be cancelled if another spike reclaimed before the candidate
-        bool reclaimed = false;
+        double xdt = pdt;
+        double dxdt = dpdt;
+        unsigned int ihalf = 0;
+        bool passed = false;
+        do {
+            unsigned int in;
+            do {
+                in = 0;
+                for (unsigned int j=0; j<networkSize; j++) {
+                    if (lif[j]->correctMe) {
+                        double gL, tRef;
+                        if (j<nE) {
+                            gL = gL_E;
+                            tRef = tRef_E;
+                        } else {
+                            gL = gL_I;
+                            tRef = tRef_I;
+                        }
+                        if (i!=j) {
+                        // excluding neurons in refractory period, nothing new here except in advancing the conductance putatively and set_p0 that wont be used by the candidate, neuron i 
+                            double gE_t = 0.0f;
+                            #pragma unroll
+                            for (int ig=0; ig<ngTypeE; ig++) {
+                                unsigned int gid = networkSize*ig + j;
+                                gE_t += gE0[gid];
+                            }
+                            double gI_t = 0.0f;
+                            #pragma unroll
+                            for (int ig=0; ig<ngTypeI; ig++) {
+                                unsigned int gid = networkSize*ig + j;
+                                gI_t += gI0[gid];
+                            }
+                            lif[j]->set_p0(gE_t, gI_t, gL);
+                        }
+                        // evolve g h and lastInput to xdt (if no spike is reclaimed then update g0 and h0 and lastInput)
+                        // determine ext input range [pdt0, xdt]
+                        iInput[j] = lastInput[j];
+                        if  (iInput[j] < nInput[j]) {
+                            while (inputTime[j*MAX_FFINPUT_PER_DT+iInput[j]] < xdt) {
+                                iInput[j]++;
+                                if (iInput[j] == nInput[j]) break;
+                            }
+                        }
+                        double gE_t = 0.0f;
+                        #pragma unroll
+                        for (int ig=0; ig<ngTypeE; ig++) {
+                            unsigned int gid = networkSize*ig + j;
+                            gE[gid] = gE0[gid];
+                            hE[gid] = hE0[gid];
+                            evolve_g(condE, &(gE[gid]), &(hE[gid]), &(fE[gid]), &(inputTime[j*MAX_FFINPUT_PER_DT+lastInput[j]]), iInput[j]-lastInput[j], dxdt, xdt, ig);
+                            if (corrected_n > 0) {
+                                if (last_i < nE) {
+                                    gE[gid] += g_end[ig] * preMat[last_i*networkSize + j];
+                                    hE[gid] += h_end[ig] * preMat[last_i*networkSize + j];
+                                }
+                            }
+                            gE_t += gE[gid];
+                        }
+                        // no feed-forward inhibitory input (setting nInput = 0)
+                        double gI_t = 0.0f; 
+                        #pragma unroll
+                        for (int ig=0; ig<ngTypeI; ig++) {
+                            unsigned int gid = networkSize*ig + j;
+                            gI[gid] = gI0[gid];
+                            hI[gid] = hI0[gid];
+                            evolve_g(condI, &(gI[gid]), &(hI[gid]), &(fI[gid]), inputTime, 0, dxdt, xdt, ig);
+                            if (corrected_n > 0) {
+                                if (last_i >= nE) {
+                                    gI[gid] += g_end[ig] * preMat[last_i*networkSize + j];
+                                    hI[gid] += h_end[ig] * preMat[last_i*networkSize + j];
+                                }
+                            }
+                            gI_t += gI[gid];
+                        }
+                        lif[j]->set_p1(gE_t, gI_t, gL);
+                        if (i!=j) {
+                            // exclude the candidate itself for updating voltage or tsp
+                            lif[j]->v0 = v0[j];
+                            cpu_dab(lif[j], pdt0, dxdt, xdt, dt, tRef, j, gE_t, gI_t); 
+                            if (lif[j]->tsp < 0.0f) {
+                                printf("#%i v = %f, %f -> %f, tB = %f\n", j, v0[j], lif[j]->v0, lif[j]->v, lif[j]->tBack);
+                                assert(lif[j]->tsp >= 0.0f);
+                            }
+                            if (dt - lif[j]->tsp > EPS ) {
+                                // ignore round off error
+                                in++;
+                                xdt = lif[j]->tsp;
+                                dxdt = xdt - pdt0;
+                                i = j;
+                                passed = false;
+                                break;
+                            } 
+                        }
+                    }
+                }
+                if (!passed && in == 0) {
+                    pdt = xdt;
+                    for (unsigned int j=0; j<networkSize; j++) {
+                        if (lif[j]->correctMe) {
+                            a1[j] = lif[j]->a1;    
+                            b1[j] = lif[j]->b1;    
+                        }
+                    }
+                }
+            } while (in > 0);
+            if (!passed) {
+                dxdt = (xdt-pdt0)/2;
+                xdt = pdt0 + dxdt;
+                passed = true;
+            } 
+#ifdef DEBUG 
+            printf("%i halfed, pdt0 = %e, xdt = %e\n", ihalf, pdt0, xdt);
+#endif
+            ihalf++;
+        } while (!passed);
+        // if indeed no spike comes before neuron i with the smaller pdt interpolation, commit into spikeTrain
+        corrected_n++;
+        last_i = i;
+        spikeTrain[i] = pdt;
+        minTsp = dt;
+        lif[i]->spikeCount++;
+        double tRef;
+        if (i < nE) {
+			tRef = tRef_E;
+        } else {
+            tRef = tRef_I;
+        }
+        lif[i]->tBack = lif[i]->tsp + tRef;
+        if (lif[i]->tBack > dt) {
+            lif[i]->reset_v();
+            lif[i]->correctMe = false;
+            v[i] = lif[i]->v;
+        }
+#ifdef DEBUG
+        printf("#%i v=%f, spiked at %f -> %f\n", i, lif[i]->v, lif[i]->tsp, lif[i]->tBack);
+        if (lif[i]->spikeCount > 1) {
+            printf("    %i times in one dt, %f", lif[i]->spikeCount, dt);
+        }
+#endif
+        // set pdt0 for next
+        pdt0 = pdt;
+        // move on to next pdt period
+        double ddt = dt - pdt;
+        // prepare the conductance changes caused by the confirmed spike from neuron i
+        if (i < nE) {
+            cond = &condE;
+            ngType = ngTypeE;
+            g = gE1;
+			h = hE1;
+        } else {
+            cond = &condI;
+            ngType = ngTypeI;
+            g = gI1;
+			h = hI1;
+        }
+        for (int ig = 0; ig<ngType; ig++) {
+            g_end[ig] = 0.0f;
+            h_end[ig] = 0.0f;
+            cond->compute_single_input_conductance(&(g_end[ig]), &(h_end[ig]), 1.0f, ddt, ig);
+        }
+        //printf("#%i, confirmed g = %f, h = %f\n", i, g_end[0], h_end[0]);
+        // update v, tsp and conductance for the time interval of [pdt, dt]
+        n = 0;
         for (unsigned int j=0; j<networkSize; j++) {
+            // new cortical input
+            for (int ig=0; ig<ngType; ig++) {
+                unsigned int gid = networkSize*ig + j;
+                g[gid] += g_end[ig] * preMat[i*networkSize + j];
+                h[gid] += h_end[ig] * preMat[i*networkSize + j];
+            }
             if (lif[j]->correctMe) {
+                // commit g0 h0
+                for (int ig=0; ig<ngTypeE; ig++) {
+                    unsigned int gid = networkSize*ig + j;
+                    gE0[gid] = gE[gid];
+                    hE0[gid] = hE[gid];
+                }
+                for (int ig=0; ig<ngTypeI; ig++) {
+                    unsigned int gid = networkSize*ig + j;
+                    gI0[gid] = gI[gid];
+                    hI0[gid] = hI[gid];
+                }
+                // commit lastInput
+                lastInput[j] = iInput[j];
                 double gL, tRef;
                 if (j<nE) {
                     gL = gL_E;
@@ -265,6 +429,154 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                 } else {
                     gL = gL_I;
                     tRef = tRef_I;
+                }
+                // if not in refractory period
+                lif[j]->v0 = lif[j]->v; // v0 is irrelevant if the neuron is coming back from spike, it will be reset in cpu_dab
+                lif[j]->a0 = a1[j];
+                lif[j]->b0 = b1[j];
+
+                double gE_t = 0.0f;
+                #pragma unroll
+                for (int ig = 0; ig < ngTypeE; ig++) {
+                    int gid = networkSize*ig + j;
+                    gE_t += gE1[gid];
+                }
+                double gI_t = 0.0f;
+                #pragma unroll
+                for (int ig = 0; ig < ngTypeI; ig++) {
+                    int gid = networkSize*ig + j;
+                    gI_t += gI1[gid];
+                }
+                lif[j]->set_p1(gE_t, gI_t, gL);
+                // dab
+                cpu_dab(lif[j], pdt, ddt, dt, dt, tRef, j, gE_t, gI_t);
+                // put back to [0,dt]
+                if (lif[j]->tsp < 0.0f) {
+                    printf("%i v = %f -> %f, tB = %f\n", j, lif[j]->v0, lif[j]->v, lif[j]->tBack);
+                    assert(lif[j]->tsp >= 0.0f);
+                }
+                if (dt - lif[j]->tsp > EPS) { // equiv lif->v > vT
+                    // ignore round off error
+                    n++;
+                    if (lif[j]->tsp < minTsp) {
+                        imin = j;
+                        minTsp = lif[j]->tsp;
+                    }
+                } else {
+                    //update volts
+                    v[j] = lif[j]->v;
+#ifdef DEBUG
+                    if (lif[j]->v > vT) {
+                        printf("%i v = %f -> %f, tB = %f\n", j, lif[j]->v0, lif[j]->v, lif[j]->tBack);
+                        assert(lif[j]->v <= vT);
+                    }
+#endif
+                }
+                // commits v0 for next advancement in 
+                v0[j] = lif[j]->v0;
+            }
+        }
+        r++;
+#ifdef DEBUG 
+        printf("%i corrected %i-%i, pdt0 = %e, dpdt = %e\n", r, corrected_n, i, pdt0, dpdt);
+#endif
+    }
+    delete []g_end;
+    delete []h_end;
+    delete []iInput;
+    delete []lastInput;
+    delete []gE;
+    delete []gI;
+    delete []hE;
+    delete []hI;
+    delete []v0;
+    delete []a1;
+    delete []b1;
+    //if (corrected_n > 1) {
+    //    c2_n++;
+    //    printf("%u corrected, more-than-2 total %u\n", corrected_n, c2_n);
+
+    //}
+    return corrected_n;
+}
+#else
+unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[], double hI0[], double gE1[], double gI1[], double hE1[], double hI1[], double fE[], double fI[], double preMat[], unsigned int networkSize, cConductanceShape condE, cConductanceShape condI, int ngTypeE, int ngTypeI, double inputTime[], int nInput[], double spikeTrain[], unsigned int nE, double dt) {
+    //static unsigned int c2_n = 0;
+    unsigned int in = 0;
+    double* wSpikeTrain = new double[networkSize];
+    double* v0 = new double[networkSize];
+    unsigned int *idTrain = new unsigned int[networkSize];
+    unsigned int *ns = new unsigned int[networkSize];
+    double minTsp = dt;
+    unsigned int imin;
+    for (unsigned int i=0; i<networkSize; i++) {
+        // get the first spike, candidate to output spikeTrain
+        if (lif[i]->tsp < minTsp) {
+            minTsp = lif[i]->tsp;
+            imin = i;
+        }
+        // collect v0 in case of reclaim
+        v0[i] = lif[i]->v0;
+		// reset the spikeTrain for refill REMEMBER THIS BUG!
+		spikeTrain[i] = dt;
+    }
+    double g_end, h_end; 
+    double *gE_end = new double[ngTypeE];
+    double *hE_end = new double[ngTypeE];
+    double *gI_end = new double[ngTypeI];
+    double *hI_end = new double[ngTypeI];
+    double pdt0 = 0.0f; // old pdt
+    int* iInput = new int[networkSize];
+    int* lastInput = new int[networkSize]();
+    unsigned int r = 0;
+    unsigned int corrected_n = in;
+    bool lastI, lastE;
+    bool still_have_spikes = true;
+    while (still_have_spikes) {
+        //if (r>2*networkSize) {
+        //    printf("fucked\n");
+        //}
+        // candidate index = i
+        double pdt = minTsp;
+        unsigned int i = imin;
+        double dpdt = pdt - pdt0;
+        //printf("pdt - pdt0  = %e, %i, %f, %f, %i, %i, %i\n", pdt - pdt0, i, gE0[i], gI0[i], corrected_n, r, n);
+        // |      |             |             |
+        // 0     pdt0<--dpdt-->pdt<---ddt---->dt
+        // prepare the last cortical input if exists
+        if (in > 0) {
+            if (lastE) {
+                for (int ig = 0; ig<ngTypeE; ig++) {
+                    g_end = 0.0f;
+                    h_end = 0.0f;
+                    condE.compute_single_input_conductance(&g_end, &h_end, 1.0f, dpdt, ig);
+                    gE_end[ig] = g_end;
+                    hE_end[ig] = h_end;
+                }
+#ifdef DEBUG
+                printf("gE_end = %f, %f\n", gE_end[0], gE_end[1]);
+#endif
+            }
+            if (lastI) {
+                for (int ig = 0; ig<ngTypeI; ig++) {
+                    g_end = 0.0f;
+                    h_end = 0.0f;
+                    condI.compute_single_input_conductance(&g_end, &h_end, 1.0f, dpdt, ig);
+                    gI_end[ig] = g_end;
+                    hI_end[ig] = h_end;
+                }
+#ifdef DEBUG
+                printf("gI_end = %f\n", gI_end[0]);
+#endif
+            }
+        }
+        for (unsigned int j=0; j<networkSize; j++) {
+            if (lif[j]->correctMe) {
+                double gL;
+                if (j<nE) {
+                    gL = gL_E;
+                } else {
+                    gL = gL_I;
                 }
                 if (i!=j) {
                 // excluding neurons in refractory period, nothing new here except in advancing the conductance putatively and set_p0 that wont be used by the candidate, neuron i 
@@ -282,7 +594,7 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                     }
                     lif[j]->set_p0(gE_t, gI_t, gL);
                 }
-                // evolve g h and lastInput to pdt (if no spike is reclaimed then update g0 and h0 and lastInput)
+                // evolve g h and lastInput to xdt (if no spike is reclaimed then update g0 and h0 and lastInput)
                 // determine ext input range [pdt0, pdt]
                 iInput[j] = lastInput[j];
                 if  (iInput[j] < nInput[j]) {
@@ -291,235 +603,242 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                         if (iInput[j] == nInput[j]) break;
                     }
                 }
-                double gE_t = 0.0f;
-                #pragma unroll
                 for (int ig=0; ig<ngTypeE; ig++) {
                     unsigned int gid = networkSize*ig + j;
-                    gE[gid] = gE0[gid];
-                    hE[gid] = hE0[gid];
-                    evolve_g(condE, &(gE[gid]), &(hE[gid]), &(fE[gid]), &(inputTime[j*MAX_FFINPUT_PER_DT+lastInput[j]]), iInput[j]-lastInput[j], dpdt, pdt, ig);
-                    if (corrected_n > 0) {
-                        if (last_i < nE) {
-                            gE[gid] += g_end[ig] * preMat[last_i*networkSize + j];
-                            hE[gid] += h_end[ig] * preMat[last_i*networkSize + j];
-                        }
+                    evolve_g(condE, &(gE0[gid]), &(hE0[gid]), &(fE[gid]), &(inputTime[j*MAX_FFINPUT_PER_DT+lastInput[j]]), iInput[j]-lastInput[j], dpdt, pdt, ig);
+                    if (gE0[gid] < 0) {
+                        printf("    gE#%i = %f, In: %i->%i <= %i\n", j, gE0[gid], lastInput[j], iInput[j], nInput[j]);
                     }
-                    if (gE[gid] < 0.0f) {
-                        printf("#%i gE0 = %f\n", j, gE[gid]);
-                        assert(gE[gid] >= 0.0f);
-                    }
-                    gE_t += gE[gid];
                 }
                 // no feed-forward inhibitory input (setting nInput = 0)
-                double gI_t = 0.0f; 
-                #pragma unroll
                 for (int ig=0; ig<ngTypeI; ig++) {
                     unsigned int gid = networkSize*ig + j;
-                    gI[gid] = gI0[gid];
-                    hI[gid] = hI0[gid];
-                    evolve_g(condI, &(gI[gid]), &(hI[gid]), &(fI[gid]), inputTime, 0, dpdt, pdt, ig);
-                    if (corrected_n > 0) {
-                        if (last_i >= nE) {
-                            gI[gid] += g_end[ig] * preMat[last_i*networkSize + j];
-                            hI[gid] += h_end[ig] * preMat[last_i*networkSize + j];
+                    evolve_g(condI, &(gI0[gid]), &(hI0[gid]), &(fI[gid]), inputTime, 0, dpdt, pdt, ig);
+                    if (gI0[gid] < 0) {
+                        printf("    gI#%i = %f, In: %i->%i <= %i\n", j, gI0[gid], lastInput[j], iInput[j], nInput[j]);
+                    }
+                }
+                for (unsigned int ini = 0; ini < in; ini++) {
+                    unsigned int id = idTrain[ini];
+                    if (id < nE) {
+                        for (int ig=0; ig<ngTypeE; ig++) {
+                            unsigned int gid = networkSize*ig + j;
+                            gE0[gid] += gE_end[ig] * ns[ini] * preMat[id*networkSize + j];
+                            hE0[gid] += hE_end[ig] * ns[ini] * preMat[id*networkSize + j];
+                            if (gE0[gid] < 0) {
+                                printf("    %u gE#%u %f+=%fx%ix%f\n", id, j, gE0[gid], gE_end[ig], ns[ini], preMat[id*networkSize+j]);
+                            }
+                        }
+                    } else {
+                        for (int ig=0; ig<ngTypeI; ig++) {
+                            unsigned int gid = networkSize*ig + j;
+                            gI0[gid] += gI_end[ig] * ns[ini] * preMat[id*networkSize + j];
+                            hI0[gid] += hI_end[ig] * ns[ini] * preMat[id*networkSize + j];
+                            if (gI0[gid] < 0) {
+                                printf("    %u gI#%i %f+=%fx%ix%f\n", id, j, gI0[gid], gI_end[ig], ns[ini], preMat[id*networkSize+j]);
+                            }
                         }
                     }
-                    if (gI[gid] < 0.0f) {
-                        printf("#%i gI0 = %e\n", j, gI[gid]);
-                        assert(gI[gid] >= 0.0f);
-                    }
-                    gI_t += gI[gid];
+                }
+                double gE_t = 0.0f;
+                for (int ig=0; ig<ngTypeE; ig++) {
+                    unsigned int gid = networkSize*ig + j;
+                    gE_t += gE0[gid];
+                }
+                double gI_t = 0.0f; 
+                for (int ig=0; ig<ngTypeI; ig++) {
+                    unsigned int gid = networkSize*ig + j;
+                    gI_t += gI0[gid];
                 }
                 lif[j]->set_p1(gE_t, gI_t, gL);
-                // p1 is going to be used by candidate i if its tBack is still smaller than dt
-                if (i!=j) {
-                    // exclude the candidate itself for updating voltage or tsp
-                    lif[j]->v0 = v0[j];
-                    cpu_dab(lif[j], pdt0, dpdt, pdt, dt, tRef, j, gE_t, gI_t); 
-                    if (lif[j]->v < vI) {
-	                	printf("#%i something is off gE = %f, gI = %f, v0 = %f, v1/2 = %f, v = %f, a0 = %f, b0 = %f, a1 = %f, b1 = %f\n", j, gE_t, gI_t, lif[j]->v0, lif[j]->v_hlf, lif[j]->v, lif[j]->a0, lif[j]->b0, lif[j]->a1, lif[j]->b1);
-                        lif[j]->v = vI;
-                    }
-                    assert(lif[j]->tsp >= 0.0f);
-                    if (dt - lif[j]->tsp > EPS ) {
-                        reclaimed = true;
-                        // ignore round off error
-                        idTrain[n] = j;
-                        wSpikeTrain[n] = lif[j]->tsp;
-                        n++;
-                    } 
-                }
             }
         }
-        if (!reclaimed) {
-            // if indeed no spike comes before neuron i with the smaller pdt interpolation, commit into spikeTrain
-            corrected_n++;
-            last_i = i;
-            spikeTrain[i] = wSpikeTrain[head];
-            lif[i]->spikeCount++;
-            if (lif[i]->spikeCount > 1) {
-                printf("multiple spikes in one dt, consider smaller time step than %fms\n", dt);
-            }
-            double tRef;
-            if (i < nE) {
-				tRef = tRef_E;
-            } else {
-                tRef = tRef_I;
-            }
-            lif[i]->tBack = lif[i]->tsp + tRef;
-            //if (i == 0) {
-            //    printf(" chere tsp = %e, tB = %e,", lif[i]->tsp, lif[i]->tBack);
-            //    if (lif[i]->tBack > dt) {
-            //        printf(" next_tB = %e", lif[i]->tBack-dt);
-            //    }
-            //}
-            if (i == 14 || i == 436) {
-                printf("#%i, old_tsp = %e, dvold = %.15e, deltaV = %e, v0 = %e, dvhlf = %e, dvnew = %.15e; dtChange = %e, v0old = %.15e, vold = %.15e\n", i, old_tsp[i], v[i]-lif[i]->v0, lif[i]->v - v[i], lif[i]->v0, lif[i]->v_hlf-lif[i]->v0, lif[i]->v-lif[i]->v0, (dt-pdt0)/dt, v0old[i], vold[i]);
-            }
-            if (lif[i]->tBack > dt) {
-                lif[i]->reset_v();
-                lif[i]->tBack -= dt;
-                lif[i]->correctMe = false;
-                v[i] = lif[i]->v;
-            }
-		    //printf(", v1 new = %f\n", lif[i]->v);
-            // set pdt0 for next
-            pdt0 = pdt;
-            // move on to next pdt period
-            double ddt = dt - pdt;
-            // prepare the conductance changes caused by the confirmed spike from neuron i
-            if (i < nE) {
-                cond = &condE;
-                ngType = ngTypeE;
-                g = gE1;
-		    	h = hE1;
-            } else {
-                cond = &condI;
-                ngType = ngTypeI;
-                g = gI1;
-		    	h = hI1;
-            }
-            for (int ig = 0; ig<ngType; ig++) {
-                g_end[ig] = 0.0f;
-                h_end[ig] = 0.0f;
-                cond->compute_single_input_conductance(&(g_end[ig]), &(h_end[ig]), 1.0f, ddt, ig);
-            }
-            //printf("#%i, confirmed g = %f, h = %f\n", i, g_end[0], h_end[0]);
-            // update v, tsp and conductance for the time interval of [pdt, dt]
-            n = 0;
-            for (unsigned int j=0; j<networkSize; j++) {
-                // new cortical input
-                for (int ig=0; ig<ngType; ig++) {
-                    unsigned int gid = networkSize*ig + j;
-                    g[gid] += g_end[ig] * preMat[i*networkSize + j];
-                    h[gid] += h_end[ig] * preMat[i*networkSize + j];
-                    if (i < nE) {
-                        if (gE1[gid] < 0.0f) {
-                            printf("#%i gE0 = %e, gE1 = %e\n", j, gE0[gid], gE1[gid]);
-                            assert(gE1[gid] >= 0.0f);
-                        }
-                    } else {
-                        if (gI1[gid] < 0.0f) {
-                            printf("#%i gI0 = %e, gI1 = %e\n", j, gI0[gid], gI1[gid]);
-                            assert(gI1[gid] >= 0.0f);
-                        }
-                    }
-                    if ((j == 14 || j == 436) && (i == 11 || i == 436)) {
-                        printf("g-%i frome %i = %e\n", j, i, g_end[ig] * preMat[i*networkSize + j]);
-                    }
+        in = 0;
+        lastI = false;
+        lastE = false;
+        for (unsigned int j = 0; j<networkSize; j++) {
+            if (lif[j]->correctMe && i!=j) {
+                double tRef;
+                if (j<nE) {
+                    tRef = tRef_E;
+                } else {
+                    tRef = tRef_I;
                 }
-                if (lif[j]->correctMe) {
-                    // commit g0 h0
+                // exclude the candidate itself for updating voltage or tsp
+                lif[j]->v0 = v0[j];
+                unsigned int ns0 = lif[j]->spikeCount;
+                cpu_simple(lif[j], pdt0, dpdt, pdt, dt, tRef, j); 
+                if (lif[j]->tsp < 0.0f) {
+                    printf("v = %f -> %f, tB = %f\n", lif[j]->v0, lif[j]->v, lif[j]->tBack);
+                    assert(lif[j]->tsp >= 0.0f);
+                }
+                if (dt - lif[j]->tsp > EPS ) {
+                    // ignore round off error
+                    ns[in] = lif[j]->spikeCount - ns0;
+                    wSpikeTrain[in] = lif[j]->tsp;
+                    idTrain[in] = j;
+                    in++;
+                } 
+            }
+        }
+        // if indeed no spike comes before neuron i with the smaller pdt interpolation, commit into spikeTrain
+        wSpikeTrain[in]  = pdt;
+        idTrain[in] = i;
+        ns[in] = 1;
+        in++;
+#ifdef DEBUG
+        printf("ssc round %i, based on #%i:\n", r, i);
+#endif
+        double tRef;
+        if (i < nE) {
+			tRef = tRef_E;
+        } else {
+            tRef = tRef_I;
+        }
+        lif[i]->spikeCount++;
+        lif[i]->reset_v();
+        for (unsigned int j=0; j<in; j++) {
+            unsigned int id = idTrain[j];
+            spikeTrain[id] = pdt;
+            lif[id]->tBack = pdt + tRef;
+            if (lif[id]->tBack > dt) {
+                lif[id]->correctMe = false;
+                v[id] = lif[id]->v;
+            }
+            if (id<nE) lastE = true;
+            else lastI = true;
+#ifdef DEBUG
+            printf("    #%i v=%f, spiked at %f -> %f, %i times\n", id, lif[id]->v, lif[id]->tsp, lif[id]->tBack, ns[j]);
+            printf("        a = %f -> %f, b = %f -> %f\n", lif[id]->a0, lif[id]->a1, lif[id]->b0, lif[id]->b1);
+#endif
+        // set pdt0 for next
+        }
+        corrected_n += in;
+        minTsp = dt;
+        pdt0 = pdt;
+        // move on to next pdt period
+        double ddt = dt - pdt;
+        // prepare the conductance changes caused by the confirmed spike from neuron i
+        if (lastE) {
+            for (int ig = 0; ig<ngTypeE; ig++) {
+                g_end = 0.0f;
+                h_end = 0.0f;
+                condE.compute_single_input_conductance(&g_end, &h_end, 1.0f, ddt, ig);
+                gE_end[ig] = g_end;
+                hE_end[ig] = h_end;
+            }
+        }
+        if (lastI) {
+            for (int ig = 0; ig<ngTypeI; ig++) {
+                g_end = 0.0f;
+                h_end = 0.0f;
+                condI.compute_single_input_conductance(&g_end, &h_end, 1.0f, ddt, ig);
+                gI_end[ig] = g_end;
+                hI_end[ig] = h_end;
+            }
+        }
+        //printf("#%i, confirmed g = %f, h = %f\n", i, g_end[0], h_end[0]);
+        // update v, tsp and conductance for the time interval of [pdt, dt]
+        still_have_spikes = false;
+        for (unsigned int j=0; j<networkSize; j++) {
+            // new cortical input
+            for (unsigned int ini = 0; ini < in; ini++) {
+                unsigned int id = idTrain[ini];
+                if (id < nE) {
                     for (int ig=0; ig<ngTypeE; ig++) {
                         unsigned int gid = networkSize*ig + j;
-                        gE0[gid] = gE[gid];
-                        hE0[gid] = hE[gid];
-                        if (gE0[gid] < 0.0f) {
-                            printf("#%i gE0 = %e, gE1 = %e\n", j, gE0[gid], gE1[gid]);
-                            assert(gE0[gid]>= 0.0f);
-                        }
+                        gE1[gid] += gE_end[ig] * ns[ini] * preMat[id*networkSize + j];
+                        hE1[gid] += hE_end[ig] * ns[ini] * preMat[id*networkSize + j];
                     }
+                } else {
                     for (int ig=0; ig<ngTypeI; ig++) {
                         unsigned int gid = networkSize*ig + j;
-                        gI0[gid] = gI[gid];
-                        hI0[gid] = hI[gid];
-                        if (gI0[gid] < 0.0f) {
-                            printf("#%i gI0 = %e, gI1 = %e\n", j, gI0[gid], gI1[gid]);
-                            assert(gI0[gid] >= 0.0f);
-                        }
+                        gI1[gid] += gI_end[ig] * ns[ini] * preMat[id*networkSize + j];
+                        hI1[gid] += hI_end[ig] * ns[ini] * preMat[id*networkSize + j];
                     }
-                    // commit lastInput
-                    lastInput[j] = iInput[j];
-                    double gL, tRef;
-                    if (j<nE) {
-                        gL = gL_E;
-                        tRef = tRef_E;
-                    } else {
-                        gL = gL_I;
-                        tRef = tRef_I;
-                    }
-                    // if not in refractory period
-                    lif[j]->v0 = lif[j]->v; // v0 is irrelevant if the neuron is coming back from spike, it will be reset in cpu_dab
-                    lif[j]->trans_p1_to_p0();
+                }
+            }
+            if (lif[j]->correctMe) {
+                // if not in refractory period
+                lastInput[j] = iInput[j];
+                double gL, tRef;
+                if (j<nE) {
+                    gL = gL_E;
+                    tRef = tRef_E;
+                } else {
+                    gL = gL_I;
+                    tRef = tRef_I;
+                }
+                // for next pdt0-pdt period if exist
+                v0[j] = lif[j]->v;
+                lif[j]->v0 = lif[j]->v; // v0 is irrelevant if the neuron is coming back from spike, it will be reset in cpu_dab
+                lif[j]->a0 = lif[j]->a1;
+                lif[j]->b0 = lif[j]->b1;
 
-                    double gE_t = 0.0f;
-                    #pragma unroll
-                    for (int ig = 0; ig < ngTypeE; ig++) {
-                        int gid = networkSize*ig + j;
-                        gE_t += gE1[gid];
-                    }
-                    double gI_t = 0.0f;
-                    #pragma unroll
-                    for (int ig = 0; ig < ngTypeI; ig++) {
-                        int gid = networkSize*ig + j;
-                        gI_t += gI1[gid];
-                    }
-                    lif[j]->set_p1(gE_t, gI_t, gL);
-                    // dab
-                    cpu_dab(lif[j], pdt, ddt, dt, dt, tRef, j, gE_t, gI_t);
-                    if (lif[j]->v < vI) {
-	                	printf("#%i something is off gE = %f, gI = %f, v0 = %f, v1/2 = %f, v = %f, a0 = %f, b0 = %f, a1 = %f, b1 = %f\n", j, gE_t, gI_t, lif[j]->v0, lif[j]->v_hlf, lif[j]->v, lif[j]->a0, lif[j]->b0, lif[j]->a1, lif[j]->b1);
-                        lif[j]->v = vI;
-                    }
+                double gE_t = 0.0f;
+                #pragma unroll
+                for (int ig = 0; ig < ngTypeE; ig++) {
+                    int gid = networkSize*ig + j;
+                    gE_t += gE1[gid];
+                }
+                double gI_t = 0.0f;
+                #pragma unroll
+                for (int ig = 0; ig < ngTypeI; ig++) {
+                    int gid = networkSize*ig + j;
+                    gI_t += gI1[gid];
+                }
+                lif[j]->set_p1(gE_t, gI_t, gL);
+                // dab
+                cpu_dab(lif[j], pdt, ddt, dt, dt, tRef, j, gE_t, gI_t);
+                // put back to [0,dt]
+                if (lif[j]->tsp < 0.0f) {
+                    printf("%i v = %f -> %f, tB = %f\n", j, lif[j]->v0, lif[j]->v, lif[j]->tBack);
                     assert(lif[j]->tsp >= 0.0f);
-                    // put back to [0,dt]
-                    if (dt - lif[j]->tsp > EPS) { // equiv lif->v > vT
-                        // ignore round off error
-                        idTrain[n] = j;
-                        wSpikeTrain[n] = lif[j]->tsp;
-                        n++;
-                    } else {
-                        //update volts
-                        v[j] = lif[j]->v;
+                }
+                if (dt - lif[j]->tsp > EPS) { // equiv lif->v > vT
+                    // ignore round off error
+                    if (lif[j]->tsp < minTsp) {
+                        minTsp = lif[j]->tsp;
+                        imin = j;
                     }
-                    // commits v0 for next advancement in 
-                    v0[j] = lif[j]->v0;
+                    still_have_spikes = true;
+                } else {
+                    //update volts
+                    v[j] = lif[j]->v;
+#ifdef DEBUG
+                    if (lif[j]->v > vT) {
+                        printf("%i v = %f -> %f, tB = %f\n", j, lif[j]->v0, lif[j]->v, lif[j]->tBack);
+                        assert(lif[j]->v <= vT);
+                    }
+#endif
                 }
             }
         }
         r++;
+#ifdef DEBUG 
+        printf("%i corrected %i-%i, pdt0 = %e, dpdt = %e\n", r, corrected_n, i, pdt0, dpdt);
+#endif
     }
-    delete []g_end;
-    delete []h_end;
+    delete []gE_end;
+    delete []hE_end;
+    delete []gI_end;
+    delete []hI_end;
+    delete []wSpikeTrain;
+    delete []idTrain;
+    delete []v0;
+    delete []ns;
     delete []iInput;
     delete []lastInput;
-    delete []gE;
-    delete []gI;
-    delete []hE;
-    delete []hI;
-    delete []v0;
-    delete []wSpikeTrain;
-    delete []old_tsp;
-    delete []vold;
-    delete []v0old;
-    delete []idTrain;
-    //if (corrected_n > 1) {
-    //    c2_n++;
-    //    printf("%u corrected, more-than-2 total %u\n", corrected_n, c2_n);
-
-    //}
+    for (unsigned int j=0; j<networkSize; j++) {
+        if (lif[j]->v > vT) {
+            printf("#%i, v =  %f, %f -> %f, tB = %f\n", j, v0[j], lif[j]->v0, lif[j]->v, lif[j]->tBack);
+            printf("a = %f->%f, b = %f->%f\n", lif[j]->a0, lif[j]->a1, lif[j]->b0, lif[j]->b1);
+            assert(lif[j]->v <= vT);
+        }
+    }
     return corrected_n;
 }
+#endif
 
 void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsigned int nstep, double dt, unsigned int nE, double preMat0[], double vinit[], double firstInput[], /* === RAND === unsigned long long seed, */ double ffsE, double ffsI, std::string theme, double inputRate) {
     unsigned int ngTypeE = 2;
@@ -538,12 +857,6 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
     double *hE_current, *hI_current, *hE_old, *hI_old;
     double *fE = new double[networkSize*ngTypeE];
     double *fI = new double[networkSize*ngTypeI];
-    double *dv = new double[networkSize];
-    double *v_hlf = new double[networkSize];
-    double *a0 = new double[networkSize];
-    double *b0 = new double[networkSize];
-    double *a1 = new double[networkSize];
-    double *b1 = new double[networkSize];
     double *spikeTrain = new double[networkSize];
     unsigned int *nSpike = new unsigned int[networkSize];
     double *preMat = new double[networkSize*networkSize];
@@ -740,33 +1053,34 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
             }
             lif[i]->set_p1(gE_t, gI_t, gL);
             // rk2 step
+            double v0old = lif[i]->v0;
             spikeTrain[i] = cpu_dab(lif[i], 0, dt, dt, dt, tRef, i, gE_t, gI_t);
             if (lif[i]->v < vI) {
-	        	printf("#%i something is off gE = %f, gI = %f, v0 = %f, v1/2 = %f, v = %f, a0 = %f, b0 = %f, a1 = %f, b1 = %f\n", i, gE_t, gI_t, lif[i]->v0, lif[i]->v_hlf, lif[i]->v, lif[i]->a0, lif[i]->b0, lif[i]->a1, lif[i]->b1);
                 lif[i]->v = vI;
             }
-            assert(lif[i]->tsp >= 0.0f);
+            if (lif[i]->tsp < 0.0f) {
+                printf("#%i, v =  %f, %f -> %f, tB = %f\n", i, v0old, lif[i]->v0, lif[i]->v, lif[i]->tBack);
+                printf("a = %f->%f, b = %f->%f\n", lif[i]->a0, lif[i]->a1, lif[i]->b0, lif[i]->b1);
+                assert(lif[i]->tsp >= 0.0f);
+            }
             if (dt - lif[i]->tsp > EPS) spiked = true;
             v[i] = lif[i]->v;
-            if (gE_current[i] < 0.0f) {
-                printf("#%i gE0 = %f, gE1 = %f, v = %f\n", i, gE_old[i], gE_current[i], v[i]);
-                assert(gE_current[i] >= 0.0f);
-            }
-            if (gI_current[i] < 0.0f) {
-                printf("#%i gI0 = %f, gI1 = %f, v = %f\n", i, gI_old[i], gI_current[i], v[i]);
-                assert(gI_current[i] >= 0.0f);
-            }
         }
         vTime += static_cast<double>(duration_cast<microseconds>(timeNow()-vStart).count());
             // spike-spike correction
         if (spiked) {
             //printf("spiked:\n");
             high_resolution_clock::time_point sStart = timeNow();
-            outputEvents += cpu_ssc(lif, v, gE_old, gI_old, hE_old, hI_old, gE_current, gI_current, hE_current, hI_current, fE, fI, preMat, networkSize, condE, condI, ngTypeE, ngTypeI, inputTime, nInput, spikeTrain, nE, dt);
+            unsigned int nsp = cpu_ssc(lif, v, gE_old, gI_old, hE_old, hI_old, gE_current, gI_current, hE_current, hI_current, fE, fI, preMat, networkSize, condE, condI, ngTypeE, ngTypeI, inputTime, nInput, spikeTrain, nE, dt);
+            outputEvents += nsp;
             sTime += static_cast<double>(duration_cast<microseconds>(timeNow()-vStart).count());
+#ifdef DEBUG
+            printf("%u spikes during dt\n", nsp);
+#endif
         } 
         for (unsigned int i=0; i<networkSize; i++) {
             nSpike[i] = lif[i]->spikeCount;
+            lif[i]->tBack -= dt;
         }
 		high_resolution_clock::time_point wStart = timeNow();
         v_file.write((char*)v, networkSize * sizeof(double));
@@ -775,7 +1089,12 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
         gE_file.write((char*)gE_current, networkSize * ngTypeE * sizeof(double));
         gI_file.write((char*)gI_current, networkSize * ngTypeI * sizeof(double));
 		wTime += static_cast<double>(duration_cast<microseconds>(timeNow() - wStart).count());
+#ifdef DEBUG
+        printf("stepping %3.1f%%, t = %f\n", 100.0f*float(istep+1)/nstep, istep*dt);
+#else
         printf("\r stepping %3.1f%%, t = %f", 100.0f*float(istep+1)/nstep, istep*dt);
+
+#endif
 		//printf("gE0 = %f, v = %f \n", gE_current[0], v[0]);
     }
     printf("\n");

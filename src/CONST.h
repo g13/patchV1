@@ -6,9 +6,9 @@
 #define vT 1.0f
 #define vL 0.0f
 #define gL_E 0.05f
-#define gL_I 0.1f
-#define tRef_E 0.5f
-#define tRef_I 0.25f
+#define gL_I 0.08f
+#define tRef_E 2.0f
+#define tRef_I 1.0f
 
 #define EPS 1.11e-16 // machine precision
 

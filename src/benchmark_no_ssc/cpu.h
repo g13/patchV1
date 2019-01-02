@@ -90,7 +90,9 @@ double cpu_step(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE
             }
         }
         if (lif->v < vI) {
+#ifdef DEBUG
 		    printf("#%i shoots below vI, something is off gE = %f, gI = %f, v0 = %f, v = %f\n", id, gE, gI, lif->v0, lif->v);
+#endif
             lif->v = vI;
         }
     } 
@@ -100,7 +102,9 @@ double cpu_step(cpu_LIF* lif, double dt, double tRef, unsigned int id, double gE
         lif->tBack -= dt;
     } 
     if (lif->spikeCount > 1) {
+#ifdef DEBUG
         printf("#%i spiked %i in one time step %f, refractory period = %f ms, only the last tsp is recorded\n", id, lif->spikeCount, dt, tRef);
+#endif
     }
     return lif->tsp;
 }
@@ -386,7 +390,11 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
         nSpike_file.write((char*)nSpike, networkSize * sizeof(unsigned int));
         gE_file.write((char*)gE, networkSize * ngTypeE * sizeof(double));
         gI_file.write((char*)gI, networkSize * ngTypeI * sizeof(double));
+#ifdef DEBUG
         printf("\r stepping %3.1f%%", 100.0f*float(istep+1)/nstep);
+#else
+        printf(" stepping %3.1f%%, t = %f\n", 100.0f*float(istep+1)/nstep, istep*dt);
+#endif
 		//printf("gE0 = %f, v = %f \n", gE[0], v[0]);
     }
     printf("\n");

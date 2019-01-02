@@ -220,7 +220,9 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
         lif->tBack -= dt;
     }
     if (lif->spikeCount > 1) {
+#ifdef DEBUG
         printf("#%i spiked %i in one time step %f, refractory period = %f ms, only the last tsp is recorded\n", id, lif->spikeCount, dt, tRef);
+#endif
     }
     return lif->tsp;
 }
@@ -382,7 +384,9 @@ __global__ void compute_V(double* __restrict__ v,
     spikeTrain[id] = step(&lif, dt, tRef, /*the last 2 args are for deugging*/ id, gE_t, gI_t, tsp);
     nSpike[id] = lif.spikeCount;
     if (lif.v < vI) {
+#ifdef DEBUG
 		printf("#%i something is off gE = %f, gI = %f, v = %f\n", id, gE_t, gI_t, lif.v);
+#endif
         lif.v = vI;
     }   
 	v[id] = lif.v;

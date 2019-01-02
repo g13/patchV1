@@ -198,7 +198,6 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
             lif->compute_pseudo_v0(dt);
             lif->tBack = -1.0f;
         }
-        __syncthreads();
         lif->runge_kutta_2(dt);
         while (lif->v > vT && lif->tBack < 0.0f) {
             // crossed threshold
@@ -430,13 +429,17 @@ __global__ void compute_dV(double* __restrict__ v0,
     v0[id] = lif.v0;
 	//tBack[id] = lif.tBack; // TBD after spike correction, comment this line if SSC is naive.
     if (lif.v < vI) {
-		printf("#%i something is off gE = %f, gI = %f, v0 = %f, v1/2 = %f, v = %f, a0 = %f, b0 = %f, a1 = %f, b1 = %f\n", id, gE_t, gI_t, lif.v0, lif.v_hlf, lif.v, lif.a0, lif.b0, lif.a1, lif.b1);
+#ifdef DEBUG
+		printf("\r #%i something is off gE = %f, gI = %f, v0 = %f, v1/2 = %f, v = %f, a0 = %f, b0 = %f, a1 = %f, b1 = %f", id, gE_t, gI_t, lif.v0, lif.v_hlf, lif.v, lif.a0, lif.b0, lif.a1, lif.b1);
+#endif
         lif.v = vI;
     }   
+#ifdef DEBUG
     if (lif.tsp < 0.0f) {
 		printf("#%i backfired v0 = %f, v1/2 = %f, v = %f, tsp = %f\n", id, lif.v0, lif.v_hlf, lif.v, lif.tsp);
         assert(lif.tsp >= 0.0f);
     }
+#endif
 	dv[id] = lif.v - lif.v0; // TBD after spike correction to reset etc.
 }
 
@@ -490,9 +493,6 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
                     //if (tsp > tsp_i) {
                         deltaV -= g*dvE;
                     //}
-                    if ((id == 14 || id == 436) && (i == 11 || i == 436)) {
-                        printf("g-%i from %i = %e, dV = %e\n", id, i, g, -g*dvE/2.0f*dt);
-                    }
                 }
             }
         }
@@ -514,10 +514,6 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
         }
         double v0i = v0[id];
         double v_hlf0;
-        //double wtf_v = runge_kutta_2(a0[id], b0[id], a1[id] + dg, b1[id] + dgV, v0i, dt, v_hlf0);
-        //if (tsp < dt && (id == 14 || id == 436)) {
-        //    printf("#%i, old_tsp = %e, dvold = %.15e, deltaV = %e, v0 = %e, dvhlf = %e, dvnew = %.15e, wtfv = %.15e\n", id, tsp, dv[id], deltaV/2.0f*dt, v0i, vhlf-v0i, dv[id] + deltaV/2.0f*dt, wtf_v);
-        //}
         tsp = dt;
         deltaV = dv[id] + deltaV/2.0f*dt;
         v_new = v0i + deltaV;
@@ -530,7 +526,7 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
             if (tsp + tRef < dt) {
                 double wasted_tsp = tsp;
                 while (v_new > vT) {
-                    double v_old = v_new;
+                    //double v_old = v_new;
                     //v_new = compute_v1(dt, a0[id], b0[id], a1[id] + dg, b1[id] + dgV, vL, tsp + tRef);
                     double pseudo_v0 = compute_pseudo_v0(a0[id], b0[id], a1[id] + dg, b1[id] + dgV, dt, wasted_tsp + tRef);
                     v_new = runge_kutta_2(a0[id], b0[id], a1[id] + dg, b1[id] + dgV, pseudo_v0, dt, v_hlf0);
@@ -538,9 +534,6 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
                         wasted_tsp = dt*(vT-pseudo_v0)/(v_new-pseudo_v0);
                         //tsp += wasted_tsp;
                         ns++;
-                    }
-                    if (ns > 1 && (id == 436 || id == 14)) {
-                        printf("i'm not here %i-%u, tsp = %e, v_old = %e, v_new = %e, v0i = %e, pseudo_v0 = %e, v_hlf = %e\n ", id, ns, tsp, v_old, v_new, v0i, pseudo_v0, v_hlf0);
                     }
                 }
                 //tsp = tsp/ns;

@@ -28,7 +28,6 @@ struct cpu_LIF {
     void runge_kutta_2(double dt);
     void set_p0(double _gE, double _gI, double _gL);
     void set_p1(double _gE, double _gI, double _gL);
-    void trans_p1_to_p0();
     double eval0(double _v);
     double eval1(double _v);
     void reset_v();
