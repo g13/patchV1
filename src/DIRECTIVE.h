@@ -6,6 +6,7 @@
 #define KERNEL_PERFORMANCE
 #define TEST_WITH_MANUAL_FFINPUT
 //#define DEBUG 
+//#define GPU_ONLY
 //#define RECLAIM
 //#define NAIVE // for naive summation of conductance
 

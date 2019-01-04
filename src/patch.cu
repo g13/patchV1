@@ -165,9 +165,12 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaMemcpy(v, d_v1, networkSize*sizeof(double),cudaMemcpyDeviceToHost));
     printf("storage size of preMat %.1fMb\n", float(networkSize*networkSize*sizeof(double))/1024.0/1024.0);
 
-	#ifdef TEST_WITH_MANUAL_FFINPUT
-		printf("    dInput = %f ms\n", dInput);
-        cpu_version(networkSize, dInput, nstep, dt, nE, preMat, v, firstInput, ffsE, ffsI, theme, flatRate);
+    #ifndef GPU_ONLY
+	    #ifdef TEST_WITH_MANUAL_FFINPUT
+		    printf("    dInput = %f ms\n", dInput);
+            cpu_version(networkSize, dInput, nstep, dt, nE, preMat, v, firstInput, ffsE, ffsI, theme, flatRate);
+            return EXIT_SUCCESS;
+        #endif
     #endif
 
     unsigned int nbatch, batchEnd, batchStep;
@@ -553,9 +556,11 @@ int main(int argc, char *argv[])
                     }
                 }
                 imatch++;
+#ifdef DEBUG
+                printf("matching %u\n", imatch);
+#endif
             }
             nmatch += imatch;
-            //printf("%i matching iterations\n", imatch);
             #ifdef KERNEL_PERFORMANCE
                 CUDA_CALL(cudaEventRecord(kStop, 0));
                 CUDA_CALL(cudaEventSynchronize(kStop));
@@ -640,8 +645,11 @@ int main(int argc, char *argv[])
             /* Write spikeTrain of current step to disk */
             spike_file.write((char*)spikeTrain,  n*sizeof(double));
             nSpike_file.write((char*)nSpike,     n*sizeof(unsigned int));
+#ifndef DEBUG
             printf("\r stepping: %3.1f%%", 100.0f*float(i+1)/nstep);
-            //printf("stepping: %3.1f%%, t = %f \n", 100.0f*float(i+1)/nstep, (i+1)*dt);
+#else
+            printf("stepping: %3.1f%%, t = %f \n", 100.0f*float(i+1)/nstep, (i+1)*dt);
+#endif
             double _events = 0.0f;
             unsigned int _spikes = 0;
             for (int j=0; j<networkSize; j++) {

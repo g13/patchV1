@@ -861,12 +861,21 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
     unsigned int *nSpike = new unsigned int[networkSize];
     double *preMat = new double[networkSize*networkSize];
     std::ofstream p_file, v_file, spike_file, nSpike_file, gE_file, gI_file;
+#ifdef RECLAIM
+    p_file.open("rp_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+    v_file.open("rv_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+    spike_file.open("rs_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+    nSpike_file.open("rn_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+    gE_file.open("rgE_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+    gI_file.open("rgI_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+#else
     p_file.open("p_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
     v_file.open("v_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
     spike_file.open("s_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
     nSpike_file.open("n_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
     gE_file.open("gE_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
     gI_file.open("gI_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+#endif
 
     unsigned int nI = networkSize - nE;
     p_file.write((char*)&nE, sizeof(unsigned int));

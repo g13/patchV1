@@ -219,7 +219,9 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
         lif->tBack -= dt;
     }
     if (lif->spikeCount > 1) {
+#ifdef DEBUG
         printf("#%i spiked %i in one time step %f, refractory period = %f ms, only the last tsp is recorded\n", id, lif->spikeCount, dt, tRef);
+#endif
     }
     return lif->tsp;
 }
@@ -434,12 +436,12 @@ __global__ void compute_dV(double* __restrict__ v0,
 #endif
         lif.v = vI;
     }   
-#ifdef DEBUG
+//#ifdef DEBUG
     if (lif.tsp < 0.0f) {
 		printf("#%i backfired v0 = %f, v1/2 = %f, v = %f, tsp = %f\n", id, lif.v0, lif.v_hlf, lif.v, lif.tsp);
         assert(lif.tsp >= 0.0f);
     }
-#endif
+//#endif
 	dv[id] = lif.v - lif.v0; // TBD after spike correction to reset etc.
 }
 
@@ -475,7 +477,9 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
     double deltaV = 0.0; // init with old dv to be new dv
     double dg = 0.0;
     double dgV = 0.0;
-    unsigned int ns = 0;
+    unsigned int ns = nSpike[id];
+    double wasted_tsp;
+    double tB;
     if (tBack[id] < dt) {
         for (unsigned int i = 0; i < poolSizeE; i++) {
             double tsp_i = spikeTrain[i];  // possible share_mem optimization
@@ -488,11 +492,11 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
                 #pragma unroll
                 for (unsigned int ig = 0; ig < ngTypeE; ig++) {
                     double g = preMat[i*poolSize + id] * condE.dg(dtij, ig);
-                    dg += g;
-                    dgV += g*vE;
-                    //if (tsp > tsp_i) {
+                    if (tsp > tsp_i) {
+                        dg += g;
+                        dgV += g*vE;
                         deltaV -= g*dvE;
-                    //}
+                    }
                 }
             }
         }
@@ -504,51 +508,62 @@ __global__ void correct_spike(bool*   __restrict__ not_matched,
                 #pragma unroll
                 for (unsigned int ig = 0; ig < ngTypeI; ig++) {
                     double g = preMat[i*poolSize + id] * condI.dg(dtij, ig);
-                    dg += g;
-                    dgV += g*vI;
-                    //if (tsp > tsp_i) {
+                    if (tsp > tsp_i) {
+                        dg += g;
+                        dgV += g*vI;
                         deltaV -= g*dvI;
-                    //}
+                    }
                 }
             }
         }
+        ns = 0;
         double v0i = v0[id];
         double v_hlf0;
         tsp = dt;
         deltaV = dv[id] + deltaV/2.0f*dt;
         v_new = v0i + deltaV;
         if (v_new > vT) {
-            ns++;
-            tsp = dt * (vT - v0i) / deltaV;
-            if (tsp < minTsp_i) {
-                tsp = minTsp_i;
-            }
-            if (tsp + tRef < dt) {
-                double wasted_tsp = tsp;
-                while (v_new > vT) {
-                    //double v_old = v_new;
-                    //v_new = compute_v1(dt, a0[id], b0[id], a1[id] + dg, b1[id] + dgV, vL, tsp + tRef);
-                    double pseudo_v0 = compute_pseudo_v0(a0[id], b0[id], a1[id] + dg, b1[id] + dgV, dt, wasted_tsp + tRef);
-                    v_new = runge_kutta_2(a0[id], b0[id], a1[id] + dg, b1[id] + dgV, pseudo_v0, dt, v_hlf0);
-                    if (v_new > vT) {
-                        wasted_tsp = dt*(vT-pseudo_v0)/(v_new-pseudo_v0);
-                        //tsp += wasted_tsp;
-                        ns++;
-                    }
+            tB = -1.0f;
+            tsp = 0.0f;
+            do {
+                ns++;
+                wasted_tsp = dt * (vT - v0i) / (v_new-v0i);
+#ifdef DEBUG 
+                if (wasted_tsp < tB) {
+                    printf("%u backfired %f, tB = %f\n", id, wasted_tsp, tB);
                 }
-                //tsp = tsp/ns;
-            } else {
-                v_new = vL;
-            }
+#endif
+                if (wasted_tsp < minTsp_i) {
+                    wasted_tsp = minTsp_i;
+                }
+                if (ns==1) {
+                    tsp = wasted_tsp;
+                }
+                tB = wasted_tsp + tRef;
+                if (tB < dt) {
+                    v0i = compute_pseudo_v0(a0[id], b0[id], a1[id] + dg, b1[id] + dgV, dt, tB);
+                    v_new = runge_kutta_2(a0[id], b0[id], a1[id] + dg, b1[id] + dgV, v0i, dt, v_hlf0);
+                } else {
+                    v_new = vL;
+                }
+            } while (v_new > vT && tB < dt);
+            //tsp = tsp/ns;
         }
     }
-    if (ns != nSpike[id]) {
-        local_not_matched = true;
-    }
-    __syncthreads();
-    not_matched[id] = local_not_matched; // OPTIMIZE per block basis
+    unsigned int ons = nSpike[id];
     spikeTrain[id] = tsp;
     vnew[id] = v_new;
+    if ((ns>0 && ons==0) || (ons>0 && ns == 0)) {
+        local_not_matched = true;
+#ifdef DEBUG
+        if (ons>0) {
+            printf("    #%u spiked %u times, this time 0\n", id, nSpike[id]);
+        } else {
+            printf("    #%u spikes %u times, last time 0, latest %f < %f\n", id, ns, wasted_tsp, tB);
+        }
+#endif
+    }
+    not_matched[id] = local_not_matched; // OPTIMIZE per block basis
     nSpike[id] = ns;
 }
 
@@ -567,9 +582,9 @@ __global__ void prepare_cond(double* __restrict__ tBack,
     unsigned int ns = nSpike[id];
     if (tsp < dt) {
         if (offset == 0) {
-            tB = tsp + tRef_E;
+            tB = tsp + ns*tRef_E;
         } else {
-            tB = tsp + tRef_I;
+            tB = tsp + ns*tRef_I;
         }
     }
     tB -= dt;
