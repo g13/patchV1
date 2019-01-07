@@ -105,42 +105,127 @@ __global__ void reduce_G(double* __restrict__ g,
     }
 }
 
-__global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed) {
+__global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed, double *lTR, double dInput) {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
     curand_init(seed+id, 0, 0, &localState);
     logRand[id] = -log(curand_uniform_double(&localState));
-    //printf("logRand0 = %f\n", logRand[id]);
-    //logRand[id] = 1.0f;
     state[id] = localState;
+
+    // lTR works as firstInputTime
+    #ifdef TEST_WITH_MANUAL_FFINPUT
+        lTR[id] = curand_uniform_double(&localState)*dInput;
+    #endif
 }
 
 __global__ void randInit(double* __restrict__ preMat, 
 						 double* __restrict__ v, 
-						 double* __restrict__ lTR, 
 						 curandStateMRG32k3a* __restrict__ state,
-double sE, double sI, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInput) {
+double sEE, double sIE, double sEI, double sII, unsigned int networkSize, unsigned int nE, unsigned long long seed) {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
     curand_init(seed+id, 0, 0, &localState);
     v[id] = vL + curand_uniform_double(&localState) * (vT-vL);
-    double mean = log(sI/sqrt(1.0f+1.0f/sI));
-    double std = sqrt(log(1.0f+1.0f/sI));
-    for (unsigned int i=0; i<nE; i++) {
-        preMat[i*networkSize + id] = curand_log_normal_double(&localState, mean, std);
-        // lTR works as firstInputTime
-        #ifdef TEST_WITH_MANUAL_FFINPUT
-            lTR[id] = curand_uniform_double(&localState)*dInput;
-        #endif
+    double mean, std, ratio;
+    if (id < nE) {
+        mean = log(sEE/sqrt(1.0f+1.0f/sEE));
+        std = sqrt(log(1.0f+1.0f/sEE));
+        ratio = 0.0;
+        for (unsigned int i=0; i<nE; i++) {
+            double x = curand_log_normal_double(&localState, mean, std);
+            preMat[i*networkSize + id] = x;
+            ratio += x;
+        }
+        if (sEE > 0) {
+            ratio = sEE * nE / ratio;
+            for (unsigned int i=0; i<nE; i++) {
+                preMat[i*networkSize + id] = preMat[i*networkSize + id]*ratio;
+            }
+        } else {
+            for (unsigned int i=0; i<nE; i++) {
+                preMat[i*networkSize + id] = 0.0f;
+            }
+        }
+        //mean = log(sEI/sqrt(1.0f+1.0f/sEI));
+        //std = sqrt(log(1.0f+1.0f/sEI));
+        mean = sEI;
+        std = sEI*0.125;
+        ratio = 0.0;
+        for (unsigned int i=nE; i<networkSize; i++) {
+            //double x = curand_log_normal_double(&localState, mean, std);
+            double x = curand_normal_double(&localState)*std+mean;
+            if (x<0) x = 0;
+            preMat[i*networkSize + id] = x;
+            ratio += x;
+        }
+        if (sEI > 0){
+            ratio = sEI * (networkSize-nE) / ratio;
+            for (unsigned int i=nE; i<networkSize; i++) {
+                preMat[i*networkSize + id] = preMat[i*networkSize + id]*ratio;
+            }
+        } else {
+            for (unsigned int i=nE; i<networkSize; i++) {
+                preMat[i*networkSize + id] = 0.0f;
+            }
+        }
+    } else {
+        //mean = log(sIE/sqrt(1.0f+1.0f/sIE));
+        //std = sqrt(log(1.0f+1.0f/sIE));
+        mean = sIE;
+        std = sIE*0.125;
+        ratio = 0.0;
+        for (unsigned int i=0; i<nE; i++) {
+            //double x = curand_log_normal_double(&localState, mean, std);
+            double x = curand_normal_double(&localState)*std+mean;
+            if (x<0) x = 0;
+            preMat[i*networkSize + id] = x;
+            ratio += x;
+        }
+        if (sIE > 0) {
+            ratio = sIE * nE / ratio;
+            for (unsigned int i=0; i<nE; i++) {
+                preMat[i*networkSize + id] = preMat[i*networkSize + id]*ratio;
+            }
+        } else {
+            for (unsigned int i=0; i<nE; i++) {
+                preMat[i*networkSize + id] = 0.0f;
+            }
+        }
+        //mean = log(sII/sqrt(1.0f+1.0f/sII));
+        //std = sqrt(log(1.0f+1.0f/sII));
+        mean = sII;
+        std = sII*0.125;
+        ratio = 0.0;
+        for (unsigned int i=nE; i<networkSize; i++) {
+            //double x = curand_log_normal_double(&localState, mean, std);
+            double x = curand_normal_double(&localState)*std+mean;
+            if (x<0) x = 0;
+            preMat[i*networkSize + id] = x;
+            ratio += x;
+        }
+        if (sII > 0){
+            ratio = sII * (networkSize-nE) / ratio;
+            for (unsigned int i=nE; i<networkSize; i++) {
+                preMat[i*networkSize + id] = preMat[i*networkSize + id]*ratio;
+            }
+        } else {
+            for (unsigned int i=nE; i<networkSize; i++) {
+                preMat[i*networkSize + id] = 0.0f;
+            }
+        }
     }
-    mean = log(sI/sqrt(1.0f+1.0f/sI));
-    std = sqrt(log(1.0f+1.0f/sI));
-    for (unsigned int i=nE; i<networkSize; i++) {
-        preMat[i*networkSize + id] = curand_log_normal_double(&localState, mean, std);
+}
 
-        #ifdef TEST_WITH_MANUAL_FFINPUT
-            lTR[id] = curand_uniform_double(&localState)*dInput;
-        #endif
+__global__ void f_init(double* __restrict__ f, unsigned networkSize, unsigned int nE, unsigned int ngType, double Ef, double If) {
+    unsigned long id = blockIdx.x * blockDim.x + threadIdx.x;
+    if (id < nE) {
+        for (unsigned int ig=0; ig<ngType; ig++) {
+            f[ig*networkSize + id] = Ef;
+        }
+    } else {
+        for (unsigned int ig=0; ig<ngType; ig++) {
+            f[ig*networkSize + id] = If;
+        }
     }
 }
 
@@ -198,7 +283,6 @@ __device__  double step(Func_RK2* lif, double dt, double tRef, unsigned int id, 
             lif->compute_pseudo_v0(dt);
             lif->tBack = -1.0f;
         }
-        __syncthreads();
         lif->runge_kutta_2(dt);
         while (lif->v > vT && lif->tBack < 0.0f) {
             // crossed threshold
@@ -275,8 +359,10 @@ __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ a,
                           double* __restrict__ b,
                           double* __restrict__ preMat,
-                          double* __restrict__ inputRate,
-                          int* __restrict__ eventRate,
+                          double* __restrict__ inputRateE,
+                          double* __restrict__ inputRateI,
+                          int* __restrict__ eventRateE,
+                          int* __restrict__ eventRateI,
                           double* __restrict__ spikeTrain,
                           unsigned int* __restrict__ nSpike,
                           double* __restrict__ tBack,
@@ -284,10 +370,13 @@ __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ hactVec,
                           double* __restrict__ fE,
                           double* __restrict__ fI,
-                          double* __restrict__ leftTimeRate,
-                          double* __restrict__ lastNegLogRand,
-                          curandStateMRG32k3a* __restrict__ state,
-                          unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInput)
+                          double* __restrict__ leftTimeRateE,
+                          double* __restrict__ leftTimeRateI,
+                          double* __restrict__ lastNegLogRandE,
+                          double* __restrict__ lastNegLogRandI,
+                          curandStateMRG32k3a* __restrict__ stateE,
+                          curandStateMRG32k3a* __restrict__ stateI,
+                          unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInputE, double dInputI)
 {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
@@ -318,32 +407,52 @@ __global__ void compute_V(double* __restrict__ v,
     lif.set_p0(gE_t, gI_t, gL);
     /* Get feedforward input */
     // consider use shared memory for dynamic allocation
-    double inputTime[MAX_FFINPUT_PER_DT];
-    curandStateMRG32k3a localState = state[id];
-    int nInput;
+    double inputTimeE[MAX_FFINPUT_PER_DT];
+    double inputTimeI[MAX_FFINPUT_PER_DT];
+    curandStateMRG32k3a localStateE = stateE[id];
+    curandStateMRG32k3a localStateI = stateI[id];
+    int nInputE, nInputI;
     #ifdef TEST_WITH_MANUAL_FFINPUT
-        nInput = 0;
-        if (leftTimeRate[id] < dt) {
-            inputTime[nInput] = leftTimeRate[id];
-            nInput++;
-            double tmp = leftTimeRate[id] + dInput;
+        nInputE = 0;
+        if (leftTimeRateE[id] < dt) {
+            inputTimeE[nInputE] = leftTimeRateE[id];
+            nInputE++;
+            double tmp = leftTimeRateE[id] + dInputE;
             while (tmp < dt){
-                inputTime[nInput] = tmp;
-                nInput++;
-                tmp += dInput;
+                inputTimeE[nInputE] = tmp;
+                nInputE++;
+                tmp += dInputE;
             }
-            leftTimeRate[id] = tmp - dt;
+            leftTimeRateE[id] = tmp - dt;
         } else {
-            leftTimeRate[id] -= dt;
+            leftTimeRateE[id] -= dt;
+        }
+
+        nInputI = 0;
+        if (leftTimeRateI[id] < dt) {
+            inputTimeI[nInputI] = leftTimeRateI[id];
+            nInputI++;
+            double tmp = leftTimeRateI[id] + dInputI;
+            while (tmp < dt){
+                inputTimeI[nInputI] = tmp;
+                nInputI++;
+                tmp += dInputI;
+            }
+            leftTimeRateI[id] = tmp - dt;
+        } else {
+            leftTimeRateI[id] -= dt;
         }
     #else
-        nInput = set_input_time(inputTime, dt, inputRate[id], &(leftTimeRate[id]), &(lastNegLogRand[id]), &localState);
+        nInputE = set_input_time(inputTimeE, dt, inputRateE[id], &(leftTimeRateE[id]), &(lastNegLogRandE[id]), &localStateE);
+        nInputI = set_input_time(inputTimeI, dt, inputRateI[id], &(leftTimeRateI[id]), &(lastNegLogRandI[id]), &localStateI);
     #endif
     //__syncwarp();
     // return a realization of Poisson input rate
-    eventRate[id] = nInput;
+    eventRateE[id] = nInputE;
+    eventRateI[id] = nInputI;
     // update rng state 
-    state[id] = localState;
+    stateE[id] = localStateE;
+    stateI[id] = localStateI;
     /* evolve g to t+dt with ff input only */
     unsigned int gid;
     gE_t = 0.0f;
@@ -353,7 +462,7 @@ __global__ void compute_V(double* __restrict__ v,
         double g_i = gE[gid];
         double h_i = hE[gid];
         double f_i = fE[gid];
-        evolve_g(condE, &g_i, &h_i, &f_i, inputTime, nInput, dt, ig);
+        evolve_g(condE, &g_i, &h_i, &f_i, inputTimeE, nInputE, dt, ig);
         //__syncwarp();
         gE_t += g_i;
         gE[gid] = g_i;
@@ -361,16 +470,14 @@ __global__ void compute_V(double* __restrict__ v,
         // for learning
         //fE[gid] = f_i;
     }
-    //printf("id %i, exc cond ready.\n",id);
     gI_t = 0.0f;
-    /* no feed-forward inhibitory input (setting nInput = 0) */
     #pragma unroll
     for (int ig=0; ig<ngTypeI; ig++) {
         gid = networkSize*ig + id;
         double g_i = gI[gid];
         double h_i = hI[gid];
         double f_i = fI[gid];
-        evolve_g(condI, &g_i, &h_i, &f_i, inputTime, 0, dt, ig);
+        evolve_g(condI, &g_i, &h_i, &f_i, inputTimeI, nInputI, dt, ig);
         //__syncwarp();
         gI_t += g_i;
         gI[gid] = g_i;
@@ -424,5 +531,4 @@ __global__ void compute_V(double* __restrict__ v,
             hactVec[gid] = 0.0f;
         }
     }
-    delete []tsp;
 }

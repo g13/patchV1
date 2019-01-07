@@ -618,6 +618,8 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                         printf("    gI#%i = %f, In: %i->%i <= %i\n", j, gI0[gid], lastInput[j], iInput[j], nInput[j]);
                     }
                 }
+                lastInput[j] = iInput[j];
+                // add latest cortical inputs
                 for (unsigned int ini = 0; ini < in; ini++) {
                     unsigned int id = idTrain[ini];
                     if (id < nE) {
@@ -654,8 +656,6 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
             }
         }
         in = 0;
-        lastI = false;
-        lastE = false;
         for (unsigned int j = 0; j<networkSize; j++) {
             if (lif[j]->correctMe && i!=j) {
                 double tRef;
@@ -675,7 +675,8 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                 if (dt - lif[j]->tsp > EPS ) {
                     // ignore round off error
                     ns[in] = lif[j]->spikeCount - ns0;
-                    wSpikeTrain[in] = lif[j]->tsp;
+                    wSpikeTrain[in] = pdt;
+                    assert(lif[j]->tsp < pdt);
                     idTrain[in] = j;
                     in++;
                 } 
@@ -697,6 +698,8 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
         }
         lif[i]->spikeCount++;
         lif[i]->reset_v();
+        lastI = false;
+        lastE = false;
         for (unsigned int j=0; j<in; j++) {
             unsigned int id = idTrain[j];
             spikeTrain[id] = pdt;
@@ -760,7 +763,6 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
             }
             if (lif[j]->correctMe) {
                 // if not in refractory period
-                lastInput[j] = iInput[j];
                 double gL, tRef;
                 if (j<nE) {
                     gL = gL_E;
@@ -840,7 +842,7 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
 }
 #endif
 
-void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsigned int nstep, double dt, unsigned int nE, double preMat0[], double vinit[], double firstInput[], /* === RAND === unsigned long long seed, */ double ffsE, double ffsI, std::string theme, double inputRate) {
+void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsigned int nstep, double dt, unsigned int nE, double preMat0[], double vinit[], double firstInput[], /* === RAND === unsigned long long seed, */ double EffsE, double IffsE, double EffsI, double IffsI, std::string theme, double inputRate) {
     unsigned int ngTypeE = 2;
     unsigned int ngTypeI = 1;
     double gL, tRef;
@@ -860,6 +862,11 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
     double *spikeTrain = new double[networkSize];
     unsigned int *nSpike = new unsigned int[networkSize];
     double *preMat = new double[networkSize*networkSize];
+    double exc_input_ratio = 0.0f;
+    double gEavgE = 0.0f;
+    double gIavgE = 0.0f;
+    double gEavgI = 0.0f;
+    double gIavgI = 0.0f;
     std::ofstream p_file, v_file, spike_file, nSpike_file, gE_file, gI_file;
 #ifdef RECLAIM
     p_file.open("rp_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
@@ -949,7 +956,11 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
             unsigned int gid = ig*networkSize + i;
             gE0[gid] = 0.0f;
             hE0[gid] = 0.0f;
-            fE[gid] = ffsE;
+            if (i<nE) {
+                fE[gid] = EffsE;
+            } else {
+                fE[gid] = IffsE;
+            }
         }
     }
     for (int ig = 0; ig < ngTypeI; ig++) {
@@ -957,7 +968,11 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
             unsigned int gid = ig*networkSize + i;
             gI0[gid] = 0.0f;
             hI0[gid] = 0.0f;
-            fI[gid] = ffsI;
+            if (i<nE) {
+                fI[gid] = EffsI;
+            } else {
+                fI[gid] = IffsI;
+            }
         }
     }
     //printf("cpu initialized\n");
@@ -966,7 +981,8 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
     gE_file.write((char*)gE0, networkSize * ngTypeE * sizeof(double));
     gI_file.write((char*)gI0, networkSize * ngTypeI * sizeof(double));
 	int inputEvents = 0;
-    int outputEvents = 0;
+    unsigned int spikesE = 0;
+    unsigned int spikesI = 0;
     double vTime = 0.0f;
 	double wTime = 0.0f;
     double sTime = 0.0f;
@@ -1081,13 +1097,17 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
             //printf("spiked:\n");
             high_resolution_clock::time_point sStart = timeNow();
             unsigned int nsp = cpu_ssc(lif, v, gE_old, gI_old, hE_old, hI_old, gE_current, gI_current, hE_current, hI_current, fE, fI, preMat, networkSize, condE, condI, ngTypeE, ngTypeI, inputTime, nInput, spikeTrain, nE, dt);
-            outputEvents += nsp;
             sTime += static_cast<double>(duration_cast<microseconds>(timeNow()-vStart).count());
 #ifdef DEBUG
             printf("%u spikes during dt\n", nsp);
 #endif
         } 
         for (unsigned int i=0; i<networkSize; i++) {
+            if (i < nE) {
+                spikesE += nSpike[i]; 
+            } else {
+                spikesI += nSpike[i]; 
+            }
             nSpike[i] = lif[i]->spikeCount;
             lif[i]->tBack -= dt;
         }
@@ -1104,16 +1124,47 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
         printf("\r stepping %3.1f%%, t = %f", 100.0f*float(istep+1)/nstep, istep*dt);
 
 #endif
+        double ir = 0.0f;
+        for (unsigned int i=0; i<nE; i++) {
+            double sEi = 0.0f;
+            for (unsigned int j=0; j<networkSize; j++) {
+                sEi += preMat[i*networkSize + j] * nSpike[i];
+            }
+            ir += sEi;
+        }
+        exc_input_ratio += ir/networkSize;
 		//printf("gE0 = %f, v = %f \n", gE_current[0], v[0]);
+        for (unsigned int j=0; j<networkSize; j++) {
+            if (j<nE) {
+                for (unsigned int ig=0; ig<ngTypeE; ig++) {
+                    gEavgE += gE_current[ig*networkSize + j];
+                }
+                for (unsigned int ig=0; ig<ngTypeI; ig++) {
+                    gIavgE += gI_current[ig*networkSize + j];
+                }
+            } else {
+                for (unsigned int ig=0; ig<ngTypeE; ig++) {
+                    gEavgI += gE_current[ig*networkSize + j];
+                }
+                for (unsigned int ig=0; ig<ngTypeI; ig++) {
+                    gIavgI += gI_current[ig*networkSize + j];
+                }
+            }
+        }
     }
     printf("\n");
-    printf("input events rate %fkHz\n", float(inputEvents)/(dt*nstep*networkSize));
-    printf("output events rate %fHz\n", float(outputEvents)*1000.0f/(dt*nstep*networkSize));
+    printf("input events rate %ekHz\n", float(inputEvents)/(dt*nstep*networkSize));
+    printf("exc firing rate = %eHz\n", float(spikesE)/(dt*nstep*nE)*1000.0);
+    printf("inh firing rate = %eHz\n", float(spikesI)/(dt*nstep*nI)*1000.0);
     auto cpuTime = duration_cast<microseconds>(timeNow()-start).count();
     printf("cpu version time cost: %3.1fms\n", static_cast<double>(cpuTime)/1000.0f);
     printf("compute_V cost: %fms\n", vTime/1000.0f);
     printf("correct_spike cost: %fms\n", sTime/1000.0f);
 	printf("writing data to disk cost: %fms\n", wTime/1000.0f);
+    printf("input ratio recurrent:feedforward = %f\n", exc_input_ratio/((EffsE*nE+IffsE*nI)/networkSize*dt*nstep/dInput));
+    printf("           exc,        inh\n");
+    printf("avg gE = %e, %e\n", gEavgE/nstep/nE, gEavgI/nstep/nI);
+    printf("avg gI = %e, %e\n", gIavgE/nstep/nE, gIavgI/nstep/nI);
     /* Cleanup */
     printf("Cleaning up\n");
     int nTimer = 2;

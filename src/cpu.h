@@ -36,4 +36,4 @@ struct cpu_LIF {
     void compute_spike_time(double dt, double pdt0);
 };
 
-void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsigned int nstep, double dt, unsigned int nE, double preMat0[], double vinit[], double firstInput[], /* === RAND === unsigned long long seed, */ double ffsE, double ffsI, std::string theme, double inputRate);
+void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsigned int nstep, double dt, unsigned int nE, double preMat0[], double vinit[], double firstInput[], /* === RAND === unsigned long long seed, */ double EffsE, double IffsE, double EffsI, double IffsI, std::string theme, double inputRate);

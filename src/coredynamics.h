@@ -63,13 +63,15 @@ __global__ void randInit(double* __restrict__ preMat,
 						 double* __restrict__ v, 
 						 double* __restrict__ lTR, 
 						 curandStateMRG32k3a* __restrict__ state,
-double sE, double sI, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInput);
+double sEE, double sIE, double sEI, double sII, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInput);
 
 template <typename T>
 __global__ void init(T *array, T value) {
     unsigned long id = blockIdx.x * blockDim.x + threadIdx.x;
     array[id] = value;
 }
+
+__global__ void f_init(double* __restrict__ f, unsigned networkSize, unsigned int nE, unsigned int ngType, double Ef, double If);
 
 __global__ void compute_dV(double* __restrict__ v0,
                            double* __restrict__ dv,
