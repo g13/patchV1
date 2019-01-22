@@ -3,7 +3,7 @@
 
 #define HALF_MEMORY_OCCUPANCY 1 // in Mb
 #define KERNEL_PERFORMANCE
-//#define TEST_WITH_MANUAL_FFINPUT
+#define TEST_WITH_MANUAL_FFINPUT
 //#define GPU_ONLY
 //#define NAIVE
 //#define DEBUG

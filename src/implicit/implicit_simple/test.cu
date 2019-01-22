@@ -233,11 +233,11 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaMallocHost((void**)&eventRateI,   networkSize * sizeof(int) * batchStep * alt));
 
     /* Allocate space for results on device */
-    CUDA_CALL(cudaMalloc((void **)&d_gE,         networkSize * ngTypeE *sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&d_gE,         networkSize * ngTypeE * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&d_gI,         networkSize * ngTypeI * sizeof(double))); 
-    CUDA_CALL(cudaMalloc((void **)&d_hE,         networkSize * ngTypeE *sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&d_hE,         networkSize * ngTypeE * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&d_hI,         networkSize * ngTypeI * sizeof(double))); 
-    CUDA_CALL(cudaMalloc((void **)&d_fE,         networkSize * ngTypeE *sizeof(double)));
+    CUDA_CALL(cudaMalloc((void **)&d_fE,         networkSize * ngTypeE * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&d_fI,         networkSize * ngTypeI * sizeof(double))); 
     CUDA_CALL(cudaMalloc((void **)&d_a,          networkSize * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&d_b,          networkSize * sizeof(double)));
@@ -250,7 +250,6 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaMalloc((void **)&tBack,        networkSize * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&gactVec,      networkSize * ngType * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&hactVec,      networkSize * ngType * sizeof(double)));
-    /* Allocate space for partial reduce results on device */
     
     int maxTPB = properties.maxThreadsPerBlock/ms;
     int EmaxTPB, ImaxTPB;
@@ -391,6 +390,7 @@ int main(int argc, char *argv[])
         }
         // init rand generation for poisson
         init<double><<<init_b1,init_b2,0,i2>>>(d_inputRateE, flatRateE/1000.0f);
+        CUDA_CHECK();
         init<double><<<init_b1,init_b2,0,i2>>>(d_inputRateI, flatRateI/1000.0f);
         CUDA_CHECK();
         init<double><<<init_b1,init_b2,0,i3>>>(tBack, -1.0f); 

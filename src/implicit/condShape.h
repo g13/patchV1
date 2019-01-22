@@ -24,14 +24,6 @@ struct ConductanceShape {
         (*g) = (*g)*etd + (*h)*dod[ig]*(etd - etr);
         (*h) = (*h)*etr;
     }
-    
-    __host__ __device__ double dg_approx(double dgt, unsigned int ig) {
-        return (1.0 - coef2[ig] * dgt)*dgt / riseTime[ig];
-    }
-    __host__ __device__ double dg(double dgt, unsigned int ig) {
-        return dod[ig] * (exp(-dgt / decayTime[ig]) - exp(-dgt / riseTime[ig]));
-    }
-    __host__ __device__ void h_only(double *h, double dgt) {}
 };
 
 #endif
