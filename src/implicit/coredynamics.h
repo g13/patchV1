@@ -75,8 +75,6 @@ __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ spikeTrain,
                           unsigned int* __restrict__ nSpike,
                           double* __restrict__ tBack,
-                          double* __restrict__ gactVec,
-                          double* __restrict__ hactVec,
                           double* __restrict__ fE,
                           double* __restrict__ fI,
                           double* __restrict__ leftTimeRateE,
@@ -85,6 +83,6 @@ __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ lastNegLogRandI,
                           curandStateMRG32k3a* __restrict__ stateE,
                           curandStateMRG32k3a* __restrict__ stateI,
-                          unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInputE, double dInputI);
+                          ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInputE, double dInputI);
 
 #endif

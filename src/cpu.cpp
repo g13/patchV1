@@ -167,7 +167,7 @@ void cpu_LIF::reset_v() {
 
 #ifdef RECLAIM
 // Spike-spike correction
-unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[], double hI0[], double gE1[], double gI1[], double hE1[], double hI1[], double fE[], double fI[], double preMat[], unsigned int networkSize, cConductanceShape condE, cConductanceShape condI, int ngTypeE, int ngTypeI, double inputTime[], int nInput[], double spikeTrain[], unsigned int nE, double dt) {
+unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[], double hI0[], double gE1[], double gI1[], double hE1[], double hI1[], double fE[], double fI[], double preMat[], unsigned int networkSize, cConductanceShape condE, cConductanceShape condI, int ngTypeE, int ngTypeI, double inputTimeE[], double inputTimeI[], int nInputE[], int nInputI[], double spikeTrain[], unsigned int nE, double dt) {
     static unsigned int c2_n = 0;
     double *v0 = new double[networkSize];
     double *a1 = new double[networkSize];
@@ -201,8 +201,10 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
     double *g, *h;
     cConductanceShape *cond;
     double pdt0 = 0.0f; // old pdt
-    int* iInput = new int[networkSize];
-    int* lastInput = new int[networkSize]();
+    int* iInputE = new int[networkSize];
+    int* iInputI = new int[networkSize];
+    int* lastInputE = new int[networkSize]();
+    int* lastInputI = new int[networkSize]();
     double* gE = new double[networkSize*ngTypeE];
     double* hE = new double[networkSize*ngTypeE];
     double* gI = new double[networkSize*ngTypeI];
@@ -274,11 +276,11 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                         }
                         // evolve g h and lastInput to xdt (if no spike is reclaimed then update g0 and h0 and lastInput)
                         // determine ext input range [pdt0, xdt]
-                        iInput[j] = lastInput[j];
-                        if  (iInput[j] < nInput[j]) {
-                            while (inputTime[j*MAX_FFINPUT_PER_DT+iInput[j]] < xdt) {
-                                iInput[j]++;
-                                if (iInput[j] == nInput[j]) break;
+                        iInputE[j] = lastInputE[j];
+                        if  (iInputE[j] < nInputE[j]) {
+                            while (inputTimeE[j*MAX_FFINPUT_PER_DT+iInputE[j]] < xdt) {
+                                iInputE[j]++;
+                                if (iInputE[j] == nInputE[j]) break;
                             }
                         }
                         double gE_t = 0.0f;
@@ -287,7 +289,7 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                             unsigned int gid = networkSize*ig + j;
                             gE[gid] = gE0[gid];
                             hE[gid] = hE0[gid];
-                            evolve_g(condE, &(gE[gid]), &(hE[gid]), &(fE[gid]), &(inputTime[j*MAX_FFINPUT_PER_DT+lastInput[j]]), iInput[j]-lastInput[j], dxdt, xdt, ig);
+                            evolve_g(condE, &(gE[gid]), &(hE[gid]), &(fE[gid]), &(inputTimeE[j*MAX_FFINPUT_PER_DT+lastInputE[j]]), iInputE[j]-lastInputE[j], dxdt, xdt, ig);
                             if (corrected_n > 0) {
                                 if (last_i < nE) {
                                     gE[gid] += g_end[ig] * preMat[last_i*networkSize + j];
@@ -296,14 +298,21 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                             }
                             gE_t += gE[gid];
                         }
-                        // no feed-forward inhibitory input (setting nInput = 0)
+
+                        iInputI[j] = lastInputI[j];
+                        if  (iInputI[j] < nInputI[j]) {
+                            while (inputTimeI[j*MAX_FFINPUT_PER_DT+iInputI[j]] < xdt) {
+                                iInputI[j]++;
+                                if (iInputI[j] == nInputI[j]) break;
+                            }
+                        }
                         double gI_t = 0.0f; 
                         #pragma unroll
                         for (int ig=0; ig<ngTypeI; ig++) {
                             unsigned int gid = networkSize*ig + j;
                             gI[gid] = gI0[gid];
                             hI[gid] = hI0[gid];
-                            evolve_g(condI, &(gI[gid]), &(hI[gid]), &(fI[gid]), inputTime, 0, dxdt, xdt, ig);
+                            evolve_g(condI, &(gI[gid]), &(hI[gid]), &(fI[gid]), &(inputTimeI[j*MAX_FFINPUT_PER_DT+lastInputI[j]]), iInputI[j]-lastInputI[j], dxdt, xdt, ig);
                             if (corrected_n > 0) {
                                 if (last_i >= nE) {
                                     gI[gid] += g_end[ig] * preMat[last_i*networkSize + j];
@@ -421,7 +430,8 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                     hI0[gid] = hI[gid];
                 }
                 // commit lastInput
-                lastInput[j] = iInput[j];
+                lastInputE[j] = iInputE[j];
+                lastInputI[j] = iInputI[j];
                 double gL, tRef;
                 if (j<nE) {
                     gL = gL_E;
@@ -483,8 +493,10 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
     }
     delete []g_end;
     delete []h_end;
-    delete []iInput;
-    delete []lastInput;
+    delete []iInputE;
+    delete []iInputI;
+    delete []lastInputE;
+    delete []lastInputI;
     delete []gE;
     delete []gI;
     delete []hE;
@@ -500,7 +512,7 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
     return corrected_n;
 }
 #else
-unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[], double hI0[], double gE1[], double gI1[], double hE1[], double hI1[], double fE[], double fI[], double preMat[], unsigned int networkSize, cConductanceShape condE, cConductanceShape condI, int ngTypeE, int ngTypeI, double inputTime[], int nInput[], double spikeTrain[], unsigned int nE, double dt) {
+unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[], double hI0[], double gE1[], double gI1[], double hE1[], double hI1[], double fE[], double fI[], double preMat[], unsigned int networkSize, cConductanceShape condE, cConductanceShape condI, int ngTypeE, int ngTypeI, double inputTimeE[], double inputTimeI[], int nInputE[], int nInputI[], double spikeTrain[], unsigned int nE, double dt) {
     //static unsigned int c2_n = 0;
     unsigned int in = 0;
     double* wSpikeTrain = new double[networkSize];
@@ -526,8 +538,10 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
     double *gI_end = new double[ngTypeI];
     double *hI_end = new double[ngTypeI];
     double pdt0 = 0.0f; // old pdt
-    int* iInput = new int[networkSize];
-    int* lastInput = new int[networkSize]();
+    int* iInputE = new int[networkSize];
+    int* iInputI = new int[networkSize];
+    int* lastInputE = new int[networkSize]();
+    int* lastInputI = new int[networkSize]();
     unsigned int r = 0;
     unsigned int corrected_n = in;
     bool lastI, lastE;
@@ -596,29 +610,37 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                 }
                 // evolve g h and lastInput to xdt (if no spike is reclaimed then update g0 and h0 and lastInput)
                 // determine ext input range [pdt0, pdt]
-                iInput[j] = lastInput[j];
-                if  (iInput[j] < nInput[j]) {
-                    while (inputTime[j*MAX_FFINPUT_PER_DT+iInput[j]] < pdt) {
-                        iInput[j]++;
-                        if (iInput[j] == nInput[j]) break;
+                iInputE[j] = lastInputE[j];
+                if  (iInputE[j] < nInputE[j]) {
+                    while (inputTimeE[j*MAX_FFINPUT_PER_DT+iInputE[j]] < pdt) {
+                        iInputE[j]++;
+                        if (iInputE[j] == nInputE[j]) break;
                     }
                 }
                 for (int ig=0; ig<ngTypeE; ig++) {
                     unsigned int gid = networkSize*ig + j;
-                    evolve_g(condE, &(gE0[gid]), &(hE0[gid]), &(fE[gid]), &(inputTime[j*MAX_FFINPUT_PER_DT+lastInput[j]]), iInput[j]-lastInput[j], dpdt, pdt, ig);
+                    evolve_g(condE, &(gE0[gid]), &(hE0[gid]), &(fE[gid]), &(inputTimeE[j*MAX_FFINPUT_PER_DT+lastInputE[j]]), iInputE[j]-lastInputE[j], dpdt, pdt, ig);
                     if (gE0[gid] < 0) {
-                        printf("    gE#%i = %f, In: %i->%i <= %i\n", j, gE0[gid], lastInput[j], iInput[j], nInput[j]);
+                        printf("    gE#%i = %f, In: %i->%i <= %i\n", j, gE0[gid], lastInputE[j], iInputE[j], nInputE[j]);
                     }
                 }
-                // no feed-forward inhibitory input (setting nInput = 0)
+                lastInputE[j] = iInputE[j];
+
+                iInputI[j] = lastInputI[j];
+                if  (iInputI[j] < nInputI[j]) {
+                    while (inputTimeI[j*MAX_FFINPUT_PER_DT+iInputI[j]] < pdt) {
+                        iInputI[j]++;
+                        if (iInputI[j] == nInputI[j]) break;
+                    }
+                }
                 for (int ig=0; ig<ngTypeI; ig++) {
                     unsigned int gid = networkSize*ig + j;
-                    evolve_g(condI, &(gI0[gid]), &(hI0[gid]), &(fI[gid]), inputTime, 0, dpdt, pdt, ig);
+                    evolve_g(condI, &(gI0[gid]), &(hI0[gid]), &(fI[gid]), &(inputTimeI[j*MAX_FFINPUT_PER_DT+lastInputI[j]]), iInputI[j]-lastInputI[j], dpdt, pdt, ig);
                     if (gI0[gid] < 0) {
-                        printf("    gI#%i = %f, In: %i->%i <= %i\n", j, gI0[gid], lastInput[j], iInput[j], nInput[j]);
+                        printf("    gI#%i = %f, In: %i->%i <= %i\n", j, gI0[gid], lastInputI[j], iInputI[j], nInputI[j]);
                     }
                 }
-                lastInput[j] = iInput[j];
+                lastInputI[j] = iInputI[j];
                 // add latest cortical inputs
                 for (unsigned int ini = 0; ini < in; ini++) {
                     unsigned int id = idTrain[ini];
@@ -829,8 +851,10 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
     delete []idTrain;
     delete []v0;
     delete []ns;
-    delete []iInput;
-    delete []lastInput;
+    delete []iInputE;
+    delete []iInputI;
+    delete []lastInputE;
+    delete []lastInputI;
     for (unsigned int j=0; j<networkSize; j++) {
         if (lif[j]->v > vT) {
             printf("#%i, v =  %f, %f -> %f, tB = %f\n", j, v0[j], lif[j]->v0, lif[j]->v, lif[j]->tBack);
@@ -842,9 +866,7 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
 }
 #endif
 
-void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsigned int nstep, double dt, unsigned int nE, double preMat0[], double vinit[], double firstInput[], /* === RAND === unsigned long long seed, */ double EffsE, double IffsE, double EffsI, double IffsI, std::string theme, double inputRate) {
-    unsigned int ngTypeE = 2;
-    unsigned int ngTypeI = 1;
+void cpu_version(int networkSize, /* === RAND === flatRate */double dInputE, double dInputI, unsigned int nstep, double dt, unsigned int nE, double preMat0[], double vinit[], double firstInputE[], double firstInputI[], /* === RAND === unsigned long long seed, */ double EffsE, double IffsE, double EffsI, double IffsI, std::string theme, double inputRateE, double inputRateI, unsigned int ngTypeE, unsigned int ngTypeI) {
     double gL, tRef;
     double *v = new double[networkSize];
     double *gE0 = new double[networkSize*ngTypeE];
@@ -907,16 +929,18 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
     p_file.write((char*)&dtmp, sizeof(double));
     p_file.write((char*)&nstep, sizeof(unsigned int));
     p_file.write((char*)&dt, sizeof(double));
-    p_file.write((char*)&inputRate, sizeof(double));
+    p_file.write((char*)&inputRateE, sizeof(double));
 
-    double *inputTime = new double[networkSize*MAX_FFINPUT_PER_DT];
+    double *inputTimeE = new double[networkSize*MAX_FFINPUT_PER_DT];
+    double *inputTimeI = new double[networkSize*MAX_FFINPUT_PER_DT];
     /* === RAND === 
         curandGenerator_t *randGen = new curandGenerator_t[networkSize];
         int *nInput = new int[networkSize];
     */
 	/* not used if not RAND */
-    double *logRand = new double[networkSize];
-    double *lTR = new double[networkSize];
+    double *logRandE = new double[networkSize];
+    double *lTRE = new double[networkSize];
+    double *lTRI = new double[networkSize];
     double riseTimeE[2] = {1.0f, 5.0f}; // ms
     double riseTimeI[1] = {1.0f};
     double decayTimeE[2] = {3.0f, 80.0f};
@@ -943,7 +967,8 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
     for (unsigned int i=0; i<networkSize; i++) {
         v[i] = vinit[i];
         lif[i] = new cpu_LIF(v[i]);
-        lTR[i] = firstInput[i];
+        lTRE[i] = firstInputE[i];
+        lTRI[i] = firstInputI[i];
         for (int j=0; j<networkSize; j++) {
             preMat[i*networkSize+j] = preMat0[i*networkSize+j];
         }
@@ -980,13 +1005,15 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
     v_file.write((char*)v, networkSize * sizeof(double));
     gE_file.write((char*)gE0, networkSize * ngTypeE * sizeof(double));
     gI_file.write((char*)gI0, networkSize * ngTypeI * sizeof(double));
-	int inputEvents = 0;
+	int inputEventsE = 0;
+	int inputEventsI = 0;
     unsigned int spikesE = 0;
     unsigned int spikesI = 0;
     double vTime = 0.0f;
 	double wTime = 0.0f;
     double sTime = 0.0f;
-    int *nInput = new int[networkSize];
+    int *nInputE = new int[networkSize];
+    int *nInputI = new int[networkSize];
 	for (unsigned int istep = 0; istep < nstep; istep++) {
 		if (istep % 2 == 0) {
 			gE_current = gE1;
@@ -1039,21 +1066,37 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
             }
             lif[i]->set_p0(gE_t, gI_t, gL);
 			/* === RAND === #ifdef TEST_WITH_MANUAL_FFINPUT */
-                nInput[i] = 0;
-                if (lTR[i] < dt) {
-                    inputTime[i*MAX_FFINPUT_PER_DT] = lTR[i];
-                    nInput[i]++;
-                    double tmp = lTR[i] + dInput;
+                nInputE[i] = 0;
+                if (lTRE[i] < dt) {
+                    inputTimeE[i*MAX_FFINPUT_PER_DT] = lTRE[i];
+                    nInputE[i]++;
+                    double tmp = lTRE[i] + dInputE;
                     while (tmp < dt){
-                        inputTime[i*MAX_FFINPUT_PER_DT + nInput[i]] = tmp;
-                        nInput[i]++;
-                        tmp += dInput;
+                        inputTimeE[i*MAX_FFINPUT_PER_DT + nInputE[i]] = tmp;
+                        nInputE[i]++;
+                        tmp += dInputE;
                     }
-                    lTR[i] = tmp - dt;
+                    lTRE[i] = tmp - dt;
                 } else {
-                    lTR[i] -= dt;
+                    lTRE[i] -= dt;
                 }
-				inputEvents += nInput[i];
+				inputEventsE += nInputE[i];
+
+                nInputI[i] = 0;
+                if (lTRI[i] < dt) {
+                    inputTimeI[i*MAX_FFINPUT_PER_DT] = lTRI[i];
+                    nInputI[i]++;
+                    double tmp = lTRI[i] + dInputI;
+                    while (tmp < dt){
+                        inputTimeI[i*MAX_FFINPUT_PER_DT + nInputI[i]] = tmp;
+                        nInputI[i]++;
+                        tmp += dInputI;
+                    }
+                    lTRI[i] = tmp - dt;
+                } else {
+                    lTRI[i] -= dt;
+                }
+				inputEventsI += nInputI[i];
 			/* === RAND === 
 				#else
 					nInput[i] = set_input_time(&(inputTime[i*MAX_FFINPUT_PER_DT]), dt, flatRate, lTR[i], logRand[i], randGen[i]);
@@ -1065,7 +1108,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
             #pragma unroll
             for (int ig=0; ig<ngTypeE; ig++) {
                 unsigned int gid = networkSize*ig + i;
-                evolve_g(condE, &(gE_current[gid]), &(hE_current[gid]), &(fE[gid]), &(inputTime[i*MAX_FFINPUT_PER_DT]), nInput[i], dt, dt, ig);
+                evolve_g(condE, &(gE_current[gid]), &(hE_current[gid]), &(fE[gid]), &(inputTimeE[i*MAX_FFINPUT_PER_DT]), nInputE[i], dt, dt, ig);
                 gE_t += gE_current[gid];
             }
             gI_t = 0.0f; 
@@ -1073,7 +1116,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
             #pragma unroll
             for (int ig=0; ig<ngTypeI; ig++) {
                 unsigned int gid = networkSize*ig + i;
-                evolve_g(condI, &(gI_current[gid]), &(hI_current[gid]), &(fI[gid]), inputTime, 0, dt, dt, ig);
+                evolve_g(condI, &(gI_current[gid]), &(hI_current[gid]), &(fI[gid]), &(inputTimeI[i*MAX_FFINPUT_PER_DT]), nInputI[i], dt, dt, ig);
                 gI_t += gI_current[gid];
             }
             lif[i]->set_p1(gE_t, gI_t, gL);
@@ -1096,7 +1139,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
         if (spiked) {
             //printf("spiked:\n");
             high_resolution_clock::time_point sStart = timeNow();
-            unsigned int nsp = cpu_ssc(lif, v, gE_old, gI_old, hE_old, hI_old, gE_current, gI_current, hE_current, hI_current, fE, fI, preMat, networkSize, condE, condI, ngTypeE, ngTypeI, inputTime, nInput, spikeTrain, nE, dt);
+            unsigned int nsp = cpu_ssc(lif, v, gE_old, gI_old, hE_old, hI_old, gE_current, gI_current, hE_current, hI_current, fE, fI, preMat, networkSize, condE, condI, ngTypeE, ngTypeI, inputTimeE, inputTimeI, nInputE, nInputI, spikeTrain, nE, dt);
             sTime += static_cast<double>(duration_cast<microseconds>(timeNow()-vStart).count());
 #ifdef DEBUG
             printf("%u spikes during dt\n", nsp);
@@ -1153,7 +1196,8 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
         }
     }
     printf("\n");
-    printf("input events rate %ekHz\n", float(inputEvents)/(dt*nstep*networkSize));
+    printf("exc input rate %ekHz\n", float(inputEventsE)/(dt*nstep*networkSize));
+    printf("inh input rate %ekHz\n", float(inputEventsI)/(dt*nstep*networkSize));
     printf("exc firing rate = %eHz\n", float(spikesE)/(dt*nstep*nE)*1000.0);
     printf("inh firing rate = %eHz\n", float(spikesI)/(dt*nstep*nI)*1000.0);
     auto cpuTime = duration_cast<microseconds>(timeNow()-start).count();
@@ -1161,7 +1205,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
     printf("compute_V cost: %fms\n", vTime/1000.0f);
     printf("correct_spike cost: %fms\n", sTime/1000.0f);
 	printf("writing data to disk cost: %fms\n", wTime/1000.0f);
-    printf("input ratio recurrent:feedforward = %f\n", exc_input_ratio/((EffsE*nE+IffsE*nI)/networkSize*dt*nstep/dInput));
+    printf("input ratio recurrent:feedforward = %f\n", exc_input_ratio/((EffsE*nE+IffsE*nI)/networkSize*dt*nstep/dInputE));
     printf("           exc,        inh\n");
     printf("avg gE = %e, %e\n", gEavgE/nstep/nE, gEavgI/nstep/nI);
     printf("avg gI = %e, %e\n", gIavgE/nstep/nE, gIavgI/nstep/nI);
@@ -1198,9 +1242,12 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInput, unsi
     }
     delete []lif;
 
-    delete []inputTime;
-	delete []logRand;
-	delete []lTR;
-    delete []nInput;
+    delete []inputTimeE;
+    delete []inputTimeI;
+	delete []logRandE;
+	delete []lTRE;
+	delete []lTRI;
+    delete []nInputE;
+    delete []nInputI;
     printf("Memories freed\n");
 }

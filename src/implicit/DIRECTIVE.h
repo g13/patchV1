@@ -7,7 +7,7 @@
 //#define GPU_ONLY
 //#define NAIVE
 //#define DEBUG
-#define FULL_SPEED
+//#define FULL_SPEED
 
 #define timeNow() std::chrono::high_resolution_clock::now()
 
