@@ -1,10 +1,8 @@
 #include "coredynamics.h"
 
-__device__ void warp_min(double* array, unsigned int* id) {
-//__device__ void warp_min(double* array) {
+__device__ void warp0_min(double* array, unsigned int* id) {
     double value = array[threadIdx.x];
-	double index = id[threadIdx.x];
-	//double index = id[threadIdx.x];
+    double index = id[threadIdx.x];
     for (int offset = warpSize/2; offset > 0; offset /= 2) {
         double compare = __shfl_down_sync(FULL_MASK, value, offset);
         unsigned int comp_id = __shfl_down_sync(FULL_MASK, index, offset);
@@ -12,25 +10,41 @@ __device__ void warp_min(double* array, unsigned int* id) {
             value = compare;
             index = comp_id;
         }
+        __syncwarp();
     }
+    if (threadIdx.x == 0) {
+        array[0] = value;
+        id[0] = index;
+    }
+}
+__device__ void warps_min(double* array, unsigned int* id) {
+    double value = array[threadIdx.x];
+	double index = threadIdx.x;
+    for (int offset = warpSize/2; offset > 0; offset /= 2) {
+        double compare = __shfl_down_sync(FULL_MASK, value, offset);
+        unsigned int comp_id = __shfl_down_sync(FULL_MASK, index, offset);
+        if (value > compare) {
+            value = compare;
+            index = comp_id;
+        }
+        __syncwarp();
+    }
+    __syncthreads();
     if (threadIdx.x % warpSize == 0) {
         unsigned int head = threadIdx.x/warpSize;
         array[head] = value;
         id[head] = index;
-        //array[threadIdx.x/warpSize] = value;
     }
 }
 
 __device__ void find_min(double* array, unsigned int* id) { 
-//__device__ void find_min(double* array) {
-	id[threadIdx.x] = threadIdx.x;
-	warp_min(array, id);
+    __syncwarp();
+	warps_min(array, id);
     __syncthreads();
     if (threadIdx.x < warpSize) {
-        warp_min(array, id);
-        //warp_min(array);
+        warp0_min(array, id);
     }
-    //__syncthreads();
+    __syncthreads();
 }
 
 __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed, double *lTR, double dInput) {
@@ -334,30 +348,30 @@ __device__ void set_p(LIF &lif, double gE0[], double gI0[], double gE1[], double
 	lif.set_p1(gE_t, gI_t, gL);
 }
 
-__global__ void compute_V(double* __restrict__ v,
-                          double* __restrict__ gE,
-                          double* __restrict__ gI,
-                          double* __restrict__ hE,
-                          double* __restrict__ hI,
-                          double* __restrict__ a,
-                          double* __restrict__ b,
-                          double* __restrict__ preMat,
-                          double* __restrict__ inputRateE,
-                          double* __restrict__ inputRateI,
-                          int* __restrict__ eventRateE,
-                          int* __restrict__ eventRateI,
-                          double* __restrict__ spikeTrain,
-                          unsigned int* __restrict__ nSpike,
-                          double* __restrict__ tBack,
-                          double* __restrict__ fE,
-                          double* __restrict__ fI,
-                          double* __restrict__ leftTimeRateE,
-                          double* __restrict__ leftTimeRateI,
-                          double* __restrict__ lastNegLogRandE,
-                          double* __restrict__ lastNegLogRandI,
-                          curandStateMRG32k3a* __restrict__ stateE,
-                          curandStateMRG32k3a* __restrict__ stateI,
-                          ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInputE, double dInputI)
+__global__ void 
+__launch_bounds__(1024, 1)
+compute_V(double* __restrict__ v,
+          double* __restrict__ gE,
+          double* __restrict__ gI,
+          double* __restrict__ hE,
+          double* __restrict__ hI,
+          double* __restrict__ preMat,
+          double* __restrict__ inputRateE,
+          double* __restrict__ inputRateI,
+          int* __restrict__ eventRateE,
+          int* __restrict__ eventRateI,
+          double* __restrict__ spikeTrain,
+          unsigned int* __restrict__ nSpike,
+          double* __restrict__ tBack,
+          double* __restrict__ fE,
+          double* __restrict__ fI,
+          double* __restrict__ leftTimeRateE,
+          double* __restrict__ leftTimeRateI,
+          double* __restrict__ lastNegLogRandE,
+          double* __restrict__ lastNegLogRandI,
+          curandStateMRG32k3a* __restrict__ stateE,
+          curandStateMRG32k3a* __restrict__ stateI,
+          ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInputE, double dInputI)
 {
     __shared__ double tempSpike[1024];
     __shared__ unsigned int spid[1024];
@@ -464,13 +478,12 @@ __global__ void compute_V(double* __restrict__ v,
     dab(lif, 0, dt, dt);
     tempSpike[id] = lif.tsp;
     #ifdef DEBUG
-    	if (lif.tsp < 0) {
+    	if (lif.tsp < dt) {
     		printf("first %u: v0 = %e, v = %e->%e, tBack %e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tsp);
     		assert(lif.tsp > 0);
     	}
     #endif
     // spike-spike correction
-    __syncwarp();
 	//__syncthreads();
 	find_min(tempSpike, spid);
 	//__syncthreads();
@@ -534,8 +547,13 @@ __global__ void compute_V(double* __restrict__ v,
                 }
             }
             #ifdef DEBUG
+                if (lif.tsp < dt) {
+                    printf("t0: %e, t_hlf: %e\n", t0, t_hlf);
+		            printf("hlf %u: v0 = %e, v = %e->%e, tBack %e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tsp);
+                    assert(lif.tsp <= t_hlf);
+                }
                 if (lif.tsp < 0) {
-		            printf("hlf_ %u: v0 = %e, v = %e->%e, tBack %e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tsp);
+		            printf("hlf %u: v0 = %e, v = %e->%e, tBack %e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tsp);
 			    	assert(lif.tsp > 0);
                 }
             #endif
@@ -553,14 +571,14 @@ __global__ void compute_V(double* __restrict__ v,
             if (tsp == dt) {
                 continue;
             }
+            double dtsp = t_hlf-tsp;
             #ifdef DEBUG
                 counter++;
                 if (id==0) {
 			    	printf("%u: %e\n", i, tsp);
                 }
+			    assert(dtsp < t_hlf);
             #endif
-            double dtsp = t_hlf-tsp;
-			assert(dtsp < t_hlf);
             if (i < nE) {
                 #pragma unroll
 				for (unsigned int ig=0; ig<ngTypeE; ig++) {
@@ -601,15 +619,14 @@ __global__ void compute_V(double* __restrict__ v,
             dab(lif, t_hlf, dt, dt);
             tempSpike[id] = lif.tsp;
             #ifdef DEBUG
-			    if (lif.tsp < 0) {
-		            printf("end_ %u: v0 = %e, v = %e->%e, tBack %e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tsp);
-			    	assert(lif.tsp > 0);
-			    }
+			    if (lif.tsp < dt) {
+		            printf("end %u: v0 = %e, v = %e->%e, tBack %e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tsp);
+                    assert(lif.tsp > t_hlf);
+                }
             #endif
         } else {
             tempSpike[id] = dt;
         }
-		//__syncwarp();
 		// next spike
 		//__syncthreads();
         find_min(tempSpike, spid);
@@ -622,7 +639,7 @@ __global__ void compute_V(double* __restrict__ v,
         		if (t_hlf == dt) {
         			printf("end_ no spike\n");
         		} else {
-        			printf("end_  %u: %e < %e ?\n", t_hlf, imin, dt);
+        			printf("end_  %u: %e < %e ?\n", imin, t_hlf, dt);
         		}
         	}
         #endif

@@ -139,7 +139,7 @@ int main(){
     float_point runTime = tau_e1*100;
     float_point tInEnd = tau_e1*100;
     ntype = 2;
-    int nNYU = 5;
+    int nNYU = 6;
     int nrk = 6;
     float_point truth_dt = 1e-8;
     float_point* NYU_dt = new float_point[nNYU];
@@ -149,12 +149,14 @@ int main(){
     NYU_dt[2] = 0.001;
     NYU_dt[3] = 0.0005;
     NYU_dt[4] = 0.00025;
+    NYU_dt[5] = truth_dt;
     //NYU_dt[3] = 0.000001;
     iter[0] = 2;
     iter[1] = 2;
     iter[2] = 2;
     iter[3] = 2;
     iter[4] = 2;
+    iter[5] = 2;
     //iter[2] = 3;
     //iter[3] = 15;
 
@@ -177,11 +179,11 @@ int main(){
     }
 
     float_point Vs, GsEs, Gs;
-    verbose = 1;
+    verbose = 0;
     verdVcomp = 1;
     verInput = 0;
     verOut = 0;
-    int verInt = 1;
+    int verInt = 0;
     float_point **ctIn = new float_point*[ntype];
     int* nIn = new int[ntype];
     int* iIn = new int[ntype];
@@ -220,6 +222,8 @@ int main(){
         v_data.write((char*)&dt, sizeof(float_point));
         v_data.write((char*)&(V_0[iNYU]), sizeof(float_point));
         auto start = std::chrono::high_resolution_clock::now();
+        double g_avg = 0.0f;
+        double v_avg = 0.0f;
         for  (int it = 0; it < nt; it++) {
             //test.display();
             //test.book_lookup();
@@ -290,7 +294,7 @@ int main(){
             V_0[iNYU] = analytic_V - integral;
             if (V_0[iNYU] > eT) {
                 float_point dtsp = (eT-V_old)/(V_0[iNYU]-V_old)*dt;
-                std::cout << "dtsp " << dtsp << "\n";
+                //std::cout << "dtsp " << dtsp << "\n";
                 V_0[iNYU] = eL;
                 int* nTemp = new int[ntype];
                 for (int i=0; i<ntype; i++) {
@@ -334,6 +338,8 @@ int main(){
             if (verbose > verOut) {
                 std::cout << it*dt << ": " << Gs << ", " << Vs << ", " << V_0[iNYU] << "\n";
             }
+            g_avg += Gs;
+            v_avg += V_0[iNYU];
             v_data.write((char*)&(V_0[iNYU]), sizeof(float_point));
             g_data.write((char*)&Gs, sizeof(float_point));
             for (int i=0; i < ntype; i++) {
@@ -349,9 +355,10 @@ int main(){
         }
         auto finish = std::chrono::high_resolution_clock::now();
         NYU_time.push_back(std::chrono::duration_cast<std::chrono::duration<double>>(finish - start));
+        std::cout << "average g: " << g_avg/nt << "v: " << v_avg/nt << "\n";
     }
 
-    verbose = 1;
+    verbose = 0;
     verInput = 0;
     verOut = 0;
     float_point* v_0 = new float_point[nrk];
@@ -377,8 +384,10 @@ int main(){
             Gs += cond_rk2[i]->get_last_g();
             GsEs += cond_rk2[i]->get_last_g()*cond_rk2[i]->get_e();
         }
-        std::cout << "GsEs: " << GsEs << "Gs: " << Gs << "\n";
+        //std::cout << "GsEs: " << GsEs << "Gs: " << Gs << "\n";
         
+        double g_avg = 0.0f;
+        double v_avg = 0.0f;
         v_data.write((char*)&nt, sizeof(int));
         v_data.write((char*)&dt, sizeof(float_point));
         v_data.write((char*)&(v_0[irk]), sizeof(float_point));
@@ -442,10 +451,10 @@ int main(){
             v_0[irk] = v_0[irk] + dt/2.0*(fk1+fk2);
             if (v_0[irk] > eT) {
                 float_point dtsp = (eT-v_old)/(v_0[irk]-v_old)*dt;
-                std::cout << "GsEs_old " << GsEs_old << ", Gs_old " << Gs_old << "\n";
-                std::cout << "GsEs " << GsEs << ", Gs " << Gs << "\n";
+                //std::cout << "GsEs_old " << GsEs_old << ", Gs_old " << Gs_old << "\n";
+                //std::cout << "GsEs " << GsEs << ", Gs " << Gs << "\n";
                 float_point vTemp = (eL-dtsp*(GsEs_old + GsEs - Gs*GsEs_old*dt)/2.0)/(1.0+dtsp*(-Gs_old-Gs+Gs*Gs_old*dt)/2.0);
-                std::cout << "dtsp " << dtsp << ", vn0 " << vTemp << "\n";
+                //std::cout << "dtsp " << dtsp << ", vn0 " << vTemp << "\n";
                 fk1 = -Gs_old*vTemp + GsEs_old;
                 v1 = vTemp + dt*fk1;
                 fk2 = -Gs*v1 + GsEs;
@@ -467,9 +476,12 @@ int main(){
             if (verbose > verInput && it*dt > tInEnd) {
                 std::cout << "no Input\n";
             }
+            g_avg += Gs;
+            v_avg += v_0[irk];
         }
         auto finish = std::chrono::high_resolution_clock::now();
         rk2_time.push_back(std::chrono::duration_cast<std::chrono::duration<double>>(finish - start));
+        std::cout << "average g: " << g_avg/nt << "v: " << v_avg/nt << "\n";
     }
 
     std::cout << "              ";

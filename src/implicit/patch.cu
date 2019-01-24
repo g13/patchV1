@@ -19,7 +19,6 @@ int main(int argc, char *argv[])
     double flatRateE = 100.0f; // Hz
     double flatRateI0 = 4;
     double t = 1.0f;
-	unsigned int mt = 1;
     unsigned int nstep = 200;
     double EffsE = 1e-1;
     double IffsE0 = 0.0;
@@ -63,7 +62,7 @@ int main(int argc, char *argv[])
 	}
 	if (argc == 15) {
 		sscanf(argv[argc-1], "%100s", tmp);
-		sscanf(argv[argc-2], "%d", &mt);
+		sscanf(argv[argc-2], "%lf", &t);
 		sscanf(argv[argc-3], "%lf", &flatRateI0);
 		sscanf(argv[argc-4], "%lf", &flatRateE);
 		sscanf(argv[argc-5], "%u", &seed);
@@ -106,7 +105,6 @@ int main(int argc, char *argv[])
     printf("sIE = %e\n", sIE);
     printf("sEI = %e\n", sEI);
     printf("sII = %e\n", sII);
-	t = mt * t;
     double dt = t/float(nstep); // ms
     /* to be extended */
     bool presetInit = false;
@@ -142,7 +140,6 @@ int main(int argc, char *argv[])
     int *eventRateE, *d_eventRateE;
     int *eventRateI, *d_eventRateI;
     double *d_v, *d_gE, *d_gI, *d_hE, *d_hI, *d_fE, *d_fI, *d_preMat, *d_inputRateE, *d_inputRateI;
-    double *d_a, *d_b;
     double *leftTimeRateE, *lastNegLogRandE;
     double *leftTimeRateI, *lastNegLogRandI;
     double *spikeTrain, *d_spikeTrain, *tBack;
@@ -225,8 +222,6 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaMalloc((void **)&d_hI,         networkSize * ngTypeI * sizeof(double))); 
     CUDA_CALL(cudaMalloc((void **)&d_fE,         networkSize * ngTypeE * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&d_fI,         networkSize * ngTypeI * sizeof(double))); 
-    CUDA_CALL(cudaMalloc((void **)&d_a,          networkSize * sizeof(double)));
-    CUDA_CALL(cudaMalloc((void **)&d_b,          networkSize * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&d_inputRateE, networkSize * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&d_inputRateI, networkSize * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&d_eventRateE, networkSize * sizeof(int)));
@@ -344,7 +339,7 @@ int main(int argc, char *argv[])
 
 
     CUDA_CALL(cudaEventRecord(start, 0));
-    unsigned int shared_mem = 1024*8+1024*4;
+    unsigned int shared_mem = 1024*sizeof(double)+1024*sizeof(unsigned int);
     double eventsE = 0.0f;
     double eventsI = 0.0f;
     unsigned int spikesE = 0;
@@ -399,7 +394,9 @@ int main(int argc, char *argv[])
         #ifdef KERNEL_PERFORMANCE
             CUDA_CALL(cudaEventRecord(kStart, 0));
         #endif
-        compute_V<<<1, 1024, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_a, d_b, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI);
+        dim3 grid3(1);
+        dim3 block3(1024);
+        compute_V<<<grid3, block3, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI);
         CUDA_CHECK();
         CUDA_CALL(cudaEventRecord(vComputed, s1));
         #ifdef KERNEL_PERFORMANCE
@@ -548,8 +545,6 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaFree(d_fE));
     CUDA_CALL(cudaFree(d_fI));
     CUDA_CALL(cudaFree(d_preMat));
-    CUDA_CALL(cudaFree(d_a));
-    CUDA_CALL(cudaFree(d_b));
     CUDA_CALL(cudaFree(leftTimeRateE));
     CUDA_CALL(cudaFree(leftTimeRateI));
     CUDA_CALL(cudaFree(lastNegLogRandE));
