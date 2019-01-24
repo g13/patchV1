@@ -216,6 +216,31 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
     }
 }
 
+__device__  void step(LIF &lif, double t0, double t1, double _dt, double tRef) {
+    double dt = t1 - t0;
+    lif.tsp = _dt;
+    // not in refractory period
+    if (lif.tBack < t1) {
+        // return from refractory period
+        if (lif.tBack > t0) {
+            lif.recompute_v0(dt, t0);
+        }
+        lif.implicit_rk2(dt);
+        while (lif.v > vT) {
+            // crossed threshold
+            lif.compute_spike_time(dt, t0); 
+            lif.spikeCount++;
+            lif.tBack = lif.tsp + tRef;
+            if (lif.tBack < t1) {
+                lif.recompute_v0(dt, t0);
+                lif.implicit_rk2(dt);
+            } else {
+                lif.reset_v();
+            }
+        }
+    } 
+}
+
 __device__  void dab(LIF &lif, double t0, double t1, double _dt) {
     double dt = t1 - t0;
     lif.tsp = _dt;
@@ -298,12 +323,8 @@ __device__ void prep_cond(LIF &lif, ConductanceShape &condE, double gE[], double
 	for (unsigned int ig=0; ig<ngTypeI; ig++) {
 		gI_t += gI[ig];
 	}
-	/* set a0 b0 for the first step */
-    //if (lif.correctMe) {
-	    lif.set_p0(gE_t, gI_t, gL);
-    //}
-	/* evolve g to t+dt with determined inputs only */
-    //__syncwarp();
+	lif.set_p0(gE_t, gI_t, gL);
+
 	gE_t = 0.0f;
 #pragma unroll
 	for (int ig=0; ig<ngTypeE; ig++) {
@@ -316,10 +337,7 @@ __device__ void prep_cond(LIF &lif, ConductanceShape &condE, double gE[], double
 		evolve_g(condI, &gI[ig], &hI[ig], &fI[ig], inputTimeI, nInputI, dt, ig);
 		gI_t += gI[ig];
 	}
-    //if (lif.correctMe) {
-	    lif.set_p1(gE_t, gI_t, gL);
-    //}
-    //__syncwarp();
+	lif.set_p1(gE_t, gI_t, gL);
 }
 
 __device__ void set_p(LIF &lif, double gE0[], double gI0[], double gE1[], double gI1[], double gL) {
@@ -375,6 +393,7 @@ compute_V(double* __restrict__ v,
 {
     __shared__ double tempSpike[1024];
     __shared__ unsigned int spid[1024];
+    __shared__ unsigned int spikeCount[1024];
     unsigned int id = threadIdx.x;
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
     LIF lif(v[id], tBack[id]);
@@ -486,11 +505,11 @@ compute_V(double* __restrict__ v,
     // spike-spike correction
 	//__syncthreads();
 	find_min(tempSpike, spid);
-	//__syncthreads();
 	double t0 = 0.0;
 	double new_dt;
     double t_hlf = tempSpike[0];
     unsigned int imin = spid[0];
+	__syncthreads();
     int iInputE = 0, iInputI = 0;
     int jInputE, jInputI;
     #ifdef DEBUG
@@ -504,42 +523,46 @@ compute_V(double* __restrict__ v,
     #endif
     while (t_hlf < dt) {
         // t0 ------- min ---t_hlf
-        new_dt = t_hlf - t0;
-        // prep inputTime
-        jInputE = iInputE;
-        if (jInputE < nInputE) {
-            while (inputTimeE[jInputE] < t_hlf) {
-                jInputE++;
-                if (jInputE == nInputE) break;
-            }
-        }
-        jInputI = iInputI;
-        if (jInputI < nInputI) {
-            while (inputTimeI[jInputI] < t_hlf) {
-                jInputI++;
-                if (jInputI == nInputI) break;
-            }
-        }
-        // prep retracable conductance
-        prep_cond(lif, condE, gE_retrace, hE_retrace, fE_local, &inputTimeE[iInputE], jInputE-iInputE, condI, gI_retrace, hI_retrace, hI_local, &inputTimeI[iInputI], jInputI-iInputI, gL, new_dt); 
-        // commit for next ext. inputs.
-        iInputE = jInputE;
-        iInputI = jInputI;
         if (lif.correctMe) {
+            new_dt = t_hlf - t0;
+            // prep inputTime
+            jInputE = iInputE;
+            if (jInputE < nInputE) {
+                while (inputTimeE[jInputE] < t_hlf) {
+                    jInputE++;
+                    if (jInputE == nInputE) break;
+                }
+            }
+            jInputI = iInputI;
+            if (jInputI < nInputI) {
+                while (inputTimeI[jInputI] < t_hlf) {
+                    jInputI++;
+                    if (jInputI == nInputI) break;
+                }
+            }
+            // prep retracable conductance
+            prep_cond(lif, condE, gE_retrace, hE_retrace, fE_local, &inputTimeE[iInputE], jInputE-iInputE, condI, gI_retrace, hI_retrace, hI_local, &inputTimeI[iInputI], jInputI-iInputI, gL, new_dt); 
+            // commit for next ext. inputs.
+            iInputE = jInputE;
+            iInputI = jInputI;
             // get tsp decided
             #ifdef DEBUG
 			    double old_v0 = lif.v0;
 			    double old_tBack = lif.tBack;
             #endif
-            dab(lif, t0, t_hlf, dt);
+            unsigned int old_count = lif.spikeCount;
+            step(lif, t0, t_hlf, dt, tRef);
             if (id == imin && lif.tsp == dt) {
                 // forward biased tsp
                 lif.tsp = t_hlf;
             }
+            #ifdef VOLTA
+                __syncwarp();
+            #endif
             tempSpike[id] = lif.tsp;
+            spikeCount[id] = lif.spikeCount - old_count;
             if (lif.tsp < dt) {
                 spikeTrain[id] = lif.tsp;
-                lif.spikeCount++;
                 lif.tBack = lif.tsp + tRef;
                 if (lif.tBack > dt) {
                     lif.reset_v();
@@ -551,14 +574,15 @@ compute_V(double* __restrict__ v,
                     printf("t0: %e, t_hlf: %e\n", t0, t_hlf);
 		            printf("hlf %u: v0 = %e, v = %e->%e, tBack %e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tsp);
                     assert(lif.tsp <= t_hlf);
-                }
-                if (lif.tsp < 0) {
-		            printf("hlf %u: v0 = %e, v = %e->%e, tBack %e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tsp);
-			    	assert(lif.tsp > 0);
+                    assert(lif.tsp > t0);
                 }
             #endif
         } else {
+            #ifdef VOLTA
+                __syncwarp();
+            #endif
             tempSpike[id] = dt;
+            spikeCount[id] = 0;
         }
 		__syncthreads();
         // commit the spikes
@@ -577,30 +601,31 @@ compute_V(double* __restrict__ v,
                 if (id==0) {
 			    	printf("%u: %e\n", i, tsp);
                 }
-			    assert(dtsp < t_hlf);
             #endif
+            double strength = preMat[i*networkSize + id] * spikeCount[id];
             if (i < nE) {
                 #pragma unroll
 				for (unsigned int ig=0; ig<ngTypeE; ig++) {
                     if (dtsp == 0) {
-                        hE_retrace[ig] += preMat[i*networkSize + id];
+                        hE_retrace[ig] += strength;
                     } else {
-                        condE.compute_single_input_conductance(&gE_retrace[ig], &hE_retrace[ig], preMat[i*networkSize + id], dtsp, ig);
+                        condE.compute_single_input_conductance(&gE_retrace[ig], &hE_retrace[ig], strength, dtsp, ig);
                     }
-                    condE.compute_single_input_conductance(&gE_local[ig], &hE_local[ig], preMat[i*networkSize + id], dt-tsp, ig);
+                    condE.compute_single_input_conductance(&gE_local[ig], &hE_local[ig], strength, dt-tsp, ig);
                 }
 			} else {
 				#pragma unroll
 				for (unsigned int ig=0; ig<ngTypeI; ig++) {
                     if (dtsp == 0) {
-                        hI_retrace[ig] += preMat[i*networkSize + id];
+                        hI_retrace[ig] += strength;
                     } else {
-					    condI.compute_single_input_conductance(&gI_retrace[ig], &hI_retrace[ig], preMat[i*networkSize + id], dtsp, ig);
+					    condI.compute_single_input_conductance(&gI_retrace[ig], &hI_retrace[ig], strength, dtsp, ig);
                     }
-					condI.compute_single_input_conductance(&gI_local[ig], &hI_local[ig], preMat[i*networkSize + id], dt-tsp, ig);
+					condI.compute_single_input_conductance(&gI_local[ig], &hI_local[ig], strength, dt-tsp, ig);
 				}
             }
         }
+		__syncthreads();
         #ifdef DEBUG
             if (id == 0) {
                 printf("t0-t_hlf: %i spikes\n", counter);
@@ -617,6 +642,9 @@ compute_V(double* __restrict__ v,
 			    double old_tBack = lif.tBack;
             #endif
             dab(lif, t_hlf, dt, dt);
+            #ifdef VOLTA
+                __syncwarp();
+            #endif
             tempSpike[id] = lif.tsp;
             #ifdef DEBUG
 			    if (lif.tsp < dt) {
@@ -625,15 +653,17 @@ compute_V(double* __restrict__ v,
                 }
             #endif
         } else {
+            #ifdef VOLTA
+                __syncwarp();
+            #endif
             tempSpike[id] = dt;
         }
 		// next spike
-		//__syncthreads();
         find_min(tempSpike, spid);
-		//__syncthreads();
 		t0 = t_hlf;
         t_hlf = tempSpike[0];
         imin = spid[0];
+		__syncthreads();
         #ifdef DEBUG
         	if (id == 0) {
         		if (t_hlf == dt) {

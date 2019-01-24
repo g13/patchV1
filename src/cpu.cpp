@@ -94,7 +94,6 @@ double cpu_simple(cpu_LIF* lif, double pdt0, double dt, double pdt, double dt0, 
             } else {
                 lif->reset_v();
             }
-            // dabbing not commiting, doest not reset v or recored tBack, TBD by spike correction.
         } 
     } else {
         lif->reset_v(); 

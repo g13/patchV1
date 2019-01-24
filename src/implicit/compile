@@ -1,10 +1,10 @@
 #!/bin/bash
 #module load cuda
 rm -f coredynamics.o test.o
-#nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c patch.cu 
-#nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c coredynamics.cu 
-nvcc -arch=compute_70 -std=c++11 -O3 -c patch.cu 
-nvcc -arch=compute_70 -std=c++11 -O3 -c coredynamics.cu 
+nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c patch.cu 
+nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c coredynamics.cu 
+#nvcc -arch=compute_70 -std=c++11 -O3 -c patch.cu 
+#nvcc -arch=compute_70 -std=c++11 -O3 -c coredynamics.cu 
 nvcc -arch=compute_70 -lcudadevrt -lcudart coredynamics.o patch.o -o patch 
 #RAND#nvcc -arch=compute_70 -lcudadevrt -lcudart -lcurand coredynamics.o test.o -o test
 

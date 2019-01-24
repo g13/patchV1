@@ -339,7 +339,7 @@ int main(int argc, char *argv[])
 
 
     CUDA_CALL(cudaEventRecord(start, 0));
-    unsigned int shared_mem = 1024*sizeof(double)+1024*sizeof(unsigned int);
+    unsigned int shared_mem = 1024*sizeof(double)+2*1024*sizeof(unsigned int);
     double eventsE = 0.0f;
     double eventsI = 0.0f;
     unsigned int spikesE = 0;
