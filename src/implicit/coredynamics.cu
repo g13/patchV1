@@ -216,6 +216,30 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
     }
 }
 
+__device__  void initial(LIF &lif, double t0, double t1, double _dt) {
+    double dt = t1 - t0;
+    lif.tsp = _dt;
+    lif.correctMe = true;
+    lif.spikeCount = 0;
+    // not in refractory period
+    if (lif.tBack < t1) {
+        // return from refractory period
+        if (lif.tBack > t0) {
+            lif.recompute_v0(dt, t0);
+        }
+        lif.implicit_rk2(dt);
+        if (lif.v > vT) {
+            // crossed threshold
+            lif.compute_spike_time(dt, t0); 
+        }
+    } else {
+        if (lif.tBack >= _dt) {
+            lif.reset_v();
+            lif.correctMe = false;
+        }
+    }
+}
+
 __device__  void step(LIF &lif, double t0, double t1, double _dt, double tRef) {
     double dt = t1 - t0;
     lif.tsp = _dt;
@@ -244,23 +268,17 @@ __device__  void step(LIF &lif, double t0, double t1, double _dt, double tRef) {
 __device__  void dab(LIF &lif, double t0, double t1, double _dt) {
     double dt = t1 - t0;
     lif.tsp = _dt;
-    lif.correctMe = true;
-    // not in refractory period
-    if (lif.tBack < t1) {
-        // return from refractory period
-        if (lif.tBack > t0) {
-            lif.recompute_v0(dt, t0);
-        }
-        lif.implicit_rk2(dt);
-        if (lif.v > vT) {
-            // crossed threshold
-            lif.compute_spike_time(dt, t0); 
-        }
-    } else {
-        if (lif.tBack >= _dt) {
-            lif.reset_v();
-            lif.correctMe = false;
-        }
+    // return from refractory period
+    #ifdef DEBUG
+        assert(lif.tBack < t1);
+    #endif
+    if (lif.tBack > t0) {
+        lif.recompute_v0(dt, t0);
+    }
+    lif.implicit_rk2(dt);
+    if (lif.v > vT) {
+        // crossed threshold
+        lif.compute_spike_time(dt, t0); 
     }
 }
 
@@ -397,7 +415,6 @@ compute_V(double* __restrict__ v,
     unsigned int id = threadIdx.x;
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
     LIF lif(v[id], tBack[id]);
-    lif.spikeCount = 0;
     double gL, tRef;
     if (id < nE) {
         tRef = tRef_E;
@@ -494,7 +511,7 @@ compute_V(double* __restrict__ v,
         double old_v0 = lif.v0;
         double old_tBack = lif.tBack;
     #endif
-    dab(lif, 0, dt, dt);
+    initial(lif, 0, dt, dt);
     tempSpike[id] = lif.tsp;
     #ifdef DEBUG
     	if (lif.tsp < dt) {
@@ -564,19 +581,17 @@ compute_V(double* __restrict__ v,
             if (lif.tsp < dt) {
                 spikeTrain[id] = lif.tsp;
                 lif.tBack = lif.tsp + tRef;
-                if (lif.tBack > dt) {
+                if (lif.tBack >= dt) {
                     lif.reset_v();
                     lif.correctMe = false;
                 }
-            }
-            #ifdef DEBUG
-                if (lif.tsp < dt) {
+                #ifdef DEBUG
                     printf("t0: %e, t_hlf: %e\n", t0, t_hlf);
 		            printf("hlf %u: v0 = %e, v = %e->%e, tBack %e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tsp);
                     assert(lif.tsp <= t_hlf);
                     assert(lif.tsp > t0);
-                }
-            #endif
+                #endif
+            }
         } else {
             #ifdef VOLTA
                 __syncwarp();
@@ -602,7 +617,7 @@ compute_V(double* __restrict__ v,
 			    	printf("%u: %e\n", i, tsp);
                 }
             #endif
-            double strength = preMat[i*networkSize + id] * spikeCount[id];
+            double strength = preMat[i*networkSize + id] * spikeCount[i];
             if (i < nE) {
                 #pragma unroll
 				for (unsigned int ig=0; ig<ngTypeE; ig++) {

@@ -11,7 +11,7 @@
 #define tRef_I 1.0f
 #define ngTypeE 1
 #define ngTypeI 1
-#define MAX_FFINPUT_PER_DT 10// dt in ms
-#define MAX_SPIKE_PER_DT 10 // dt in ms
+#define MAX_FFINPUT_PER_DT 500// dt in ms
+#define MAX_SPIKE_PER_DT 500 // dt in ms
 
 #endif

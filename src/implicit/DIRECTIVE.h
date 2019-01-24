@@ -6,7 +6,7 @@
 #define TEST_WITH_MANUAL_FFINPUT
 //#define GPU_ONLY
 //#define NAIVE
-//#define DEBUG
+#define DEBUG
 //#define FULL_SPEED
 //#define VOLTA
 
