@@ -91,10 +91,6 @@ int main(int argc, char *argv[])
 	int init_b2 = warpSize;
 	int init_b1 = networkSize / init_b2;
     double eiRatio = 3.0f/4.0f;
-    int b1E = b1;
-    int b2E = b2*eiRatio;
-    int b1I = b1;
-    int b2I = b2*(1-eiRatio);
     unsigned int nE = networkSize*eiRatio;
     unsigned int nI = networkSize-nE;
     double sEE = sEE0*EffsE/nE;
@@ -348,7 +344,7 @@ int main(int argc, char *argv[])
 
 
     CUDA_CALL(cudaEventRecord(start, 0));
-    unsigned int shared_mem = 1024*8; //+1024*4;
+    unsigned int shared_mem = 1024*8+1024*4;
     double eventsE = 0.0f;
     double eventsI = 0.0f;
     unsigned int spikesE = 0;

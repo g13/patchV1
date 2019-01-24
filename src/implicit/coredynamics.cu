@@ -3,7 +3,8 @@
 __device__ void warp_min(double* array, unsigned int* id) {
 //__device__ void warp_min(double* array) {
     double value = array[threadIdx.x];
-    double index = id[threadIdx.x];
+	double index = id[threadIdx.x];
+	//double index = id[threadIdx.x];
     for (int offset = warpSize/2; offset > 0; offset /= 2) {
         double compare = __shfl_down_sync(FULL_MASK, value, offset);
         unsigned int comp_id = __shfl_down_sync(FULL_MASK, index, offset);
@@ -21,7 +22,7 @@ __device__ void warp_min(double* array, unsigned int* id) {
 }
 
 __device__ void find_min(double* array, unsigned int* id) { 
-//__device__ void find_min(double* array) { 
+//__device__ void find_min(double* array) {
 	id[threadIdx.x] = threadIdx.x;
 	warp_min(array, id);
     __syncthreads();
@@ -29,7 +30,7 @@ __device__ void find_min(double* array, unsigned int* id) {
         warp_min(array, id);
         //warp_min(array);
     }
-    __syncthreads();
+    //__syncthreads();
 }
 
 __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed, double *lTR, double dInput) {
@@ -464,16 +465,17 @@ __global__ void compute_V(double* __restrict__ v,
     tempSpike[id] = lif.tsp;
     #ifdef DEBUG
     	if (lif.tsp < 0) {
-    		printf("first %u: v0 = %e, v = %e->%e, tBack = %e->%e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack);
+    		printf("first %u: v0 = %e, v = %e->%e, tBack %e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tsp);
     		assert(lif.tsp > 0);
     	}
     #endif
     // spike-spike correction
     __syncwarp();
-    double t0 = 0.0;
+	//__syncthreads();
+	find_min(tempSpike, spid);
+	//__syncthreads();
+	double t0 = 0.0;
 	double new_dt;
-    find_min(tempSpike, spid);
-    //find_min(tempSpike);
     double t_hlf = tempSpike[0];
     unsigned int imin = spid[0];
     int iInputE = 0, iInputI = 0;
@@ -483,7 +485,7 @@ __global__ void compute_V(double* __restrict__ v,
     		if (t_hlf == dt) {
     			printf("first_ no spike\n");
     		} else {
-    			printf("first_ %u: %e == %e ?\n", imin, t_hlf, dt);
+    			printf("first_ %u: %e < %e ?\n", imin, t_hlf, dt);
     		}
     	}
     #endif
@@ -527,14 +529,13 @@ __global__ void compute_V(double* __restrict__ v,
                 lif.spikeCount++;
                 lif.tBack = lif.tsp + tRef;
                 if (lif.tBack > dt) {
-                    lif.tBack -= dt;
                     lif.reset_v();
                     lif.correctMe = false;
                 }
             }
             #ifdef DEBUG
                 if (lif.tsp < 0) {
-		            printf("hlf_ %u: v0 = %e, v = %e->%e, tBack = %e->%e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack);
+		            printf("hlf_ %u: v0 = %e, v = %e->%e, tBack %e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tsp);
 			    	assert(lif.tsp > 0);
                 }
             #endif
@@ -555,10 +556,11 @@ __global__ void compute_V(double* __restrict__ v,
             #ifdef DEBUG
                 counter++;
                 if (id==0) {
-			    	printf("%u: counted\n", i);
+			    	printf("%u: %e\n", i, tsp);
                 }
             #endif
             double dtsp = t_hlf-tsp;
+			assert(dtsp < t_hlf);
             if (i < nE) {
                 #pragma unroll
 				for (unsigned int ig=0; ig<ngTypeE; ig++) {
@@ -589,7 +591,7 @@ __global__ void compute_V(double* __restrict__ v,
         // t_hlf ------------- dt
 
         if (lif.correctMe) {
-            set_p(lif, gE_retrace, gI_retrace, gE_local, gI_local, gL); 
+            set_p(lif, gE_retrace, gI_retrace, gE_local, gI_local, gL);                                        
             lif.v0 = lif.v;
             //get putative tsp
             #ifdef DEBUG
@@ -600,35 +602,35 @@ __global__ void compute_V(double* __restrict__ v,
             tempSpike[id] = lif.tsp;
             #ifdef DEBUG
 			    if (lif.tsp < 0) {
-		            printf("end_ %u: v0 = %e, v = %e->%e, tBack = %e->%e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack);
+		            printf("end_ %u: v0 = %e, v = %e->%e, tBack %e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tsp);
 			    	assert(lif.tsp > 0);
 			    }
             #endif
         } else {
             tempSpike[id] = dt;
         }
-		__syncwarp();
+		//__syncwarp();
 		// next spike
-        t0 = t_hlf;
+		//__syncthreads();
         find_min(tempSpike, spid);
-        //find_min(tempSpike);
+		//__syncthreads();
+		t0 = t_hlf;
         t_hlf = tempSpike[0];
         imin = spid[0];
         #ifdef DEBUG
         	if (id == 0) {
-        		//printf("end_ t_hlf %e, imin %u\n", t_hlf, imin);
         		if (t_hlf == dt) {
-        			//printf("end_ no spike %e\n", tempSpike[733]);
+        			printf("end_ no spike\n");
         		} else {
-        			//printf("end_ %e < %e ?\n", t_hlf, dt);
+        			printf("end_  %u: %e < %e ?\n", t_hlf, imin, dt);
         		}
         	}
         #endif
     }
     #ifdef DEBUG
         if (lif.v > vT) {
-	        printf("after_ %u-%i: v = %e->%e, tBack = %e, tsp = %e==%e, t_hlf = %e\n", id, lif.correctMe, lif.v0, lif.v, lif.tBack, lif.tsp, tempSpike[id], t_hlf);
-	    	assert(lif.v < vT);
+	        printf( "after_ %u-%i: v = %e->%e, tBack = %e, tsp = %e==%e, t_hlf = %e\n", id, lif.correctMe, lif.v0, lif.v, lif.tBack, lif.tsp, tempSpike[id], t_hlf);
+			assert(lif.v < vT);
 	    }
     #endif
     //__syncwarp();
@@ -647,6 +649,8 @@ __global__ void compute_V(double* __restrict__ v,
     }
     nSpike[id] = lif.spikeCount;
 	v[id] = lif.v;
-    tBack[id] = lif.tBack;
+	if (lif.tBack > 0) {
+		tBack[id] = lif.tBack-dt;
+	}
 }
 
