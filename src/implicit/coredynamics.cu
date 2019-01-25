@@ -777,12 +777,12 @@ __device__  void one(LIF& lif, double dt, double tRef, unsigned int id, double g
             lif.tBack = -1.0;
         }
         lif.implicit_rk2(dt);
-        while (lif.v > vT || lif.spikeCount > 2) {
+        while (lif.v > vT) {
             // crossed threshold
             lif.compute_spike_time(dt);
             lif.spikeCount++;
             lif.tBack = lif.tsp + tRef;
-            printf("%u: %u, %e->%e, tBack = %e\n", id, lif.spikeCount, lif.v0, lif.v, lif.tBack);
+            //printf("%i: %i, tBack = %e->%e, v = %e->%e\n", id, lif.spikeCount, lif.tsp, lif.tBack, lif.v0, lif.v);
             if (lif.tBack < dt) {
                 // refractory period ended during dt
                 lif.recompute_v0(dt);
@@ -931,7 +931,6 @@ compute_V_without_ssc(double* __restrict__ v,
     lif.set_p1(gE_t, gI_t, gL);
 
     // implicit rk2 step
-    double old_v0 = lif.v0;
     one(lif, dt, tRef, id, gE_t, gI_t);
     __syncthreads();
 	assert(lif.v <= vT);
