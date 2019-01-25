@@ -47,15 +47,18 @@ __device__ void find_min(double* array, unsigned int* id) {
     __syncthreads();
 }
 
-__global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed, double *lTR, double dInput) {
+__global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed, double *lTR, double dInput, double rate, double dt) {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
     curand_init(seed+id, 0, 0, &localState);
     logRand[id] = -log(curand_uniform_double(&localState));
     state[id] = localState;
 
-    // lTR works as firstInputTime if set TEST_WITH_MANUAL_FFINPUT
-    lTR[id] = curand_uniform_double(&localState)*dInput;
+    #ifdef TEST_WITH_MANUAL_FFINPUT
+        lTR[id] = curand_uniform_double(&localState)*dInput;
+    #else
+        lTR[id] = curand_uniform_double(&localState)*rate*dt;
+    #endif
 }
 
 __global__ void randInit(double* __restrict__ preMat, 
@@ -193,7 +196,6 @@ __device__ int set_input_time(double inputTime[],
             break;
         }
     } while (tau <= dt);
-    __syncwarp();
     *lastNegLogRand = negLogRand;
     *leftTimeRate = (dt - tau + dTau) * rate;
     return i;
@@ -381,7 +383,7 @@ __device__ void set_p(LIF &lif, double gE0[], double gI0[], double gE1[], double
 }
 
 __global__ void 
-__launch_bounds__(1024, 1)
+__launch_bounds__(blockSize, 1)
 compute_V(double* __restrict__ v,
           double* __restrict__ gE,
           double* __restrict__ gI,
@@ -775,11 +777,12 @@ __device__  void one(LIF& lif, double dt, double tRef, unsigned int id, double g
             lif.tBack = -1.0;
         }
         lif.implicit_rk2(dt);
-        while (lif.v > vT) {
+        while (lif.v > vT || lif.spikeCount > 2) {
             // crossed threshold
-            lif.compute_spike_time(dt); 
+            lif.compute_spike_time(dt);
             lif.spikeCount++;
             lif.tBack = lif.tsp + tRef;
+            printf("%u: %u, %e->%e, tBack = %e\n", id, lif.spikeCount, lif.v0, lif.v, lif.tBack);
             if (lif.tBack < dt) {
                 // refractory period ended during dt
                 lif.recompute_v0(dt);
@@ -788,7 +791,7 @@ __device__  void one(LIF& lif, double dt, double tRef, unsigned int id, double g
                 break;
             }
         }
-    } 
+    }
     __syncwarp();
     if (lif.tBack >= dt) {
         lif.reset_v();
@@ -872,7 +875,7 @@ compute_V_without_ssc(double* __restrict__ v,
             inputTimeE[nInputE] = leftTimeRateE[id];
             nInputE++;
             double tmp = leftTimeRateE[id] + dInputE;
-            while (tmp < dt){
+            while (tmp < dt) {
                 inputTimeE[nInputE] = tmp;
                 nInputE++;
                 tmp += dInputE;
@@ -926,15 +929,16 @@ compute_V_without_ssc(double* __restrict__ v,
         gI_t += gI_local[ig];
     }
     lif.set_p1(gE_t, gI_t, gL);
+
     // implicit rk2 step
     double old_v0 = lif.v0;
     one(lif, dt, tRef, id, gE_t, gI_t);
-    if (lif.v > vT) {
-        printf("gE: %e, v: %e, %e->%e", gE_t, old_v0, lif.v0, lif.v);
-    }
+    __syncthreads();
 	assert(lif.v <= vT);
     assert(lif.tsp > 0);
     __syncwarp();
+
+    // write data to global
     spikeTrain[id] = lif.tsp;
     nSpike[id] = lif.spikeCount;
     tBack[id] = lif.tBack;
@@ -942,7 +946,8 @@ compute_V_without_ssc(double* __restrict__ v,
     spike[id] = lif.tsp;
     nsp[id] = lif.spikeCount;
     __syncthreads();
-    // recalibrate from spikes
+
+    // recalibrate conductance from cortical spikes
     #pragma unroll
     for (unsigned int i=0; i<blockSize; i++) {
         double spikeCount = nsp[i];
@@ -961,6 +966,8 @@ compute_V_without_ssc(double* __restrict__ v,
             }
         }
     }
+
+    // update conductance to global memory
     #pragma unroll
     for (unsigned int ig=0; ig<ngTypeE; ig++) {
         gE[id] = gE_local[ig];

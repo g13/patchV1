@@ -175,9 +175,9 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaMallocHost((void**)&v, networkSize * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&d_v,           networkSize * sizeof(double)));
 
-    logRand_init<<<init_b1,init_b2>>>(lastNegLogRandE, stateE, seed, leftTimeRateE, dInputE);
+    logRand_init<<<init_b1,init_b2>>>(lastNegLogRandE, stateE, seed, leftTimeRateE, dInputE, flatRateE/1000.0f, dt);
     CUDA_CHECK();
-    logRand_init<<<init_b1,init_b2>>>(lastNegLogRandI, stateI, seed-networkSize, leftTimeRateI, dInputI);
+    logRand_init<<<init_b1,init_b2>>>(lastNegLogRandI, stateI, seed-networkSize, leftTimeRateI, dInputI, flatRateI/1000.0f, dt);
     CUDA_CHECK();
 
     randInit<<<init_b1,init_b2>>>(d_preMat, d_v, randState, sEE, sIE, sEI, sII, networkSize, nE, seed);

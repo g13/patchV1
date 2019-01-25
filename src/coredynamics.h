@@ -57,7 +57,7 @@ __global__ void reduce_G(double* __restrict__ g,
                          double* __restrict__ h_b1x,
                          unsigned int ngType, int n);
 
-__global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed, double *lTR, double dInput);
+__global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed, double *lTR, double dInput, double rate, double dt);
 
 __global__ void randInit(double* __restrict__ preMat, 
 						 double* __restrict__ v, 
