@@ -208,12 +208,12 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaEventRecord(iStart, 0));
     /* Allocate space for results on host */
     //pinned memory
-    CUDA_CALL(cudaMallocHost((void**)&gE,          networkSize * ngTypeE * sizeof(double) * batchStep * alt));
-    CUDA_CALL(cudaMallocHost((void**)&gI,          networkSize * ngTypeI *sizeof(double) * batchStep * alt));
-    CUDA_CALL(cudaMallocHost((void**)&spikeTrain,  networkSize * sizeof(double) * batchStep * alt));
-    CUDA_CALL(cudaMallocHost((void**)&nSpike,      networkSize * sizeof(unsigned int) * batchStep * alt));
-    CUDA_CALL(cudaMallocHost((void**)&eventRateE,   networkSize * sizeof(int) * batchStep * alt));
-    CUDA_CALL(cudaMallocHost((void**)&eventRateI,   networkSize * sizeof(int) * batchStep * alt));
+    CUDA_CALL(cudaMallocHost((void**)&gE,          networkSize * ngTypeE * sizeof(double)));
+    CUDA_CALL(cudaMallocHost((void**)&gI,          networkSize * ngTypeI *sizeof(double)));
+    CUDA_CALL(cudaMallocHost((void**)&spikeTrain,  networkSize * sizeof(double)));
+    CUDA_CALL(cudaMallocHost((void**)&nSpike,      networkSize * sizeof(unsigned int)));
+    CUDA_CALL(cudaMallocHost((void**)&eventRateE,   networkSize * sizeof(int)));
+    CUDA_CALL(cudaMallocHost((void**)&eventRateI,   networkSize * sizeof(int)));
 
     /* Allocate space for results on device */
     CUDA_CALL(cudaMalloc((void **)&d_gE,         networkSize * ngTypeE * sizeof(double)));
@@ -438,9 +438,9 @@ int main(int argc, char *argv[])
 
         CUDA_CALL(cudaEventSynchronize(spikeRateReady));
         /* Write spikeTrain of current step to disk */
-        spike_file.write((char*)spikeTrain,  n*sizeof(double));
+        spike_file.write((char*)spikeTrain,  networkSize*sizeof(double));
 		CUDA_CALL(cudaEventSynchronize(nSpikeReady));
-        nSpike_file.write((char*)nSpike,     n*sizeof(unsigned int));
+        nSpike_file.write((char*)nSpike,     networkSize*sizeof(unsigned int));
 
         #ifndef FULL_SPEED
             CUDA_CALL(cudaEventSynchronize(eventRateEReady));

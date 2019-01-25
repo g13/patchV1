@@ -450,8 +450,8 @@ compute_V(double* __restrict__ v,
     #pragma unroll
     for (unsigned int ig=0; ig<ngTypeI; ig++) {
 		unsigned int gid = networkSize * ig + id;
-		gI_local[ig] = gI[networkSize*ig + id];
-        hI_local[ig] = hI[networkSize*ig + id];
+		gI_local[ig] = gI[gid];
+        hI_local[ig] = hI[gid];
         gI_retrace[ig] = gI_local[ig];
         hI_retrace[ig] = hI_local[ig];
 		fI_local[ig] = fI[gid];
@@ -494,15 +494,16 @@ compute_V(double* __restrict__ v,
         }
     #else
         nInputE = set_input_time(inputTimeE, dt, inputRateE[id], &(leftTimeRateE[id]), &(lastNegLogRandE[id]), &localStateE);
-        nInputI = set_input_time(inputTimeI, dt, inputRateI[id], &(leftTimeRateI[id]), &(lastNegLogRandI[id]), &localStateI);
+		stateE[id] = localStateE;
+		nInputI = set_input_time(inputTimeI, dt, inputRateI[id], &(leftTimeRateI[id]), &(lastNegLogRandI[id]), &localStateI);
+		stateI[id] = localStateI;
     #endif
     __syncwarp();
     // return a realization of Poisson input rate
-    eventRateE[id] = nInputE;
-    eventRateI[id] = nInputI;
-    // update rng state 
-    stateE[id] = localStateE;
-    stateI[id] = localStateI;
+	#ifndef FULL_SPEED
+		eventRateE[id] = nInputE;
+		eventRateI[id] = nInputI;
+	#endif
     // set conductances
     prep_cond(lif, condE, gE_local, hE_local, fE_local, inputTimeE, nInputE, condI, gI_local, hI_local, fI_local, inputTimeI, nInputI, gL, dt); 
     spikeTrain[id] = dt;
@@ -572,6 +573,7 @@ compute_V(double* __restrict__ v,
             if (id == imin && lif.tsp == dt) {
                 // forward biased tsp
                 lif.tsp = t_hlf;
+                lif.spikeCount++;
             }
             #ifdef VOLTA
                 __syncwarp();
@@ -605,42 +607,88 @@ compute_V(double* __restrict__ v,
         #ifdef DEBUG
             int counter = 0;
         #endif
-        #pragma unroll
-        for (unsigned int i=0; i<blockSize; i++) {
-            double tsp = tempSpike[i];
-            if (tsp == dt) {
-                continue;
-            }
-            double dtsp = t_hlf-tsp;
-            #ifdef DEBUG
-                counter++;
-                if (id==0) {
-			    	printf("%u: %e\n", i, tsp);
+        #ifdef SPEED_TEST
+            double gE_end[ngTypeE]={0};
+            double gI_end[ngTypeI]={0};
+            double hE_end[ngTypeE]={0};
+            double hI_end[ngTypeI]={0};
+            bool eReady = true;
+            bool iReady = true;
+            double ddt = dt-t_hlf;
+            #pragma unroll
+            for (unsigned int i=0; i<blockSize; i++) {
+                if (tempSpike[i] == dt) {
+                    continue;
                 }
-            #endif
-            double strength = preMat[i*networkSize + id] * spikeCount[i];
-            if (i < nE) {
-                #pragma unroll
-				for (unsigned int ig=0; ig<ngTypeE; ig++) {
-                    if (dtsp == 0) {
+                double strength = preMat[i*networkSize + id] * spikeCount[i];
+                if (i<nE) {
+                    if (eReady) {
+                        #pragma unroll
+		    	        for (unsigned int ig=0; ig<ngTypeE; ig++) {
+                            condE.compute_single_input_conductance(&gE_end[ig], &hE_end[ig], 1.0, ddt, ig);
+                        }
+                        eReady = false;
+                    }
+                    #pragma unroll
+		    	    for (unsigned int ig=0; ig<ngTypeE; ig++) {
                         hE_retrace[ig] += strength;
-                    } else {
-                        condE.compute_single_input_conductance(&gE_retrace[ig], &hE_retrace[ig], strength, dtsp, ig);
+                        gE_local[ig] += strength*gE_end[ig];
+                        hE_local[ig] += strength*hE_end[ig];
                     }
-                    condE.compute_single_input_conductance(&gE_local[ig], &hE_local[ig], strength, dt-tsp, ig);
-                }
-			} else {
-				#pragma unroll
-				for (unsigned int ig=0; ig<ngTypeI; ig++) {
-                    if (dtsp == 0) {
+                } else {
+                    if (iReady) {
+                        #pragma unroll
+		    	        for (unsigned int ig=0; ig<ngTypeI; ig++) {
+                            condI.compute_single_input_conductance(&gI_end[ig], &hI_end[ig], 1.0, ddt, ig);
+                        }
+                        iReady = false;
+                    }
+                    #pragma unroll
+		    	    for (unsigned int ig=0; ig<ngTypeI; ig++) {
                         hI_retrace[ig] += strength;
-                    } else {
-					    condI.compute_single_input_conductance(&gI_retrace[ig], &hI_retrace[ig], strength, dtsp, ig);
+                        gI_local[ig] += strength*gI_end[ig];
+                        hI_local[ig] += strength*hI_end[ig];
                     }
-					condI.compute_single_input_conductance(&gI_local[ig], &hI_local[ig], strength, dt-tsp, ig);
-				}
+                }
             }
-        }
+        #else
+            #pragma unroll
+            for (unsigned int i=0; i<blockSize; i++) {
+                double tsp = tempSpike[i];
+                if (tsp == dt) {
+                    continue;
+                }
+                    double dtsp = t_hlf-tsp;
+                    #ifdef DEBUG
+                        counter++;
+                        if (id==0) {
+		    	        	printf("%u: %e\n", i, tsp);
+                        }
+                    #endif
+                    double strength = preMat[i*networkSize + id] * spikeCount[i];
+                    if (i < nE) {
+                        #pragma unroll
+		    	    	for (unsigned int ig=0; ig<ngTypeE; ig++) {
+                            if (dtsp == 0) {
+                                hE_retrace[ig] += strength;
+                            } else {
+                                condE.compute_single_input_conductance(&gE_retrace[ig], &hE_retrace[ig], strength, dtsp, ig);
+                            }
+                            condE.compute_single_input_conductance(&gE_local[ig], &hE_local[ig], strength, dt-tsp, ig);
+                        }
+		    	    } else {
+		    	    	#pragma unroll
+		    	    	for (unsigned int ig=0; ig<ngTypeI; ig++) {
+                            if (dtsp == 0) {
+                                hI_retrace[ig] += strength;
+                            } else {
+		    	    		    condI.compute_single_input_conductance(&gI_retrace[ig], &hI_retrace[ig], strength, dtsp, ig);
+                            }
+		    	    		condI.compute_single_input_conductance(&gI_local[ig], &hI_local[ig], strength, dt-tsp, ig);
+		    	    	}
+                    }
+            }
+        #endif
 		__syncthreads();
         #ifdef DEBUG
             if (id == 0) {

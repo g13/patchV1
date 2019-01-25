@@ -8,6 +8,7 @@
 //#define NAIVE
 //#define DEBUG
 #define FULL_SPEED
+#define SPEED_TEST 
 //#define VOLTA
 
 #define timeNow() std::chrono::high_resolution_clock::now()
