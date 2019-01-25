@@ -112,10 +112,8 @@ __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsign
     logRand[id] = -log(curand_uniform_double(&localState));
     state[id] = localState;
 
-    // lTR works as firstInputTime
-    #ifdef TEST_WITH_MANUAL_FFINPUT
-        lTR[id] = curand_uniform_double(&localState)*dInput;
-    #endif
+    // lTR works as firstInputTime if set TEST_WITH_MANUAL_FFINPUT
+    lTR[id] = curand_uniform_double(&localState)*dInput;
 }
 
 __global__ void randInit(double* __restrict__ preMat, 

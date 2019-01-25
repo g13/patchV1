@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "DIRECTIVE.h"
-#include "curand.h"
+#include <random>
 #include "CONST.h"
 #include "condShape_cpu.h"
 #include <cassert>

@@ -83,4 +83,27 @@ __global__ void compute_V(double* __restrict__ v,
                           curandStateMRG32k3a* __restrict__ stateI,
                           ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInputE, double dInputI);
 
+__global__ void compute_V_without_ssc(double* __restrict__ v,
+                                      double* __restrict__ gE,
+                                      double* __restrict__ gI,
+                                      double* __restrict__ hE,
+                                      double* __restrict__ hI,
+                                      double* __restrict__ preMat,
+                                      double* __restrict__ inputRateE,
+                                      double* __restrict__ inputRateI,
+                                      int* __restrict__ eventRateE,
+                                      int* __restrict__ eventRateI,
+                                      double* __restrict__ spikeTrain,
+                                      unsigned int* __restrict__ nSpike,
+                                      double* __restrict__ tBack,
+                                      double* __restrict__ fE,
+                                      double* __restrict__ fI,
+                                      double* __restrict__ leftTimeRateE,
+                                      double* __restrict__ leftTimeRateI,
+                                      double* __restrict__ lastNegLogRandE,
+                                      double* __restrict__ lastNegLogRandI,
+                                      curandStateMRG32k3a* __restrict__ stateE,
+                                      curandStateMRG32k3a* __restrict__ stateI,
+                                      ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInputE, double dInputI);
+
 #endif

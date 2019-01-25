@@ -273,7 +273,7 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
     }
 }
 
-__device__  double step(LIF* lif, double dt, double tRef, unsigned int id, double gE, double gI, double tsp[]) {
+__device__  double one(LIF* lif, double dt, double tRef, unsigned int id, double gE, double gI, double tsp[]) {
     lif->tsp = dt;
     lif->spikeCount = 0;
     // not in refractory period
@@ -458,15 +458,16 @@ __global__ void compute_V(double* __restrict__ v,
         }
     #else
         nInputE = set_input_time(inputTimeE, dt, inputRateE[id], &(leftTimeRateE[id]), &(lastNegLogRandE[id]), &localStateE);
+        stateE[id] = localStateE;
         nInputI = set_input_time(inputTimeI, dt, inputRateI[id], &(leftTimeRateI[id]), &(lastNegLogRandI[id]), &localStateI);
+        stateI[id] = localStateI;
     #endif
     //__syncwarp();
     // return a realization of Poisson input rate
-    eventRateE[id] = nInputE;
-    eventRateI[id] = nInputI;
-    // update rng state 
-    stateE[id] = localStateE;
-    stateI[id] = localStateI;
+    #ifndef FULL_SPEED
+        eventRateE[id] = nInputE;
+        eventRateI[id] = nInputI;
+    #endif
     /* evolve g to t+dt with ff input only */
     unsigned int gid;
     gE_t = 0.0f;

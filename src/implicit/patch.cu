@@ -304,12 +304,21 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaStreamCreate(&s5));
     CUDA_CALL(cudaStreamCreate(&s6));
     CUDA_CALL(cudaStreamCreate(&s7));
-    p_file.open("p_ushy" + theme + ".bin", std::ios::out|std::ios::binary);
-    v_file.open("v_ictorious" + theme + ".bin", std::ios::out|std::ios::binary);
-    spike_file.open("s_uspicious" + theme + ".bin", std::ios::out|std::ios::binary);
-    nSpike_file.open("n_arcotic" + theme + ".bin", std::ios::out|std::ios::binary);
-    gE_file.open("gE_nerous" + theme + ".bin", std::ios::out|std::ios::binary);
-    gI_file.open("gI_berish" + theme + ".bin", std::ios::out|std::ios::binary);
+    #ifdef SPIKE_CORRECTION
+        p_file.open("p_ushy" + theme + "_ssc.bin", std::ios::out|std::ios::binary);
+        v_file.open("v_ictorious" + theme + "_ssc.bin", std::ios::out|std::ios::binary);
+        spike_file.open("s_uspicious" + theme + "_ssc.bin", std::ios::out|std::ios::binary);
+        nSpike_file.open("n_arcotic" + theme + "_ssc.bin", std::ios::out|std::ios::binary);
+        gE_file.open("gE_nerous" + theme + "_ssc.bin", std::ios::out|std::ios::binary);
+        gI_file.open("gI_berish" + theme + "_ssc.bin", std::ios::out|std::ios::binary);
+    #else
+        p_file.open("p_ushy" + theme + ".bin", std::ios::out|std::ios::binary);
+        v_file.open("v_ictorious" + theme + ".bin", std::ios::out|std::ios::binary);
+        spike_file.open("s_uspicious" + theme + ".bin", std::ios::out|std::ios::binary);
+        nSpike_file.open("n_arcotic" + theme + ".bin", std::ios::out|std::ios::binary);
+        gE_file.open("gE_nerous" + theme + ".bin", std::ios::out|std::ios::binary);
+        gI_file.open("gI_berish" + theme + ".bin", std::ios::out|std::ios::binary);
+    #endif
 
     p_file.write((char*)&nE, sizeof(unsigned int));
     p_file.write((char*)&nI, sizeof(unsigned int));
@@ -339,7 +348,6 @@ int main(int argc, char *argv[])
 
 
     CUDA_CALL(cudaEventRecord(start, 0));
-    unsigned int shared_mem = 1024*sizeof(double)+2*1024*sizeof(unsigned int);
     double eventsE = 0.0f;
     double eventsI = 0.0f;
     unsigned int spikesE = 0;
@@ -396,7 +404,13 @@ int main(int argc, char *argv[])
         #endif
         dim3 grid3(1);
         dim3 block3(1024);
-        compute_V<<<grid3, block3, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI);
+        #ifdef SPIKE_CORRECTION
+            unsigned int shared_mem = 1024*sizeof(double)+2*1024*sizeof(unsigned int);
+            compute_V<<<grid3, block3, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI);
+        #else
+            unsigned int shared_mem = 1024*sizeof(double)+1024*sizeof(unsigned int);
+            compute_V_without_ssc<<<grid3, block3, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI);
+        #endif
         CUDA_CHECK();
         CUDA_CALL(cudaEventRecord(vComputed, s1));
         #ifdef KERNEL_PERFORMANCE

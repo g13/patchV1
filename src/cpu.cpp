@@ -1,6 +1,8 @@
 #include "cpu.h"
 
-int set_input_time(double inputTime[], double dt, double rate, double &leftTimeRate, double &lastNegLogRand, curandGenerator_t &randGen) {
+std::uniform_real_distribution<double> dis(0, 1.0);
+
+int set_input_time(double inputTime[], double dt, double rate, double &leftTimeRate, double &lastNegLogRand, std::default_random_engine &randGen) {
     int i = 0;
     double tau, dTau, negLogRand;
     tau = (lastNegLogRand - leftTimeRate)/rate;
@@ -9,13 +11,12 @@ int set_input_time(double inputTime[], double dt, double rate, double &leftTimeR
         return i;
     } else do {
         inputTime[i] = tau;
-        curandGenerateUniformDouble(randGen, &negLogRand, 1);
-        negLogRand = -log(negLogRand);        
+        negLogRand = -log(dis(randGen));        
         dTau = negLogRand/rate;
         tau += dTau;
         i++;
         if (i == MAX_FFINPUT_PER_DT) {
-            printf("exceeding max input per dt %i\n", 10);
+            printf("exceeding max input per dt %i\n", MAX_FFINPUT_PER_DT);
             break;
         }
     } while (tau <= dt);
@@ -895,11 +896,13 @@ void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int n
     p_file.write((char*)&nstep, sizeof(unsigned int));
     p_file.write((char*)&dt, sizeof(double));
     p_file.write((char*)&inputRateE, sizeof(double));
+    inputRateE = inputRateE/1000.0;
+    inputRateI = inputRateI/1000.0;
 
     double *inputTimeE = new double[networkSize*MAX_FFINPUT_PER_DT];
     double *inputTimeI = new double[networkSize*MAX_FFINPUT_PER_DT];
-    curandGenerator_t *randGenE = new curandGenerator_t[networkSize];
-    curandGenerator_t *randGenI = new curandGenerator_t[networkSize];
+    std::default_random_engine *randGenE = new std::default_random_engine[networkSize];
+    std::default_random_engine *randGenI = new std::default_random_engine[networkSize];
     double *logRandE = new double[networkSize];
     double *logRandI = new double[networkSize];
     double *lTRE = new double[networkSize];
@@ -918,14 +921,10 @@ void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int n
             lTRE[i] = firstInputE[i];
             lTRI[i] = firstInputI[i];
         #else
-            curandCreateGeneratorHost(&randGenE[i], CURAND_RNG_PSEUDO_MRG32K3A);
-            curandCreateGeneratorHost(&randGenI[i], CURAND_RNG_PSEUDO_MRG32K3A);
-	        curandSetPseudoRandomGeneratorSeed(randGenE[i], seed + i);
-	        curandSetPseudoRandomGeneratorSeed(randGenI[i], seed + networkSize + i);
-	        curandGenerateUniformDouble(randGenE[i], &(logRandE[i]), 1);
-	        curandGenerateUniformDouble(randGenI[i], &(logRandI[i]), 1);
-	        logRandE[i] = -log(logRandE[i]);
-	        logRandI[i] = -log(logRandI[i]);
+	        randGenE[i].seed(seed + i);
+	        randGenI[i].seed(seed + networkSize + i);
+            logRandE[i] = -log(dis(randGenE[i]));
+            logRandI[i] = -log(dis(randGenI[i]));
 	        lTRE[i] = 0.0f;
 	        lTRI[i] = 0.0f;
         #endif
@@ -1045,7 +1044,6 @@ void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int n
                 } else {
                     lTRE[i] -= dt;
                 }
-				inputEventsE += nInputE[i];
 
                 nInputI[i] = 0;
                 if (lTRI[i] < dt) {
@@ -1061,13 +1059,14 @@ void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int n
                 } else {
                     lTRI[i] -= dt;
                 }
-				inputEventsI += nInputI[i];
 			#else
 				nInputE[i] = set_input_time(&(inputTimeE[i*MAX_FFINPUT_PER_DT]), dt, inputRateE, lTRE[i], logRandE[i], randGenE[i]);
-				inputEventsE += nInputE[i];
 				nInputI[i] = set_input_time(&(inputTimeI[i*MAX_FFINPUT_PER_DT]), dt, inputRateI, lTRI[i], logRandI[i], randGenI[i]);
-				inputEventsI += nInputI[i];
 			#endif
+            #ifndef FULL_SPEED
+				inputEventsE += nInputE[i];
+				inputEventsI += nInputI[i];
+            #endif
             /* evolve g to t+dt with ff input only */
             gE_t = 0.0f;
             #pragma unroll
@@ -1111,13 +1110,15 @@ void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int n
 #endif
         } 
         for (unsigned int i=0; i<networkSize; i++) {
-            if (i < nE) {
-                spikesE += nSpike[i]; 
-            } else {
-                spikesI += nSpike[i]; 
-            }
             nSpike[i] = lif[i]->spikeCount;
             lif[i]->tBack -= dt;
+            #ifndef FULL_SPEED
+                if (i < nE) {
+                    spikesE += nSpike[i]; 
+                } else {
+                    spikesI += nSpike[i]; 
+                }
+            #endif
         }
 		high_resolution_clock::time_point wStart = timeNow();
         v_file.write((char*)v, networkSize * sizeof(double));
@@ -1126,59 +1127,67 @@ void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int n
         gE_file.write((char*)gE_current, networkSize * ngTypeE * sizeof(double));
         gI_file.write((char*)gI_current, networkSize * ngTypeI * sizeof(double));
 		wTime += static_cast<double>(duration_cast<microseconds>(timeNow() - wStart).count());
-#ifdef DEBUG
-        printf("stepping %3.1f%%, t = %f\n", 100.0f*float(istep+1)/nstep, istep*dt);
-#else
-        printf("\r stepping %3.1f%%, t = %f", 100.0f*float(istep+1)/nstep, istep*dt);
-
-#endif
-        double ir = 0.0f;
-        for (unsigned int i=0; i<nE; i++) {
-            double sEi = 0.0f;
+        #ifndef FULL_SPEED
+            #ifdef DEBUG
+                    printf("stepping %3.1f%%, t = %f\n", 100.0f*float(istep+1)/nstep, istep*dt);
+            #else
+                    printf("\r stepping %3.1f%%, t = %f", 100.0f*float(istep+1)/nstep, istep*dt);
+            
+            #endif
+            double ir = 0.0f;
+            for (unsigned int i=0; i<nE; i++) {
+                double sEi = 0.0f;
+                for (unsigned int j=0; j<networkSize; j++) {
+                    sEi += preMat[i*networkSize + j] * nSpike[i];
+                }
+                ir += sEi;
+            }
+            exc_input_ratio += ir/networkSize;
+		    //printf("gE0 = %f, v = %f \n", gE_current[0], v[0]);
             for (unsigned int j=0; j<networkSize; j++) {
-                sEi += preMat[i*networkSize + j] * nSpike[i];
-            }
-            ir += sEi;
-        }
-        exc_input_ratio += ir/networkSize;
-		//printf("gE0 = %f, v = %f \n", gE_current[0], v[0]);
-        for (unsigned int j=0; j<networkSize; j++) {
-            if (j<nE) {
-                for (unsigned int ig=0; ig<ngTypeE; ig++) {
-                    gEavgE += gE_current[ig*networkSize + j];
-                }
-                for (unsigned int ig=0; ig<ngTypeI; ig++) {
-                    gIavgE += gI_current[ig*networkSize + j];
-                }
-            } else {
-                for (unsigned int ig=0; ig<ngTypeE; ig++) {
-                    gEavgI += gE_current[ig*networkSize + j];
-                }
-                for (unsigned int ig=0; ig<ngTypeI; ig++) {
-                    gIavgI += gI_current[ig*networkSize + j];
+                if (j<nE) {
+                    for (unsigned int ig=0; ig<ngTypeE; ig++) {
+                        gEavgE += gE_current[ig*networkSize + j];
+                    }
+                    for (unsigned int ig=0; ig<ngTypeI; ig++) {
+                        gIavgE += gI_current[ig*networkSize + j];
+                    }
+                } else {
+                    for (unsigned int ig=0; ig<ngTypeE; ig++) {
+                        gEavgI += gE_current[ig*networkSize + j];
+                    }
+                    for (unsigned int ig=0; ig<ngTypeI; ig++) {
+                        gIavgI += gI_current[ig*networkSize + j];
+                    }
                 }
             }
-        }
+        #endif
     }
     printf("\n");
-    printf("exc input rate %ekHz\n", float(inputEventsE)/(dt*nstep*networkSize));
-    printf("inh input rate %ekHz\n", float(inputEventsI)/(dt*nstep*networkSize));
-    printf("exc firing rate = %eHz\n", float(spikesE)/(dt*nstep*nE)*1000.0);
-    printf("inh firing rate = %eHz\n", float(spikesI)/(dt*nstep*nI)*1000.0);
+    #ifndef FULL_SPEED
+        printf("exc input rate %ekHz\n", float(inputEventsE)/(dt*nstep*networkSize));
+        printf("inh input rate %ekHz\n", float(inputEventsI)/(dt*nstep*networkSize));
+        printf("exc firing rate = %eHz\n", float(spikesE)/(dt*nstep*nE)*1000.0);
+        printf("inh firing rate = %eHz\n", float(spikesI)/(dt*nstep*nI)*1000.0);
+    #endif
     auto cpuTime = duration_cast<microseconds>(timeNow()-start).count();
     printf("cpu version time cost: %3.1fms\n", static_cast<double>(cpuTime)/1000.0f);
     printf("compute_V cost: %fms\n", vTime/1000.0f);
     printf("correct_spike cost: %fms\n", sTime/1000.0f);
 	printf("writing data to disk cost: %fms\n", wTime/1000.0f);
-    printf("input ratio recurrent:feedforward = %f\n", exc_input_ratio/((EffsE*nE+IffsE*nI)/networkSize*dt*nstep/dInputE));
-    printf("           exc,        inh\n");
-    printf("avg gE = %e, %e\n", gEavgE/nstep/nE, gEavgI/nstep/nI);
-    printf("avg gI = %e, %e\n", gIavgE/nstep/nE, gIavgI/nstep/nI);
+    #ifndef FULL_SPEED
+        printf("input ratio recurrent:feedforward = %f\n", exc_input_ratio/((EffsE*nE+IffsE*nI)/networkSize*dt*nstep/dInputE));
+        printf("           exc,        inh\n");
+        printf("avg gE = %e, %e\n", gEavgE/nstep/nE, gEavgI/nstep/nI);
+        printf("avg gI = %e, %e\n", gIavgE/nstep/nE, gIavgI/nstep/nI);
+    #endif
     /* Cleanup */
     printf("Cleaning up\n");
     int nTimer = 2;
     p_file.write((char*)&nTimer, sizeof(int));
+    vTime = vTime/1000.0f;
     p_file.write((char*)&vTime, sizeof(double));
+    sTime = sTime/1000.0f;
     p_file.write((char*)&sTime, sizeof(double));
     
     if (p_file.is_open()) p_file.close();
