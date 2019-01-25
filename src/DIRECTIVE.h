@@ -7,7 +7,7 @@
 #define TEST_WITH_MANUAL_FFINPUT
 //#define DEBUG 
 //#define GPU_ONLY
-#define RECLAIM
+//#define RECLAIM
 #define CPU_ONLY
 //#define NAIVE // for naive summation of conductance
 

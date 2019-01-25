@@ -1,29 +1,29 @@
 #include "cpu.h"
-/* === RAND === Uncomment all RANDs if curand can ensure cpu and gpu generate the same rands
-    int set_input_time(double *inputTime, double dt, double rate, double &leftTimeRate, double &lastNegLogRand, curandGenerator_t &randGen) {
-        int i = 0;
-        double tau, dTau, negLogRand;
-        tau = (lastNegLogRand - leftTimeRate)/rate;
-        if (tau > dt) {
-            leftTimeRate += (dt * rate);
-            return i;
-        } else do {
-            inputTime[i] = tau;
-            curandGenerateUniformDouble(randGen, &negLogRand, 1);
-            negLogRand = -log(negLogRand);        
-            dTau = negLogRand/rate;
-            tau += dTau;
-            i++;
-            if (i == MAX_FFINPUT_PER_DT) {
-                printf("exceeding max input per dt %i\n", 10);
-                break;
-            }
-        } while (tau <= dt);
-        lastNegLogRand = negLogRand;
-        leftTimeRate = (dt - tau + dTau) * rate;
+
+int set_input_time(double inputTime[], double dt, double rate, double &leftTimeRate, double &lastNegLogRand, curandGenerator_t &randGen) {
+    int i = 0;
+    double tau, dTau, negLogRand;
+    tau = (lastNegLogRand - leftTimeRate)/rate;
+    if (tau > dt) {
+        leftTimeRate += (dt * rate);
         return i;
-    }
-*/
+    } else do {
+        inputTime[i] = tau;
+        curandGenerateUniformDouble(randGen, &negLogRand, 1);
+        negLogRand = -log(negLogRand);        
+        dTau = negLogRand/rate;
+        tau += dTau;
+        i++;
+        if (i == MAX_FFINPUT_PER_DT) {
+            printf("exceeding max input per dt %i\n", 10);
+            break;
+        }
+    } while (tau <= dt);
+    lastNegLogRand = negLogRand;
+    leftTimeRate = (dt - tau + dTau) * rate;
+    return i;
+}
+
 
 void evolve_g(cConductanceShape &cond, double *g, double *h, double *f, double *inputTime, int nInput, double dt, double dt0, unsigned int ig) {
     // dt0: with respect to the time frame of inputTime (0)
@@ -557,32 +557,6 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
         // |      |             |             |
         // 0     pdt0<--dpdt-->pdt<---ddt---->dt
         // prepare the last cortical input if exists
-        if (in > 0) {
-            if (lastE) {
-                for (int ig = 0; ig<ngTypeE; ig++) {
-                    g_end = 0.0f;
-                    h_end = 0.0f;
-                    condE.compute_single_input_conductance(&g_end, &h_end, 1.0f, dpdt, ig);
-                    gE_end[ig] = g_end;
-                    hE_end[ig] = h_end;
-                }
-#ifdef DEBUG
-                printf("gE_end = %f, %f\n", gE_end[0], gE_end[1]);
-#endif
-            }
-            if (lastI) {
-                for (int ig = 0; ig<ngTypeI; ig++) {
-                    g_end = 0.0f;
-                    h_end = 0.0f;
-                    condI.compute_single_input_conductance(&g_end, &h_end, 1.0f, dpdt, ig);
-                    gI_end[ig] = g_end;
-                    hI_end[ig] = h_end;
-                }
-#ifdef DEBUG
-                printf("gI_end = %f\n", gI_end[0]);
-#endif
-            }
-        }
         for (unsigned int j=0; j<networkSize; j++) {
             if (lif[j]->correctMe) {
                 double gL;
@@ -606,6 +580,21 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                         gI_t += gI0[gid];
                     }
                     lif[j]->set_p0(gE_t, gI_t, gL);
+                }
+                // add latest cortical inputs
+                for (unsigned int ini = 0; ini < in; ini++) {
+                    unsigned int id = idTrain[ini];
+                    if (id < nE) {
+                        for (int ig=0; ig<ngTypeE; ig++) {
+                            unsigned int gid = networkSize*ig + j;
+                            hE0[gid] += ns[ini] * preMat[id*networkSize + j];
+                        }
+                    } else {
+                        for (int ig=0; ig<ngTypeI; ig++) {
+                            unsigned int gid = networkSize*ig + j;
+                            hI0[gid] += ns[ini] * preMat[id*networkSize + j];
+                        }
+                    }
                 }
                 // evolve g h and lastInput to xdt (if no spike is reclaimed then update g0 and h0 and lastInput)
                 // determine ext input range [pdt0, pdt]
@@ -640,29 +629,6 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                     }
                 }
                 lastInputI[j] = iInputI[j];
-                // add latest cortical inputs
-                for (unsigned int ini = 0; ini < in; ini++) {
-                    unsigned int id = idTrain[ini];
-                    if (id < nE) {
-                        for (int ig=0; ig<ngTypeE; ig++) {
-                            unsigned int gid = networkSize*ig + j;
-                            gE0[gid] += gE_end[ig] * ns[ini] * preMat[id*networkSize + j];
-                            hE0[gid] += hE_end[ig] * ns[ini] * preMat[id*networkSize + j];
-                            if (gE0[gid] < 0) {
-                                printf("    %u gE#%u %f+=%fx%ix%f\n", id, j, gE0[gid], gE_end[ig], ns[ini], preMat[id*networkSize+j]);
-                            }
-                        }
-                    } else {
-                        for (int ig=0; ig<ngTypeI; ig++) {
-                            unsigned int gid = networkSize*ig + j;
-                            gI0[gid] += gI_end[ig] * ns[ini] * preMat[id*networkSize + j];
-                            hI0[gid] += hI_end[ig] * ns[ini] * preMat[id*networkSize + j];
-                            if (gI0[gid] < 0) {
-                                printf("    %u gI#%i %f+=%fx%ix%f\n", id, j, gI0[gid], gI_end[ig], ns[ini], preMat[id*networkSize+j]);
-                            }
-                        }
-                    }
-                }
                 double gE_t = 0.0f;
                 for (int ig=0; ig<ngTypeE; ig++) {
                     unsigned int gid = networkSize*ig + j;
@@ -828,19 +794,19 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                 } else {
                     //update volts
                     v[j] = lif[j]->v;
-#ifdef DEBUG
-                    if (lif[j]->v > vT) {
-                        printf("%i v = %f -> %f, tB = %f\n", j, lif[j]->v0, lif[j]->v, lif[j]->tBack);
-                        assert(lif[j]->v <= vT);
-                    }
-#endif
+                    #ifdef DEBUG
+                        if (lif[j]->v > vT) {
+                            printf("%i v = %f -> %f, tB = %f\n", j, lif[j]->v0, lif[j]->v, lif[j]->tBack);
+                            assert(lif[j]->v <= vT);
+                        }
+                    #endif
                 }
             }
         }
         r++;
-#ifdef DEBUG 
-        printf("%i corrected %i-%i, pdt0 = %e, dpdt = %e\n", r, corrected_n, i, pdt0, dpdt);
-#endif
+        #ifdef DEBUG 
+            printf("%i corrected %i-%i, pdt0 = %e, dpdt = %e\n", r, corrected_n, i, pdt0, dpdt);
+        #endif
     }
     delete []gE_end;
     delete []hE_end;
@@ -865,7 +831,7 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
 }
 #endif
 
-void cpu_version(int networkSize, /* === RAND === flatRate */double dInputE, double dInputI, unsigned int nstep, double dt, unsigned int nE, double preMat0[], double vinit[], double firstInputE[], double firstInputI[], /* === RAND === unsigned long long seed, */ double EffsE, double IffsE, double EffsI, double IffsI, std::string theme, double inputRateE, double inputRateI, unsigned int ngTypeE, unsigned int ngTypeI) {
+void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int nstep, double dt, unsigned int nE, double preMat0[], double vinit[], double firstInputE[], double firstInputI[], unsigned long long seed, double EffsE, double IffsE, double EffsI, double IffsI, std::string theme, double inputRateE, double inputRateI, unsigned int ngTypeE, unsigned int ngTypeI) {
     double gL, tRef;
     double *v = new double[networkSize];
     double *gE0 = new double[networkSize*ngTypeE];
@@ -932,12 +898,10 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInputE, dou
 
     double *inputTimeE = new double[networkSize*MAX_FFINPUT_PER_DT];
     double *inputTimeI = new double[networkSize*MAX_FFINPUT_PER_DT];
-    /* === RAND === 
-        curandGenerator_t *randGen = new curandGenerator_t[networkSize];
-        int *nInput = new int[networkSize];
-    */
-	/* not used if not RAND */
+    curandGenerator_t *randGenE = new curandGenerator_t[networkSize];
+    curandGenerator_t *randGenI = new curandGenerator_t[networkSize];
     double *logRandE = new double[networkSize];
+    double *logRandI = new double[networkSize];
     double *lTRE = new double[networkSize];
     double *lTRI = new double[networkSize];
     double riseTimeE[2] = {1.0f, 5.0f}; // ms
@@ -947,27 +911,29 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInputE, dou
     cConductanceShape condE(riseTimeE, decayTimeE, ngTypeE);
     cConductanceShape condI(riseTimeI, decayTimeI, ngTypeI);
 
-    printf("cpu version started\n");
-	/* === RAND ===
-		high_resolution_clock::time_point rStart = timeNow();
-		for (unsigned int i = 0; i < networkSize; i++) {
-			curandCreateGeneratorHost(&randGen[i], CURAND_RNG_PSEUDO_MRG32K3A);
-			curandSetPseudoRandomGeneratorSeed(randGen[i], seed + i);
-			curandGenerateUniformDouble(randGen[i], &(logRand[i]), 1);
-			logRand[i] = -log(logRand[i]);
-			lTR[i] = 0.0f;
-			printf("\r initializing curand Host generators %3.1f%%", 100.0f*float(i + 1) / networkSize);
-		}
-		double rTime = static_cast<double>(duration_cast<microseconds>(timeNow() - rStart).count());
-		printf(" cost: %fms\n", rTime/1000.0f);
-	*/
-    cpu_LIF **lif = new cpu_LIF*[networkSize];
 	high_resolution_clock::time_point iStart = timeNow();
+    printf("cpu version started\n");
+	for (unsigned int i = 0; i < networkSize; i++) {
+        #ifdef TEST_WITH_MANUAL_FFINPUT
+            lTRE[i] = firstInputE[i];
+            lTRI[i] = firstInputI[i];
+        #else
+            curandCreateGeneratorHost(&randGenE[i], CURAND_RNG_PSEUDO_MRG32K3A);
+            curandCreateGeneratorHost(&randGenI[i], CURAND_RNG_PSEUDO_MRG32K3A);
+	        curandSetPseudoRandomGeneratorSeed(randGenE[i], seed + i);
+	        curandSetPseudoRandomGeneratorSeed(randGenI[i], seed + networkSize + i);
+	        curandGenerateUniformDouble(randGenE[i], &(logRandE[i]), 1);
+	        curandGenerateUniformDouble(randGenI[i], &(logRandI[i]), 1);
+	        logRandE[i] = -log(logRandE[i]);
+	        logRandI[i] = -log(logRandI[i]);
+	        lTRE[i] = 0.0f;
+	        lTRI[i] = 0.0f;
+        #endif
+	}
+    cpu_LIF **lif = new cpu_LIF*[networkSize];
     for (unsigned int i=0; i<networkSize; i++) {
         v[i] = vinit[i];
         lif[i] = new cpu_LIF(v[i]);
-        lTRE[i] = firstInputE[i];
-        lTRI[i] = firstInputI[i];
         for (int j=0; j<networkSize; j++) {
             preMat[i*networkSize+j] = preMat0[i*networkSize+j];
         }
@@ -1064,7 +1030,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInputE, dou
                 hI_current[gid] = hI_old[gid];
             }
             lif[i]->set_p0(gE_t, gI_t, gL);
-			/* === RAND === #ifdef TEST_WITH_MANUAL_FFINPUT */
+            #ifdef TEST_WITH_MANUAL_FFINPUT
                 nInputE[i] = 0;
                 if (lTRE[i] < dt) {
                     inputTimeE[i*MAX_FFINPUT_PER_DT] = lTRE[i];
@@ -1096,12 +1062,12 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInputE, dou
                     lTRI[i] -= dt;
                 }
 				inputEventsI += nInputI[i];
-			/* === RAND === 
-				#else
-					nInput[i] = set_input_time(&(inputTime[i*MAX_FFINPUT_PER_DT]), dt, flatRate, lTR[i], logRand[i], randGen[i]);
-					inputEvents += nInput[i];
-				#endif
-			*/
+			#else
+				nInputE[i] = set_input_time(&(inputTimeE[i*MAX_FFINPUT_PER_DT]), dt, inputRateE, lTRE[i], logRandE[i], randGenE[i]);
+				inputEventsE += nInputE[i];
+				nInputI[i] = set_input_time(&(inputTimeI[i*MAX_FFINPUT_PER_DT]), dt, inputRateI, lTRI[i], logRandI[i], randGenI[i]);
+				inputEventsI += nInputI[i];
+			#endif
             /* evolve g to t+dt with ff input only */
             gE_t = 0.0f;
             #pragma unroll
@@ -1235,7 +1201,8 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInputE, dou
     delete []preMat;
     delete []spikeTrain;
     delete []nSpike;
-    /* === RAND === delete []randGen; */
+    delete []randGenE;
+    delete []randGenI;
     for (unsigned int i=0; i<networkSize; i++) {
         delete []lif[i];
     }
@@ -1244,6 +1211,7 @@ void cpu_version(int networkSize, /* === RAND === flatRate */double dInputE, dou
     delete []inputTimeE;
     delete []inputTimeI;
 	delete []logRandE;
+	delete []logRandI;
 	delete []lTRE;
 	delete []lTRI;
     delete []nInputE;

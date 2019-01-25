@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "DIRECTIVE.h"
+#include "curand.h"
 #include "CONST.h"
 #include "condShape_cpu.h"
 #include <cassert>
@@ -36,4 +37,4 @@ struct cpu_LIF {
     void compute_spike_time(double dt, double pdt0);
 };
 
-void cpu_version(int networkSize, /* === RAND === flatRate */double dInputE, double dInputI, unsigned int nstep, double dt, unsigned int nE, double preMat0[], double vinit[], double firstInputE[], double firstInputI[], /* === RAND === unsigned long long seed, */ double EffsE, double IffsE, double EffsI, double IffsI, std::string theme, double inputRateE, double inputRateI, unsigned int ngTypeE, unsigned int ngTypeI);
+void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int nstep, double dt, unsigned int nE, double preMat0[], double vinit[], double firstInputE[], double firstInputI[], unsigned long long seed, double EffsE, double IffsE, double EffsI, double IffsI, std::string theme, double inputRateE, double inputRateI, unsigned int ngTypeE, unsigned int ngTypeI);

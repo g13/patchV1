@@ -269,9 +269,9 @@ __device__  void dab(LIF &lif, double t0, double t1, double _dt) {
     double dt = t1 - t0;
     lif.tsp = _dt;
     // return from refractory period
-    #ifdef DEBUG
+    //#ifdef DEBUG
         assert(lif.tBack < t1);
-    #endif
+	//#endif
     if (lif.tBack > t0) {
         lif.recompute_v0(dt, t0);
     }
@@ -515,10 +515,10 @@ compute_V(double* __restrict__ v,
     tempSpike[id] = lif.tsp;
     #ifdef DEBUG
     	if (lif.tsp < dt) {
-    		printf("first %u: v0 = %e, v = %e->%e, tBack %e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tsp);
-    		assert(lif.tsp > 0);
+    		printf("first %u: v0 = %e, v = %e->%e, tBack %e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tsp);	
     	}
     #endif
+	assert(lif.tsp > 0);
     // spike-spike correction
 	//__syncthreads();
 	find_min(tempSpike, spid);
@@ -580,26 +580,27 @@ compute_V(double* __restrict__ v,
             spikeCount[id] = lif.spikeCount - old_count;
             if (lif.tsp < dt) {
                 spikeTrain[id] = lif.tsp;
+                //lif.tsp = t_hlf;
                 lif.tBack = lif.tsp + tRef;
                 if (lif.tBack >= dt) {
-                    lif.reset_v();
                     lif.correctMe = false;
                 }
                 #ifdef DEBUG
                     printf("t0: %e, t_hlf: %e\n", t0, t_hlf);
 		            printf("hlf %u: v0 = %e, v = %e->%e, tBack %e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tsp);
-                    assert(lif.tsp <= t_hlf);
-                    assert(lif.tsp > t0);
                 #endif
+				assert(lif.tsp <= t_hlf);
+				assert(lif.tsp > t0);
             }
         } else {
-            #ifdef VOLTA
-                __syncwarp();
-            #endif
+        #ifdef VOLTA
+            __syncwarp();
+        #endif
             tempSpike[id] = dt;
             spikeCount[id] = 0;
         }
-		__syncthreads();
+        assert(lif.v < vT);
+        __syncthreads();
         // commit the spikes
         #ifdef DEBUG
             int counter = 0;
@@ -663,10 +664,10 @@ compute_V(double* __restrict__ v,
             tempSpike[id] = lif.tsp;
             #ifdef DEBUG
 			    if (lif.tsp < dt) {
-		            printf("end %u: v0 = %e, v = %e->%e, tBack %e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tsp);
-                    assert(lif.tsp > t_hlf);
+		            printf("end %u: v0 = %e, v = %e->%e, tBack %e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tsp); 
                 }
             #endif
+			assert(lif.tsp > t_hlf);
         } else {
             #ifdef VOLTA
                 __syncwarp();
@@ -692,9 +693,9 @@ compute_V(double* __restrict__ v,
     #ifdef DEBUG
         if (lif.v > vT) {
 	        printf( "after_ %u-%i: v = %e->%e, tBack = %e, tsp = %e==%e, t_hlf = %e\n", id, lif.correctMe, lif.v0, lif.v, lif.tBack, lif.tsp, tempSpike[id], t_hlf);
-			assert(lif.v < vT);
 	    }
     #endif
+	assert(lif.v < vT);
     //__syncwarp();
     // commit conductance to global mem
     #pragma unroll

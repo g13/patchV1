@@ -6,8 +6,8 @@
 #define TEST_WITH_MANUAL_FFINPUT
 //#define GPU_ONLY
 //#define NAIVE
-#define DEBUG
-//#define FULL_SPEED
+//#define DEBUG
+#define FULL_SPEED
 //#define VOLTA
 
 #define timeNow() std::chrono::high_resolution_clock::now()

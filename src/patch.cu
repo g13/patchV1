@@ -19,7 +19,6 @@ int main(int argc, char *argv[])
     double flatRateE = 100.0f; // Hz
     double flatRateI0 = 4;
     double t = 1.0f;
-	unsigned int mt = 1;
     unsigned int nstep = 200;
     double EffsE = 1e-1;
     double IffsE0 = 0.0;
@@ -63,7 +62,7 @@ int main(int argc, char *argv[])
 	}
 	if (argc == 15) {
 		sscanf(argv[argc-1], "%100s", tmp);
-		sscanf(argv[argc-2], "%d", &mt);
+		sscanf(argv[argc-2], "%lf", &t);
 		sscanf(argv[argc-3], "%lf", &flatRateI0);
 		sscanf(argv[argc-4], "%lf", &flatRateE);
 		sscanf(argv[argc-5], "%u", &seed);
@@ -111,7 +110,6 @@ int main(int argc, char *argv[])
     printf("sIE = %e\n", sIE);
     printf("sEI = %e\n", sEI);
     printf("sII = %e\n", sII);
-	t = mt * t;
     double dt = t/float(nstep); // ms
     /* to be extended */
     bool presetInit = false;
@@ -204,11 +202,9 @@ int main(int argc, char *argv[])
     printf("storage size of preMat %.1fMb\n", float(networkSize*networkSize*sizeof(double))/1024.0/1024.0);
 
     #ifndef GPU_ONLY
-	    #ifdef TEST_WITH_MANUAL_FFINPUT
-            cpu_version(networkSize, dInputE, dInputI, nstep, dt, nE, preMat, v, firstInputE, firstInputI, EffsE, IffsE, EffsI, IffsI, theme, flatRateE, flatRateI, ngTypeE, ngTypeI);
-            #ifdef CPU_ONLY
-                return EXIT_SUCCESS;
-            #endif
+        cpu_version(networkSize, dInputE, dInputI, nstep, dt, nE, preMat, v, firstInputE, firstInputI, seed, EffsE, IffsE, EffsI, IffsI, theme, flatRateE, flatRateI, ngTypeE, ngTypeI);
+        #ifdef CPU_ONLY
+            return EXIT_SUCCESS;
         #endif
     #endif
 
