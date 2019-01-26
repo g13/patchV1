@@ -105,16 +105,18 @@ __global__ void reduce_G(double* __restrict__ g,
     }
 }
 
-__global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed, double *lTR, double dInput) {
+__global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed, double *lTR, double dInput, unsigned int offset) {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
-    curand_init(seed+id, 0, 0, &localState);
+    curand_init(seed+id+offset, 0, 0, &localState);
     logRand[id] = -log(curand_uniform_double(&localState));
     state[id] = localState;
 
     // lTR works as firstInputTime
     #ifdef TEST_WITH_MANUAL_FFINPUT
         lTR[id] = curand_uniform_double(&localState)*dInput;
+    #else
+        lTR[id] = curand_uniform_double(&localState);
     #endif
 }
 
@@ -409,11 +411,8 @@ __global__ void compute_V(double* __restrict__ v,
     // consider use shared memory for dynamic allocation
     double inputTimeE[MAX_FFINPUT_PER_DT];
     double inputTimeI[MAX_FFINPUT_PER_DT];
-    curandStateMRG32k3a localStateE = stateE[id];
-    curandStateMRG32k3a localStateI = stateI[id];
-    int nInputE, nInputI;
+    int nInputE=0, nInputI=0;
     #ifdef TEST_WITH_MANUAL_FFINPUT
-        nInputE = 0;
         if (leftTimeRateE[id] < dt) {
             inputTimeE[nInputE] = leftTimeRateE[id];
             nInputE++;
@@ -428,7 +427,6 @@ __global__ void compute_V(double* __restrict__ v,
             leftTimeRateE[id] -= dt;
         }
 
-        nInputI = 0;
         if (leftTimeRateI[id] < dt) {
             inputTimeI[nInputI] = leftTimeRateI[id];
             nInputI++;
@@ -443,16 +441,27 @@ __global__ void compute_V(double* __restrict__ v,
             leftTimeRateI[id] -= dt;
         }
     #else
-        nInputE = set_input_time(inputTimeE, dt, inputRateE[id], &(leftTimeRateE[id]), &(lastNegLogRandE[id]), &localStateE);
-        nInputI = set_input_time(inputTimeI, dt, inputRateI[id], &(leftTimeRateI[id]), &(lastNegLogRandI[id]), &localStateI);
+        curandStateMRG32k3a localStateE;
+        curandStateMRG32k3a localStateI;
+        double irE = inputRateE[id];
+        double irI = inputRateI[id];
+        if (irE > 0) {
+            localStateE = stateE[id];
+            nInputE = set_input_time(inputTimeE, dt, irE, &(leftTimeRateE[id]), &(lastNegLogRandE[id]), &localStateE);
+		    stateE[id] = localStateE;
+        }
+        if (irI > 0) {
+            localStateI = stateI[id];
+		    nInputI = set_input_time(inputTimeI, dt, irI, &(leftTimeRateI[id]), &(lastNegLogRandI[id]), &localStateI);
+		    stateI[id] = localStateI;
+        }
     #endif
     //__syncwarp();
     // return a realization of Poisson input rate
-    eventRateE[id] = nInputE;
-    eventRateI[id] = nInputI;
-    // update rng state 
-    stateE[id] = localStateE;
-    stateI[id] = localStateI;
+    #ifndef FULL_SPEED
+        eventRateE[id] = nInputE;
+        eventRateI[id] = nInputI;
+    #endif
     /* evolve g to t+dt with ff input only */
     unsigned int gid;
     gE_t = 0.0f;

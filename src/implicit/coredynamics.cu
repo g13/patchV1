@@ -17,14 +17,13 @@ __device__ void warp0_min(double* array, unsigned int* id) {
         id[0] = index;
     }
 }
-__device__ void warps_min(double* array, unsigned int* id) {
-    double value = array[threadIdx.x];
+__device__ void warps_min(double* array, double data, unsigned int* id) {
 	double index = threadIdx.x;
     for (int offset = warpSize/2; offset > 0; offset /= 2) {
-        double compare = __shfl_down_sync(FULL_MASK, value, offset);
+        double comp_data = __shfl_down_sync(FULL_MASK, data, offset);
         unsigned int comp_id = __shfl_down_sync(FULL_MASK, index, offset);
-        if (value > compare) {
-            value = compare;
+        if (data > comp_data) {
+            data = comp_data;
             index = comp_id;
         }
         __syncwarp();
@@ -32,14 +31,14 @@ __device__ void warps_min(double* array, unsigned int* id) {
     __syncthreads();
     if (threadIdx.x % warpSize == 0) {
         unsigned int head = threadIdx.x/warpSize;
-        array[head] = value;
+        array[head] = data;
         id[head] = index;
     }
 }
 
-__device__ void find_min(double* array, unsigned int* id) { 
+__device__ void find_min(double* array, double data, unsigned int* id) { 
     __syncwarp();
-	warps_min(array, id);
+	warps_min(array, data, id);
     __syncthreads();
     if (threadIdx.x < warpSize) {
         warp0_min(array, id);
@@ -47,17 +46,48 @@ __device__ void find_min(double* array, unsigned int* id) {
     __syncthreads();
 }
 
-__global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed, double *lTR, double dInput, double rate, double dt) {
+__device__ void warps_reduce(unsigned int* array) {
+    unsigned int data = array[threadIdx.x];
+    for (int offset = warpSize/2; offset > 0; offset /= 2) {
+        data += __shfl_down_sync(FULL_MASK, data, offset);
+    }
+    __syncthreads();
+    if (threadIdx.x % warpSize == 0) {
+        array[threadIdx.x/warpSize] = data;
+    }
+}
+
+__device__ void warp0_reduce(unsigned int* array) {
+    unsigned int data = array[threadIdx.x];
+    for (int offset = warpSize/2; offset > 0; offset /= 2) {
+        data += __shfl_down_sync(FULL_MASK, data, offset);
+    }
+    if (threadIdx.x == 0) {
+        array[0] = data;
+    }
+}
+
+__device__ void block_reduce(unsigned int* array) {
+    __syncwarp();
+	warps_reduce(array);
+    __syncthreads();
+    if (threadIdx.x < warpSize) {
+        warp0_reduce(array);
+    }
+    __syncthreads();
+}
+
+__global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed, double *lTR, double dInput, unsigned int offset) {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
-    curand_init(seed+id, 0, 0, &localState);
+    curand_init(seed+id+offset, 0, 0, &localState);
     logRand[id] = -log(curand_uniform_double(&localState));
     state[id] = localState;
 
     #ifdef TEST_WITH_MANUAL_FFINPUT
         lTR[id] = curand_uniform_double(&localState)*dInput;
     #else
-        lTR[id] = curand_uniform_double(&localState)*rate*dt;
+        lTR[id] = curand_uniform_double(&localState);
     #endif
 }
 
@@ -260,7 +290,7 @@ __device__  void step(LIF &lif, double t0, double t1, double _dt, double tRef) {
                 break;
             }
         }
-    } 
+    }
 }
 
 __device__  void dab(LIF &lif, double t0, double t1, double _dt) {
@@ -407,9 +437,9 @@ compute_V(double* __restrict__ v,
           curandStateMRG32k3a* __restrict__ stateI,
           ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInputE, double dInputI)
 {
-    __shared__ double tempSpike[1024];
-    __shared__ unsigned int spid[1024];
-    __shared__ unsigned int spikeCount[1024];
+    __shared__ double tempSpike[blockSize];
+    __shared__ unsigned int spid[warpSize];
+    __shared__ unsigned int spikeCount[blockSize];
     unsigned int id = threadIdx.x;
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
     LIF lif(v[id], tBack[id]);
@@ -457,9 +487,8 @@ compute_V(double* __restrict__ v,
     /* Get feedforward input */
     double inputTimeE[MAX_FFINPUT_PER_DT];
     double inputTimeI[MAX_FFINPUT_PER_DT];
-    int nInputE, nInputI;
+    int nInputE=0, nInputI=0;
     #ifdef TEST_WITH_MANUAL_FFINPUT
-        nInputE = 0;
         if (leftTimeRateE[id] < dt) {
             inputTimeE[nInputE] = leftTimeRateE[id];
             nInputE++;
@@ -474,7 +503,6 @@ compute_V(double* __restrict__ v,
             leftTimeRateE[id] -= dt;
         }
 
-        nInputI = 0;
         if (leftTimeRateI[id] < dt) {
             inputTimeI[nInputI] = leftTimeRateI[id];
             nInputI++;
@@ -489,12 +517,20 @@ compute_V(double* __restrict__ v,
             leftTimeRateI[id] -= dt;
         }
     #else
-        curandStateMRG32k3a localStateE = stateE[id];
-        curandStateMRG32k3a localStateI = stateI[id];
-        nInputE = set_input_time(inputTimeE, dt, inputRateE[id], &(leftTimeRateE[id]), &(lastNegLogRandE[id]), &localStateE);
-		stateE[id] = localStateE;
-		nInputI = set_input_time(inputTimeI, dt, inputRateI[id], &(leftTimeRateI[id]), &(lastNegLogRandI[id]), &localStateI);
-		stateI[id] = localStateI;
+        curandStateMRG32k3a localStateE;
+        curandStateMRG32k3a localStateI;
+        double irE = inputRateE[id];
+        double irI = inputRateI[id];
+        if (irE > 0) {
+            localStateE = stateE[id];
+            nInputE = set_input_time(inputTimeE, dt, irE, &(leftTimeRateE[id]), &(lastNegLogRandE[id]), &localStateE);
+		    stateE[id] = localStateE;
+        }
+        if (irI > 0) {
+            localStateI = stateI[id];
+		    nInputI = set_input_time(inputTimeI, dt, irI, &(leftTimeRateI[id]), &(lastNegLogRandI[id]), &localStateI);
+		    stateI[id] = localStateI;
+        }
     #endif
     // return a realization of Poisson input rate
 	#ifndef FULL_SPEED
@@ -519,7 +555,7 @@ compute_V(double* __restrict__ v,
 	assert(lif.tsp > 0);
     // spike-spike correction
 	//__syncthreads();
-	find_min(tempSpike, spid);
+	find_min(tempSpike, lif.tsp, spid);
 	double t0 = 0.0;
 	double new_dt;
     double t_hlf = tempSpike[0];
@@ -568,9 +604,9 @@ compute_V(double* __restrict__ v,
             unsigned int old_count = lif.spikeCount;
             step(lif, t0, t_hlf, dt, tRef);
             if (id == imin && lif.tsp == dt) {
-                // forward biased tsp
-                lif.tsp = t_hlf;
                 lif.spikeCount++;
+                lif.tsp = t_hlf;
+                lif.tBack = t_hlf + tRef;
             }
             #ifdef VOLTA
                 __syncwarp();
@@ -580,7 +616,6 @@ compute_V(double* __restrict__ v,
             if (lif.tsp < dt) {
                 spikeTrain[id] = lif.tsp;
                 //lif.tsp = t_hlf;
-                lif.tBack = lif.tsp + tRef;
                 if (lif.tBack >= dt) {
                     lif.reset_v();
                     lif.correctMe = false;
@@ -720,7 +755,7 @@ compute_V(double* __restrict__ v,
             tempSpike[id] = dt;
         }
 		// next spike
-        find_min(tempSpike, spid);
+        find_min(tempSpike, lif.tsp, spid);
 		t0 = t_hlf;
         t_hlf = tempSpike[0];
         imin = spid[0];
@@ -748,22 +783,22 @@ compute_V(double* __restrict__ v,
 	    unsigned int gid = networkSize * ig + id;
         gE[gid] = gE_local[ig];
         hE[gid] = hE_local[ig];
-        assert(gE_local[ig]>0);
-        assert(hE_local[ig]>0);
+        //assert(gE_local[ig]>0);
+        //assert(hE_local[ig]>0);
     }
     #pragma unroll
     for (unsigned int ig=0; ig<ngTypeI; ig++) {
 	    unsigned int gid = networkSize * ig + id;
         gI[gid] = gI_local[ig];
         hI[gid] = hI_local[ig];
-        assert(gI_local[ig]>0);
-        assert(hI_local[ig]>0);
+        //assert(gI_local[ig]>0);
+        //assert(hI_local[ig]>0);
     }
     nSpike[id] = lif.spikeCount;
 	v[id] = lif.v;
-	if (lif.tBack > 0) {
-		tBack[id] = lif.tBack-dt;
-	}
+    if (lif.tBack > 0) {
+        tBack[id] = lif.tBack - dt;
+    }
 }
 
 __device__  void one(LIF& lif, double dt, double tRef, unsigned int id, double gE, double gI) {
@@ -868,9 +903,8 @@ compute_V_without_ssc(double* __restrict__ v,
     // consider use shared memory for dynamic allocation
     double inputTimeE[MAX_FFINPUT_PER_DT];
     double inputTimeI[MAX_FFINPUT_PER_DT];
-    int nInputE, nInputI;
+    int nInputE=0, nInputI=0;
     #ifdef TEST_WITH_MANUAL_FFINPUT
-        nInputE = 0;
         if (leftTimeRateE[id] < dt) {
             inputTimeE[nInputE] = leftTimeRateE[id];
             nInputE++;
@@ -885,7 +919,6 @@ compute_V_without_ssc(double* __restrict__ v,
             leftTimeRateE[id] -= dt;
         }
 
-        nInputI = 0;
         if (leftTimeRateI[id] < dt) {
             inputTimeI[nInputI] = leftTimeRateI[id];
             nInputI++;
@@ -900,12 +933,20 @@ compute_V_without_ssc(double* __restrict__ v,
             leftTimeRateI[id] -= dt;
         }
     #else
-        curandStateMRG32k3a localStateE = stateE[id];
-        curandStateMRG32k3a localStateI = stateI[id];
-        nInputE = set_input_time(inputTimeE, dt, inputRateE[id], &(leftTimeRateE[id]), &(lastNegLogRandE[id]), &localStateE);
-        stateE[id] = localStateE;
-        nInputI = set_input_time(inputTimeI, dt, inputRateI[id], &(leftTimeRateI[id]), &(lastNegLogRandI[id]), &localStateI);
-        stateI[id] = localStateI;
+        curandStateMRG32k3a localStateE;
+        curandStateMRG32k3a localStateI;
+        double irE = inputRateE[id];
+        double irI = inputRateI[id];
+        if (irE > 0) {
+            localStateE = stateE[id];
+            nInputE = set_input_time(inputTimeE, dt, irE, &(leftTimeRateE[id]), &(lastNegLogRandE[id]), &localStateE);
+		    stateE[id] = localStateE;
+        }
+        if (irI > 0) {
+            localStateI = stateI[id];
+		    nInputI = set_input_time(inputTimeI, dt, irI, &(leftTimeRateI[id]), &(lastNegLogRandI[id]), &localStateI);
+		    stateI[id] = localStateI;
+        }
     #endif
     //__syncwarp();
     // return a realization of Poisson input rate
