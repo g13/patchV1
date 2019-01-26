@@ -22,6 +22,7 @@ struct LIF {
     __device__ LIF(double _v0, double _tBack): v0(_v0), tBack(_tBack) {};
     __device__ virtual void set_p0(double _gE, double _gI, double _gL);
     __device__ virtual void set_p1(double _gE, double _gI, double _gL);
+    __device__ virtual void transfer_p1_to_p0();
     __device__ virtual void implicit_rk2(double dt);
     __device__ virtual void compute_spike_time(double dt, double t0 = 0.0f);
     __device__ virtual void recompute(double dt, double t0=0.0f);

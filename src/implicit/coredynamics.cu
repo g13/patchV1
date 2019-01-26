@@ -3,6 +3,7 @@
 __device__ void warp0_min(double* array, unsigned int* id) {
     double value = array[threadIdx.x];
     double index = id[threadIdx.x];
+    __syncwarp();
     for (int offset = warpSize/2; offset > 0; offset /= 2) {
         double compare = __shfl_down_sync(FULL_MASK, value, offset);
         unsigned int comp_id = __shfl_down_sync(FULL_MASK, index, offset);
@@ -19,6 +20,7 @@ __device__ void warp0_min(double* array, unsigned int* id) {
 }
 __device__ void warps_min(double* array, double data, unsigned int* id) {
 	double index = threadIdx.x;
+    __syncwarp();
     for (int offset = warpSize/2; offset > 0; offset /= 2) {
         double comp_data = __shfl_down_sync(FULL_MASK, data, offset);
         unsigned int comp_id = __shfl_down_sync(FULL_MASK, index, offset);
@@ -37,7 +39,6 @@ __device__ void warps_min(double* array, double data, unsigned int* id) {
 }
 
 __device__ void find_min(double* array, double data, unsigned int* id) { 
-    __syncwarp();
 	warps_min(array, data, id);
     __syncthreads();
     if (threadIdx.x < warpSize) {
@@ -48,6 +49,7 @@ __device__ void find_min(double* array, double data, unsigned int* id) {
 
 __device__ void warps_reduce(unsigned int* array) {
     unsigned int data = array[threadIdx.x];
+    __syncwarp();
     for (int offset = warpSize/2; offset > 0; offset /= 2) {
         data += __shfl_down_sync(FULL_MASK, data, offset);
     }
@@ -59,6 +61,7 @@ __device__ void warps_reduce(unsigned int* array) {
 
 __device__ void warp0_reduce(unsigned int* array) {
     unsigned int data = array[threadIdx.x];
+    __syncwarp();
     for (int offset = warpSize/2; offset > 0; offset /= 2) {
         data += __shfl_down_sync(FULL_MASK, data, offset);
     }
@@ -68,7 +71,6 @@ __device__ void warp0_reduce(unsigned int* array) {
 }
 
 __device__ void block_reduce(unsigned int* array) {
-    __syncwarp();
 	warps_reduce(array);
     __syncthreads();
     if (threadIdx.x < warpSize) {
@@ -98,7 +100,7 @@ double sEE, double sIE, double sEI, double sII, unsigned int networkSize, unsign
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
     curand_init(seed+id, 0, 0, &localState);
-    v[id] = vL + curand_uniform_double(&localState) * (vT-vL);
+    v[id] = vL + curand_uniform_double(&localState) * (vT-vL) * 0.5;
     double mean, std, ratio;
     if (id < nE) {
         mean = log(sEE/sqrt(1.0f+1.0f/sEE));
@@ -265,11 +267,10 @@ __device__  void initial(LIF &lif, double dt) {
     }
 }
 
-__device__  void step(LIF &lif, double t0, double t1, double _dt, double tRef) {
-    double dt = t1 - t0;
-    lif.tsp = _dt;
+__device__  void step(LIF &lif, double t0, double t1, double tRef) {
     // not in refractory period
     if (lif.tBack < t1) {
+        double dt = t1 - t0;
         // return from refractory period
         if (lif.tBack > t0) {
             lif.recompute_v0(dt, t0);
@@ -294,7 +295,7 @@ __device__  void dab(LIF &lif, double t0, double _dt) {
     double dt = _dt - t0;
     // return from refractory period
     //#ifdef DEBUG
-        assert(lif.tBack < _dt);
+    assert(lif.tBack < _dt);
 	//#endif
     if (lif.tBack > t0) {
         lif.recompute_v0(dt, t0);
@@ -349,32 +350,26 @@ __device__ void LIF::set_p1(double gE, double gI, double gL) {
     b1 = get_b(gE, gI, gL); 
 }
 
+__device__ void LIF::transfer_p1_to_p0() {
+    a0 = a1;
+    b0 = b1;
+}
+
 __device__ void LIF::reset_v() {
     v = vL;
 }
 
 __device__ void prep_cond(LIF &lif, ConductanceShape &condE, double gE[], double hE[], double fE[], double inputTimeE[], int nInputE,
 	ConductanceShape &condI, double gI[], double hI[], double fI[], double inputTimeI[], int nInputI, double gL, double dt) {
-	double gE_t = 0.0f;
-#pragma unroll
-	for (unsigned int ig=0; ig<ngTypeE; ig++) {
-		gE_t += gE[ig];
-	}
-	double gI_t = 0.0f;
-#pragma unroll
-	for (unsigned int ig=0; ig<ngTypeI; ig++) {
-		gI_t += gI[ig];
-	}
-	lif.set_p0(gE_t, gI_t, gL);
-
+    // p0 should already be ready.
 	gE_t = 0.0f;
-#pragma unroll
+    #pragma unroll
 	for (int ig=0; ig<ngTypeE; ig++) {
 		evolve_g(condE, &gE[ig], &hE[ig], &fE[ig], inputTimeE, nInputE, dt, ig);
 		gE_t += gE[ig];
 	}
 	gI_t = 0.0f;
-#pragma unroll
+    #pragma unroll
 	for (int ig=0; ig<ngTypeI; ig++) {
 		evolve_g(condI, &gI[ig], &hI[ig], &fI[ig], inputTimeI, nInputI, dt, ig);
 		gI_t += gI[ig];
@@ -460,26 +455,31 @@ compute_V(double* __restrict__ v,
 
     // init cond E 
 	double fE_local[ngTypeE];
+	double gE_t = 0.0f;
     #pragma unroll
     for (unsigned int ig=0; ig<ngTypeE; ig++) {
 		unsigned int gid = networkSize * ig + id;
         gE_local[ig] = gE[gid];
         hE_local[ig] = hE[gid];
+		fE_local[ig] = fE[gid];
         gE_retrace[ig] = gE_local[ig];
         hE_retrace[ig] = hE_local[ig];
-		fE_local[ig] = fE[gid];
+		gE_t += gE_local[ig];
     }
     //  cond I 
 	double fI_local[ngTypeI];
+	double gI_t = 0.0f;
     #pragma unroll
     for (unsigned int ig=0; ig<ngTypeI; ig++) {
 		unsigned int gid = networkSize * ig + id;
 		gI_local[ig] = gI[gid];
         hI_local[ig] = hI[gid];
+		fI_local[ig] = fI[gid];
         gI_retrace[ig] = gI_local[ig];
         hI_retrace[ig] = hI_local[ig];
-		fI_local[ig] = fI[gid];
+		gI_t += gI_local[ig];
     }
+	lif.set_p0(gE_t, gI_t, gL);
     /* Get feedforward input */
     double inputTimeE[MAX_FFINPUT_PER_DT];
     double inputTimeI[MAX_FFINPUT_PER_DT];
@@ -552,7 +552,6 @@ compute_V(double* __restrict__ v,
 	//__syncthreads();
 	find_min(tempSpike, lif.tsp, spid);
 	double t0 = 0.0;
-	double new_dt;
     double t_hlf = tempSpike[0];
     unsigned int imin = spid[0];
 	__syncthreads();
@@ -570,8 +569,10 @@ compute_V(double* __restrict__ v,
     while (t_hlf < dt) {
         // t0 ------- min ---t_hlf
         lif.tsp = dt;
+        /************ This may be optimized to be per warp decision **************/
+        //unsigned int MASK = __ballot_sync(FULL_MASK, lif.correctMe);
         if (lif.correctMe) {
-            new_dt = t_hlf - t0;
+            double new_dt = t_hlf - t0;
             // prep inputTime
             jInputE = iInputE;
             if (jInputE < nInputE) {
@@ -598,18 +599,15 @@ compute_V(double* __restrict__ v,
 			    double old_tBack = lif.tBack;
             #endif
             unsigned int old_count = lif.spikeCount;
-            step(lif, t0, t_hlf, dt, tRef);
+            step(lif, t0, t_hlf, tRef);
             if (id == imin && lif.tsp == dt) {
                 lif.spikeCount++;
                 lif.tsp = t_hlf;
                 lif.tBack = t_hlf + tRef;
             }
-            #ifdef VOLTA
-                __syncwarp();
-            #endif
-            spikeCount[id] = lif.spikeCount - old_count;
             if (lif.tsp < dt) {
                 spikeTrain[id] = lif.tsp;
+                spikeCount[id] = lif.spikeCount - old_count;
                 //lif.tsp = t_hlf;
                 if (lif.tBack >= dt) {
                     lif.reset_v();
@@ -623,7 +621,7 @@ compute_V(double* __restrict__ v,
 				assert(lif.tsp > t0);
             }
             if (lif.v > vT) {
-                assert(lif.tBack < dt && lif.tBack > t_hlf);
+                assert(lif.tBack < dt && lif.tBack >= t_hlf);
             }
         } 
         __syncwarp();
@@ -637,6 +635,7 @@ compute_V(double* __restrict__ v,
         for (unsigned int i=0; i<blockSize; i++) {
             double tsp = tempSpike[i];
             if (tsp < dt) {
+                double strength = preMat[i*networkSize + id] * spikeCount[i];
                 double dtsp = t_hlf-tsp;
                 #ifdef DEBUG
                     counter++;
@@ -644,7 +643,6 @@ compute_V(double* __restrict__ v,
 			        	printf("%u: %e\n", i, tsp);
                     }
                 #endif
-                double strength = preMat[i*networkSize + id] * spikeCount[i];
                 if (i < nE) {
                     #pragma unroll
 			    	for (unsigned int ig=0; ig<ngTypeE; ig++) {
@@ -722,16 +720,12 @@ compute_V(double* __restrict__ v,
 	    unsigned int gid = networkSize * ig + id;
         gE[gid] = gE_local[ig];
         hE[gid] = hE_local[ig];
-        //assert(gE_local[ig]>0);
-        //assert(hE_local[ig]>0);
     }
     #pragma unroll
     for (unsigned int ig=0; ig<ngTypeI; ig++) {
 	    unsigned int gid = networkSize * ig + id;
         gI[gid] = gI_local[ig];
         hI[gid] = hI_local[ig];
-        //assert(gI_local[ig]>0);
-        //assert(hI_local[ig]>0);
     }
     nSpike[id] = lif.spikeCount;
 	v[id] = lif.v;
