@@ -11,7 +11,6 @@ int main(int argc, char *argv[])
     seed = std::time(0);
     int device;
     int b1,b2;
-	int ms = 1;
     b1 = 160;
     b2 = 128;
     bool printStep = false;

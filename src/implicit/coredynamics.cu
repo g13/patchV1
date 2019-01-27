@@ -306,9 +306,7 @@ __device__  void one(LIF* lif, double dt, double tRef, unsigned int id, double g
             lif->compute_spike_time(dt);
             lif->spikeCount++;
             lif->tBack = lif->tsp + tRef;
-            //printf("%i: %i, tBack = %e->%e, v = %e->%e\n", id, lif->spikeCount, lif->tsp, lif->tBack, lif->v0, lif->v);
             if (lif->tBack < dt) {
-                // refractory period ended during dt
                 lif->recompute(dt);
             } else {
                 break;
@@ -363,6 +361,9 @@ __device__  void step(LIF* lif, double t0, double t1, double tRef) {
                 break;
             }
         }
+    }
+    if (lif->v < vI) {
+        lif->v = vI;
     }
 }
 
@@ -598,15 +599,15 @@ compute_V(double* __restrict__ v,
                 }
                 #ifdef DEBUG
                     printf("t0: %e, t_hlf: %e\n", t0, t_hlf);
-		            printf("hlf %u: v0 = %e, v = %e->%e, tBack %e->%e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack, lif.tsp);
+		            printf("hlf %u: v0 = %e, v = %e->%e, tBack %e->%e tsp %ex%i\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack, lif.tsp, spikeCount[id]);
                 #endif
-				assert(lif.tsp <= t_hlf);
-				assert(lif.tsp > t0);
+				assert(lif.tsp <= t_hlf+EPS);
+				assert(lif.tsp > t0-EPS);
             }
             if (lif.v > vT) {
-                assert(lif.tBack < dt && lif.tBack >= t_hlf);
+                assert(lif.tBack < dt && lif.tBack >= t_hlf-EPS);
             }
-        } 
+        }
         __syncwarp();
         tempSpike[id] = lif.tsp;
         __syncthreads();
@@ -670,10 +671,11 @@ compute_V(double* __restrict__ v,
             dab(&lif, t_hlf, dt);
             #ifdef DEBUG
 			    if (lif.tsp < dt) {
-		            printf("end %u: v0 = %e, v = %e->%e, tBack %e->%e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack, lif.tsp); 
+		            printf("end %u: v0 = %e, v = %e->%e, tBack %e->%e tsp %e > %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack, lif.tsp, t_hlf); 
                 }
             #endif
-			assert(lif.tsp > t_hlf);
+            assert(lif.tsp <= dt);
+			assert(lif.tsp > t_hlf-EPS);
         }
 		// next spike
         find_min(tempSpike, lif.tsp, spid);

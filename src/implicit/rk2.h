@@ -1,6 +1,8 @@
 #ifndef RK2_H
 #define RK2_H
+#include <cassert>
 #include "CONST.h"
+#include "stdio.h"
 
 typedef struct Runge_Kutta_2 {
     unsigned int spikeCount;

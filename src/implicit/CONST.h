@@ -11,5 +11,6 @@
 #define tRef_I 1.0f
 #define ngTypeE 1
 #define ngTypeI 1
+#define EPS 1e-14
 
 #endif

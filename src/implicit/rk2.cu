@@ -9,6 +9,7 @@ __forceinline__ __host__ __device__ double get_b(double gE, double gI, double gL
 }
 
 __forceinline__ __host__ __device__ double comp_spike_time(double v,double v0, double dt, double t0 = 0.0) {
+    double r = (vT-v0)/(v-v0);
     return t0 + (vT-v0)/(v-v0)*dt;
 }
 
@@ -83,7 +84,6 @@ __device__ void impl_rk2::recompute(double dt, double t0) {
     double A = (2 - a0*dt)/denorm;
     double B = (b0 + b1)*dt/denorm;
     v0 = recomp_v0(A, B, rB);
-    v = A*v0 + B;
 }
 
 __device__ void impl_rk2::recompute_v(double dt, double t0) {
