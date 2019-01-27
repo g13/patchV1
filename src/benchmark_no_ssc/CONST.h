@@ -9,7 +9,5 @@
 #define gL_I 0.08f
 #define tRef_E 2.0f
 #define tRef_I 1.0f
-#define MAX_FFINPUT_PER_DT 500 // dt in ms
-#define MAX_SPIKE_PER_DT 500 // dt in ms
 
 #endif

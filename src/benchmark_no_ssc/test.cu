@@ -656,9 +656,9 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaEventSynchronize(stop));
     CUDA_CALL(cudaEventElapsedTime(&time, start, stop));
     printf("CUDA takes %fms, runtime/realtime ratio ms %fms\n", time, time/(dt*nstep));
+    printf("compute_V takes %fms, ratio ms %fms\n", timeV, timeV/(dt*nstep));
+    printf("recal_G takes %fms, ratio ms %fms\n", timeG, timeG/(dt*nstep));
     #ifndef FULL_SPEED
-        printf("compute_V takes %fms, ratio ms %fms\n", timeV, timeV/(dt*nstep));
-        printf("recal_G takes %fms, ratio ms %fms\n", timeG, timeG/(dt*nstep));
         printf("input ratio recurrent:feedforward = %f\n", exc_input_ratio/((EffsE*nE+IffsE*nI)/networkSize*dt*nstep/dInputE));
         printf("           exc,        inh\n");
         printf("avg gE = %e, %e\n", gEavgE/nstep/nE, gEavgI/nstep/nI);

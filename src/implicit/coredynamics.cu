@@ -246,138 +246,25 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
     }
 }
 
-__device__  void initial(LIF &lif, double dt) {
-    lif.tsp = dt;
-    lif.correctMe = true;
-    lif.spikeCount = 0;
-    // not in refractory period
-    if (lif.tBack < dt) {
-        // return from refractory period
-        if (lif.tBack > 0) {
-            lif.recompute_v0(dt);
-        }
-        lif.implicit_rk2(dt);
-        if (lif.v > vT) {
-            // crossed threshold
-            lif.compute_spike_time(dt); 
-        }
-    } else {
-        lif.reset_v();
-        lif.correctMe = false;
-    }
-}
-
-__device__  void step(LIF &lif, double t0, double t1, double tRef) {
-    // not in refractory period
-    if (lif.tBack < t1) {
-        double dt = t1 - t0;
-        // return from refractory period
-        if (lif.tBack > t0) {
-            lif.recompute_v0(dt, t0);
-        }
-        lif.implicit_rk2(dt);
-        while (lif.v > vT) {
-            // crossed threshold
-            lif.compute_spike_time(dt, t0); 
-            lif.spikeCount++;
-            lif.tBack = lif.tsp + tRef;
-            if (lif.tBack < t1) {
-                lif.recompute_v0(dt, t0);
-                lif.implicit_rk2(dt);
-            } else {
-                break;
-            }
-        }
-    }
-}
-
-__device__  void dab(LIF &lif, double t0, double _dt) {
-    double dt = _dt - t0;
-    // return from refractory period
-    //#ifdef DEBUG
-    assert(lif.tBack < _dt);
-	//#endif
-    if (lif.tBack > t0) {
-        lif.recompute_v0(dt, t0);
-    }
-    lif.implicit_rk2(dt);
-    if (lif.v > vT) {
-        // crossed threshold
-        lif.compute_spike_time(dt, t0); 
-    }
-}
-
-__device__ void LIF::implicit_rk2(double dt) {
-    v = impl_rk2(dt, a0, b0, a1, b1, v0);
-}
-
-__device__ void LIF::compute_spike_time(double dt, double t0) {
-    tsp = comp_spike_time(v, v0, dt, t0);
-}
-
-__device__ void LIF::recompute(double dt, double t0) {
-    double rB = dt/(tBack-t0) - 1; 
-    double denorm = 2 + a1*dt;
-    double A = (2 - a0*dt)/denorm;
-    double B = (b0 + b1)*dt/denorm;
-    v0 = recomp_v0(A, B, rB);
-    v = A*v0 + B;
-}
-
-__device__ void LIF::recompute_v(double dt, double t0) {
-    double rB = dt/(tBack-t0) - 1; 
-    double denorm = 2 + a1*dt;
-    double A = (2 - a0*dt)/denorm;
-    double B = (b0 + b1)*dt/denorm;
-    v = recomp_v(A, B, rB);
-}
-
-__device__ void LIF::recompute_v0(double dt, double t0) {
-    double rB = dt/(tBack-t0) - 1; 
-    double denorm = 2 + a1*dt;
-    double A = (2 - a0*dt)/denorm;
-    double B = (b0 + b1)*dt/denorm;
-    v0 = recomp_v0(A, B, rB);
-}
-
-__device__ void LIF::set_p0(double gE, double gI, double gL) {
-    a0 = get_a(gE, gI, gL);
-    b0 = get_b(gE, gI, gL); 
-}
-
-__device__ void LIF::set_p1(double gE, double gI, double gL) {
-    a1 = get_a(gE, gI, gL);
-    b1 = get_b(gE, gI, gL); 
-}
-
-__device__ void LIF::transfer_p1_to_p0() {
-    a0 = a1;
-    b0 = b1;
-}
-
-__device__ void LIF::reset_v() {
-    v = vL;
-}
-
-__device__ void prep_cond(LIF &lif, ConductanceShape &condE, double gE[], double hE[], double fE[], double inputTimeE[], int nInputE,
+__device__ void prep_cond(LIF* lif, ConductanceShape &condE, double gE[], double hE[], double fE[], double inputTimeE[], int nInputE,
 	ConductanceShape &condI, double gI[], double hI[], double fI[], double inputTimeI[], int nInputI, double gL, double dt) {
     // p0 should already be ready.
-	gE_t = 0.0f;
+	double gE_t = 0.0f;
     #pragma unroll
 	for (int ig=0; ig<ngTypeE; ig++) {
 		evolve_g(condE, &gE[ig], &hE[ig], &fE[ig], inputTimeE, nInputE, dt, ig);
 		gE_t += gE[ig];
 	}
-	gI_t = 0.0f;
+	double gI_t = 0.0f;
     #pragma unroll
 	for (int ig=0; ig<ngTypeI; ig++) {
 		evolve_g(condI, &gI[ig], &hI[ig], &fI[ig], inputTimeI, nInputI, dt, ig);
 		gI_t += gI[ig];
 	}
-	lif.set_p1(gE_t, gI_t, gL);
+	lif->set_p1(gE_t, gI_t, gL);
 }
 
-__device__ void set_p(LIF &lif, double gE0[], double gI0[], double gE1[], double gI1[], double gL) {
+__device__ void set_p(LIF* lif, double gE0[], double gI0[], double gE1[], double gI1[], double gL) {
 	double gE_t = 0.0f;
     #pragma unroll
 	for (unsigned int ig=0; ig<ngTypeE; ig++) {
@@ -388,7 +275,7 @@ __device__ void set_p(LIF &lif, double gE0[], double gI0[], double gE1[], double
 	for (unsigned int ig=0; ig<ngTypeI; ig++) {
 		gI_t += gI0[ig];
 	}
-	lif.set_p0(gE_t, gI_t, gL);
+	lif->set_p0(gE_t, gI_t, gL);
 
 	gE_t = 0.0f;
     #pragma unroll
@@ -400,7 +287,99 @@ __device__ void set_p(LIF &lif, double gE0[], double gI0[], double gE1[], double
 	for (unsigned int ig=0; ig<ngTypeI; ig++) {
 		gI_t += gI1[ig];
 	}
-	lif.set_p1(gE_t, gI_t, gL);
+	lif->set_p1(gE_t, gI_t, gL);
+}
+
+__device__  void one(LIF* lif, double dt, double tRef, unsigned int id, double gE, double gI) {
+    lif->tsp = dt;
+    lif->spikeCount = 0;
+    // not in refractory period
+    if (lif->tBack < dt) {
+        // return from refractory period
+        if (lif->tBack > 0.0f) {
+            lif->recompute_v0(dt);
+            lif->tBack = -1.0;
+        }
+        lif->compute_v(dt);
+        while (lif->v > vT) {
+            // crossed threshold
+            lif->compute_spike_time(dt);
+            lif->spikeCount++;
+            lif->tBack = lif->tsp + tRef;
+            //printf("%i: %i, tBack = %e->%e, v = %e->%e\n", id, lif->spikeCount, lif->tsp, lif->tBack, lif->v0, lif->v);
+            if (lif->tBack < dt) {
+                // refractory period ended during dt
+                lif->recompute(dt);
+            } else {
+                break;
+            }
+        }
+    }
+    __syncwarp();
+    if (lif->tBack >= dt) {
+        lif->reset_v();
+        lif->tBack -= dt;
+    }
+}
+
+__device__  void initial(LIF* lif, double dt) {
+    lif->tsp = dt;
+    lif->correctMe = true;
+    lif->spikeCount = 0;
+    // not in refractory period
+    if (lif->tBack < dt) {
+        // return from refractory period
+        if (lif->tBack > 0) {
+            lif->recompute_v0(dt);
+        }
+        lif->compute_v(dt);
+        if (lif->v > vT) {
+            // crossed threshold
+            lif->compute_spike_time(dt); 
+        }
+    } else {
+        lif->reset_v();
+        lif->correctMe = false;
+    }
+}
+
+__device__  void step(LIF* lif, double t0, double t1, double tRef) {
+    // not in refractory period
+    if (lif->tBack < t1) {
+        double dt = t1 - t0;
+        // return from refractory period
+        if (lif->tBack > t0) {
+            lif->recompute_v0(dt, t0);
+        }
+        lif->compute_v(dt);
+        while (lif->v > vT) {
+            // crossed threshold
+            lif->compute_spike_time(dt, t0); 
+            lif->spikeCount++;
+            lif->tBack = lif->tsp + tRef;
+            if (lif->tBack < t1) {
+                lif->recompute(dt, t0);
+            } else {
+                break;
+            }
+        }
+    }
+}
+
+__device__  void dab(LIF* lif, double t0, double _dt) {
+    double dt = _dt - t0;
+    // return from refractory period
+    //#ifdef DEBUG
+    assert(lif->tBack < _dt);
+	//#endif
+    if (lif->tBack > t0) {
+        lif->recompute_v0(dt, t0);
+    }
+    lif->compute_v(dt);
+    if (lif->v > vT) {
+        // crossed threshold
+        lif->compute_spike_time(dt, t0); 
+    }
 }
 
 __global__ void 
@@ -433,7 +412,11 @@ compute_V(double* __restrict__ v,
     __shared__ unsigned int spikeCount[blockSize];
     unsigned int id = threadIdx.x;
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
-    LIF lif(v[id], tBack[id]);
+    #ifdef IMPL
+        impl_rk2 lif(v[id], tBack[id]);
+    #else
+        rk2 lif(v[id], tBack[id]);
+    #endif
     double gL, tRef;
     if (id < nE) {
         tRef = tRef_E;
@@ -635,6 +618,7 @@ compute_V(double* __restrict__ v,
         for (unsigned int i=0; i<blockSize; i++) {
             double tsp = tempSpike[i];
             if (tsp < dt) {
+                //tsp = t_hlf;
                 double strength = preMat[i*networkSize + id] * spikeCount[i];
                 double dtsp = t_hlf-tsp;
                 #ifdef DEBUG
@@ -734,39 +718,6 @@ compute_V(double* __restrict__ v,
     }
 }
 
-__device__  void one(LIF& lif, double dt, double tRef, unsigned int id, double gE, double gI) {
-    lif.tsp = dt;
-    lif.spikeCount = 0;
-    // not in refractory period
-    if (lif.tBack < dt) {
-        // return from refractory period
-        if (lif.tBack > 0.0f) {
-            lif.recompute_v0(dt);
-            lif.tBack = -1.0;
-        }
-        lif.implicit_rk2(dt);
-        while (lif.v > vT) {
-            // crossed threshold
-            lif.compute_spike_time(dt);
-            lif.spikeCount++;
-            lif.tBack = lif.tsp + tRef;
-            //printf("%i: %i, tBack = %e->%e, v = %e->%e\n", id, lif.spikeCount, lif.tsp, lif.tBack, lif.v0, lif.v);
-            if (lif.tBack < dt) {
-                // refractory period ended during dt
-                lif.recompute_v0(dt);
-                lif.implicit_rk2(dt);
-            } else {
-                break;
-            }
-        }
-    }
-    __syncwarp();
-    if (lif.tBack >= dt) {
-        lif.reset_v();
-        lif.tBack -= dt;
-    }
-}
-
 __global__ void 
 __launch_bounds__(blockSize, 1)
 compute_V_without_ssc(double* __restrict__ v,
@@ -796,7 +747,11 @@ compute_V_without_ssc(double* __restrict__ v,
     __shared__ unsigned int nsp[blockSize];
     unsigned int id = threadIdx.x;
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
-    LIF lif(v[id], tBack[id]);
+    #ifdef IMPL
+        impl_rk2 lif(v[id], tBack[id]);
+    #else
+        rk2 lif(v[id], tBack[id]);
+    #endif
     double gL, tRef;
     if (id < nE) {
         tRef = tRef_E;

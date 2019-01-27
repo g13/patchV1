@@ -105,10 +105,10 @@ __global__ void reduce_G(double* __restrict__ g,
     }
 }
 
-__global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed, double *lTR, double dInput) {
+__global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed, double *lTR, double dInput, unsigned int offset) {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
-    curand_init(seed+id, 0, 0, &localState);
+    curand_init(seed+id+offset, 0, 0, &localState);
     logRand[id] = -log(curand_uniform_double(&localState));
     state[id] = localState;
 

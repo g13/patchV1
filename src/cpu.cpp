@@ -1029,8 +1029,9 @@ void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int n
                 hI_current[gid] = hI_old[gid];
             }
             lif[i]->set_p0(gE_t, gI_t, gL);
+            nInputE[i] = 0;
+            nInputI[i] = 0;
             #ifdef TEST_WITH_MANUAL_FFINPUT
-                nInputE[i] = 0;
                 if (lTRE[i] < dt) {
                     inputTimeE[i*MAX_FFINPUT_PER_DT] = lTRE[i];
                     nInputE[i]++;
@@ -1045,7 +1046,6 @@ void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int n
                     lTRE[i] -= dt;
                 }
 
-                nInputI[i] = 0;
                 if (lTRI[i] < dt) {
                     inputTimeI[i*MAX_FFINPUT_PER_DT] = lTRI[i];
                     nInputI[i]++;
@@ -1060,8 +1060,12 @@ void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int n
                     lTRI[i] -= dt;
                 }
 			#else
-				nInputE[i] = set_input_time(&(inputTimeE[i*MAX_FFINPUT_PER_DT]), dt, inputRateE, lTRE[i], logRandE[i], randGenE[i]);
-				nInputI[i] = set_input_time(&(inputTimeI[i*MAX_FFINPUT_PER_DT]), dt, inputRateI, lTRI[i], logRandI[i], randGenI[i]);
+                if (inputTimeE > 0) {
+				    nInputE[i] = set_input_time(&(inputTimeE[i*MAX_FFINPUT_PER_DT]), dt, inputRateE, lTRE[i], logRandE[i], randGenE[i]);
+                }
+                if (inputTimeI > 0) {
+				    nInputI[i] = set_input_time(&(inputTimeI[i*MAX_FFINPUT_PER_DT]), dt, inputRateI, lTRI[i], logRandI[i], randGenI[i]);
+                }
 			#endif
             #ifndef FULL_SPEED
 				inputEventsE += nInputE[i];
