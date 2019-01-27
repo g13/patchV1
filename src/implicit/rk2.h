@@ -1,5 +1,6 @@
 #ifndef RK2_H
 #define RK2_H
+#include "CONST.h"
 
 typedef struct Runge_Kutta_2 {
     unsigned int spikeCount;
@@ -22,13 +23,21 @@ typedef struct Runge_Kutta_2 {
 
 struct impl_rk2: Runge_Kutta_2 {
     double denorm;
-    __device__ impl_rk2(double _v0, double _tBack): Runge_Kutta2(_v0, _tBack) {};
-}
+    __device__ impl_rk2(double _v0, double _tBack): Runge_Kutta_2(_v0, _tBack) {};
+    __device__ void compute_v(double dt);
+    __device__ void recompute(double dt, double t0=0.0f);
+    __device__ void recompute_v0(double dt, double t0=0.0f);
+    __device__ void recompute_v(double dt, double t0=0.0f);
+};
 
 struct rk2: Runge_Kutta_2 {
-    __device__ rk2(double _v0, double _tBack): Runge_Kutta2(_v0, _tBack) {};
+    __device__ rk2(double _v0, double _tBack): Runge_Kutta_2(_v0, _tBack) {};
     __device__ double eval0(double _v);
     __device__ double eval1(double _v);
-}
+    __device__ void compute_v(double dt);
+    __device__ void recompute(double dt, double t0=0.0f);
+    __device__ void recompute_v0(double dt, double t0=0.0f);
+    __device__ void recompute_v(double dt, double t0=0.0f);
+};
 
 #endif

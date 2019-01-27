@@ -59,7 +59,7 @@ __device__ void rk2::compute_v(double dt) {
 
 __device__ void rk2::recompute(double dt, double t0) {
     recompute_v0(dt, t0);
-    rk2(dt);
+    compute_v(dt);
 }
 
 __device__ void rk2::recompute_v(double dt, double t0) {
@@ -67,14 +67,14 @@ __device__ void rk2::recompute_v(double dt, double t0) {
 }
 
 __device__ void rk2::recompute_v0(double dt, double t0) {
-    double A = (a0*a1*dt - a0 - a1) * dt/2.0f;
-    double B = (b0 + b1 - a1*b0*dt) * dt/2.0f;
+    double A = a0*a1*dt - a0 - a1;
+    double B = b0 + b1 - a1*b0*dt;
     double t = tBack-t0;
-    v0 = (vL-t*B/(1.0f+t*A);
+    v0 = (2*vL-t*B)/(2+t*A);
 }
 
 __device__ void impl_rk2::compute_v(double dt) {
-    return (2*v0 + (-a0*v0+b0+b1)*dt)/(2+a1*dt);
+    v = (2*v0 + (-a0*v0+b0+b1)*dt)/(2+a1*dt);
 }
 
 __device__ void impl_rk2::recompute(double dt, double t0) {
@@ -101,14 +101,3 @@ __device__ void impl_rk2::recompute_v0(double dt, double t0) {
     double B = (b0 + b1)*dt/denorm;
     v0 = recomp_v0(A, B, rB);
 }
-
-__device__ void impl_rk2::set_p0(double gE, double gI, double gL) {
-    a0 = get_a(gE, gI, gL);
-    b0 = get_b(gE, gI, gL); 
-}
-
-__device__ void impl_rk2::set_p1(double gE, double gI, double gL) {
-    a1 = get_a(gE, gI, gL);
-    b1 = get_b(gE, gI, gL); 
-}
-

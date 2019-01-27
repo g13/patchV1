@@ -412,7 +412,7 @@ compute_V(double* __restrict__ v,
     __shared__ unsigned int spikeCount[blockSize];
     unsigned int id = threadIdx.x;
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
-    #ifdef IMPL
+    #ifdef IMPLICIT
         impl_rk2 lif(v[id], tBack[id]);
     #else
         rk2 lif(v[id], tBack[id]);
@@ -517,14 +517,14 @@ compute_V(double* __restrict__ v,
 		eventRateI[id] = nInputI;
 	#endif
     // set conductances
-    prep_cond(lif, condE, gE_local, hE_local, fE_local, inputTimeE, nInputE, condI, gI_local, hI_local, fI_local, inputTimeI, nInputI, gL, dt); 
+    prep_cond(&lif, condE, gE_local, hE_local, fE_local, inputTimeE, nInputE, condI, gI_local, hI_local, fI_local, inputTimeI, nInputI, gL, dt); 
     spikeTrain[id] = dt;
     // initial spike guess
     #ifdef DEBUG
         double old_v0 = lif.v0;
         double old_tBack = lif.tBack;
     #endif
-    initial(lif, dt);
+    initial(&lif, dt);
     #ifdef DEBUG
     	if (lif.tsp < dt) {
     		printf("first %u: v0 = %e, v = %e->%e, tBack %e->%e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack, lif.tsp);	
@@ -572,7 +572,7 @@ compute_V(double* __restrict__ v,
                 }
             }
             // prep retracable conductance
-            prep_cond(lif, condE, gE_retrace, hE_retrace, fE_local, &inputTimeE[iInputE], jInputE-iInputE, condI, gI_retrace, hI_retrace, hI_local, &inputTimeI[iInputI], jInputI-iInputI, gL, new_dt); 
+            prep_cond(&lif, condE, gE_retrace, hE_retrace, fE_local, &inputTimeE[iInputE], jInputE-iInputE, condI, gI_retrace, hI_retrace, hI_local, &inputTimeI[iInputI], jInputI-iInputI, gL, new_dt); 
             // commit for next ext. inputs.
             iInputE = jInputE;
             iInputI = jInputI;
@@ -582,7 +582,7 @@ compute_V(double* __restrict__ v,
 			    double old_tBack = lif.tBack;
             #endif
             unsigned int old_count = lif.spikeCount;
-            step(lif, t0, t_hlf, tRef);
+            step(&lif, t0, t_hlf, tRef);
             if (id == imin && lif.tsp == dt) {
                 lif.spikeCount++;
                 lif.tsp = t_hlf;
@@ -660,14 +660,14 @@ compute_V(double* __restrict__ v,
 
         lif.tsp = dt;
         if (lif.correctMe) {
-            set_p(lif, gE_retrace, gI_retrace, gE_local, gI_local, gL);                                        
+            set_p(&lif, gE_retrace, gI_retrace, gE_local, gI_local, gL);                                        
             lif.v0 = lif.v;
             //get putative tsp
             #ifdef DEBUG
 			    double old_v0 = lif.v0;
 			    double old_tBack = lif.tBack;
             #endif
-            dab(lif, t_hlf, dt);
+            dab(&lif, t_hlf, dt);
             #ifdef DEBUG
 			    if (lif.tsp < dt) {
 		            printf("end %u: v0 = %e, v = %e->%e, tBack %e->%e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack, lif.tsp); 
@@ -860,7 +860,7 @@ compute_V_without_ssc(double* __restrict__ v,
     lif.set_p1(gE_t, gI_t, gL);
 
     // implicit rk2 step
-    one(lif, dt, tRef, id, gE_t, gI_t);
+    one(&lif, dt, tRef, id, gE_t, gI_t);
     __syncthreads();
 	assert(lif.v <= vT);
     assert(lif.tsp > 0);
