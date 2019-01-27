@@ -572,13 +572,11 @@ int main(int argc, char *argv[])
                 CUDA_CHECK();
             }
             // copy exc conductance to host
-            CUDA_CALL(cudaMemcpyAsync(gE, d_gE, networkSize * ngTypeE * sizeof(double), cudaMemcpyDeviceToHost, s2));
             if (rgI_b1.x >= 32) {
                 reduce_G<<<networkSize, rI_b2, sizeof(double)*2*rI_b2, s3>>>(d_gI, d_hI, gI_b1x, hI_b1x, ngTypeI, rgI_b1.x);
                 CUDA_CHECK();
             }
             // copy inh conductance to host
-            CUDA_CALL(cudaMemcpyAsync(gI, d_gI, networkSize * ngTypeI * sizeof(double), cudaMemcpyDeviceToHost, s3));
             #ifdef KERNEL_PERFORMANCE
                 CUDA_CALL(cudaEventRecord(kStop, 0));
                 CUDA_CALL(cudaEventSynchronize(kStop));
@@ -588,7 +586,9 @@ int main(int argc, char *argv[])
                 }
                 timeG += time;
             #endif
+            CUDA_CALL(cudaMemcpyAsync(gE, d_gE, networkSize * ngTypeE * sizeof(double), cudaMemcpyDeviceToHost, s2));
             CUDA_CALL(cudaEventRecord(gReadyE, s2));
+            CUDA_CALL(cudaMemcpyAsync(gI, d_gI, networkSize * ngTypeI * sizeof(double), cudaMemcpyDeviceToHost, s3));
             CUDA_CALL(cudaEventRecord(gReadyI, s3));
             #ifndef FULL_SPEED
                 CUDA_CALL(cudaEventSynchronize(eventRateReady));
