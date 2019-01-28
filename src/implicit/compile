@@ -1,12 +1,12 @@
 #!/bin/bash
 #module load cuda
-rm -f coredynamics.o test.o rk2.o
-nvcc -arch=compute_70 -rdc=true --ptxas-options=-v -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c patch.cu 
-nvcc -arch=compute_70 -rdc=true --ptxas-options=-v -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c coredynamics.cu 
-nvcc -arch=compute_70 -rdc=true --ptxas-options=-v -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c rk2.cu 
+rm -f coredynamics.o patch.o rk2.o
+nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c patch.cu 
+nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c coredynamics.cu 
+nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c rk2.cu 
 #nvcc -arch=compute_70 -std=c++11 -O3 -c patch.cu 
 #nvcc -arch=compute_70 -std=c++11 -O3 -c coredynamics.cu 
-nvcc -arch=compute_70 -ptxas-options=-v -lcudadevrt -lcudart coredynamics.o patch.o rk2.o -o patch 
+nvcc -arch=compute_70 -lcudadevrt -lcudart coredynamics.o patch.o rk2.o -o patch 
 #RAND#nvcc -arch=compute_70 -lcudadevrt -lcudart -lcurand coredynamics.o test.o -o test
 
 #nvcc -arch=compute_70 -Xcompiler -Wall,-pedantic -std=c++11 -O0 -c coredynamics.cu 

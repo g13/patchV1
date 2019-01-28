@@ -270,6 +270,10 @@ __device__ double prep_cond(ConductanceShape &cond, double g[], double h[], doub
     #pragma unroll
 	for (int ig=0; ig<ngType; ig++) {
 		evolve_g(cond, &g[ig], &h[ig], &f[ig], inputTime, nInput, dt, ig);
+        if (g[ig] < 0) {
+            printf("inputTime = %e -> %e: %i\n",inputTime[0], inputTime[nInput-1], nInput);
+            assert(g[ig] >= 0);
+        }
 		g_total += g[ig];
 	}
     return g_total;
@@ -508,10 +512,10 @@ compute_V(double* __restrict__ v,
     /* Get feedforward input */
     double inputTimeE[MAX_FFINPUT_PER_DT];
     double inputTimeI[MAX_FFINPUT_PER_DT];
-    int nInputE, nInputI;
+    int nInputE=0, nInputI=0;
     #ifdef TEST_WITH_MANUAL_FFINPUT
         lTRE = manual_ffinput(inputTimeE, lTRE, dInputE, nInputE, dt);
-        lTRI = manual_ffinput(inputTimeI, lTRE, dInputI, nInputI, dt);
+        lTRI = manual_ffinput(inputTimeI, lTRI, dInputI, nInputI, dt);
     #else
         curandStateMRG32k3a localStateE;
         curandStateMRG32k3a localStateI;
@@ -520,12 +524,12 @@ compute_V(double* __restrict__ v,
 
         if (irE > 0) {
             localStateE = stateE[id];
-            nInputE = set_input_time(inputTimeE, dt, irE, lTRE, lastNegLogRandE[id], &localStateE);
+            nInputE = set_input_time(inputTimeE, dt, irE, lTRE, lastNegLogRandE[id], localStateE);
 		    stateE[id] = localStateE;
         }
         if (irI > 0) {
             localStateI = stateI[id];
-		    nInputI = set_input_time(inputTimeI, dt, irI, lTRI, lastNegLogRandI[id], &localStateI);
+		    nInputI = set_input_time(inputTimeI, dt, irI, lTRI, lastNegLogRandI[id], localStateI);
 		    stateI[id] = localStateI;
         }
     #endif
@@ -547,11 +551,17 @@ compute_V(double* __restrict__ v,
         double old_tBack = lif.tBack;
     #endif
     initial(&lif, dt);
+    double v0 = lif.v0;
     #ifdef DEBUG
-    	if (lif.tsp < dt) {
-    		printf("first %u: v0 = %e, v = %e->%e, tBack %e->%e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack, lif.tsp);	
-    	}
+    	//if (lif.tsp < dt) {
+    	//	printf("first %u: v0 = %e, v = %e->%e, tBack %e->%e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack, lif.tsp);	
+    	//}
+        //if (lif.tsp > dt) {
+    	//	printf("efirst %u: v0 = %e, v = %e->%e, tBack %e->%e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack, lif.tsp);	
+        //}
     #endif
+	__syncthreads();
+	assert(lif.tsp <= dt);
 	assert(lif.tsp > 0);
     // spike-spike correction
 	//__syncthreads();
@@ -559,7 +569,6 @@ compute_V(double* __restrict__ v,
 	double t0 = 0.0;
     double t_hlf = tempSpike[0];
     unsigned int imin = spid[0];
-	__syncthreads();
     #ifdef DEBUG
     	if (id == 0) {
     		if (t_hlf == dt) {
@@ -569,6 +578,10 @@ compute_V(double* __restrict__ v,
     		}
     	}
     #endif
+    if (id == 146) {
+    	printf("first %u: v0 = %e, v = %e->%e, tBack %e->%e tsp %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack, lif.tsp);	
+    }
+	__syncthreads();
     int iInputE = 0, iInputI = 0;
     int jInputE, jInputI;
     while (t_hlf < dt) {
@@ -577,7 +590,6 @@ compute_V(double* __restrict__ v,
         /************ This may be optimized to be per warp decision **************/
         //unsigned int MASK = __ballot_sync(FULL_MASK, lif.correctMe);
         if (lif.correctMe) {
-            double new_dt = t_hlf - t0;
             // prep inputTime
             jInputE = iInputE;
             if (jInputE < nInputE) {
@@ -594,8 +606,8 @@ compute_V(double* __restrict__ v,
                 }
             }
             // prep retracable conductance
-            gE_t = prep_cond(condE, gE_retrace, hE_retrace, fE_local, &inputTimeE[iInputE], jInputE-iInputE, ngTypeE, new_dt);
-            gI_t = prep_cond(condI, gI_retrace, hI_retrace, hI_local, &inputTimeI[iInputI], jInputI-iInputI, ngTypeI, new_dt); 
+            gE_t = prep_cond(condE, gE_retrace, hE_retrace, fE_local, &inputTimeE[iInputE], jInputE-iInputE, ngTypeE, t_hlf);
+            gI_t = prep_cond(condI, gI_retrace, hI_retrace, hI_local, &inputTimeI[iInputI], jInputI-iInputI, ngTypeI, t_hlf); 
 	        lif.set_p1(gE_t, gI_t, gL);
             // commit for next ext. inputs.
             iInputE = jInputE;
@@ -604,8 +616,11 @@ compute_V(double* __restrict__ v,
             #ifdef DEBUG
 			    double old_v0 = lif.v0;
 			    double old_tBack = lif.tBack;
+                double gE0 = gE_retrace[0];
+                double gI0 = gI_retrace[0];
             #endif
             unsigned int old_count = lif.spikeCount;
+            lif.v0 = v0;
             step(&lif, t0, t_hlf, tRef);
             if (id == imin && lif.tsp == dt) {
                 lif.spikeCount++;
@@ -621,33 +636,46 @@ compute_V(double* __restrict__ v,
                     lif.correctMe = false;
                 }
                 #ifdef DEBUG
-                    printf("t0: %e, t_hlf: %e\n", t0, t_hlf);
-		            printf("hlf %u: v0 = %e, v = %e->%e, tBack %e->%e tsp %ex%i\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack, lif.tsp, spikeCount[id]);
+                        printf("t0: %e, t_hlf: %e\n", t0, t_hlf);
+		                printf("hlf %u: v0 = %e, v = %e->%e, tBack %e->%e tsp %ex%i\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack, lif.tsp, spikeCount[id]);
                 #endif
-				assert(lif.tsp <= t_hlf+EPS);
-				assert(lif.tsp > t0-EPS);
+		        assert(lif.tsp <= t_hlf+EPS);
+		        assert(lif.tsp > t0-EPS);
+            }
+            if (lif.tsp > dt) {
+		        printf("ehlf %u: v0 = %e, v = %e->%e, tBack %e->%e tsp %ex%i\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack, lif.tsp, spikeCount[id]);
+                assert(lif.tsp <= dt);
             }
             if (lif.v > vT) {
                 assert(lif.tBack < dt && lif.tBack >= t_hlf-EPS);
             }
+            #ifdef DEBUG
+                if (id == 146) {
+		            printf("xhl: v = %e->%e, t: %e < tsp %ex%i -> %e < %e\n, gE=%e->%e->%e, gI=%e->%e->%e\n", lif.v0, lif.v, t0, lif.tsp, spikeCount[id], lif.tBack, t_hlf, gE0, gE_retrace[0], gE_local[0], gI0, gI_retrace[0], gI_local[0]);
+                }
+            #endif
         }
         __syncwarp();
         tempSpike[id] = lif.tsp;
         __syncthreads();
-        // commit the spikes
         #ifdef DEBUG
-            int counter = 0;
+            unsigned int counter = 0;
         #endif
+        // commit the spikes
         #pragma unroll
         for (unsigned int i=0; i<blockSize; i++) {
             double tsp = tempSpike[i];
             if (tsp < dt) {
                 //tsp = t_hlf;
                 double strength = preMat[i*networkSize + id] * spikeCount[i];
+                if (strength<0) {
+                    printf("spikeCount = %i, str = %e\n", spikeCount[i], preMat[i*networkSize+id]);
+                    assert(strength >= 0);
+                }
                 double dtsp = t_hlf-tsp;
                 #ifdef DEBUG
                     counter++;
-                    if (id==0) {
+                    if (id==146) {
 			        	printf("%u: %e\n", i, tsp);
                     }
                 #endif
@@ -660,6 +688,8 @@ compute_V(double* __restrict__ v,
                             condE.compute_single_input_conductance(&gE_retrace[ig], &hE_retrace[ig], strength, dtsp, ig);
                         }
                         condE.compute_single_input_conductance(&gE_local[ig], &hE_local[ig], strength, dt-tsp, ig);
+                        assert(gE_retrace[ig] >= 0);
+                        assert(gE_local[ig] >= 0);
                     }
 			    } else {
 			    	#pragma unroll
@@ -670,36 +700,52 @@ compute_V(double* __restrict__ v,
 			    		    condI.compute_single_input_conductance(&gI_retrace[ig], &hI_retrace[ig], strength, dtsp, ig);
                         }
 			    		condI.compute_single_input_conductance(&gI_local[ig], &hI_local[ig], strength, dt-tsp, ig);
+                        if (gI_retrace[ig] <0 || gI_local[ig] < 0 || hI_retrace[ig] <0 || hI_local[ig] < 0) {
+                            printf("%i->%i: %e, %e, %e, %e\n", i, id, gI_retrace[ig], gI_local[ig], hI_retrace[ig], hI_local[ig]);
+                            assert(gI_retrace[ig] >= 0);
+                            assert(gI_local[ig] >= 0);
+                            assert(hI_retrace[ig] >= 0);
+                            assert(hI_local[ig] >= 0);
+                        }
 			    	}
                 }
             }
         }
 		__syncthreads();
         #ifdef DEBUG
-            if (id == 0) {
+            if (id == 146) {
                 printf("t0-t_hlf: %i spikes\n", counter);
             }
         #endif
+	    __syncthreads();
         // t_hlf ------------- dt
 
         lif.tsp = dt;
         if (lif.correctMe) {
             set_p(&lif, gE_retrace, gI_retrace, gE_local, gI_local, gL);                                        
+            v0 = lif.v;
             lif.v0 = lif.v;
-            //get putative tsp
             #ifdef DEBUG
-			    double old_v0 = lif.v0;
-			    double old_tBack = lif.tBack;
+		        double old_v0 = lif.v0;
+		        double old_tBack = lif.tBack;
             #endif
+            //get putative tsp
             dab(&lif, t_hlf, dt);
             #ifdef DEBUG
-			    if (lif.tsp < dt) {
+			    //if (lif.tsp < dt) {
+		        //    printf("end %u: v0 = %e, v = %e->%e, tBack %e->%e tsp %e > %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack, lif.tsp, t_hlf); 
+                //} 
+                //if (lif.tsp > dt) {
+		        //    printf("eend %u: v0 = %e, v = %e->%e, tBack %e->%e tsp %e > %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack, lif.tsp, t_hlf); 
+                //}
+                if (id == 146) {
 		            printf("end %u: v0 = %e, v = %e->%e, tBack %e->%e tsp %e > %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack, lif.tsp, t_hlf); 
                 }
             #endif
             assert(lif.tsp <= dt);
 			assert(lif.tsp > t_hlf-EPS);
         }
+	    __syncthreads();
 		// next spike
         find_min(tempSpike, lif.tsp, spid);
 		t0 = t_hlf;
@@ -827,7 +873,7 @@ compute_V_without_ssc(double* __restrict__ v,
     int nInputE=0, nInputI=0;
     #ifdef TEST_WITH_MANUAL_FFINPUT
         lTRE = manual_ffinput(inputTimeE, lTRE, dInputE, nInputE, dt);
-        lTRI = manual_ffinput(inputTimeI, lTRE, dInputI, nInputI, dt);
+        lTRI = manual_ffinput(inputTimeI, lTRI, dInputI, nInputI, dt);
     #else
         curandStateMRG32k3a localStateE;
         curandStateMRG32k3a localStateI;
@@ -836,12 +882,12 @@ compute_V_without_ssc(double* __restrict__ v,
 
         if (irE > 0) {
             localStateE = stateE[id];
-            nInputE = set_input_time(inputTimeE, dt, irE, lTRE, lastNegLogRandE[id], &localStateE);
+            nInputE = set_input_time(inputTimeE, dt, irE, lTRE, lastNegLogRandE[id], localStateE);
 		    stateE[id] = localStateE;
         }
         if (irI > 0) {
             localStateI = stateI[id];
-		    nInputI = set_input_time(inputTimeI, dt, irI, lTRI, lastNegLogRandI[id], &localStateI);
+		    nInputI = set_input_time(inputTimeI, dt, irI, lTRI, lastNegLogRandI[id], localStateI);
 		    stateI[id] = localStateI;
         }
     #endif
@@ -862,6 +908,7 @@ compute_V_without_ssc(double* __restrict__ v,
     one(&lif, dt, tRef, id, gE_t, gI_t);
 	assert(lif.v <= vT);
     assert(lif.tsp > 0);
+    assert(lif.tsp <=dt);
     __syncwarp();
     // write data to global
     spikeTrain[id] = lif.tsp;
