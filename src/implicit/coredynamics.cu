@@ -614,12 +614,12 @@ compute_V(double* __restrict__ v,
             if (id == imin && lif.tsp == dt) {
                 lif.spikeCount++;
                 lif.tsp = t_hlf;
+                lif.tBack = t_hlf + tRef;
             }
             if (lif.tsp < dt) {
                 //lif.tsp = t_hlf;
                 spikeTrain[id] = lif.tsp;
                 spikeCount[id] = lif.spikeCount - old_count;
-                //lif.tBack = t_hlf + tRef;
                 if (lif.tBack >= dt) {
                     lif.reset_v();
                     lif.correctMe = false;
@@ -650,7 +650,10 @@ compute_V(double* __restrict__ v,
                 assert(strength == 0);
                 double dtsp = t_hlf-tsp;
                 #ifdef DEBUG
-                    counter++;
+                    if (id==0) {
+                        counter++;
+                        printf("%u: %e\n", i, tsp);
+                    }
                 #endif
                 if (i < nE) {
                     #pragma unroll
@@ -675,6 +678,11 @@ compute_V(double* __restrict__ v,
                 }
             }
         }
+        #ifdef DEBUG
+            if (id==0) {
+                printf("%u spikes\n", counter);
+            }
+        #endif
 		__syncthreads();
         // t_hlf ------------- dt
 
