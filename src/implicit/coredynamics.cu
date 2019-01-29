@@ -3,7 +3,6 @@
 __device__ void warp0_min(double array[], unsigned int id[]) {
     double value = array[threadIdx.x];
     double index = id[threadIdx.x];
-    __syncwarp();
     for (int offset = warpSize/2; offset > 0; offset /= 2) {
         double compare = __shfl_down_sync(FULL_MASK, value, offset);
         unsigned int comp_id = __shfl_down_sync(FULL_MASK, index, offset);
@@ -18,9 +17,9 @@ __device__ void warp0_min(double array[], unsigned int id[]) {
         id[0] = index;
     }
 }
+
 __device__ void warps_min(double array[], double data, unsigned int id[]) {
 	double index = threadIdx.x;
-    __syncwarp();
     for (int offset = warpSize/2; offset > 0; offset /= 2) {
         double comp_data = __shfl_down_sync(FULL_MASK, data, offset);
         unsigned int comp_id = __shfl_down_sync(FULL_MASK, index, offset);
@@ -47,9 +46,7 @@ __device__ void find_min(double array[], double data, unsigned int id[]) {
     __syncthreads();
 }
 
-__device__ void warps_reduce(unsigned int array[]) {
-    unsigned int data = array[threadIdx.x];
-    __syncwarp();
+__device__ void warps_reduce(unsigned int array[], unsigned int data) {
     for (int offset = warpSize/2; offset > 0; offset /= 2) {
         data += __shfl_down_sync(FULL_MASK, data, offset);
     }
@@ -61,7 +58,6 @@ __device__ void warps_reduce(unsigned int array[]) {
 
 __device__ void warp0_reduce(unsigned int array[]) {
     unsigned int data = array[threadIdx.x];
-    __syncwarp();
     for (int offset = warpSize/2; offset > 0; offset /= 2) {
         data += __shfl_down_sync(FULL_MASK, data, offset);
     }
@@ -70,8 +66,8 @@ __device__ void warp0_reduce(unsigned int array[]) {
     }
 }
 
-__device__ void block_reduce(unsigned int array[]) {
-	warps_reduce(array);
+__device__ void block_reduce(unsigned int array[], unsigned int data) {
+	warps_reduce(array, data);
     __syncthreads();
     if (threadIdx.x < warpSize) {
         warp0_reduce(array);
@@ -100,7 +96,7 @@ double sEE, double sIE, double sEI, double sII, unsigned int networkSize, unsign
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
     curand_init(seed+id, 0, 0, &localState);
-    v[id] = vL + curand_uniform_double(&localState) * (vT-vL) * 0.5;
+    v[id] = vL + curand_uniform_double(&localState) * (vT-vL) * 1.0;
     double mean, std, ratio;
     if (id < nE) {
         mean = log(sEE/sqrt(1.0f+1.0f/sEE));
@@ -256,20 +252,20 @@ __host__ __device__ void evolve_g(ConductanceShape &cond,
                                   double* __restrict__ h, 
                                   double* __restrict__ f,
                                   double inputTime[],
-                                  int nInput, double dt, unsigned int ig)
+                                  int nInput, double dt, double dt0, unsigned int ig)
 {
     cond.decay_conductance(g, h, dt, ig);
     for (int i=0; i<nInput; i++) {
-        cond.compute_single_input_conductance(g, h, *f, dt-inputTime[i], ig);
+        cond.compute_single_input_conductance(g, h, *f, dt0-inputTime[i], ig);
     }
 }
 
-__device__ double prep_cond(ConductanceShape &cond, double g[], double h[], double f[], double inputTime[], int nInput, unsigned int ngType, double dt) {
+__device__ double prep_cond(ConductanceShape &cond, double g[], double h[], double f[], double inputTime[], int nInput, unsigned int ngType, double new_dt, double dt) {
     // p0 should already be ready.
 	double g_total = 0.0f;
     #pragma unroll
 	for (int ig=0; ig<ngType; ig++) {
-		evolve_g(cond, &g[ig], &h[ig], &f[ig], inputTime, nInput, dt, ig);
+		evolve_g(cond, &g[ig], &h[ig], &f[ig], inputTime, nInput, new_dt, dt, ig);
 		g_total += g[ig];
 	}
     return g_total;
@@ -537,8 +533,8 @@ compute_V(double* __restrict__ v,
 		eventRateI[id] = nInputI;
 	#endif
     // set conductances
-    gE_t = prep_cond(condE, gE_local, hE_local, fE_local, inputTimeE, nInputE, ngTypeE, dt); 
-    gI_t = prep_cond(condI, gI_local, hI_local, fI_local, inputTimeI, nInputI, ngTypeI, dt); 
+    gE_t = prep_cond(condE, gE_local, hE_local, fE_local, inputTimeE, nInputE, ngTypeE, dt, dt); 
+    gI_t = prep_cond(condI, gI_local, hI_local, fI_local, inputTimeI, nInputI, ngTypeI, dt, dt); 
 	lif.set_p1(gE_t, gI_t, gL);
     spikeTrain[id] = dt;
     // initial spike guess
@@ -577,8 +573,8 @@ compute_V(double* __restrict__ v,
     int iInputE = 0, iInputI = 0;
     while (t_hlf < dt) {
         // t0 ------- min ---t_hlf
-        lif.tsp = dt;
         /************ This may be optimized to be per warp decision **************/
+        lif.tsp = dt;
         //unsigned int MASK = __ballot_sync(FULL_MASK, lif.correctMe);
         if (lif.correctMe) {
             // prep inputTime
@@ -597,8 +593,9 @@ compute_V(double* __restrict__ v,
                 }
             }
             // prep retracable conductance
-            gE_t = prep_cond(condE, gE_retrace, hE_retrace, fE_local, &inputTimeE[iInputE], jInputE-iInputE, ngTypeE, t_hlf);
-            gI_t = prep_cond(condI, gI_retrace, hI_retrace, fI_local, &inputTimeI[iInputI], jInputI-iInputI, ngTypeI, t_hlf); 
+            double new_dt = t_hlf-t0;
+            gE_t = prep_cond(condE, gE_retrace, hE_retrace, fE_local, &inputTimeE[iInputE], jInputE-iInputE, ngTypeE, new_dt, t_hlf);
+            gI_t = prep_cond(condI, gI_retrace, hI_retrace, fI_local, &inputTimeI[iInputI], jInputI-iInputI, ngTypeI, new_dt, t_hlf); 
 	        lif.set_p1(gE_t, gI_t, gL);
             // commit for next ext. inputs.
             iInputE = jInputE;
@@ -620,6 +617,7 @@ compute_V(double* __restrict__ v,
                 //lif.tsp = t_hlf;
                 spikeTrain[id] = lif.tsp;
                 spikeCount[id] = lif.spikeCount - old_count;
+                //lif.tBack = lif.tsp + tRef;
                 if (lif.tBack >= dt) {
                     lif.reset_v();
                     lif.correctMe = false;
@@ -774,7 +772,7 @@ compute_V_without_ssc(double* __restrict__ v,
                       double* __restrict__ lastNegLogRandI,
                       curandStateMRG32k3a* __restrict__ stateE,
                       curandStateMRG32k3a* __restrict__ stateI,
-                      ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInputE, double dInputI)
+                      ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInputE, double dInputI, double t)
 {
     extern __shared__ double shared[];
     double *spike = shared;
@@ -855,6 +853,14 @@ compute_V_without_ssc(double* __restrict__ v,
     #endif
     leftTimeRateE[id] = lTRE;
     leftTimeRateI[id] = lTRI;
+    if (id == 491) {
+        for (unsigned int i=0; i<nInputE; i++) {
+            printf("E_%.15e, dt = %.16e, dInput = %.16e\n", t + inputTimeE[i], dt, dInputE);
+        }
+        for (unsigned int i=0; i<nInputI; i++) {
+            printf("I_%.15e, dt = %.16e, dInput = %.16e\n", t + inputTimeI[i], dt, dInputI);
+        }
+    }
     //__syncwarp();
     // return a realization of Poisson input rate
     #ifndef FULL_SPEED
@@ -862,8 +868,8 @@ compute_V_without_ssc(double* __restrict__ v,
         eventRateI[id] = nInputI;
     #endif
     /* evolve g to t+dt with ff input only */
-    gE_t = prep_cond(condE, gE_local, hE_local, fE_local, inputTimeE, nInputE, ngTypeE, dt); 
-    gI_t = prep_cond(condI, gI_local, hI_local, fI_local, inputTimeI, nInputI, ngTypeI, dt); 
+    gE_t = prep_cond(condE, gE_local, hE_local, fE_local, inputTimeE, nInputE, ngTypeE, dt, dt); 
+    gI_t = prep_cond(condI, gI_local, hI_local, fI_local, inputTimeI, nInputI, ngTypeI, dt, dt); 
     lif.set_p1(gE_t, gI_t, gL);
 
     // rk2 step
@@ -886,22 +892,27 @@ compute_V_without_ssc(double* __restrict__ v,
     // I
     //recal_G(&lif, shared, ngTypeI, nE, networkSize, condI, gI_local, hI_local, &preMat[nE*networkSize], dt, id, networkSize);
 
-    nsp[id] = lif.spikeCount;
-    __syncthreads(); 
-    #pragma unroll
-    for (unsigned int i=0; i<blockSize; i++) {
-        double spikeCount = nsp[i];
-        if (spikeCount > 0) {
-            double strength = preMat[i*networkSize + id] * spikeCount;
-            if (i < nE) {
-                #pragma unroll
-                for (unsigned int ig=0; ig<ngTypeE; ig++) {
-                    condE.compute_single_input_conductance(&gE_local[ig], &hE_local[ig], strength, dt-spike[i], ig);
-                }
-            } else {
-                #pragma unroll
-                for (unsigned int ig=0; ig<ngTypeI; ig++) {
-                    condI.compute_single_input_conductance(&gI_local[ig], &hI_local[ig], strength, dt-spike[i], ig);
+    block_reduce(nsp, lif.spikeCount);
+    unsigned int total_spike = nsp[0];
+    __syncthreads();
+    if (total_spike > 0) {
+        nsp[id] = lif.spikeCount;
+        __syncthreads();
+        #pragma unroll
+        for (unsigned int i=0; i<blockSize; i++) {
+            double spikeCount = nsp[i];
+            if (spikeCount > 0) {
+                double strength = preMat[i*networkSize + id] * spikeCount;
+                if (i < nE) {
+                    #pragma unroll
+                    for (unsigned int ig=0; ig<ngTypeE; ig++) {
+                        condE.compute_single_input_conductance(&gE_local[ig], &hE_local[ig], strength, dt-spike[i], ig);
+                    }
+                } else {
+                    #pragma unroll
+                    for (unsigned int ig=0; ig<ngTypeI; ig++) {
+                        condI.compute_single_input_conductance(&gI_local[ig], &hI_local[ig], strength, dt-spike[i], ig);
+                    }
                 }
             }
         }

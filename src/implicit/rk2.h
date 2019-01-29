@@ -42,4 +42,11 @@ struct rk2: Runge_Kutta_2 {
     __device__ void recompute_v(double dt, double t0=0.0f);
 };
 
+typedef struct rangan_int {
+    unsigned int spikeCount;
+    bool correctMe;
+    double v, v0;
+    double tBack, tsp;
+} rangan;
+
 #endif

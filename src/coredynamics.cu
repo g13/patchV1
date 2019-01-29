@@ -126,7 +126,7 @@ double sEE, double sIE, double sEI, double sII, unsigned int networkSize, unsign
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
     curand_init(seed+id, 0, 0, &localState);
-    v[id] = vL + curand_uniform_double(&localState) * (vT-vL) * 0.5;
+    v[id] = vL + curand_uniform_double(&localState) * (vT-vL) * 1.0;
     double mean, std, ratio;
     if (id < nE) {
         mean = log(sEE/sqrt(1.0f+1.0f/sEE));

@@ -408,7 +408,7 @@ int main(int argc, char *argv[])
             compute_V<<<grid3, block3, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI);
         #else
             unsigned int shared_mem = 1024*sizeof(double)+1024*sizeof(double);
-            compute_V_without_ssc<<<grid3, block3, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI);
+            compute_V_without_ssc<<<grid3, block3, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI, i*dt);
         #endif
         CUDA_CHECK();
         CUDA_CALL(cudaEventRecord(vComputed, s1));
@@ -525,10 +525,10 @@ int main(int argc, char *argv[])
         printf("avg gE = %e, %e\n", gEavgE/nstep/nE, gEavgI/nstep/nI);
         printf("avg gI = %e, %e\n", gIavgE/nstep/nE, gIavgI/nstep/nI);
     #endif
-    int nTimer = 2;
+    int nTimer = 1;
     p_file.write((char*)&nTimer, sizeof(int));
     p_file.write((char*)&timeV, sizeof(double));
-    p_file.write((char*)&timeIO, sizeof(double));
+    //p_file.write((char*)&timeIO, sizeof(double));
 
     /* Cleanup */
     printf("Cleaning up:\n");

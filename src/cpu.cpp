@@ -668,9 +668,6 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
                     idTrain[in] = j;
                     in++;
                 } 
-                if (i == 873) {
-                    printf("v = %e -> %e, tsp = %e\n", lif[j]->v0, lif[j]->v, lif[j]->tsp);
-                }
             }
         }
         // if indeed no spike comes before neuron i with the smaller pdt interpolation, commit into spikeTrain
