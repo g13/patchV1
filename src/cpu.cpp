@@ -25,6 +25,23 @@ int set_input_time(double inputTime[], double dt, double rate, double &leftTimeR
     return i;
 }
 
+int set_test_input_time(double inputTime[], double dt, double rate, double &tau, std::default_random_engine &randGen) {
+    int i = 0;
+    if (tau > dt) {
+        tau -= dt;
+        return i;
+    } else do {
+        inputTime[i] = tau;
+        tau -= log(dis(randGen))/rate;        
+        i++;
+        if (i == MAX_FFINPUT_PER_DT) {
+            printf("exceeding max input per dt %i\n", MAX_FFINPUT_PER_DT);
+            break;
+        }
+    } while (tau <= dt);
+    tau -= dt;
+    return i;
+}
 
 void evolve_g(cConductanceShape &cond, double *g, double *h, double *f, double *inputTime, int nInput, double dt, double dt0, unsigned int ig) {
     // dt0: with respect to the time frame of inputTime (0)
@@ -1060,12 +1077,21 @@ void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int n
                     lTRI[i] -= dt;
                 }
 			#else
-                if (inputTimeE > 0) {
-				    nInputE[i] = set_input_time(&(inputTimeE[i*MAX_FFINPUT_PER_DT]), dt, inputRateE, lTRE[i], logRandE[i], randGenE[i]);
-                }
-                if (inputTimeI > 0) {
-				    nInputI[i] = set_input_time(&(inputTimeI[i*MAX_FFINPUT_PER_DT]), dt, inputRateI, lTRI[i], logRandI[i], randGenI[i]);
-                }
+                #ifdef TEST_CONVERGENCE_NO_ROUNDING_ERR
+                    if (inputTimeE > 0) {
+				        nInputE[i] = set_test_input_time(&(inputTimeE[i*MAX_FFINPUT_PER_DT]), dt, inputRateE, lTRE[i], randGenE[i]);
+                    }
+                    if (inputTimeI > 0) {
+				        nInputI[i] = set_test_input_time(&(inputTimeI[i*MAX_FFINPUT_PER_DT]), dt, inputRateI, lTRI[i], randGenI[i]);
+                    }
+                #else 
+                    if (inputTimeE > 0) {
+				        nInputE[i] = set_input_time(&(inputTimeE[i*MAX_FFINPUT_PER_DT]), dt, inputRateE, lTRE[i], logRandE[i], randGenE[i]);
+                    }
+                    if (inputTimeI > 0) {
+				        nInputI[i] = set_input_time(&(inputTimeI[i*MAX_FFINPUT_PER_DT]), dt, inputRateI, lTRI[i], logRandI[i], randGenI[i]);
+                    }
+                #endif
 			#endif
             #ifndef FULL_SPEED
 				inputEventsE += nInputE[i];

@@ -4,7 +4,8 @@
 #define MAX_FFINPUT_PER_DT 10 // dt in ms
 #define HALF_MEMORY_OCCUPANCY 1 // in Mb
 #define KERNEL_PERFORMANCE
-#define TEST_WITH_MANUAL_FFINPUT
+#define TEST_CONVERGENCE_NO_ROUNDING_ERR
+//#define TEST_WITH_MANUAL_FFINPUT
 //#define DEBUG 
 //#define GPU_ONLY
 //#define RECLAIM

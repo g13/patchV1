@@ -85,7 +85,7 @@ __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsign
     #ifdef TEST_WITH_MANUAL_FFINPUT
         lTR[id] = curand_uniform_double(&localState)*dInput;
     #else
-        lTR[id] = curand_uniform_double(&localState);
+        lTR[id] = logRand[id]*curand_uniform_double(&localState)*dInput;
     #endif
 }
 
@@ -96,7 +96,7 @@ double sEE, double sIE, double sEI, double sII, unsigned int networkSize, unsign
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
     curand_init(seed+id, 0, 0, &localState);
-    v[id] = vL + curand_uniform_double(&localState) * (vT-vL) * 1.0;
+    v[id] = vL + curand_uniform_double(&localState) * (vT-vL) * 0.8;
     double mean, std, ratio;
     if (id < nE) {
         mean = log(sEE/sqrt(1.0f+1.0f/sEE));
@@ -218,12 +218,35 @@ __device__  double manual_ffinput(double inputTime[], double lTR, double dInput,
         return lTR;
 }
     
+__device__ int set_test_input_time(double inputTime[],
+                              double dt,
+                              double rate,
+                              double &tau,
+                              curandStateMRG32k3a &state)
+{
+    int i = 0;
+    if (tau > dt) {
+        tau -= dt;
+        return i;
+    } else do {
+        inputTime[i] = tau;
+        tau -= log(curand_uniform_double(&state))/rate;
+        i++;
+        if (i == MAX_FFINPUT_PER_DT) {
+            printf("exceeding max input per dt %i\n", MAX_FFINPUT_PER_DT);
+            break;
+        }
+    } while (tau <= dt);
+    tau -= dt;
+    return i;
+}
+
 __device__ int set_input_time(double inputTime[],
                               double dt,
                               double rate,
                               double &leftTimeRate,
                               double &lastNegLogRand,
-                              curandStateMRG32k3a &state)
+                              curandStateMRG32k3a* __restrict__ state)
 {
     int i = 0;
     double tau, dTau, negLogRand;
@@ -233,7 +256,7 @@ __device__ int set_input_time(double inputTime[],
         return i;
     } else do {
         inputTime[i] = tau;
-        negLogRand = -log(curand_uniform_double(&state));
+        negLogRand = -log(curand_uniform_double(state));
         dTau = negLogRand/rate;
         tau += dTau;
         i++;
@@ -441,7 +464,7 @@ compute_V(double* __restrict__ v,
           double* __restrict__ lastNegLogRandI,
           curandStateMRG32k3a* __restrict__ stateE,
           curandStateMRG32k3a* __restrict__ stateI,
-          ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInputE, double dInputI)
+          ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInputE, double dInputI, double t)
 {
     __shared__ double tempSpike[blockSize];
     __shared__ unsigned int spid[warpSize];
@@ -514,20 +537,41 @@ compute_V(double* __restrict__ v,
         double irE = inputRateE[id];
         double irI = inputRateI[id];
 
-        if (irE > 0) {
-            localStateE = stateE[id];
-            nInputE = set_input_time(inputTimeE, dt, irE, lTRE, lastNegLogRandE[id], localStateE);
-		    stateE[id] = localStateE;
-        }
-        if (irI > 0) {
-            localStateI = stateI[id];
-		    nInputI = set_input_time(inputTimeI, dt, irI, lTRI, lastNegLogRandI[id], localStateI);
-		    stateI[id] = localStateI;
-        }
+        #ifdef TEST_CONVERGENCE_NO_ROUNDING_ERR
+            if (irE > 0) {
+                localStateE = stateE[id];
+                nInputE = set_test_input_time(inputTimeE, dt, irE, lTRE,localStateE);
+		        stateE[id] = localStateE;
+            }
+            if (irI > 0) {
+                localStateI = stateI[id];
+		        nInputI = set_test_input_time(inputTimeI, dt, irI, lTRI, localStateI);
+		        stateI[id] = localStateI;
+            }
+        #else
+            if (irE > 0) {
+                localStateE = stateE[id];
+                nInputE = set_input_time(inputTimeE, dt, irE, lTRE, lastNegLogRandE[id], localStateE);
+		        stateE[id] = localStateE;
+            }
+            if (irI > 0) {
+                localStateI = stateI[id];
+		        nInputI = set_input_time(inputTimeI, dt, irI, lTRI, lastNegLogRandI[id], localStateI);
+		        stateI[id] = localStateI;
+            }
+        #endif
     #endif
     leftTimeRateE[id] = lTRE;
     leftTimeRateI[id] = lTRI;
     // return a realization of Poisson input rate
+    /*if (id == 733) {
+        for (unsigned int i=0; i<nInputE; i++) {
+            printf("E_%.16e, dt = %.16e, dInput = %.16e\n", t+inputTimeE[i], dt, dInputE);
+        }
+        for (unsigned int i=0; i<nInputI; i++) {
+            printf("I_%.16e, dt = %.16e, dInput = %.16e\n", t+inputTimeI[i], dt, dInputI);
+        }
+    }*/
 	#ifndef FULL_SPEED
 		eventRateE[id] = nInputE;
 		eventRateI[id] = nInputI;
@@ -840,27 +884,32 @@ compute_V_without_ssc(double* __restrict__ v,
         double irE = inputRateE[id];
         double irI = inputRateI[id];
 
-        if (irE > 0) {
-            localStateE = stateE[id];
-            nInputE = set_input_time(inputTimeE, dt, irE, lTRE, lastNegLogRandE[id], localStateE);
-		    stateE[id] = localStateE;
-        }
-        if (irI > 0) {
-            localStateI = stateI[id];
-		    nInputI = set_input_time(inputTimeI, dt, irI, lTRI, lastNegLogRandI[id], localStateI);
-		    stateI[id] = localStateI;
-        }
+        #ifdef TEST_CONVERGENCE_NO_ROUNDING_ERR
+            if (irE > 0) {
+                localStateE = stateE[id];
+                nInputE = set_test_input_time(inputTimeE, dt, irE, lTRE,localStateE);
+		        stateE[id] = localStateE;
+            }
+            if (irI > 0) {
+                localStateI = stateI[id];
+		        nInputI = set_test_input_time(inputTimeI, dt, irI, lTRI, localStateI);
+		        stateI[id] = localStateI;
+            }
+        #else
+            if (irE > 0) {
+                localStateE = stateE[id];
+                nInputE = set_input_time(inputTimeE, dt, irE, lTRE, lastNegLogRandE[id], localStateE);
+		        stateE[id] = localStateE;
+            }
+            if (irI > 0) {
+                localStateI = stateI[id];
+		        nInputI = set_input_time(inputTimeI, dt, irI, lTRI, lastNegLogRandI[id], localStateI);
+		        stateI[id] = localStateI;
+            }
+        #endif
     #endif
     leftTimeRateE[id] = lTRE;
     leftTimeRateI[id] = lTRI;
-    if (id == 491) {
-        for (unsigned int i=0; i<nInputE; i++) {
-            printf("E_%.15e, dt = %.16e, dInput = %.16e\n", t + inputTimeE[i], dt, dInputE);
-        }
-        for (unsigned int i=0; i<nInputI; i++) {
-            printf("I_%.15e, dt = %.16e, dInput = %.16e\n", t + inputTimeI[i], dt, dInputI);
-        }
-    }
     //__syncwarp();
     // return a realization of Poisson input rate
     #ifndef FULL_SPEED

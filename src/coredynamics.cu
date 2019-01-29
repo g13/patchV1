@@ -115,7 +115,7 @@ __global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsign
     #ifdef TEST_WITH_MANUAL_FFINPUT
         lTR[id] = curand_uniform_double(&localState)*dInput;
     #else
-        lTR[id] = curand_uniform_double(&localState);
+        lTR[id] = logRand[id]*curand_uniform_double(&localState)*dInput;
     #endif
 }
 
@@ -126,7 +126,7 @@ double sEE, double sIE, double sEI, double sII, unsigned int networkSize, unsign
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
     curand_init(seed+id, 0, 0, &localState);
-    v[id] = vL + curand_uniform_double(&localState) * (vT-vL) * 1.0;
+    v[id] = vL + curand_uniform_double(&localState) * (vT-vL) * 0.8;
     double mean, std, ratio;
     if (id < nE) {
         mean = log(sEE/sqrt(1.0f+1.0f/sEE));

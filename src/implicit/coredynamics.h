@@ -48,7 +48,7 @@ __global__ void compute_V(double* __restrict__ v,
                           double* __restrict__ lastNegLogRandI,
                           curandStateMRG32k3a* __restrict__ stateE,
                           curandStateMRG32k3a* __restrict__ stateI,
-                          ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInputE, double dInputI);
+                          ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInputE, double dInputI, double t);
 
 __global__ void compute_V_without_ssc(double* __restrict__ v,
                                       double* __restrict__ gE,
