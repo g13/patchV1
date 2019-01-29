@@ -104,7 +104,29 @@ int main(int argc, char *argv[])
     printf("sIE = %e\n", sIE);
     printf("sEI = %e\n", sEI);
     printf("sII = %e\n", sII);
-    double dt = t/float(nstep); // ms
+    double dt0 = t/static_cast<double>(nstep); // ms
+    printf("dt0 = %.16e\n",dt0);
+    double dt=1;
+    if (dt0 > 1) {
+        double next_dt = static_cast<int>(dt) << 1;
+        while (next_dt < dt0) {
+            next_dt = static_cast<int>(next_dt) << 1;
+            dt = static_cast<int>(dt) << 1;
+        }
+        if (next_dt-dt0 < dt0-dt) {
+            dt = next_dt;
+        }
+    } else {
+        double next_dt = dt/2;
+        while (next_dt > dt0) {
+            next_dt /= 2;
+            dt /= 2;
+        }
+        if (dt0-next_dt < dt-dt0) {
+            dt = next_dt;
+        }
+    }
+    t = dt * nstep;
     /* to be extended */
     bool presetInit = false;
     double riseTimeE[2] = {1.0f, 5.0f}; // ms
@@ -119,7 +141,7 @@ int main(int argc, char *argv[])
     printf("designated input rateI = %3.1fHz\n", flatRateI);
 	printf("dt = %f ms\n", dt);
     printf("nE = %i, nI = %i\n", nE, networkSize-nE);
-    printf("t = %f x %i = %f\n", dt, nstep, t);
+    printf("t = %.16e x %i = %.16e\n", dt, nstep, t);
 	double dInputE = 1000.0f/flatRateE;
 	double dInputI = 1000.0f/flatRateI;
     if (dt/dInputE > MAX_FFINPUT_PER_DT) {
