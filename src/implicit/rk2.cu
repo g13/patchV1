@@ -101,3 +101,42 @@ __device__ void impl_rk2::recompute_v0(double dt, double t0) {
     double B = (b0 + b1)*dt/denorm;
     v0 = recomp_v0(A, B, rB);
 }
+
+__device__ void rangan_int::set_dVs0(double dgE, double dgI) {
+    double da = dgE + dgI;
+    double db = dgE*vE + dgI*vI;
+    dVs0 = (db - b0/a0*da)/a0;
+}
+
+__device__ void rangan_int::set_dVs1(double dgE, double dgI) {
+    double da = dgE + dgI;
+    double db = dgE*vE + dgI*vI;
+    dVs1 = (db - b1/a1*da)/a1;
+}
+
+__device__ void rangan_int::set_G(double G, double gL, double dt) {
+    eG = exp(-G-gL*dt);
+}
+
+__device__ void rangan_int::compute_v(double dt) {
+	v = b1 / a1 + eG * (v0 - b0 / a0) - (dVs0 + eG * dVs1)*dt / 2.0;
+}
+
+__device__ void rangan_int::recompute(double dt, double t0) {
+    double rB = dt/(tBack-t0) - 1;
+    double integral = (eG*dVs0 + dVs1)*dt/2.0;
+    v0 = ((1+rB)*vL - b1/a1 + eG*b0/a0 + integral)/(rB+eG);
+    v = (1+rB)*vL - rB*v0;
+
+}
+__device__ void rangan_int::recompute_v0(double dt, double t0) {
+    double rB = dt/(tBack-t0) - 1;
+    double integral = (eG*dVs0 + dVs1)*dt/2.0;
+    v0 = ((1+rB)*vL - b1/a1 + eG*b0/a0 + integral)/(rB+eG);
+
+}
+__device__ void rangan_int::recompute_v(double dt, double t0) {
+    double rB = dt/(tBack-t0) - 1;
+    double integral = (eG*dVs0 + dVs1)*dt/2.0;
+    v = (rB*(b1/a1 - eG*b0/a0 - integral) + eG*(1+rB)*vL)/(rB+eG);
+}

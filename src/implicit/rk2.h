@@ -42,11 +42,17 @@ struct rk2: Runge_Kutta_2 {
     __device__ void recompute_v(double dt, double t0=0.0f);
 };
 
-typedef struct rangan_int {
-    unsigned int spikeCount;
-    bool correctMe;
-    double v, v0;
-    double tBack, tsp;
+typedef struct rangan_int: Runge_Kutta_2 {
+    double eG;
+    double dVs0, dVs1;
+    __device__ rangan_int(double _v0, double _tBack, double _dVs): Runge_Kutta_2(_v0, _tBack), dVs0(_dVs) {};
+    __device__ void set_dVs0(double dgE, double dgI);
+    __device__ void set_dVs1(double dgE, double dgI);
+    __device__ void set_G(double G, double gL, double dt);
+    __device__ void compute_v(double dt);
+    __device__ void recompute(double dt, double t0=0.0f);
+    __device__ void recompute_v0(double dt, double t0=0.0f);
+    __device__ void recompute_v(double dt, double t0=0.0f);
 } rangan;
 
 #endif

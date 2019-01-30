@@ -2,7 +2,10 @@
 
 int main(int argc, char *argv[])
 {
-    std::ofstream p_file, v_file, spike_file, nSpike_file, gE_file, gI_file;
+	#pragma float_control( except, on )
+    #ifndef SKIP_IO
+        std::ofstream p_file, v_file, spike_file, nSpike_file, gE_file, gI_file;
+    #endif
     float time;
     curandStateMRG32k3a *stateE, *randState;
     curandStateMRG32k3a *stateI;
@@ -161,6 +164,9 @@ int main(int argc, char *argv[])
     int *eventRateE, *d_eventRateE;
     int *eventRateI, *d_eventRateI;
     double *d_v, *d_gE, *d_gI, *d_hE, *d_hI, *d_fE, *d_fI, *d_preMat, *d_inputRateE, *d_inputRateI;
+	#if SCHEME == 2
+		double *d_dVs;
+	#endif
     double *leftTimeRateE, *lastNegLogRandE;
     double *leftTimeRateI, *lastNegLogRandI;
     double *spikeTrain, *d_spikeTrain, *tBack;
@@ -237,6 +243,7 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaMallocHost((void**)&eventRateI,   networkSize * sizeof(int)));
 
     /* Allocate space for results on device */
+	CUDA_CALL(cudaMalloc((void **)&d_dVs,		 networkSize * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&d_gE,         networkSize * ngTypeE * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&d_gI,         networkSize * ngTypeI * sizeof(double))); 
     CUDA_CALL(cudaMalloc((void **)&d_hE,         networkSize * ngTypeE * sizeof(double)));
@@ -284,12 +291,14 @@ int main(int argc, char *argv[])
             }
         }
         // init rand generation for poisson
-        init<double><<<init_b1,init_b2,0,i2>>>(d_inputRateE, flatRateE/1000.0f);
+        init<double><<<init_b1,init_b2,0,i1>>>(d_inputRateE, flatRateE/1000.0f);
         CUDA_CHECK();
         init<double><<<init_b1,init_b2,0,i2>>>(d_inputRateI, flatRateI/1000.0f);
         CUDA_CHECK();
         init<double><<<init_b1,init_b2,0,i3>>>(tBack, -1.0f); 
         CUDA_CHECK();
+		init<double><<<init_b1, init_b2, 0, i1>>>(d_dVs, 0.0f);
+		CUDA_CHECK();
         f_init<<<init_b1,init_b2,0,i2>>>(d_fE, networkSize, nE, ngTypeE, EffsE, IffsE);
         CUDA_CHECK();
         f_init<<<init_b1,init_b2,0,i3>>>(d_fI, networkSize, nE, ngTypeI, EffsI, IffsI);
@@ -302,6 +311,7 @@ int main(int argc, char *argv[])
         CUDA_CHECK();
         init<double><<<init_b1*ngTypeI,init_b2,0,i3>>>(d_hI, 0.0f);
         CUDA_CHECK();
+
         //CUDA_CALL(cudaEventRecord(kStart, 0));
         //CUDA_CALL(cudaEventRecord(kStop, 0));
         //CUDA_CALL(cudaEventSynchronize(kStop));
@@ -325,48 +335,49 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaStreamCreate(&s5));
     CUDA_CALL(cudaStreamCreate(&s6));
     CUDA_CALL(cudaStreamCreate(&s7));
-    #ifdef SPIKE_CORRECTION
-        p_file.open("p_ushy" + theme + "_ssc.bin", std::ios::out|std::ios::binary);
-        v_file.open("v_ictorious" + theme + "_ssc.bin", std::ios::out|std::ios::binary);
-        spike_file.open("s_uspicious" + theme + "_ssc.bin", std::ios::out|std::ios::binary);
-        nSpike_file.open("n_arcotic" + theme + "_ssc.bin", std::ios::out|std::ios::binary);
-        gE_file.open("gE_nerous" + theme + "_ssc.bin", std::ios::out|std::ios::binary);
-        gI_file.open("gI_berish" + theme + "_ssc.bin", std::ios::out|std::ios::binary);
-    #else
-        p_file.open("p_ushy" + theme + ".bin", std::ios::out|std::ios::binary);
-        v_file.open("v_ictorious" + theme + ".bin", std::ios::out|std::ios::binary);
-        spike_file.open("s_uspicious" + theme + ".bin", std::ios::out|std::ios::binary);
-        nSpike_file.open("n_arcotic" + theme + ".bin", std::ios::out|std::ios::binary);
-        gE_file.open("gE_nerous" + theme + ".bin", std::ios::out|std::ios::binary);
-        gI_file.open("gI_berish" + theme + ".bin", std::ios::out|std::ios::binary);
+    #ifndef SKIP_IO
+        #ifdef SPIKE_CORRECTION
+            p_file.open("p_ushy" + theme + "_ssc.bin", std::ios::out|std::ios::binary);
+            v_file.open("v_ictorious" + theme + "_ssc.bin", std::ios::out|std::ios::binary);
+            spike_file.open("s_uspicious" + theme + "_ssc.bin", std::ios::out|std::ios::binary);
+            nSpike_file.open("n_arcotic" + theme + "_ssc.bin", std::ios::out|std::ios::binary);
+            gE_file.open("gE_nerous" + theme + "_ssc.bin", std::ios::out|std::ios::binary);
+            gI_file.open("gI_berish" + theme + "_ssc.bin", std::ios::out|std::ios::binary);
+        #else
+            p_file.open("p_ushy" + theme + ".bin", std::ios::out|std::ios::binary);
+            v_file.open("v_ictorious" + theme + ".bin", std::ios::out|std::ios::binary);
+            spike_file.open("s_uspicious" + theme + ".bin", std::ios::out|std::ios::binary);
+            nSpike_file.open("n_arcotic" + theme + ".bin", std::ios::out|std::ios::binary);
+            gE_file.open("gE_nerous" + theme + ".bin", std::ios::out|std::ios::binary);
+            gI_file.open("gI_berish" + theme + ".bin", std::ios::out|std::ios::binary);
+        #endif
+    
+        p_file.write((char*)&nE, sizeof(unsigned int));
+        p_file.write((char*)&nI, sizeof(unsigned int));
+    	unsigned int u_ngTypeE = ngTypeE;
+    	unsigned int u_ngTypeI = ngTypeI;
+        p_file.write((char*)&u_ngTypeE, sizeof(unsigned int));
+        p_file.write((char*)&u_ngTypeI, sizeof(unsigned int));
+        double dtmp = vL;
+        p_file.write((char*)&dtmp, sizeof(double));
+        dtmp = vT;
+        p_file.write((char*)&dtmp, sizeof(double));
+        dtmp = vE;
+        p_file.write((char*)&dtmp, sizeof(double));
+        dtmp = vI;
+        p_file.write((char*)&dtmp, sizeof(double));
+        dtmp = gL_E;
+        p_file.write((char*)&dtmp, sizeof(double));
+        dtmp = gL_I;
+        p_file.write((char*)&dtmp, sizeof(double));
+        dtmp = tRef_E;
+        p_file.write((char*)&dtmp, sizeof(double));
+        dtmp = tRef_I;
+        p_file.write((char*)&tmp, sizeof(double));
+        p_file.write((char*)&nstep, sizeof(unsigned int));
+        p_file.write((char*)&dt, sizeof(double));
+        p_file.write((char*)&flatRateE, sizeof(double));
     #endif
-
-    p_file.write((char*)&nE, sizeof(unsigned int));
-    p_file.write((char*)&nI, sizeof(unsigned int));
-	unsigned int u_ngTypeE = ngTypeE;
-	unsigned int u_ngTypeI = ngTypeI;
-    p_file.write((char*)&u_ngTypeE, sizeof(unsigned int));
-    p_file.write((char*)&u_ngTypeI, sizeof(unsigned int));
-    double dtmp = vL;
-    p_file.write((char*)&dtmp, sizeof(double));
-    dtmp = vT;
-    p_file.write((char*)&dtmp, sizeof(double));
-    dtmp = vE;
-    p_file.write((char*)&dtmp, sizeof(double));
-    dtmp = vI;
-    p_file.write((char*)&dtmp, sizeof(double));
-    dtmp = gL_E;
-    p_file.write((char*)&dtmp, sizeof(double));
-    dtmp = gL_I;
-    p_file.write((char*)&dtmp, sizeof(double));
-    dtmp = tRef_E;
-    p_file.write((char*)&dtmp, sizeof(double));
-    dtmp = tRef_I;
-    p_file.write((char*)&tmp, sizeof(double));
-    p_file.write((char*)&nstep, sizeof(unsigned int));
-    p_file.write((char*)&dt, sizeof(double));
-    p_file.write((char*)&flatRateE, sizeof(double));
-
 
     CUDA_CALL(cudaEventRecord(start, 0));
     double eventsE = 0.0f;
@@ -394,12 +405,18 @@ int main(int argc, char *argv[])
         offset = 0;
         /* Write voltage of last step to disk */
         CUDA_CALL(cudaEventSynchronize(vReady));
-        v_file.write((char*)v, networkSize * sizeof(double));
+        #ifndef SKIP_IO
+            v_file.write((char*)v, networkSize * sizeof(double));
+        #endif
         /* Write conductance of last step to disk */
         CUDA_CALL(cudaEventSynchronize(gReadyE));
-        gE_file.write((char*)gE, networkSize*ngTypeE*sizeof(double));
+        #ifndef SKIP_IO
+            gE_file.write((char*)gE, networkSize*ngTypeE*sizeof(double));
+        #endif
         CUDA_CALL(cudaEventSynchronize(gReadyI));
-        gI_file.write((char*)gI, networkSize*ngTypeI*sizeof(double));
+        #ifndef SKIP_IO
+            gI_file.write((char*)gI, networkSize*ngTypeI*sizeof(double));
+        #endif
         #ifndef FULL_SPEED
             for (unsigned int j=0; j<networkSize; j++) {
                 if (j<nE) {
@@ -427,7 +444,11 @@ int main(int argc, char *argv[])
         dim3 block3(1024);
         #ifdef SPIKE_CORRECTION
             unsigned int shared_mem = 1024*sizeof(double)+2*1024*sizeof(unsigned int);
-            compute_V<<<grid3, block3, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI, i*dt);
+			#if SCHEME < 2
+				compute_V<<<grid3, block3, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI, i*dt);
+			#else
+				compute_V<<<grid3, block3, shared_mem, s1>>>(d_v, d_dVs, d_gE, d_gI, d_hE, d_hI, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI, i*dt);
+			#endif
         #else
             unsigned int shared_mem = 1024*sizeof(double)+1024*sizeof(double);
             compute_V_without_ssc<<<grid3, block3, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI, i*dt);
@@ -473,9 +494,13 @@ int main(int argc, char *argv[])
 
         CUDA_CALL(cudaEventSynchronize(spikeRateReady));
         /* Write spikeTrain of current step to disk */
-        spike_file.write((char*)spikeTrain,  networkSize*sizeof(double));
+        #ifndef SKIP_IO
+            spike_file.write((char*)spikeTrain,  networkSize*sizeof(double));
+        #endif
 		CUDA_CALL(cudaEventSynchronize(nSpikeReady));
-        nSpike_file.write((char*)nSpike,     networkSize*sizeof(unsigned int));
+        #ifndef SKIP_IO
+            nSpike_file.write((char*)nSpike,     networkSize*sizeof(unsigned int));
+        #endif
 
         #ifndef FULL_SPEED
             CUDA_CALL(cudaEventSynchronize(eventRateEReady));
@@ -524,9 +549,11 @@ int main(int argc, char *argv[])
     }
     /* WHen hit HALF_MEMORY_OCCUPANCY, write half of the array to disk, the other half left to receive from device */
 
-    v_file.write((char*)v, networkSize * sizeof(double));
-    gE_file.write((char*)gE, networkSize * ngTypeE * sizeof(double));
-    gI_file.write((char*)gI, networkSize * ngTypeI * sizeof(double));
+    #ifndef SKIP_IO
+        v_file.write((char*)v, networkSize * sizeof(double));
+        gE_file.write((char*)gE, networkSize * ngTypeE * sizeof(double));
+        gI_file.write((char*)gI, networkSize * ngTypeI * sizeof(double));
+    #endif
     printf("\n");
     #ifndef FULL_SPEED
         printf("flatRateE = %fHz, realized mean input rate = %fHz\n", flatRateE, 1000.0*float(eventsE)/(dt*nstep*networkSize));
@@ -548,9 +575,11 @@ int main(int argc, char *argv[])
         printf("avg gI = %e, %e\n", gIavgE/nstep/nE, gIavgI/nstep/nI);
     #endif
     int nTimer = 1;
-    p_file.write((char*)&nTimer, sizeof(int));
-    p_file.write((char*)&timeV, sizeof(double));
-    //p_file.write((char*)&timeIO, sizeof(double));
+    #ifndef SKIP_IO
+        p_file.write((char*)&nTimer, sizeof(int));
+        p_file.write((char*)&timeV, sizeof(double));
+        //p_file.write((char*)&timeIO, sizeof(double));
+    #endif
 
     /* Cleanup */
     printf("Cleaning up:\n");
@@ -562,17 +591,21 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaStreamDestroy(s6));
     CUDA_CALL(cudaStreamDestroy(s7));
     printf("    CUDA streams destroyed\n");
-    if (p_file.is_open()) p_file.close();
-    if (v_file.is_open()) v_file.close();
-    if (spike_file.is_open()) spike_file.close();
-    if (nSpike_file.is_open()) nSpike_file.close();
-    if (gE_file.is_open()) gE_file.close();
-    if (gI_file.is_open()) gI_file.close();
+    
+    #ifndef SKIP_IO
+        if (p_file.is_open()) p_file.close();
+        if (v_file.is_open()) v_file.close();
+        if (spike_file.is_open()) spike_file.close();
+        if (nSpike_file.is_open()) nSpike_file.close();
+        if (gE_file.is_open()) gE_file.close();
+        if (gI_file.is_open()) gI_file.close();
+    #endif
     printf("    Output files closed\n");
     
     CUDA_CALL(cudaFree(stateE));
     CUDA_CALL(cudaFree(stateI));
     CUDA_CALL(cudaFree(d_v));
+	CUDA_CALL(cudaFree(d_dVs));
     CUDA_CALL(cudaFree(d_gE));
     CUDA_CALL(cudaFree(d_gI));
     CUDA_CALL(cudaFree(d_hE));

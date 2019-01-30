@@ -270,51 +270,105 @@ __device__ int set_input_time(double inputTime[],
     return i;
 }
 
-__host__ __device__ void evolve_g(ConductanceShape &cond,
-                                  double* __restrict__ g, 
-                                  double* __restrict__ h, 
-                                  double* __restrict__ f,
-                                  double inputTime[],
-                                  int nInput, double dt, double dt0, unsigned int ig)
-{
-    cond.decay_conductance(g, h, dt, ig);
-    for (int i=0; i<nInput; i++) {
-        cond.compute_single_input_conductance(g, h, *f, dt0-inputTime[i], ig);
-    }
-}
 
-__device__ double prep_cond(ConductanceShape &cond, double g[], double h[], double f[], double inputTime[], int nInput, unsigned int ngType, double new_dt, double dt) {
-    // p0 should already be ready.
-	double g_total = 0.0f;
-    #pragma unroll
-	for (int ig=0; ig<ngType; ig++) {
-		evolve_g(cond, &g[ig], &h[ig], &f[ig], inputTime, nInput, new_dt, dt, ig);
-		g_total += g[ig];
-	}
-    return g_total;
-}
+#if SCHEME == 2
+	__device__ void evolve_g(ConductanceShape &cond,
+                                      double &ig,
+                                      double &g, 
+                                      double &h, 
+                                      double &dg,
+                                      double f,
+                                      double inputTime[],
+                                      int nInput, double dt, double dt0, unsigned int igType) {
+        cond.diff_and_int_decay(ig, g, h, dg, dt, igType);
+        for (int i=0; i<nInput; i++) {
+            cond.diff_and_int_cond(ig, g, h, dg, f, dt0-inputTime[i], igType);
+        }
+    }
+    __device__ double prep_cond(ConductanceShape &cond, double &ig_total, double &dg_total, double g[], double h[], double f[], double inputTime[], int nInput, unsigned int ngType, double new_dt, double dt) {
+    	double g_total = 0.0f;
+        dg_total = 0.0f;
+        #pragma unroll
+    	for (int i=0; i<ngType; i++) {
+			double ig, dg;
+    		evolve_g(cond, ig, g[i], h[i], dg, f[i], inputTime, nInput, new_dt, dt, i);
+			ig_total += ig;
+    		g_total += g[i];
+            dg_total += dg;
+    	}
+        return g_total;
+    }
+    __device__ void modify_g(ConductanceShape &cond, double &g0, double &h0, double &ig0, double &dg0, double &g1, double &h1, double &ig1, double &dg1, double strength, double dtsp, double tsp, double dt, unsigned int i) {
+		double old_ig0 = ig0;
+		double old_ig1 = ig1;
+		if (dtsp == 0) {
+            h0 += strength;
+        } else {
+            cond.diff_and_int_cond(ig0, g0, h0, dg0, strength, dtsp, i);
+        }
+        cond.diff_and_int_cond(ig1, g1, h1, dg1, strength, dt-tsp, i);
+		assert(strength >= 0);
+		assert(ig0 >= old_ig0);
+		assert(ig1 >= old_ig1);
+		if (ig1 - old_ig1 < ig0 - old_ig0) {
+			printf("delta ig0 = %e, ig1 = %e\n", ig1 - old_ig1, ig0 - old_ig0);
+			assert(ig1 - old_ig1 >= ig0 - old_ig0);
+		}
+    }
+#else
+    __device__ void evolve_g(ConductanceShape &cond,
+                                      double &g, 
+                                      double &h, 
+                                      double f,
+                                      double inputTime[],
+                                      int nInput, double dt, double dt0, unsigned int ig)
+    {
+        cond.decay_conductance(g, h, dt, ig);
+        for (int i=0; i<nInput; i++) {
+            cond.compute_single_input_conductance(g, h, f, dt0-inputTime[i], ig);
+        }
+    }
+    __device__ double prep_cond(ConductanceShape &cond, double g[], double h[], double f[], double inputTime[], int nInput, unsigned int ngType, double new_dt, double dt) {
+        // p0 should already be ready.
+    	double g_total = 0.0f;
+        #pragma unroll
+    	for (int ig=0; ig<ngType; ig++) {
+    		evolve_g(cond, g[ig], h[ig], f[ig], inputTime, nInput, new_dt, dt, ig);
+    		g_total += g[ig];
+    	}
+        return g_total;
+    }
+    __device__ void modify_g(ConductanceShape &cond, double &g0, double &h0, double &g1, double &h1, double strength, double dtsp, double tsp, double dt, unsigned int i) {
+        if (dtsp == 0) {
+            h0 += strength;
+        } else {
+            cond.compute_single_input_conductance(g0, h0, strength, dtsp, i);
+        }
+        cond.compute_single_input_conductance(g1, h1, strength, dt-tsp, i);
+    }
+#endif
 
 __device__ void set_p(LIF* lif, double gE0[], double gI0[], double gE1[], double gI1[], double gL) {
 	double gE_t = 0.0f;
-    #pragma unroll
-	for (unsigned int ig=0; ig<ngTypeE; ig++) {
+#pragma unroll
+	for (unsigned int ig = 0; ig < ngTypeE; ig++) {
 		gE_t += gE0[ig];
 	}
 	double gI_t = 0.0f;
-    #pragma unroll
-	for (unsigned int ig=0; ig<ngTypeI; ig++) {
+#pragma unroll
+	for (unsigned int ig = 0; ig < ngTypeI; ig++) {
 		gI_t += gI0[ig];
 	}
 	lif->set_p0(gE_t, gI_t, gL);
 
 	gE_t = 0.0f;
-    #pragma unroll
-	for (unsigned int ig=0; ig<ngTypeE; ig++) {
+#pragma unroll
+	for (unsigned int ig = 0; ig < ngTypeE; ig++) {
 		gE_t += gE1[ig];
 	}
 	gI_t = 0.0f;
-    #pragma unroll
-	for (unsigned int ig=0; ig<ngTypeI; ig++) {
+#pragma unroll
+	for (unsigned int ig = 0; ig < ngTypeI; ig++) {
 		gI_t += gI1[ig];
 	}
 	lif->set_p1(gE_t, gI_t, gL);
@@ -423,7 +477,7 @@ __device__ void recal_G(LIF* lif, double shared[], unsigned int ngType, unsigned
             double gact = 0.0f;
             double hact = 0.0f;
             if (lif->spikeCount > 0) {
-                cond.compute_single_input_conductance(&gact, &hact, lif->spikeCount, dt-lif->tsp, ig);
+                cond.compute_single_input_conductance(gact, hact, lif->spikeCount, dt-lif->tsp, ig);
             }
             __syncwarp();
             g[id-n0] = gact; 
@@ -444,6 +498,9 @@ __device__ void recal_G(LIF* lif, double shared[], unsigned int ngType, unsigned
 __global__ void
 __launch_bounds__(blockSize, 1)
 compute_V(double* __restrict__ v,
+		  #if SCHEME == 2
+			  double* __restrict__ dVs,
+		  #endif
           double* __restrict__ gE,
           double* __restrict__ gI,
           double* __restrict__ hE,
@@ -471,11 +528,15 @@ compute_V(double* __restrict__ v,
     __shared__ unsigned int spikeCount[blockSize];
     unsigned int id = threadIdx.x;
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
-    #ifdef IMPLICIT
-        impl_rk2 lif(v[id], tBack[id]);
-    #else
+    #if SCHEME == 0
         rk2 lif(v[id], tBack[id]);
     #endif
+    #if SCHEME == 1
+        impl_rk2 lif(v[id], tBack[id]);
+    #endif
+	#if SCHEME == 2
+		rangan_int lif(v[id], tBack[id], dVs[id]);
+	#endif
     double gL, tRef;
     if (id < nE) {
         tRef = tRef_E;
@@ -494,6 +555,14 @@ compute_V(double* __restrict__ v,
     double hE_retrace[ngTypeE];
     double gI_retrace[ngTypeI];
     double hI_retrace[ngTypeI];
+    #if SCHEME == 2
+        double dgE_local;
+        double G_local;
+        double dgI_local;
+        double dgI_retrace;
+        double dgE_retrace;
+        double G_retrace;
+    #endif
 
     // init cond E 
 	double fE_local[ngTypeE];
@@ -564,22 +633,25 @@ compute_V(double* __restrict__ v,
     leftTimeRateE[id] = lTRE;
     leftTimeRateI[id] = lTRI;
     // return a realization of Poisson input rate
-    /*if (id == 733) {
-        for (unsigned int i=0; i<nInputE; i++) {
-            printf("E_%.16e, dt = %.16e, dInput = %.16e\n", t+inputTimeE[i], dt, dInputE);
-        }
-        for (unsigned int i=0; i<nInputI; i++) {
-            printf("I_%.16e, dt = %.16e, dInput = %.16e\n", t+inputTimeI[i], dt, dInputI);
-        }
-    }*/
 	#ifndef FULL_SPEED
 		eventRateE[id] = nInputE;
 		eventRateI[id] = nInputI;
 	#endif
     // set conductances
-    gE_t = prep_cond(condE, gE_local, hE_local, fE_local, inputTimeE, nInputE, ngTypeE, dt, dt); 
-    gI_t = prep_cond(condI, gI_local, hI_local, fI_local, inputTimeI, nInputI, ngTypeI, dt, dt); 
+    #if SCHEME < 2
+        gE_t = prep_cond(condE, gE_local, hE_local, fE_local, inputTimeE, nInputE, ngTypeE, dt, dt); 
+        gI_t = prep_cond(condI, gI_local, hI_local, fI_local, inputTimeI, nInputI, ngTypeI, dt, dt); 
+    #else
+        G_local = 0.0f;
+        gE_t = prep_cond(condE, G_local, dgE_local, gE_local, hE_local, fE_local, inputTimeE, nInputE, ngTypeE, dt, dt);
+        gI_t = prep_cond(condI, G_local, dgI_local, gI_local, hI_local, fI_local, inputTimeI, nInputI, ngTypeI, dt, dt);
+    #endif
 	lif.set_p1(gE_t, gI_t, gL);
+    #if SCHEME == 2
+        lif.set_dVs1(dgE_local, dgI_local);
+        lif.set_G(G_local, gL, dt);
+		assert(G_local >= 0);
+    #endif
     spikeTrain[id] = dt;
     // initial spike guess
     #ifdef DEBUG
@@ -638,9 +710,22 @@ compute_V(double* __restrict__ v,
             }
             // prep retracable conductance
             double new_dt = t_hlf-t0;
-            gE_t = prep_cond(condE, gE_retrace, hE_retrace, fE_local, &inputTimeE[iInputE], jInputE-iInputE, ngTypeE, new_dt, t_hlf);
-            gI_t = prep_cond(condI, gI_retrace, hI_retrace, fI_local, &inputTimeI[iInputI], jInputI-iInputI, ngTypeI, new_dt, t_hlf); 
-	        lif.set_p1(gE_t, gI_t, gL);
+            #if SCHEME < 2
+                gE_t = prep_cond(condE, gE_retrace, hE_retrace, fE_local, &inputTimeE[iInputE], jInputE-iInputE, ngTypeE, new_dt, t_hlf);
+                gI_t = prep_cond(condI, gI_retrace, hI_retrace, fI_local, &inputTimeI[iInputI], jInputI-iInputI, ngTypeI, new_dt, t_hlf); 
+	            lif.set_p1(gE_t, gI_t, gL);
+            #else
+                G_retrace = 0.0f;
+                gE_t = prep_cond(condE, G_retrace, dgE_retrace, gE_retrace,  hE_retrace, fE_local, &inputTimeE[iInputE], jInputE-iInputE, ngTypeE, new_dt, t_hlf);
+                gI_t = prep_cond(condI, G_retrace, dgI_retrace, gI_retrace,  hI_retrace, fI_local, &inputTimeI[iInputI], jInputI-iInputI, ngTypeI, new_dt, t_hlf);
+            #endif
+			lif.set_p1(gE_t, gI_t, gL);
+			#if SCHEME == 2
+				lif.set_dVs1(dgE_retrace, dgI_retrace);
+				lif.set_G(G_retrace, gL, new_dt);
+				assert(G_retrace >= 0);
+				assert(G_retrace <= G_local);
+			#endif
             // commit for next ext. inputs.
             iInputE = jInputE;
             iInputI = jInputI;
@@ -689,7 +774,6 @@ compute_V(double* __restrict__ v,
             double tsp = tempSpike[i];
             if (tsp < dt) {
                 double strength = preMat[i*networkSize + id] * spikeCount[i];
-                assert(strength == 0);
                 double dtsp = t_hlf-tsp;
                 #ifdef DEBUG
                     if (id==0) {
@@ -700,22 +784,20 @@ compute_V(double* __restrict__ v,
                 if (i < nE) {
                     #pragma unroll
 			    	for (unsigned int ig=0; ig<ngTypeE; ig++) {
-                        if (dtsp == 0) {
-                            hE_retrace[ig] += strength;
-                        } else {
-                            condE.compute_single_input_conductance(&gE_retrace[ig], &hE_retrace[ig], strength, dtsp, ig);
-                        }
-                        condE.compute_single_input_conductance(&gE_local[ig], &hE_local[ig], strength, dt-tsp, ig);
+                        #if SCHEME < 2
+                            modify_g(condE, gE_retrace[ig], hE_retrace[ig], gE_local[ig], hE_local[ig], strength, dtsp, tsp, dt, ig);
+                        #else
+							modify_g(condE, gE_retrace[ig], hE_retrace[ig], G_retrace, dgE_retrace, gE_local[ig], hE_local[ig], G_local, dgE_local , strength, dtsp, tsp, dt, ig);
+                        #endif
                     }
 			    } else {
 			    	#pragma unroll
 			    	for (unsigned int ig=0; ig<ngTypeI; ig++) {
-                        if (dtsp == 0) {
-                            hI_retrace[ig] += strength;
-                        } else {
-			    		    condI.compute_single_input_conductance(&gI_retrace[ig], &hI_retrace[ig], strength, dtsp, ig);
-                        }
-			    		condI.compute_single_input_conductance(&gI_local[ig], &hI_local[ig], strength, dt-tsp, ig);
+                        #if SCHEME < 2
+                            modify_g(condI, gI_retrace[ig], hI_retrace[ig], gI_local[ig], hI_local[ig], strength, dtsp, tsp, dt, ig);
+                        #else
+                            modify_g(condI, gI_retrace[ig], hI_retrace[ig], G_retrace, dgI_retrace, gI_local[ig], hI_local[ig], G_local, dgI_local, strength, dtsp, tsp, dt, ig);
+                        #endif
 			    	}
                 }
             }
@@ -729,9 +811,20 @@ compute_V(double* __restrict__ v,
         // t_hlf ------------- dt
 
         lif.tsp = dt;
-        if (lif.correctMe) {
-            set_p(&lif, gE_retrace, gI_retrace, gE_local, gI_local, gL);                                        
-            v0 = lif.v;
+	#if SCHEME < 2
+
+		if (lif.correctMe) {
+	#endif
+            set_p(&lif, gE_retrace, gI_retrace, gE_local, gI_local, gL);
+    #if SCHEME == 2
+		lif.set_dVs1(dgE_local, dgI_local);
+		if (lif.correctMe) {
+			lif.set_dVs0(dgE_retrace, dgI_retrace);
+			assert(G_local >= G_retrace);
+			G_local = G_local-G_retrace;
+			lif.set_G(G_local, gL, dt-t_hlf);
+	#endif
+			v0 = lif.v;
             lif.v0 = lif.v;
             #ifdef DEBUG
 		        double old_v0 = lif.v0;
@@ -744,7 +837,7 @@ compute_V(double* __restrict__ v,
 		            printf("end %u: v0 = %e, v = %e->%e, tBack %e->%e tsp %e > %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack, lif.tsp, t_hlf); 
                 } 
                 if (lif.tsp > dt) {
-		            printf("eend %u: v0 = %e, v = %e->%e, tBack %e->%e tsp %e > %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack, lif.tsp, t_hlf); 
+		            printf("eend %u: v0 = %e, v = %e->%e, tBack %e->%e tsp %e > %e\n", id, old_v0, lif.v0, lif.v, old_tBack, lif.tBack, lif.tsp, t_hlf);
                 }
             #endif
             assert(lif.tsp <= dt);
@@ -791,11 +884,17 @@ compute_V(double* __restrict__ v,
     if (lif.tBack > 0) {
         tBack[id] = lif.tBack - dt;
     }
+	#if SCHEME == 2
+		dVs[id] = lif.dVs1;
+	#endif
 }
 
 __global__ void
 __launch_bounds__(blockSize, 1)
 compute_V_without_ssc(double* __restrict__ v,
+                      #if SCHEME == 2
+                          double* __restrict__ dVs,
+                      #endif
                       double* __restrict__ gE,
                       double* __restrict__ gI,
                       double* __restrict__ hE,
@@ -824,12 +923,16 @@ compute_V_without_ssc(double* __restrict__ v,
 
     unsigned int id = threadIdx.x;
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
-    #ifdef IMPL
-        impl_rk2 lif(v[id], tBack[id]);
-    #else
+    #if SCHEME == 0
         rk2 lif(v[id], tBack[id]);
     #endif
-    double gL, tRef;
+    #if SCHEME == 1
+        impl_rk2 lif(v[id], tBack[id]);
+	#endif
+    #if SCHEME == 2
+        rangan_int lif(v[id], tBack[id], dVs[id]);
+    #endif
+	double gL, tRef;
     if (id < nE) {
         tRef = tRef_E;
         gL = gL_E;
@@ -917,8 +1020,11 @@ compute_V_without_ssc(double* __restrict__ v,
         eventRateI[id] = nInputI;
     #endif
     /* evolve g to t+dt with ff input only */
-    gE_t = prep_cond(condE, gE_local, hE_local, fE_local, inputTimeE, nInputE, ngTypeE, dt, dt); 
-    gI_t = prep_cond(condI, gI_local, hI_local, fI_local, inputTimeI, nInputI, ngTypeI, dt, dt); 
+    #if SCHEME < 2
+        gE_t = prep_cond(condE, gE_local, hE_local, fE_local, inputTimeE, nInputE, ngTypeE, dt, dt); 
+        gI_t = prep_cond(condI, gI_local, hI_local, fI_local, inputTimeI, nInputI, ngTypeI, dt, dt); 
+    #else
+    #endif
     lif.set_p1(gE_t, gI_t, gL);
 
     // rk2 step
@@ -955,12 +1061,12 @@ compute_V_without_ssc(double* __restrict__ v,
                 if (i < nE) {
                     #pragma unroll
                     for (unsigned int ig=0; ig<ngTypeE; ig++) {
-                        condE.compute_single_input_conductance(&gE_local[ig], &hE_local[ig], strength, dt-spike[i], ig);
+                        condE.compute_single_input_conductance(gE_local[ig], hE_local[ig], strength, dt-spike[i], ig);
                     }
                 } else {
                     #pragma unroll
                     for (unsigned int ig=0; ig<ngTypeI; ig++) {
-                        condI.compute_single_input_conductance(&gI_local[ig], &hI_local[ig], strength, dt-spike[i], ig);
+                        condI.compute_single_input_conductance(gI_local[ig], hI_local[ig], strength, dt-spike[i], ig);
                     }
                 }
             }
@@ -978,4 +1084,5 @@ compute_V_without_ssc(double* __restrict__ v,
         gI[id] = gI_local[ig];
         hI[id] = hI_local[ig];
     }
+	dVs[id] = lif.dVs1;
 }

@@ -872,47 +872,53 @@ void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int n
     double gIavgE = 0.0f;
     double gEavgI = 0.0f;
     double gIavgI = 0.0f;
-    std::ofstream p_file, v_file, spike_file, nSpike_file, gE_file, gI_file;
-#ifdef RECLAIM
-    p_file.open("rp_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
-    v_file.open("rv_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
-    spike_file.open("rs_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
-    nSpike_file.open("rn_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
-    gE_file.open("rgE_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
-    gI_file.open("rgI_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
-#else
-    p_file.open("p_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
-    v_file.open("v_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
-    spike_file.open("s_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
-    nSpike_file.open("n_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
-    gE_file.open("gE_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
-    gI_file.open("gI_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
-#endif
+    #ifndef SKIP_IO
+        std::ofstream p_file, v_file, spike_file, nSpike_file, gE_file, gI_file;
+        #ifdef RECLAIM
+            p_file.open("rp_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+            v_file.open("rv_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+            spike_file.open("rs_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+            nSpike_file.open("rn_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+            gE_file.open("rgE_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+            gI_file.open("rgI_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+        #else
+            p_file.open("p_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+            v_file.open("v_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+            spike_file.open("s_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+            nSpike_file.open("n_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+            gE_file.open("gE_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+            gI_file.open("gI_CPU" + theme + ".bin", std::ios::out|std::ios::binary);
+        #endif
+    #endif
 
     unsigned int nI = networkSize - nE;
-    p_file.write((char*)&nE, sizeof(unsigned int));
-    p_file.write((char*)&nI, sizeof(unsigned int));
-    p_file.write((char*)&ngTypeE, sizeof(unsigned int));
-    p_file.write((char*)&ngTypeI, sizeof(unsigned int));
-    double dtmp = vL;
-    p_file.write((char*)&dtmp, sizeof(double));
-    dtmp = vT;
-    p_file.write((char*)&dtmp, sizeof(double));
-    dtmp = vE;
-    p_file.write((char*)&dtmp, sizeof(double));
-    dtmp = vI;
-    p_file.write((char*)&dtmp, sizeof(double));
-    dtmp = gL_E;
-    p_file.write((char*)&dtmp, sizeof(double));
-    dtmp = gL_I;
-    p_file.write((char*)&dtmp, sizeof(double));
-    dtmp = tRef_E;
-    p_file.write((char*)&dtmp, sizeof(double));
-    dtmp = tRef_I;
-    p_file.write((char*)&dtmp, sizeof(double));
-    p_file.write((char*)&nstep, sizeof(unsigned int));
-    p_file.write((char*)&dt, sizeof(double));
-    p_file.write((char*)&inputRateE, sizeof(double));
+
+    #ifndef SKIP_IO
+        p_file.write((char*)&nE, sizeof(unsigned int));
+        p_file.write((char*)&nI, sizeof(unsigned int));
+        p_file.write((char*)&ngTypeE, sizeof(unsigned int));
+        p_file.write((char*)&ngTypeI, sizeof(unsigned int));
+        double dtmp = vL;
+        p_file.write((char*)&dtmp, sizeof(double));
+        dtmp = vT;
+        p_file.write((char*)&dtmp, sizeof(double));
+        dtmp = vE;
+        p_file.write((char*)&dtmp, sizeof(double));
+        dtmp = vI;
+        p_file.write((char*)&dtmp, sizeof(double));
+        dtmp = gL_E;
+        p_file.write((char*)&dtmp, sizeof(double));
+        dtmp = gL_I;
+        p_file.write((char*)&dtmp, sizeof(double));
+        dtmp = tRef_E;
+        p_file.write((char*)&dtmp, sizeof(double));
+        dtmp = tRef_I;
+        p_file.write((char*)&dtmp, sizeof(double));
+        p_file.write((char*)&nstep, sizeof(unsigned int));
+        p_file.write((char*)&dt, sizeof(double));
+        p_file.write((char*)&inputRateE, sizeof(double));
+    #endif
+
     inputRateE = inputRateE/1000.0;
     inputRateI = inputRateI/1000.0;
 
@@ -983,9 +989,11 @@ void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int n
     }
     //printf("cpu initialized\n");
     high_resolution_clock::time_point start = timeNow();
-    v_file.write((char*)v, networkSize * sizeof(double));
-    gE_file.write((char*)gE0, networkSize * ngTypeE * sizeof(double));
-    gI_file.write((char*)gI0, networkSize * ngTypeI * sizeof(double));
+    #ifndef SKIP_IO
+        v_file.write((char*)v, networkSize * sizeof(double));
+        gE_file.write((char*)gE0, networkSize * ngTypeE * sizeof(double));
+        gI_file.write((char*)gI0, networkSize * ngTypeI * sizeof(double));
+    #endif
 	int inputEventsE = 0;
 	int inputEventsI = 0;
     unsigned int spikesE = 0;
@@ -1151,11 +1159,13 @@ void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int n
             #endif
         }
 		high_resolution_clock::time_point wStart = timeNow();
-        v_file.write((char*)v, networkSize * sizeof(double));
-        spike_file.write((char*)spikeTrain, networkSize * sizeof(double));
-        nSpike_file.write((char*)nSpike, networkSize * sizeof(unsigned int));
-        gE_file.write((char*)gE_current, networkSize * ngTypeE * sizeof(double));
-        gI_file.write((char*)gI_current, networkSize * ngTypeI * sizeof(double));
+        #ifndef SKIP_IO
+            v_file.write((char*)v, networkSize * sizeof(double));
+            spike_file.write((char*)spikeTrain, networkSize * sizeof(double));
+            nSpike_file.write((char*)nSpike, networkSize * sizeof(unsigned int));
+            gE_file.write((char*)gE_current, networkSize * ngTypeE * sizeof(double));
+            gI_file.write((char*)gI_current, networkSize * ngTypeI * sizeof(double));
+        #endif
 		wTime += static_cast<double>(duration_cast<microseconds>(timeNow() - wStart).count());
         #ifndef FULL_SPEED
             #ifdef DEBUG
@@ -1214,18 +1224,20 @@ void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int n
     /* Cleanup */
     printf("Cleaning up\n");
     int nTimer = 2;
-    p_file.write((char*)&nTimer, sizeof(int));
-    vTime = vTime/1000.0f;
-    p_file.write((char*)&vTime, sizeof(double));
-    sTime = sTime/1000.0f;
-    p_file.write((char*)&sTime, sizeof(double));
+    #ifndef SKIP_IO
+        p_file.write((char*)&nTimer, sizeof(int));
+        vTime = vTime/1000.0f;
+        p_file.write((char*)&vTime, sizeof(double));
+        sTime = sTime/1000.0f;
+        p_file.write((char*)&sTime, sizeof(double));
     
-    if (p_file.is_open()) p_file.close();
-    if (v_file.is_open()) v_file.close();
-    if (spike_file.is_open()) spike_file.close();
-    if (nSpike_file.is_open()) nSpike_file.close();
-    if (gE_file.is_open()) gE_file.close();
-    if (gI_file.is_open()) gI_file.close();
+        if (p_file.is_open()) p_file.close();
+        if (v_file.is_open()) v_file.close();
+        if (spike_file.is_open()) spike_file.close();
+        if (nSpike_file.is_open()) nSpike_file.close();
+        if (gE_file.is_open()) gE_file.close();
+        if (gI_file.is_open()) gI_file.close();
+    #endif
     delete []v;
     delete []gE0;
     delete []gI0;

@@ -7,3 +7,4 @@
 #include "coredynamics.h"
 #include "CUDA_MACRO.h"
 #include "DIRECTIVE.h"
+#include <fenv.h>
