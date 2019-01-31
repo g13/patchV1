@@ -940,18 +940,21 @@ compute_V_without_ssc(double* __restrict__ v,
         tRef = tRef_I;
         gL = gL_I;
     }
+    unsigned int gid;
+
     double gE_local[ngTypeE];
     double hE_local[ngTypeE];
-    double fE_local[ngTypeE];
     double gI_local[ngTypeI];
     double hI_local[ngTypeI];
-    double fI_local[ngTypeI];
-    /* set a0 b0 for the first step */
-    double gI_t;
-    double gE_t;
+
+    #if SCHEME == 2
+        double dgE_local;
+        double G_local;
+        double dgI_local;
+    #endif
     // init cond E 
-    unsigned int gid;
-    gE_t = 0.0f;
+    double fE_local[ngTypeE];
+    double gE_t = 0.0f;
     #pragma unroll
     for (unsigned int ig=0; ig<ngTypeE; ig++) {
         gid = networkSize*ig + id;
@@ -962,7 +965,8 @@ compute_V_without_ssc(double* __restrict__ v,
     }
     double lTRE = leftTimeRateE[id];
     //  cond I 
-    gI_t = 0.0f;
+    double fI_local[ngTypeI];
+    double gI_t = 0.0f;
     #pragma unroll
     for (unsigned int ig=0; ig<ngTypeI; ig++) {
         gid = networkSize*ig + id;
@@ -1024,9 +1028,16 @@ compute_V_without_ssc(double* __restrict__ v,
         gE_t = prep_cond(condE, gE_local, hE_local, fE_local, inputTimeE, nInputE, ngTypeE, dt, dt); 
         gI_t = prep_cond(condI, gI_local, hI_local, fI_local, inputTimeI, nInputI, ngTypeI, dt, dt); 
     #else
+        G_local = 0.0f;
+        gE_t = prep_cond(condE, G_local, dgE_local, gE_local, hE_local, fE_local, inputTimeE, nInputE, ngTypeE, dt, dt);
+        gI_t = prep_cond(condI, G_local, dgI_local, gI_local, hI_local, fI_local, inputTimeI, nInputI, ngTypeI, dt, dt);
     #endif
     lif.set_p1(gE_t, gI_t, gL);
-
+    #if SCHEME == 2
+        lif.set_dVs1(dgE_local, dgI_local);
+        lif.set_G(G_local, gL, dt);
+		assert(G_local >= 0);
+    #endif
     // rk2 step
     one(&lif, dt, tRef, id, gE_t, gI_t);
 	assert(lif.v <= vT);
@@ -1036,8 +1047,8 @@ compute_V_without_ssc(double* __restrict__ v,
     // write data to global
     spikeTrain[id] = lif.tsp;
     nSpike[id] = lif.spikeCount;
-    tBack[id] = lif.tBack;
 	v[id] = lif.v;
+    tBack[id] = lif.tBack;
     spike[id] = lif.tsp;
 
     /** neat but not faster **/ 
@@ -1084,5 +1095,7 @@ compute_V_without_ssc(double* __restrict__ v,
         gI[id] = gI_local[ig];
         hI[id] = hI_local[ig];
     }
-	dVs[id] = lif.dVs1;
+	#if SCHEME == 2
+	    dVs[id] = lif.dVs1;
+    #endif
 }

@@ -119,7 +119,7 @@ __device__ void rangan_int::set_G(double G, double gL, double dt) {
 }
 
 __device__ void rangan_int::compute_v(double dt) {
-	v = b1 / a1 + eG * (v0 - b0 / a0) - (dVs0 + eG * dVs1)*dt / 2.0;
+	v = b1/a1 + eG*(v0 - b0/a0) - (eG*dVs0 + dVs1)*dt/2.0;
 }
 
 __device__ void rangan_int::recompute(double dt, double t0) {
