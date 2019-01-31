@@ -243,7 +243,9 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaMallocHost((void**)&eventRateI,   networkSize * sizeof(int)));
 
     /* Allocate space for results on device */
-	CUDA_CALL(cudaMalloc((void **)&d_dVs,		 networkSize * sizeof(double)));
+    #if SCHEME == 2
+    	CUDA_CALL(cudaMalloc((void **)&d_dVs,		 networkSize * sizeof(double)));
+    #endif
     CUDA_CALL(cudaMalloc((void **)&d_gE,         networkSize * ngTypeE * sizeof(double)));
     CUDA_CALL(cudaMalloc((void **)&d_gI,         networkSize * ngTypeI * sizeof(double))); 
     CUDA_CALL(cudaMalloc((void **)&d_hE,         networkSize * ngTypeE * sizeof(double)));
@@ -297,8 +299,6 @@ int main(int argc, char *argv[])
         CUDA_CHECK();
         init<double><<<init_b1,init_b2,0,i3>>>(tBack, -1.0f); 
         CUDA_CHECK();
-		init<double><<<init_b1, init_b2, 0, i1>>>(d_dVs, 0.0f);
-		CUDA_CHECK();
         f_init<<<init_b1,init_b2,0,i2>>>(d_fE, networkSize, nE, ngTypeE, EffsE, IffsE);
         CUDA_CHECK();
         f_init<<<init_b1,init_b2,0,i3>>>(d_fI, networkSize, nE, ngTypeI, EffsI, IffsI);
@@ -311,7 +311,11 @@ int main(int argc, char *argv[])
         CUDA_CHECK();
         init<double><<<init_b1*ngTypeI,init_b2,0,i3>>>(d_hI, 0.0f);
         CUDA_CHECK();
-
+        #if SCHEME == 2
+	    	init<double><<<init_b1, init_b2, 0, i1>>>(d_dVs, 0.0f);
+	    	CUDA_CHECK();
+        #endif
+    
         //CUDA_CALL(cudaEventRecord(kStart, 0));
         //CUDA_CALL(cudaEventRecord(kStop, 0));
         //CUDA_CALL(cudaEventSynchronize(kStop));
@@ -609,7 +613,9 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaFree(stateE));
     CUDA_CALL(cudaFree(stateI));
     CUDA_CALL(cudaFree(d_v));
-	CUDA_CALL(cudaFree(d_dVs));
+    #if SCHEME == 2
+	    CUDA_CALL(cudaFree(d_dVs));
+    #endif
     CUDA_CALL(cudaFree(d_gE));
     CUDA_CALL(cudaFree(d_gI));
     CUDA_CALL(cudaFree(d_hE));

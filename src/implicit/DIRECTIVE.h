@@ -6,7 +6,7 @@
 #define HALF_MEMORY_OCCUPANCY 1 // in Mb
 #define KERNEL_PERFORMANCE
 #define TEST_CONVERGENCE_NO_ROUNDING_ERR
-#define SCHEME 2
+#define SCHEME 0
 //#define SKIP_IO
 //#define TEST_WITH_MANUAL_FFINPUT
 //#define GPU_ONLY
