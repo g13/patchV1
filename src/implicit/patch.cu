@@ -446,20 +446,16 @@ int main(int argc, char *argv[])
         #endif
         dim3 grid3(1);
         dim3 block3(1024);
-        #ifdef SPIKE_CORRECTION
-            unsigned int shared_mem = 1024*sizeof(double)+2*1024*sizeof(unsigned int);
-			#if SCHEME < 2
+        #if SCHEME == 2
+			int_V<<<grid3, block3, shared_mem, s1>>>(d_v, d_dVs, d_gE, d_gI, d_hE, d_hI, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI, i*dt);
+        #else
+            #ifdef SPIKE_CORRECTION
+                unsigned int shared_mem = 1024*sizeof(double)+2*1024*sizeof(unsigned int);
 				compute_V<<<grid3, block3, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI, i*dt);
 			#else
-				compute_V<<<grid3, block3, shared_mem, s1>>>(d_v, d_dVs, d_gE, d_gI, d_hE, d_hI, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI, i*dt);
-			#endif
-        #else
-            unsigned int shared_mem = 1024*sizeof(double)+1024*sizeof(double);
-			#if SCHEME < 2
+                unsigned int shared_mem = 1024*sizeof(double)+1024*sizeof(double);
                 compute_V_without_ssc<<<grid3, block3, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI, i*dt);
-            #else
-                compute_V_without_ssc<<<grid3, block3, shared_mem, s1>>>(d_v, d_dVs, d_gE, d_gI, d_hE, d_hI, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI, i*dt);
-            #endif
+			#endif
         #endif
         CUDA_CHECK();
         CUDA_CALL(cudaEventRecord(vComputed, s1));
