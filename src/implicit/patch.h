@@ -4,6 +4,7 @@
 #include <cassert>
 #include <ctime>
 #include <cmath>
+#include "condShape.h"
 #include "coredynamics.h"
 #include "CUDA_MACRO.h"
 #include "DIRECTIVE.h"

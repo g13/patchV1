@@ -7,4 +7,5 @@
 #include "coredynamics.h"
 #include "cpu.h"
 #include "CUDA_MACRO.h"
+#include "CONST.h"
 #include "DIRECTIVE.h"

@@ -7,7 +7,6 @@
 #include <cassert>
 #include <curand_kernel.h>
 #include <cuda.h>
-#include "condShape.h"
 #include "MACRO.h"
 #include "rk2.h"
 

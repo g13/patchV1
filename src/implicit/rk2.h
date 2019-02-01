@@ -34,7 +34,8 @@ typedef struct Runge_Kutta_2 {
     double a0, b0;
     double a1, b1;
     __device__ Runge_Kutta_2(double _v0, double _tBack): v0(_v0), tBack(_tBack) {};
-    __device__ void compute_spike_time(double dt, double t0) {
+
+    __device__ void compute_spike_time(double dt, double t0 = 0.0f) {
         tsp = comp_spike_time(v, v0, dt, t0);
     }
     
@@ -66,22 +67,23 @@ typedef struct Runge_Kutta_2 {
 #if SCHEME == 0
 struct rk2: Runge_Kutta_2 {
     __device__ rk2(double _v0, double _tBack): Runge_Kutta_2(_v0, _tBack) {};
+
     __device__ void rk2::compute_v(double dt) {
         double fk0 = eval_fk(a0, b0, v0);
         double fk1 = eval_fk(a1, b1, v0 + dt*fk0);
         v = v0 + dt*(fk0+fk1)/2.0f;
     }
     
-    __device__ void rk2::recompute(double dt, double t0) {
+    __device__ void rk2::recompute(double dt, double t0 = 0.0f) {
         recompute_v0(dt, t0);
         compute_v(dt);
     }
     
-    __device__ void rk2::recompute_v(double dt, double t0) {
+    __device__ void rk2::recompute_v(double dt, double t0 = 0.0f) {
         recompute(dt, t0);
     }
     
-    __device__ void rk2::recompute_v0(double dt, double t0) {
+    __device__ void rk2::recompute_v0(double dt, double t0 = 0.0f) {
         double A = a0*a1*dt - a0 - a1;
         double B = b0 + b1 - a1*b0*dt;
         double t = tBack-t0;
@@ -94,11 +96,12 @@ struct rk2: Runge_Kutta_2 {
 struct impl_rk2: Runge_Kutta_2 {
     double denorm;
     __device__ impl_rk2(double _v0, double _tBack): Runge_Kutta_2(_v0, _tBack) {};
+
     __device__ void compute_v(double dt) {
         v = (2*v0 + (-a0*v0+b0+b1)*dt)/(2+a1*dt);
     }
     
-    __device__ void recompute(double dt, double t0) {
+    __device__ void recompute(double dt, double t0 = 0.0f) {
         double rB = dt/(tBack-t0) - 1; 
         double denorm = 2 + a1*dt;
         double A = (2 - a0*dt)/denorm;
@@ -107,7 +110,7 @@ struct impl_rk2: Runge_Kutta_2 {
         v = (A*(1+rB)*vL + rB*B)/(A+rB);
     }
     
-    __device__ void recompute_v(double dt, double t0) {
+    __device__ void recompute_v(double dt, double t0 = 0.0f) {
         double rB = dt/(tBack-t0) - 1; 
         double denorm = 2 + a1*dt;
         double A = (2 - a0*dt)/denorm;
@@ -115,7 +118,7 @@ struct impl_rk2: Runge_Kutta_2 {
         v = (A*(1+rB)*vL + rB*B)/(A+rB);
     }
     
-    __device__ void recompute_v0(double dt, double t0) {
+    __device__ void recompute_v0(double dt, double t0 = 0.0f) {
         double rB = dt/(tBack-t0) - 1; 
         double denorm = 2 + a1*dt;
         double A = (2 - a0*dt)/denorm;
@@ -150,20 +153,20 @@ typedef struct rangan_int: Runge_Kutta_2 {
     	v = b1/a1 + eG*(v0 - b0/a0) - (eG*dVs0 + dVs1)*dt/2.0;
     }
     
-    __device__ void recompute(double dt, double t0) {
+    __device__ void recompute(double dt, double t0 = 0.0f) {
         double rB = dt/(tBack-t0) - 1;
         double integral = (eG*dVs0 + dVs1)*dt/2.0;
         v0 = ((1+rB)*vL - b1/a1 + eG*b0/a0 + integral)/(rB+eG);
         v = (1+rB)*vL - rB*v0;
     
     }
-    __device__ void recompute_v0(double dt, double t0) {
+    __device__ void recompute_v0(double dt, double t0 = 0.0f) {
         double rB = dt/(tBack-t0) - 1;
         double integral = (eG*dVs0 + dVs1)*dt/2.0;
         v0 = ((1+rB)*vL - b1/a1 + eG*b0/a0 + integral)/(rB+eG);
     
     }
-    __device__ void recompute_v(double dt, double t0) {
+    __device__ void recompute_v(double dt, double t0 = 0.0f) {
         double rB = dt/(tBack-t0) - 1;
         double integral = (eG*dVs0 + dVs1)*dt/2.0;
         v = (rB*(b1/a1 - eG*b0/a0 - integral) + eG*(1+rB)*vL)/(rB+eG);

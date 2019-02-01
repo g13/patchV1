@@ -5,6 +5,8 @@
 #include <stdlib.h>
 
 #define FULL_MASK 0xffffffff
+#define warpSize 32
+#define blockSize 1024
 
 //#define TEST_WITH_MANUAL_FFINPUT
 #define CUDA_ERROR_CHECK

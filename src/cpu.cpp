@@ -43,7 +43,7 @@ int set_test_input_time(double inputTime[], double dt, double rate, double &tau,
     return i;
 }
 
-void evolve_g(cConductanceShape &cond, double *g, double *h, double *f, double *inputTime, int nInput, double dt, double dt0, unsigned int ig) {
+void evolve_g(ConductanceShape &cond, double *g, double *h, double *f, double *inputTime, int nInput, double dt, double dt0, unsigned int ig) {
     // dt0: with respect to the time frame of inputTime (0)
     // dt: with respect to time frame of actual integration 
     cond.decay_conductance(g, h, dt, ig);  
@@ -184,7 +184,7 @@ void cpu_LIF::reset_v() {
 
 #ifdef RECLAIM
 // Spike-spike correction
-unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[], double hI0[], double gE1[], double gI1[], double hE1[], double hI1[], double fE[], double fI[], double preMat[], unsigned int networkSize, cConductanceShape condE, cConductanceShape condI, int ngTypeE, int ngTypeI, double inputTimeE[], double inputTimeI[], int nInputE[], int nInputI[], double spikeTrain[], unsigned int nE, double dt) {
+unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[], double hI0[], double gE1[], double gI1[], double hE1[], double hI1[], double fE[], double fI[], double preMat[], unsigned int networkSize, ConductanceShape condE, ConductanceShape condI, double inputTimeE[], double inputTimeI[], int nInputE[], int nInputI[], double spikeTrain[], unsigned int nE, double dt) {
     static unsigned int c2_n = 0;
     double *v0 = new double[networkSize];
     double *a1 = new double[networkSize];
@@ -216,7 +216,7 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
     }
     int ngType;
     double *g, *h;
-    cConductanceShape *cond;
+    ConductanceShape *cond;
     double pdt0 = 0.0f; // old pdt
     int* iInputE = new int[networkSize];
     int* iInputI = new int[networkSize];
@@ -529,7 +529,7 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
     return corrected_n;
 }
 #else
-unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[], double hI0[], double gE1[], double gI1[], double hE1[], double hI1[], double fE[], double fI[], double preMat[], unsigned int networkSize, cConductanceShape condE, cConductanceShape condI, int ngTypeE, int ngTypeI, double inputTimeE[], double inputTimeI[], int nInputE[], int nInputI[], double spikeTrain[], unsigned int nE, double dt) {
+unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], double hE0[], double hI0[], double gE1[], double gI1[], double hE1[], double hI1[], double fE[], double fI[], double preMat[], unsigned int networkSize, ConductanceShape condE, ConductanceShape condI, double inputTimeE[], double inputTimeI[], int nInputE[], int nInputI[], double spikeTrain[], unsigned int nE, double dt) {
     //static unsigned int c2_n = 0;
     unsigned int in = 0;
     double* wSpikeTrain = new double[networkSize];
@@ -849,7 +849,7 @@ unsigned int cpu_ssc(cpu_LIF* lif[], double v[], double gE0[], double gI0[], dou
 }
 #endif
 
-void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int nstep, double dt, unsigned int nE, double preMat0[], double vinit[], double firstInputE[], double firstInputI[], unsigned long long seed, double EffsE, double IffsE, double EffsI, double IffsI, std::string theme, double inputRateE, double inputRateI, unsigned int ngTypeE, unsigned int ngTypeI) {
+void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int nstep, double dt, unsigned int nE, double preMat0[], double vinit[], double firstInputE[], double firstInputI[], unsigned long long seed, double EffsE, double IffsE, double EffsI, double IffsI, std::string theme, double inputRateE, double inputRateI, ConductanceShape &condE, ConductanceShape &condI) {
     double gL, tRef;
     double *v = new double[networkSize];
     double *gE0 = new double[networkSize*ngTypeE];
@@ -896,8 +896,10 @@ void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int n
     #ifndef SKIP_IO
         p_file.write((char*)&nE, sizeof(unsigned int));
         p_file.write((char*)&nI, sizeof(unsigned int));
-        p_file.write((char*)&ngTypeE, sizeof(unsigned int));
-        p_file.write((char*)&ngTypeI, sizeof(unsigned int));
+        unsigned int ngTmp = ngTypeE;
+        p_file.write((char*)&ngTmp, sizeof(unsigned int));
+        ngTmp = ngTypeI;
+        p_file.write((char*)&ngTmp, sizeof(unsigned int));
         double dtmp = vL;
         p_file.write((char*)&dtmp, sizeof(double));
         dtmp = vT;
@@ -930,12 +932,6 @@ void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int n
     double *logRandI = new double[networkSize];
     double *lTRE = new double[networkSize];
     double *lTRI = new double[networkSize];
-    double riseTimeE[2] = {1.0f, 5.0f}; // ms
-    double riseTimeI[1] = {1.0f};
-    double decayTimeE[2] = {3.0f, 80.0f};
-    double decayTimeI[1] = {5.0f};
-    cConductanceShape condE(riseTimeE, decayTimeE, ngTypeE);
-    cConductanceShape condI(riseTimeI, decayTimeI, ngTypeI);
 
 	high_resolution_clock::time_point iStart = timeNow();
     printf("cpu version started\n");
@@ -1086,17 +1082,17 @@ void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int n
                 }
 			#else
                 #ifdef TEST_CONVERGENCE_NO_ROUNDING_ERR
-                    if (inputTimeE > 0) {
+                    if (inputRateE > 0) {
 				        nInputE[i] = set_test_input_time(&(inputTimeE[i*MAX_FFINPUT_PER_DT]), dt, inputRateE, lTRE[i], randGenE[i]);
                     }
-                    if (inputTimeI > 0) {
+                    if (inputRateI > 0) {
 				        nInputI[i] = set_test_input_time(&(inputTimeI[i*MAX_FFINPUT_PER_DT]), dt, inputRateI, lTRI[i], randGenI[i]);
                     }
                 #else 
-                    if (inputTimeE > 0) {
+                    if (inputRateE > 0) {
 				        nInputE[i] = set_input_time(&(inputTimeE[i*MAX_FFINPUT_PER_DT]), dt, inputRateE, lTRE[i], logRandE[i], randGenE[i]);
                     }
-                    if (inputTimeI > 0) {
+                    if (inputRateI > 0) {
 				        nInputI[i] = set_input_time(&(inputTimeI[i*MAX_FFINPUT_PER_DT]), dt, inputRateI, lTRI[i], logRandI[i], randGenI[i]);
                     }
                 #endif
@@ -1141,7 +1137,7 @@ void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int n
         if (spiked) {
             //printf("spiked:\n");
             high_resolution_clock::time_point sStart = timeNow();
-            unsigned int nsp = cpu_ssc(lif, v, gE_old, gI_old, hE_old, hI_old, gE_current, gI_current, hE_current, hI_current, fE, fI, preMat, networkSize, condE, condI, ngTypeE, ngTypeI, inputTimeE, inputTimeI, nInputE, nInputI, spikeTrain, nE, dt);
+            unsigned int nsp = cpu_ssc(lif, v, gE_old, gI_old, hE_old, hI_old, gE_current, gI_current, hE_current, hI_current, fE, fI, preMat, networkSize, condE, condI, inputTimeE, inputTimeI, nInputE, nInputI, spikeTrain, nE, dt);
             sTime += static_cast<double>(duration_cast<microseconds>(timeNow()-vStart).count());
 #ifdef DEBUG
             printf("%u spikes during dt\n", nsp);

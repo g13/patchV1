@@ -5,15 +5,11 @@
 #include "DIRECTIVE.h"
 #include <random>
 #include "CONST.h"
-#include "condShape_cpu.h"
+#include "condShape.h"
 #include <cassert>
-/* === RAND === #include "curand.h" */
+/* === try when cuRAND's cpu result is consistent with device result === #include "curand.h" */
 
 using namespace std::chrono;
-
-/* === RAND === Uncomment all RANDs if curand can ensure cpu and gpu generate the same rands
-    int set_input_time(double *inputTime, double dt, double rate, double &leftTimeRate, double &lastNegLogRand, curandGenerator_t &randGen);
-*/
 
 struct cpu_LIF {
     double v, v0, v_hlf;
@@ -37,4 +33,4 @@ struct cpu_LIF {
     void compute_spike_time(double dt, double pdt0);
 };
 
-void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int nstep, double dt, unsigned int nE, double preMat0[], double vinit[], double firstInputE[], double firstInputI[], unsigned long long seed, double EffsE, double IffsE, double EffsI, double IffsI, std::string theme, double inputRateE, double inputRateI, unsigned int ngTypeE, unsigned int ngTypeI);
+void cpu_version(int networkSize, double dInputE, double dInputI, unsigned int nstep, double dt, unsigned int nE, double preMat0[], double vinit[], double firstInputE[], double firstInputI[], unsigned long long seed, double EffsE, double IffsE, double EffsI, double IffsI, std::string theme, double inputRateE, double inputRateI, ConductanceShape &condE, ConductanceShape &condI);

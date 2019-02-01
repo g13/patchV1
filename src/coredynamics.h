@@ -4,65 +4,10 @@
 #include "cuda_runtime.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <cassert>
 #include <curand_kernel.h>
 #include <cuda.h>
-#include "condShape.h"
-#include "LIF_inlines.h"
 #include "MACRO.h"
-#include <cassert>
-
-struct Func_RK2 {
-    double v, v0, v_hlf;
-    // type variable
-    double tBack, tsp;
-    unsigned int spikeCount;
-    __device__ Func_RK2(double _v0, double _tBack) : v0(_v0), tBack(_tBack) {};
-    __device__ void runge_kutta_2(double dt);
-    __device__ virtual void set_p0(double _gE, double _gI, double _gL) = 0;
-    __device__ virtual void set_p1(double _gE, double _gI, double _gL) = 0;
-    __device__ virtual double eval0(double _v) = 0;
-    __device__ virtual double eval1(double _v) = 0;
-    __device__ virtual void reset_v() = 0;
-    __device__ virtual void compute_pseudo_v0(double dt) = 0;
-    __device__ virtual void compute_v(double dt) = 0;
-    __device__ virtual double compute_spike_time(double dt) = 0;
-};
-
-struct LIF: Func_RK2 {
-    double a1, b1;
-    double a0, b0;
-    __device__ LIF(double _v0, double _tBack) : Func_RK2(_v0, _tBack) {};
-    __device__ virtual void set_p0(double _gE, double _gI, double _gL);
-    __device__ virtual void set_p1(double _gE, double _gI, double _gL);
-    __device__ virtual double eval0(double _v);
-    __device__ virtual double eval1(double _v);
-    __device__ virtual void reset_v();
-    __device__ virtual void compute_pseudo_v0(double dt);
-    __device__ virtual void compute_v(double dt);
-    __device__ virtual double compute_spike_time(double dt);
-};
-
-__global__ void recal_G(double* __restrict__ g,
-                        double* __restrict__ h,
-                        double* __restrict__ preMat,
-                        double* __restrict__ gactVec,
-                        double* __restrict__ hactVec,
-                        double* __restrict__ g_b1x,
-                        double* __restrict__ h_b1x,
-                        unsigned int n, unsigned int offset, unsigned int ngType, unsigned int ns, int m);
-
-__global__ void reduce_G(double* __restrict__ g,
-                         double* __restrict__ h,
-                         double* __restrict__ g_b1x,
-                         double* __restrict__ h_b1x,
-                         unsigned int ngType, int n);
-
-__global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed, double *lTR, double dInput, unsigned int offset);
-
-__global__ void randInit(double* __restrict__ preMat, 
-						 double* __restrict__ v, 
-						 curandStateMRG32k3a* __restrict__ state,
-double sEE, double sIE, double sEI, double sII, unsigned int networkSize, unsigned int nE, unsigned long long seed);
 
 template <typename T>
 __global__ void init(T *array, T value) {
@@ -70,59 +15,129 @@ __global__ void init(T *array, T value) {
     array[id] = value;
 }
 
-__global__ void f_init(double* __restrict__ f, unsigned networkSize, unsigned int nE, unsigned int ngType, double Ef, double If);
+__global__ void logRand_init(double *logRand, curandStateMRG32k3a *state, unsigned long long seed, double *lTR, double dInput, unsigned int offset) {
+    unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
+    curandStateMRG32k3a localState = state[id];
+    curand_init(seed+id+offset, 0, 0, &localState);
+    logRand[id] = -log(curand_uniform_double(&localState));
+    state[id] = localState;
 
-__global__ void compute_dV(double* __restrict__ v0,
-                           double* __restrict__ dv,
-                           double* __restrict__ gE,
-                           double* __restrict__ gI,
-                           double* __restrict__ hE,
-                           double* __restrict__ hI,
-                           double* __restrict__ a0,
-                           double* __restrict__ b0,
-                           double* __restrict__ a1,
-                           double* __restrict__ b1,
-                           double* __restrict__ preMat,
-                           double* __restrict__ inputRateE,
-                           double* __restrict__ inputRateI,
-                           int* __restrict__ eventRateE,
-                           int* __restrict__ eventRateI,
-                           double* __restrict__ spikeTrain,
-                           unsigned int* __restrict__ nSpike,
-						   double* __restrict__ tBack,
-                           double* __restrict__ gactVec,
-                           double* __restrict__ hactVec,
-                           double* __restrict__ fE,
-                           double* __restrict__ fI,
-                           double* __restrict__ leftTimeRateE,
-                           double* __restrict__ leftTimeRateI,
-                           double* __restrict__ lastNegLogRandE,
-                           double* __restrict__ lastNegLogRandI,
-                           double* __restrict__ v_hlf,
-                           curandStateMRG32k3a* __restrict__ stateE,
-                           curandStateMRG32k3a* __restrict__ stateI,
-                           unsigned int ngTypeE, unsigned int ngTypeI, unsigned int ngType, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, double dInputE, double dInputI);
+    #ifdef TEST_WITH_MANUAL_FFINPUT
+        lTR[id] = curand_uniform_double(&localState)*dInput;
+    #else
+        lTR[id] = logRand[id]*curand_uniform_double(&localState)*dInput;
+    #endif
+}
 
-__global__ void correct_spike(bool*   __restrict__ not_matched,
-                              double* __restrict__ spikeTrain,
-                              double* __restrict__ v_hlf,
-                              double* __restrict__ v0,
-                              double* __restrict__ dv,
-                              double* __restrict__ a0,
-                              double* __restrict__ b0,
-                              double* __restrict__ a1,
-                              double* __restrict__ b1,
-                              double* __restrict__ vnew,
-                              double* __restrict__ preMat,
-                              double* __restrict__ tBack,
-                              unsigned int* __restrict__ nSpike,
-                              unsigned int ngTypeE, unsigned int ngTypeI, ConductanceShape condE, ConductanceShape condI, double dt, unsigned int poolSizeE, unsigned int poolSize);
+__global__ void randInit(double* __restrict__ preMat, 
+						 double* __restrict__ v, 
+						 curandStateMRG32k3a* __restrict__ state,
+double sEE, double sIE, double sEI, double sII, unsigned int networkSize, unsigned int nE, unsigned long long seed) {
+    unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
+    curandStateMRG32k3a localState = state[id];
+    curand_init(seed+id, 0, 0, &localState);
+    v[id] = vL + curand_uniform_double(&localState) * (vT-vL) * 0.8;
+    double mean, std, ratio;
+    if (id < nE) {
+        mean = log(sEE/sqrt(1.0f+1.0f/sEE));
+        std = sqrt(log(1.0f+1.0f/sEE));
+        ratio = 0.0;
+        for (unsigned int i=0; i<nE; i++) {
+            double x = curand_log_normal_double(&localState, mean, std);
+            preMat[i*networkSize + id] = x;
+            ratio += x;
+        }
+        if (sEE > 0) {
+            ratio = sEE * nE / ratio;
+            for (unsigned int i=0; i<nE; i++) {
+                preMat[i*networkSize + id] = preMat[i*networkSize + id]*ratio;
+            }
+        } else {
+            for (unsigned int i=0; i<nE; i++) {
+                preMat[i*networkSize + id] = 0.0f;
+            }
+        }
+        //mean = log(sEI/sqrt(1.0f+1.0f/sEI));
+        //std = sqrt(log(1.0f+1.0f/sEI));
+        mean = sEI;
+        std = sEI*0.125;
+        ratio = 0.0;
+        for (unsigned int i=nE; i<networkSize; i++) {
+            //double x = curand_log_normal_double(&localState, mean, std);
+            double x = curand_normal_double(&localState)*std+mean;
+            if (x<0) x = 0;
+            preMat[i*networkSize + id] = x;
+            ratio += x;
+        }
+        if (sEI > 0){
+            ratio = sEI * (networkSize-nE) / ratio;
+            for (unsigned int i=nE; i<networkSize; i++) {
+                preMat[i*networkSize + id] = preMat[i*networkSize + id]*ratio;
+            }
+        } else {
+            for (unsigned int i=nE; i<networkSize; i++) {
+                preMat[i*networkSize + id] = 0.0f;
+            }
+        }
+    } else {
+        //mean = log(sIE/sqrt(1.0f+1.0f/sIE));
+        //std = sqrt(log(1.0f+1.0f/sIE));
+        mean = sIE;
+        std = sIE*0.125;
+        ratio = 0.0;
+        for (unsigned int i=0; i<nE; i++) {
+            //double x = curand_log_normal_double(&localState, mean, std);
+            double x = curand_normal_double(&localState)*std+mean;
+            if (x<0) x = 0;
+            preMat[i*networkSize + id] = x;
+            ratio += x;
+        }
+        if (sIE > 0) {
+            ratio = sIE * nE / ratio;
+            for (unsigned int i=0; i<nE; i++) {
+                preMat[i*networkSize + id] = preMat[i*networkSize + id]*ratio;
+            }
+        } else {
+            for (unsigned int i=0; i<nE; i++) {
+                preMat[i*networkSize + id] = 0.0f;
+            }
+        }
+        //mean = log(sII/sqrt(1.0f+1.0f/sII));
+        //std = sqrt(log(1.0f+1.0f/sII));
+        mean = sII;
+        std = sII*0.125;
+        ratio = 0.0;
+        for (unsigned int i=nE; i<networkSize; i++) {
+            //double x = curand_log_normal_double(&localState, mean, std);
+            double x = curand_normal_double(&localState)*std+mean;
+            if (x<0) x = 0;
+            preMat[i*networkSize + id] = x;
+            ratio += x;
+        }
+        if (sII > 0){
+            ratio = sII * (networkSize-nE) / ratio;
+            for (unsigned int i=nE; i<networkSize; i++) {
+                preMat[i*networkSize + id] = preMat[i*networkSize + id]*ratio;
+            }
+        } else {
+            for (unsigned int i=nE; i<networkSize; i++) {
+                preMat[i*networkSize + id] = 0.0f;
+            }
+        }
+    }
+}
 
-__global__ void prepare_cond(double* __restrict__ tBack,
-                             double* __restrict__ spikeTrain,
-                             double* __restrict__ gactVec,
-                             double* __restrict__ hactVec,
-                             unsigned int* __restrict__ nSpike,
-                             ConductanceShape cond, double dt, unsigned int ngType, unsigned int offset, unsigned int networkSize);
+__global__ void f_init(double* __restrict__ f, unsigned networkSize, unsigned int nE, unsigned int ngType, double Ef, double If) {
+    unsigned long id = blockIdx.x * blockDim.x + threadIdx.x;
+    if (id < nE) {
+        for (unsigned int ig=0; ig<ngType; ig++) {
+            f[ig*networkSize + id] = Ef;
+        }
+    } else {
+        for (unsigned int ig=0; ig<ngType; ig++) {
+            f[ig*networkSize + id] = If;
+        }
+    }
+}
 
 #endif
