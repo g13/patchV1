@@ -6,13 +6,13 @@
 #define HALF_MEMORY_OCCUPANCY 1 // in Mb
 #define KERNEL_PERFORMANCE
 #define TEST_CONVERGENCE_NO_ROUNDING_ERR
-#define SCHEME 0
+#define SCHEME 1
 //#define SKIP_IO
 //#define TEST_WITH_MANUAL_FFINPUT
 //#define GPU_ONLY
 //#define NAIVE
 //#define DEBUG
-#define FULL_SPEED
+//#define FULL_SPEED
 #define SPIKE_CORRECTION
 //#define SPEED_TEST  // not much use, maybe try when there's a lot of spikes per dt
 //#define VOLTA

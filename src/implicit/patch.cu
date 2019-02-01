@@ -14,8 +14,8 @@ int main(int argc, char *argv[])
     seed = std::time(0);
     int device;
     int b1,b2;
-    b1 = 160;
-    b2 = 128;
+    b1 = 32;
+    b2 = 32;
     bool printStep = false;
     bool moreSharedMemThanBlocks = true;
     double flatRateE = 100.0f; // Hz
@@ -447,6 +447,7 @@ int main(int argc, char *argv[])
         dim3 grid3(1);
         dim3 block3(1024);
         #if SCHEME == 2
+			unsigned int shared_mem = 1024 * sizeof(double) + 2 * 1024 * sizeof(unsigned int);
 			int_V<<<grid3, block3, shared_mem, s1>>>(d_v, d_dVs, d_gE, d_gI, d_hE, d_hI, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI, i*dt);
         #else
             #ifdef SPIKE_CORRECTION
