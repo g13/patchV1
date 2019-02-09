@@ -13,5 +13,9 @@
 #define ngTypeI 1
 
 #define EPS 1e-14
+#define max_ngType 2
+#define NTYPE 2
+#define CUDA_PI 3.14159265358979323846
+
 
 #endif

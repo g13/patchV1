@@ -2,6 +2,7 @@ import numpy as np
 #from numba import njit, prange
 import math
 import os
+import sobol_seq as ss
 os.environ['NUMBAPRO_CUDALIB']='C:/Users/gueux/Miniconda3/envs/py36_7/Library/bin'
 from pyculib import rand
 
@@ -162,6 +163,7 @@ def seg_area(angle, radius):
     theta = angle
     return radius*radius/2*(theta-np.sin(theta))
 
+# pseudo rands
 def generate_pos_2d(lcurve, rcurve, target_area, ly, ry, n, seed):
     nl = ly.size-1
     nr = ry.size-1
@@ -225,4 +227,66 @@ def generate_pos_2d(lcurve, rcurve, target_area, ly, ry, n, seed):
         ntmp = np.ceil((n-i)*ratio).astype(int)
         #count += 1
     #print(count)
+    return pos
+
+# quasi rand sobol seq
+def generate_pos_3d(lcurve, rcurve, target_area, ly, ry, n, seed):
+    nl = ly.size-1
+    nr = ry.size-1
+    assert(len(lcurve) == nl)
+    assert(len(rcurve) == nr)
+    assert(min(ly) == min(ry))
+    assert(max(ly) == max(ry))
+    
+    def collect_3d(n, x, y, z):
+        selected = np.ones(n, dtype=bool)
+        for i in range(n):
+            for j in range(nl):
+                if ly[j] < y[i] and y[i] < ly[j+1]:
+                    if lcurve[j].check(y[i]) > x[i]:
+                        selected[i] = False
+                        break
+            if selected[i]:
+                for j in range(nr):
+                    if ry[j] < y[i] and y[i] < ry[j+1]:
+                        if rcurve[j].check(y[i]) < x[i]:
+                            selected[i] = False
+                            break
+        pos = np.array([x[selected], y[selected], z[selected]])
+        return pos, sum(selected)
+    
+    xmax = max([r.xmax() for r in rcurve])
+    xmin = min([l.xmin() for l in lcurve])
+    ymax = max(ly)
+    ymin = min(ly)
+    storming_area = (xmax-xmin) * (ymax-ymin);
+    #print(xmax,xmin,ymax,ymin, storming_area)
+
+    ratio = storming_area/target_area
+    #print(ratio)
+    # to do: if ratio > some threshold rotate the coordinates and implement methods for the corresponding change for the Class of curves, too
+    ntmp = np.ceil(n*ratio).astype(int)
+    i = 0
+    pos = np.empty((3,n), dtype=float)
+    skip = 602
+    #qrng = rand.QRNG(rndtype=rand.QRNG.SCRAMBLED_SOBOL32, ndim=2)
+    count = 0
+    while (i < n):
+        #irands = np.empty((2,ntmp), dtype='uint32')
+        rands = ss.i4_sobol_generate(3, ntmp, skip=skip) 
+
+        x = xmin + (xmax-xmin) * rands[:,0]
+        y = ymin + (ymax-ymin) * rands[:,1]
+        z = 0.01 * rands[:,2]
+        
+        acquired_pos, nselected = collect_3d(ntmp, x, y, z)
+        if i+nselected > n:
+            nselected = n-i
+        pos[:,i:i+nselected] = acquired_pos[:, :nselected]
+        i += nselected
+        ntmp = np.ceil((n-i)*ratio).astype(int)
+        skip = skip + ntmp
+        count += 1
+        if count > 10:
+            print(count, ntmp)
     return pos

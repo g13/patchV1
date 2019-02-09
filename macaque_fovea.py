@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from construct import *
 from sys import getsizeof
-def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed):
+def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_sobol3d = False):
     pos = np.empty((3,nblock,neuron_per_block), dtype=float)
     print(f'taking up {getsizeof(pos)/1024/1024} Mb')
     lx = 0
@@ -337,9 +337,14 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed):
                 else:
                     lefty = np.array([p1[1,i+1], p1[1,i], y[0, j-1], y[1,j-1]]) 
                     righty = np.array([p1[1,i+1], y[1,j-1]])
-            temp_pos = generate_pos_2d(lcurve, rcurve, area_per_block, lefty, righty, neuron_per_block, seed+blockCount)
+                    
+            if use_sobol3d:
+                temp_pos = generate_pos_3d(lcurve, rcurve, area_per_block, lefty, righty, neuron_per_block, seed+blockCount)
+                pos[:, blockCount,:] = temp_pos
+            else:
+                temp_pos = generate_pos_2d(lcurve, rcurve, area_per_block, lefty, righty, neuron_per_block, seed+blockCount)
+                pos[:2, blockCount,:] = temp_pos
             ax.plot(temp_pos[0,:], temp_pos[1,:], ',', ms = 0.3)
-            pos[:2, blockCount,:] = temp_pos
             blockCount += 1
     
     print('avg iterations =', iteration/nring)
@@ -560,9 +565,13 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed):
                 lefty = np.array([plr[1,i], pll[1,i], left_top_point[1]])
                 righty = np.array([plr[1,i], left_top_point[1]])
                 
-            temp_pos = generate_pos_2d(lcurve, rcurve, area_per_block, lefty, righty, neuron_per_block, seed+blockCount)
+            if use_sobol3d:
+                temp_pos = generate_pos_3d(lcurve, rcurve, area_per_block, lefty, righty, neuron_per_block, seed+blockCount)
+                pos[:, blockCount,:] = temp_pos
+            else:
+                temp_pos = generate_pos_2d(lcurve, rcurve, area_per_block, lefty, righty, neuron_per_block, seed+blockCount)
+                pos[:2, blockCount,:] = temp_pos
             ax.plot(temp_pos[0,:], temp_pos[1,:], ',', ms = 0.3)
-            pos[:2, blockCount,:] = temp_pos
             blockCount += 1  
     
     top_is_bottom = np.array([1,-1])
@@ -585,8 +594,8 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed):
                 lefty = np.array([-pp[i-1,0][1,j], -pp[i-1,1][1,j], -pp[i-1,1][1,j+1]])
                 righty = np.array([-pp[i-1,0][1,j], -pp[i-1,0][1,j+1], -pp[i-1,1][1,j+1]])
                                   
-                lcurve = [left_curve, top_curve]
-                rcurve = [bottom_curve, right_curve]
+                lcurve = [left_curve, bottom_curve]
+                rcurve = [top_curve, right_curve]
             else:
                 reversed_i = 2*nstripe-2
                 bottom_curve = LineSegment(plr[:, reversed_i], pll[:, reversed_i])
@@ -596,10 +605,13 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed):
                 rcurve = [right_curve]
                 lefty = np.array([left_bottom_point[1], pll[1, reversed_i], plr[1, reversed_i]])
                 righty = np.array([left_bottom_point[1], plr[1, reversed_i]])
-                
-            temp_pos = generate_pos_2d(lcurve, rcurve, area_per_block, lefty, righty, neuron_per_block, seed+blockCount)
+            if use_sobol3d:
+                temp_pos = generate_pos_3d(lcurve, rcurve, area_per_block, lefty, righty, neuron_per_block, seed+blockCount)
+                pos[:, blockCount,:] = temp_pos
+            else:
+                temp_pos = generate_pos_2d(lcurve, rcurve, area_per_block, lefty, righty, neuron_per_block, seed+blockCount)
+                pos[:2, blockCount,:] = temp_pos
             ax.plot(temp_pos[0,:], temp_pos[1,:], ',', ms = 0.3)
-            pos[:2, blockCount,:] = temp_pos
             blockCount += 1  
             
     pll[0, nline*2] = pll[0, 0]
@@ -611,11 +623,12 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed):
     ax.plot([pll[0,2*nline], plr[0,2*nline]], [pll[1,2*nline], plr[1,2*nline]], lw = 0.1)
     #ax.set_xlim(0,0.5)
     #ax.set_ylim(-1,1)
-    
-    pos[2, :, :] = np.reshape(rand.uniform(nblock*neuron_per_block),(1,nblock,neuron_per_block))*0.01
+    if not use_sobol3d:
+        pos[2, :, :] = np.reshape(rand.uniform(nblock*neuron_per_block),(1,nblock,neuron_per_block))*0.01
+        
     print('avg iterations', literation/nline)
     print(f'{blockCount} constructed')
     ax.set_xlabel('mm')
     ax.set_ylabel('mm')
     ax.set_title('2D physical layout of macaque V1 neurons')
-    return pos
+    return pos, fig

@@ -1,5 +1,8 @@
 #ifndef DIRECTIVE_H
 #define DIRECTIVE_H
+#include <cuda.h>
+#include <curand.h>
+#include <curand_kernel.h>
 
 #define MAX_FFINPUT_PER_DT 100// dt in ms
 #define MAX_SPIKE_PER_DT 100// dt in ms
@@ -7,15 +10,21 @@
 #define KERNEL_PERFORMANCE
 #define TEST_CONVERGENCE_NO_ROUNDING_ERR
 #define SCHEME 1
-//#define SKIP_IO
+#define SKIP_IO
 //#define TEST_WITH_MANUAL_FFINPUT
 //#define GPU_ONLY
 //#define NAIVE
 //#define DEBUG
 //#define FULL_SPEED
-#define SPIKE_CORRECTION
+//#define SPIKE_CORRECTION
 //#define SPEED_TEST  // not much use, maybe try when there's a lot of spikes per dt
 //#define VOLTA
+#define SINGLE_PRECISION
+#ifdef SINGLE_PRECISION
+	typedef float _float;
+#else
+	typedef float _float;
+#endif
 
 #define timeNow() std::chrono::high_resolution_clock::now()
 
