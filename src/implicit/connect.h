@@ -1,68 +1,64 @@
 #ifndef CONNECT_H
 #define CONNECT_H
 
+#include <curand_kernel.h>
 #include "MACRO.h"
 
 struct initialize_package {
     _float radius[NTYPE][2];
     _float neuron_type_acc_count[NTYPE+1];
 	unsigned int den_axn[NTYPE];
-    __host__ __device__ initialize_package() {
-        // E
-        radius[0][0] = 80;
-        radius[0][1] = 150;
-        // I
-        radius[1][0] = 50;
-        radius[1][1] = 100;
-
+    __host__ __device__ initialize_package() {};
+    __host__ __device__ initialize_package(_float _radius[][2], _float _neuron_type_acc_count[], unsigned int _den_axn[]) {
+        for (unsigned int i=0; i<NTYPE; i++) {
+            radius[i][0] = _radius[i][0];
+            radius[i][1] = _radius[i][1];
+            den_axn[i] = _den_axn[i];
+        }
         // NTYPE
-        neuron_type_acc_count[0] = 0;
-        neuron_type_acc_count[1] = 768;
-        neuron_type_acc_count[2] = 1024;
-        assert(neuron_type_acc_count[NTYPE] == blockSize);
-
-        den_axn[0] = 1;
-        den_axn[1] = 2;
+        for (unsigned int i=0; i<NTYPE+1; i++) {
+            neuron_type_acc_count[i] = _neuron_type_acc_count[i];
+        }
 	}
 };
 
-__global__ void init(unsigned int* __restricted__ preType,
-                     _float* __restricted__ rden,
-                     _float* __restricted__ raxn,
-                     _float* __restricted__ preTypeDaxn,
-                     unsigned int* __restricted__ preTypeN,
-                     initialize_package init_pack, unsigned long long seed);
+__global__ void initialize(curandStateMRG32k3a* __restrict__ state,
+                           unsigned int* __restrict__ preType,
+                           _float* __restrict__ rden,
+                           _float* __restrict__ raxn,
+                           _float* __restrict__ preTypeDaxn,
+                           unsigned int* __restrict__ preTypeN,
+                           initialize_package init_pack, unsigned long long seed);
 
-__global__ void cal_blockPos(_float* __restricted__ pos,
-                             _float* __restricted__ block_x,
-                             _float* __restricted__ block_y);
+__global__ void cal_blockPos(_float* __restrict__ pos,
+                             _float* __restrict__ block_x,
+                             _float* __restrict__ block_y,
+                             unsigned int networkSize);
 
-__global__ void get_neighbor_blockId(_float* __restricted__ block_x,
-                                     _float* __restricted__ block_y,
-                                     _float* __restricted__ neighborBlockId,
-                                     unsigned int* __restricted__ nNeighborBlock,
-                                     _float max_radius,
-                                     unsigned int nPotentialNeigbor);
+__global__ void get_neighbor_blockId(_float* __restrict__ block_x,
+                                     _float* __restrict__ block_y,
+                                     unsigned int* __restrict__ neighborBlockId,
+                                     unsigned int* __restrict__ nNeighborBlock,
+                                     _float max_radius, unsigned int nPotentialNeigbor);
 
-__global__ void generate_connections(_float* __restricted__ pos,
-                                     _float* __restricted__ neighborBlockId,
-                                     _float* __restricted__ nNeighborBlock,
-                                     _float* __restricted__ rden,
-                                     _float* __restricted__ raxn,
-                                     _float* __restricted__ conMat, //within block connections
-                                     _float* __restricted__ delayMat,
-                                     _float* __restricted__ conVec, //for neighbor block connections
-                                     _float* __restricted__ delayVec, //for neighbor block connections
-                                     unsigned int* __restricted__ preTypeConnected,
-                                     unsigned int* __restricted__ preTypeAvail,
-                                     unsigned int* __restricted__ preTypeN,
-                                     _float* __restricted__ preTypeStrSum,
-                                     _float* __restricted__ preTypeStr,
-                                     unsigned int* __restricted__ preType,
-                                     unsigned int* __restricted__ preTypeDaxn,
-                                     curandStateMRG32k3a* __restricted__ state,
+__global__ void generate_connections(_float* __restrict__ pos,
+                                     unsigned int* __restrict__ neighborBlockId,
+                                     unsigned int* __restrict__ nNeighborBlock,
+                                     _float* __restrict__ rden,
+                                     _float* __restrict__ raxn,
+                                     _float* __restrict__ conMat, //within block connections
+                                     _float* __restrict__ delayMat,
+                                     _float* __restrict__ conVec, //for neighbor block connections
+                                     _float* __restrict__ delayVec, //for neighbor block connections
+                                     unsigned int* __restrict__ preTypeConnected,
+                                     unsigned int* __restrict__ preTypeAvail,
+                                     unsigned int* __restrict__ preTypeN,
+                                     _float* __restrict__ preTypeStrSum,
+                                     _float* __restrict__ preTypeStr,
+                                     unsigned int* __restrict__ preType,
+                                     _float* __restrict__ preTypeDaxn,
+                                     curandStateMRG32k3a* __restrict__ state,
                                      unsigned int networkSize,
-                                     unsigned int nNeighborMax,
                                      _float speedOfThought);
 
 #endif

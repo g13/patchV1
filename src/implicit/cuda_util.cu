@@ -45,32 +45,3 @@ __device__ void find_min(_float array[], _float data, unsigned int id[]) {
     }
     __syncthreads();
 }
-
-__device__ void warps_reduce(unsigned int array[], unsigned int data) {
-    for (int offset = warpSize/2; offset > 0; offset /= 2) {
-        data += __shfl_down_sync(FULL_MASK, data, offset);
-    }
-    __syncthreads();
-    if (threadIdx.x % warpSize == 0) {
-        array[threadIdx.x/warpSize] = data;
-    }
-}
-
-__device__ void warp0_reduce(unsigned int array[]) {
-    unsigned int data = array[threadIdx.x];
-    for (int offset = warpSize/2; offset > 0; offset /= 2) {
-        data += __shfl_down_sync(FULL_MASK, data, offset);
-    }
-    if (threadIdx.x == 0) {
-        array[0] = data;
-    }
-}
-
-__device__ void block_reduce(unsigned int array[], unsigned int data) {
-	warps_reduce(array, data);
-    __syncthreads();
-    if (threadIdx.x < warpSize) {
-        warp0_reduce(array);
-    }
-    __syncthreads();
-}
