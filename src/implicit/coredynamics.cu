@@ -1,19 +1,26 @@
 #include "coredynamics.h"
+#include "CONST.h"
+#include "cuda_util.h"
+#include "rk2.h"
 
 #ifdef SINGLE_PRECISION
-	using func0 = _float(*)(curandStateMRG32k3a_t*);
-	__device__ func0 uniform = &curand_uniform;
-	__device__ func0 normal = &curand_normal;
-	using func1 = _float(*)(curandStateMRG32k3a_t*, _float, _float);
-	__device__ func1 log_normal = &curand_log_normal;
-	using func2 = _float(*)(_float);
+	//using func0 = _float(*)(curandStateMRG32k3a_t*);
+	//__device__ func0 uniform = &curand_uniform;
+	//__device__ func0 normal = &curand_normal;
+	//using func1 = _float(*)(curandStateMRG32k3a_t*, _float, _float);
+	//__device__ func1 log_normal = &curand_log_normal;
+    #define log_normal curand_log_normal
+    #define normal curand_normal
+    #define uniform curand_uniform
 #else
-	using func0 = _float(*)(curandStateMRG32k3a_t*);
-	__device__ func0 uniform = &curand_uniform_double;
-	__device__ func0 normal = &curand_normal_double;
-	using func1 = _float(*)(curandStateMRG32k3a_t*, _float, _float);
-	__device__ func1 log_normal = &curand_log_normal_double;
-	using func2 = _float(*)(_float);
+	//using func0 = _float(*)(curandStateMRG32k3a_t*);
+	//__device__ func0 uniform = &curand_uniform_double;
+	//__device__ func0 normal = &curand_normal_double;
+	//using func1 = _float(*)(curandStateMRG32k3a_t*, _float, _float);
+	//__device__ func1 log_normal = &curand_log_normal_double;
+    #define log_normal curand_log_normal_double
+    #define normal curand_normal_double
+    #define uniform curand_uniform_double
 #endif
 
 __global__ void logRand_init(_float *logRand, curandStateMRG32k3a *state, unsigned long long seed, _float *lTR, _float dInput, unsigned int offset) {

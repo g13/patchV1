@@ -201,6 +201,7 @@ int main(int argc, char *argv[])
     CUDA_CHECK();
     logRand_init<<<init_b1,init_b2>>>(lastNegLogRandI, stateI, seed-networkSize, leftTimeRateI, dInputI, networkSize);
     CUDA_CHECK();
+    printf("logRand_init completed\n");
 
     preMatRandInit<<<init_b1,init_b2>>>(d_preMat, d_v, randState, sEE, sIE, sEI, sII, networkSize, nE, seed);
     CUDA_CHECK();

@@ -1,18 +1,13 @@
 #ifndef CONNECT_H
 #define CONNECT_H
-#include <cassert>
-#include <cuda.h>
-#include <cuda_runtime.h>
-#include <curand_kernel.h>
-#include "DIRECTIVE.h"
-#include "CONST.h"
-#include "cuda_util.h"
+
+#include "MACRO.h"
 
 struct initialize_package {
     _float radius[NTYPE][2];
     _float neuron_type_acc_count[NTYPE+1];
 	unsigned int den_axn[NTYPE];
-    initialize_package() {
+    __host__ __device__ initialize_package() {
         // E
         radius[0][0] = 80;
         radius[0][1] = 150;

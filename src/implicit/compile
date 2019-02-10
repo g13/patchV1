@@ -1,18 +1,11 @@
 #!/bin/bash
 #module load cuda
-rm -f coredynamics.o patch.o rk2.o
-nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c patch.cu 
-nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c coredynamics.cu 
-nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c rk2.cu 
-#nvcc -arch=compute_70 -std=c++11 -O3 -c patch.cu 
-#nvcc -arch=compute_70 -std=c++11 -O3 -c coredynamics.cu 
-nvcc -arch=compute_70 -lcudadevrt -lcudart coredynamics.o patch.o rk2.o -o patch 
-#RAND#nvcc -arch=compute_70 -lcudadevrt -lcudart -lcurand coredynamics.o test.o -o test
 
-#nvcc -arch=compute_70 -Xcompiler -Wall,-pedantic -std=c++11 -O0 -c coredynamics.cu 
-#nvcc -arch=compute_70 -Xcompiler -Wall,-pedantic -std=c++11 -O0 -c test.cu 
-#nvcc -arch=compute_70 -Xcompiler -Wall,-pedantic test.o coredynamics.o -lcudadevrt -lcudart -o test
+rm -f patch.o
+nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c patch.cu
+rm -f coredynamics.o
+nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c coredynamics.cu
+rm -f cuda_util.o
+nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c cuda_util.cu 
 
-#nvcc -arch=compute_61 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c test.cu -o main.o -lcudadevrt
-#nvcc -arch=compute_61 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c coredynamics.cu -o coredynamics.o -lcudadevrt
-#nvcc -arch=compute_61 main.o coredynamics.o -o test
+nvcc -arch=compute_70 -lcurand -lcudart patch.o cuda_util.o coredynamics.o -o patch 

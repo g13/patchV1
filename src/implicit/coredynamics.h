@@ -5,10 +5,7 @@
 #include <cassert>
 #include "DIRECTIVE.h"
 #include "CUDA_MACRO.h"
-#include "CONST.h"
 #include "condShape.h"
-#include "rk2.h"
-#include "cuda_util.h"
 
 __global__ void logRand_init(_float *logRand, curandStateMRG32k3a *state, unsigned long long seed, _float *lTR, _float dInput, unsigned int offset);
 

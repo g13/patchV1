@@ -1,8 +1,5 @@
 #ifndef DIRECTIVE_H
 #define DIRECTIVE_H
-#include <cuda.h>
-#include <curand.h>
-#include <curand_kernel.h>
 
 #define MAX_FFINPUT_PER_DT 100// dt in ms
 #define MAX_SPIKE_PER_DT 100// dt in ms
@@ -23,7 +20,7 @@
 #ifdef SINGLE_PRECISION
 	typedef float _float;
 #else
-	typedef float _float;
+	typedef double _float;
 #endif
 
 #define timeNow() std::chrono::high_resolution_clock::now()

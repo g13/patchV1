@@ -1,0 +1,10 @@
+#!/bin/bash
+#module load cuda
+
+rm -f connect.o
+nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c connect.cu 
+
+rm -f genCon.o 
+nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c genCon.cu 
+
+nvcc -arch=compute_70 -lcurand -lcudart connect.o genCon.o -o genCon 

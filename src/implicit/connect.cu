@@ -1,30 +1,48 @@
 #include "connect.h"
+#include <curand_kernel.h>
+#include <cassert>
 #include "cuda_util.h"
 
 #ifdef SINGLE_PRECISION
-	using func = _float(*)(_float);
-	__device__ func expp = &expf;
-	using func0 = _float(*)(curandStateMRG32k3a_t*);
-	__device__ func0 uniform = &curand_uniform;
-	__device__ func0 normal = &curand_normal;
-	using func1 = _float(*)(curandStateMRG32k3a_t*, _float, _float);
-	__device__ func1 log_normal = &curand_log_normal;
-	using func2 = _float(*)(_float);
-    __device__ func2 arccos = &acosf;
-    __device__ func2 square_root = &sqrtf;
-    __device__ func2 abs_value = &fabsf;
+	//using func = _float(*)(_float);
+	//__device__ func expp = &expf;
+	//using func0 = _float(*)(curandStateMRG32k3a_t*);
+	//__device__ func0 uniform = &curand_uniform;
+	//__device__ func0 normal = &curand_normal;
+	//using func1 = _float(*)(curandStateMRG32k3a_t*, _float, _float);
+	//__device__ func1 log_normal = &curand_log_normal;
+	//using func2 = _float(*)(_float);
+    //__device__ func2 arccos = &acosf;
+    //__device__ func2 square_root = &sqrtf;
+    //__device__ func2 abs_value = &fabsf;
+
+    #define expp exp 
+    #define log_normal curand_log_normal_double
+    #define normal curand_normal_double
+    #define uniform curand_uniform_double
+    #define arccos acos 
+    #define square_root sqrt
+    #define abs_value fabs 
 #else
-	using func = _float(*)(_float);
-	__device__ func expp = &exp;
-	using func0 = _float(*)(curandStateMRG32k3a_t*);
-	__device__ func0 uniform = &curand_uniform_double;
-	__device__ func0 normal = &curand_normal_double;
-	using func1 = _float(*)(curandStateMRG32k3a_t*, _float, _float);
-	__device__ func1 log_normal = &curand_log_normal_double;
-	using func2 = _float(*)(_float);
-    __device__ func2 arccos = &acos;
-    __device__ func2 square_root = &sqrt;
-    __device__ func2 abs_value = &fabs;
+	//using func = _float(*)(_float);
+	//__device__ func expp = &exp;
+	//using func0 = _float(*)(curandStateMRG32k3a_t*);
+	//__device__ func0 uniform = &curand_uniform_double;
+	//__device__ func0 normal = &curand_normal_double;
+	//using func1 = _float(*)(curandStateMRG32k3a_t*, _float, _float);
+	//__device__ func1 log_normal = &curand_log_normal_double;
+	//using func2 = _float(*)(_float);
+    //__device__ func2 arccos = &acos;
+    //__device__ func2 square_root = &sqrt;
+    //__device__ func2 abs_value = &fabs;
+
+    #define expp expf
+    #define log_normal curand_log_normal
+    #define normal curand_normal
+    #define uniform curand_uniform
+    #define arccos acosf 
+    #define square_root sqrtf
+    #define abs_value fabsf 
 #endif
 
 
