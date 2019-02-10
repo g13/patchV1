@@ -26,8 +26,28 @@ int main() {
     unsigned int nblock = 1024;
     unsigned int nPotentialNeigbor = 20*blockSize;
     unsigned int networkSize = nblock*blockSize;
-    initialize_package init_pack();
+    _float radius[NTYPE][2];
+    _float neuron_type_acc_count[NTYPE+1];
+	unsigned int den_axn[NTYPE];
+    // E
+    radius[0][0] = 80;
+    radius[0][1] = 150;
+    // I
+    radius[1][0] = 50;
+    radius[1][1] = 100;
+
+    // NTYPE
+    neuron_type_acc_count[0] = 0;
+    neuron_type_acc_count[1] = 768;
+    neuron_type_acc_count[2] = 1024;
+    assert(neuron_type_acc_count[NTYPE] == blockSize);
+
+    den_axn[0] = 1;
+    den_axn[1] = 2;
+
+    initialize_package init_pack(radius, neuron_type_acc_count, den_axn);
     _float speedOfThought = 1.0f; // mm/ms
+    _float max_radius = 0.4f;
     
     std::string theme = "1-10th_macaque_fovea_v1";
     pos_file.open("1-10th_macaque_fovea_v1_3d_pos.bin", std::ios::in|std::ios::binary);
@@ -48,13 +68,14 @@ int main() {
 
     memorySize = 0;
 
-    unsigned long outputSize = 0;
     // to receive from device
     _float *pos;
         memorySize += 3*networkSize*sizeof(_float);
 
+    unsigned long outputSize = 0;
     unsigned int *preType;
         memorySize += networkSize*sizeof(unsigned int);
+        outputSize += networkSize*sizeof(unsigned int);
 
     _float *conMat, *delayMat;
         memorySize += 2*blockSize*blockSize*nblock*sizeof(_float);
@@ -81,15 +102,15 @@ int main() {
     printf("memory allocated on host: %lu\n", memorySize);
 
     pos = cpu_chunk;
-    preType = (*unsigned int) (pos + 3*networkSize);
-    conMat = (*_float) (preType + networkSize*NTYPE); delayMat = conMat + blockSize*blockSize*nblock;
+    preType = (unsigned int*) (pos + 3*networkSize);
+    conMat = (_float*) (preType + networkSize*NTYPE); delayMat = conMat + blockSize*blockSize*nblock;
     conVec = delayMat + blockSize*blockSize*nblock; delayVec = conVec + blockSize*nPotentialNeigbor;
-    neighborBlockId = (*unsigned int) (delayVec + blockSize*nPotentialNeigbor); nNeighborBlock = neighborBlockId + nPotentialNeigbor*nblock;
+    neighborBlockId = (unsigned int*) (delayVec + blockSize*nPotentialNeigbor); nNeighborBlock = neighborBlockId + nPotentialNeigbor*nblock;
     preTypeConnected = nNeighborBlock + nblock; preTypeAvail = preTypeConnected + NTYPE*networkSize;
-    preTypeStr = (*_float) (preTypeAvail + NTYPE*networkSize);
+    preTypeStr = (_float*) (preTypeAvail + NTYPE*networkSize);
     preTypeStrSum = preTypeStr + NTYPE*networkSize;
 
-    // init by host, one-way trip to device
+    // init by kernel, reside on device only
     _float *rden, *raxn; // NTYPE
         memorySize += NTYPE*2*networkSize*sizeof(_float);
 
@@ -98,14 +119,19 @@ int main() {
 
     unsigned int *preTypeN;
         memorySize += NTYPE*networkSize*sizeof(unsigned int);
+
+    curandStateMRG32k3a* state;
+        memorySize += networkSize*sizeof(curandStateMRG32k3a);
+
+    // initialized by cudaMemcpy
+    _float *d_pos;
     // output to host
-    _float *d_pos; // initialized by cudaMemcpy
     unsigned int *d_preType;
     _float *d_conMat, *d_conVec;
     _float *d_delayMat, *d_delayVec;
     unsigned int *d_neighborBlockId, *d_nNeighborBlock;
     unsigned int *d_preTypeConnected, *d_preTypeAvail;
-    _float *d_preTypeStr, d_preTypeStrSum;
+    _float *d_preTypeStr, *d_preTypeStrSum;
     _float *d_chunk;
     d_memorySize += memorySize;
     CUDA_CALL(cudaMalloc((void**)&d_chunk, memorySize));
@@ -113,15 +139,17 @@ int main() {
 
     rden = d_chunk; raxn = rden + NTYPE*networkSize;
     preTypeDaxn = raxn + NTYPE*networkSize;
-    preTypeN = (*unsigned int) (preTypeDaxn + NTYPE*networkSize); 
+    preTypeN = (unsigned int*) (preTypeDaxn + NTYPE*networkSize); 
+    state = (curandStateMRG32k3a*) (preTypeN + networkSize);
 
-    d_pos = (*_float) (preTypeN + NTYPE*networkSize);
-    d_preType = (*unsigned int) (d_pos + 3*networkSize);
-    d_conMat = (*_float) (d_preType + networkSize); d_delayMat = d_conMat + blockSize*blockSize*nblock;
+    d_pos = (_float*) (state + networkSize);
+
+    d_preType = (unsigned int*) (d_pos + 3*networkSize);
+    d_conMat = (_float*) (d_preType + networkSize); d_delayMat = d_conMat + blockSize*blockSize*nblock;
     d_conVec = d_delayMat + blockSize*blockSize*nblock; d_delayVec = d_conVec + blockSize*nPotentialNeigbor;
-    d_neighborBlockId = (*unsigned int) (d_delayVec + blockSize*nPotentialNeigbor); d_nNeighborBlock = d_neighborBlockId + nPotentialNeigbor*nblock;
+    d_neighborBlockId = (unsigned int*) (d_delayVec + blockSize*nPotentialNeigbor); d_nNeighborBlock = d_neighborBlockId + nPotentialNeigbor*nblock;
     d_preTypeConnected = d_nNeighborBlock + nblock; d_preTypeAvail = d_preTypeConnected + NTYPE*networkSize;
-    d_preTypeStr = (*_float) (d_preTypeAvail + NTYPE*networkSize);
+    d_preTypeStr = (_float*) (d_preTypeAvail + NTYPE*networkSize);
     d_preTypeStrSum = d_preTypeStr + NTYPE*networkSize;
 
     pos_file.seekg(0, std::ios::end);
@@ -149,19 +177,20 @@ int main() {
     CUDA_CALL(cudaStreamCreate(&s1));
     CUDA_CALL(cudaStreamCreate(&s2));
     CUDA_CALL(cudaMemcpyAsync(d_pos, pos, nblock*blockSize*blockSize*sizeof(_float), cudaMemcpyHostToDevice, s0));
-    init<<<nblock, blockSize, 0, s0>>>(d_preType, rden, raxn, preTypeDaxn, preTypeN, d_pos, init_pack, seed);
-	CUDA_CALL(cudaEventRecord(i0, s0));
+    initialize<<<nblock, blockSize, 0, s1>>>(state, d_preType, rden, raxn, preTypeDaxn, preTypeN, init_pack, seed);
+	CUDA_CALL(cudaEventRecord(i1, s1));
     unsigned int shared_mem;
     shared_mem = 2*warpSize*sizeof(_float);
-    cal_blockPos<<<nblock, blockSize, shared_mem, s1>>>(d_pos, block_x, block_y);
+    cal_blockPos<<<nblock, blockSize, shared_mem, s0>>>(d_pos, block_x, block_y, networkSize);
     shared_mem = sizeof(unsigned int);
-    get_neighbor_blockId<<<nblock, blockSize, shared_mem, s1>>>(block_x, block_y, d_neighborBlockId, d_nNeighborBlock, max_radius, nPotentialNeigbor);
-	CUDA_CALL(cudaEventRecord(i1, s1));
+    get_neighbor_blockId<<<nblock, blockSize, shared_mem, s0>>>(block_x, block_y, d_neighborBlockId, d_nNeighborBlock, max_radius, nPotentialNeigbor);
+	CUDA_CALL(cudaEventRecord(i0, s0));
 	CUDA_CALL(cudaEventSynchronize(i0));
 	CUDA_CALL(cudaEventSynchronize(i1));
-    shared_mem = blockSize*sizeof(_float) * blockSize*sizeof(_float);
-    generate_connections<<<nblock, blockSize, shared_mem, s0>>>(d_pos, d_neighborBlockId, d_nNeighborBlock, rden, axn, d_conMat, d_delayMat, d_conVec, d_delayVec, d_preTypeConnected, d_preTypeAvail, preTypeN, d_preTypeStrSum, d_preTypeStr, d_preType, preTypeDaxn, state, networkSize, nNeighborMax, speedOfThought);
-    CUDA_CALL(cudaMemcpyAsync(conMat, d_conMat, outputSize, cudaMemcpyDeviceToHost, s0)); // the whole chunk of output
+	//CUDA_CALL(cudaEventSynchronize(i2));
+    shared_mem = blockSize*sizeof(_float) + blockSize*sizeof(_float) + blockSize*sizeof(unsigned int);
+    generate_connections<<<nblock, blockSize, shared_mem, s0>>>(d_pos, d_neighborBlockId, d_nNeighborBlock, rden, raxn, d_conMat, d_delayMat, d_conVec, d_delayVec, d_preTypeConnected, d_preTypeAvail, preTypeN, d_preTypeStrSum, d_preTypeStr, d_preType, preTypeDaxn, state, networkSize, speedOfThought);
+    CUDA_CALL(cudaMemcpyAsync(preType, d_preType, outputSize, cudaMemcpyDeviceToHost, s0)); // the whole chunk of output
     CUDA_CALL(cudaStreamDestroy(s0));
     CUDA_CALL(cudaStreamDestroy(s1));
     CUDA_CALL(cudaStreamDestroy(s2));

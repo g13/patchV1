@@ -22,4 +22,36 @@ __device__ void warp0_reduce(unsigned int array[]);
 
 __device__ void block_reduce(unsigned int array[], unsigned int data);
 
+template <typename T>
+__device__ void warps_reduce(T array[], T data) {
+    for (int offset = warpSize/2; offset > 0; offset /= 2) {
+        data += __shfl_down_sync(FULL_MASK, data, offset);
+    }
+    __syncthreads();
+    if (threadIdx.x % warpSize == 0) {
+        array[threadIdx.x/warpSize] = data;
+    }
+}
+
+template <typename T>
+__device__ void warp0_reduce(T array[]) {
+    T data = array[threadIdx.x];
+    for (int offset = warpSize/2; offset > 0; offset /= 2) {
+        data += __shfl_down_sync(FULL_MASK, data, offset);
+    }
+    if (threadIdx.x == 0) {
+        array[0] = data;
+    }
+}
+
+template <typename T>
+__device__ void block_reduce(T array[], T data) {
+	warps_reduce<T>(array, data);
+    __syncthreads();
+    if (threadIdx.x < warpSize) {
+        warp0_reduce<T>(array);
+    }
+    __syncthreads();
+}
+
 #endif

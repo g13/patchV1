@@ -1,5 +1,4 @@
 #include "connect.h"
-#include <curand_kernel.h>
 #include <cassert>
 #include "cuda_util.h"
 
@@ -46,17 +45,16 @@
 #endif
 
 
-__global__ void init(unsigned int* __restricted__ preType,
-                     _float* __restricted__ rden,
-                     _float* __restricted__ raxn,
-                     _float* __restricted__ preTypeDaxn,
-                     unsigned int* __restricted__ preTypeN,
+__global__ void init(curandStateMRG32k3a* __restrict__ state,
+                     unsigned int* __restrict__ preType,
+                     _float* __restrict__ rden,
+                     _float* __restrict__ raxn,
+                     _float* __restrict__ preTypeDaxn,
+                     unsigned int* __restrict__ preTypeN,
                      initialize_package init_pack, unsigned long long seed) {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
-    //curandStateMRG32k3a randState;
-    //curand_init(seed, id, 0, &randState);
+    curand_init(seed, id, 0, &state[id]);
     
-    //normal(&randState);
     unsigned int i;
     _float rd;
     _float ra;
@@ -66,7 +64,7 @@ __global__ void init(unsigned int* __restricted__ preType,
         if (id < init_pack.neuron_type_acc_count[i+1]) {
             rd = init_pack.radius[i][0];
             ra = init_pack.radius[i][1];
-            da = init_pack.preTypeDaxn[i];
+            da = init_pack.den_axn[i];
             break;
         }
     }
@@ -103,30 +101,31 @@ __device__ _float area(_float raxn, _float rden, _float d) {
 
 __device__ _float connect(_float distance, _float raxn, _float rden) {
     _float weight = 0;
-    if (raxn +  rden > distance && distance > abs_value(raxn - rden) {
+    if (raxn +  rden > distance && distance > abs_value(raxn - rden)) {
         weight = area(raxn, rden, distance)/(CUDA_PI*rden*rden);
     }
     __syncwarp();
     return weight;
 }
 
-__global__ void cal_blockPos(_float* __restricted__ pos,
-                             _float* __restricted__ block_x,
-                             _float* __restricted__ block_y) {
+__global__ void cal_blockPos(_float* __restrict__ pos,
+                             _float* __restrict__ block_x,
+                             _float* __restrict__ block_y,
+                             unsigned int networkSize) {
     __shared__ _float x[warpSize];
     __shared__ _float y[warpSize];
     unsigned int id = blockDim.x*blockIdx.x + threadIdx.x;
-    block_reduce(x, pos[id]);
+    block_reduce<_float>(x, pos[id]);
     if (threadIdx.x == 0) {
         block_x[blockIdx.x] = x[0]/blockSize;
     }
-    block_reduce(y, pos[networkSize + id]);
+    block_reduce<_float>(y, pos[networkSize + id]);
     if (threadIdx.x == 0) {
         block_y[blockIdx.x] = y[0]/blockSize;
     }
 }
 
-__device__ void compare_distance_with_neighbor_block(unsigned int bid[], _float bx, _float by, _float block_x[], _float block_y[], _float neighborBlockId[], unsigned int offset, unsigned int nPotentialNeigbor) {
+__device__ void compare_distance_with_neighbor_block(unsigned int bid[], _float bx, _float by, _float block_x[], _float block_y[], _float neighborBlockId[], unsigned int offset, unsigned int nPotentialNeigbor, _float radius) {
     unsigned int blockId = offset + threadIdx.x;
     _float x = block_x[blockId] - bx;
     _float y = block_y[blockId] - by;
@@ -138,10 +137,10 @@ __device__ void compare_distance_with_neighbor_block(unsigned int bid[], _float 
     }
 }
 
-__global__ void get_neighbor_blockId(_float* __restricted__ block_x,
-                                     _float* __restricted__ block_y,
-                                     _float* __restricted__ neighborBlockId,
-                                     unsigned int* __restricted__ nNeighborBlock,
+__global__ void get_neighbor_blockId(_float* __restrict__ block_x,
+                                     _float* __restrict__ block_y,
+                                     _float* __restrict__ neighborBlockId,
+                                     unsigned int* __restrict__ nNeighborBlock,
                                      _float max_radius,
                                      unsigned int nPotentialNeigbor) {
     __shared__ unsigned int bid[1];
@@ -153,36 +152,35 @@ __global__ void get_neighbor_blockId(_float* __restricted__ block_x,
     unsigned int offset = 0;
     while (lefted > blockSize) {
         lefted -= blockSize;
-        compare_distance_with_neighbor_block(bid, bx, by, block_x, block_y, neighborBlockId, offset, nPotentialNeigbor);
+        compare_distance_with_neighbor_block(bid, bx, by, block_x, block_y, neighborBlockId, offset, nPotentialNeigbor, max_radius);
         offset += blockSize;
     }
     if (id < lefted) {
-        compare_distance_with_neighbor_block(bid, bx, by, block_x, block_y, neighborBlockId, offset, nPotentialNeigbor);
+        compare_distance_with_neighbor_block(bid, bx, by, block_x, block_y, neighborBlockId, offset, nPotentialNeigbor, max_radius);
     }
     if (threadIdx.x == 0) {
-        nNeighborBlock = bid[0];
+        nNeighborBlock[blockIdx.x] = bid[0];
     }
 }
 
-__global__ void generate_connections(_float* __restricted__ pos,
-                                     _float* __restricted__ neighborBlockId,
-                                     _float* __restricted__ nNeighborBlock,
-                                     _float* __restricted__ rden,
-                                     _float* __restricted__ raxn,
-                                     _float* __restricted__ conMat, //within block connections
-                                     _float* __restricted__ delayMat,
-                                     _float* __restricted__ conVec, //for neighbor block connections
-                                     _float* __restricted__ delayVec, //for neighbor block connections
-                                     unsigned int* __restricted__ preTypeConnected,
-                                     unsigned int* __restricted__ preTypeAvail,
-                                     unsigned int* __restricted__ preTypeN,
-                                     _float* __restricted__ preTypeStrSum,
-                                     _float* __restricted__ preTypeStr,
-                                     unsigned int* __restricted__ preType,
-                                     unsigned int* __restricted__ preTypeDaxn,
-                                     curandStateMRG32k3a* __restricted__ state,
+__global__ void generate_connections(_float* __restrict__ pos,
+                                     unsigned int* __restrict__ neighborBlockId,
+                                     unsigned int* __restrict__ nNeighborBlock,
+                                     _float* __restrict__ rden,
+                                     _float* __restrict__ raxn,
+                                     _float* __restrict__ conMat, //within block connections
+                                     _float* __restrict__ delayMat,
+                                     _float* __restrict__ conVec, //for neighbor block connections
+                                     _float* __restrict__ delayVec, //for neighbor block connections
+                                     unsigned int* __restrict__ preTypeConnected,
+                                     unsigned int* __restrict__ preTypeAvail,
+                                     unsigned int* __restrict__ preTypeN,
+                                     _float* __restrict__ preTypeStrSum,
+                                     _float* __restrict__ preTypeStr,
+                                     unsigned int* __restrict__ preType,
+                                     _float* __restrict__ preTypeDaxn,
+                                     curandStateMRG32k3a* __restrict__ state,
                                      unsigned int networkSize,
-                                     unsigned int nNeighborMax,
                                      _float speedOfThought) {
     __shared__ _float x1[blockSize];
     __shared__ _float y1[blockSize];
@@ -216,18 +214,17 @@ __global__ void generate_connections(_float* __restricted__ pos,
         unsigned int ipre = blockIdx.x*blockSize + i;
         //type vector, indexed across the network
         unsigned long bid = ipre*blockSize + threadIdx.x;
-        sumType[ipreStype[ipre]] += 1;
+        unsigned int ip = ipreType[i];
+        sumType[ip] += 1;
         _float x = x1[i] - x0;
         _float y = y1[i] - y0;
         _float ra = raxn[ipre];
         _float distance = square_root(x*x + y*y);
         _float p = connect(distance, ra, rd);
-        sumP[ipreStype[ipre]] += p;
+        sumP[ip] += p;
         conMat[bid] = p;
         delayMat[bid] = distance/speedOfThought;
     }
-    // in neighboring blocks
-    // conVec: (blockSize*nNeighborMax, networkSize)
     for (unsigned int i=0; i<nNeighborBlock[blockIdx.x]; i++) {
         #pragma unroll
         for (unsigned int j=0; j<blockSize; j++) {
@@ -235,13 +232,14 @@ __global__ void generate_connections(_float* __restricted__ pos,
             unsigned int ipre = neighborBlockId[i]*blockSize + j;
             // index in conVec
             unsigned long bid = (i*blockSize + j)*networkSize + threadIdx.x;
-            sumType[ipreStype[ipre]] += 1;
+            unsigned int ip = preType[ipre];
+            sumType[ip] += 1;
             _float x = pos[ipre] - x0;
             _float y = pos[networkSize+ipre] - y0;
             _float ra = raxn[ipre];
             _float distance = square_root(x*x + y*y);
             _float p = connect(distance, ra, rd);
-            sumP[preType[ipre]] += p;
+            sumP[ip] += p;
             conVec[bid] = p;
             delayVec[bid] = distance/speedOfThought;
         }
@@ -252,7 +250,7 @@ __global__ void generate_connections(_float* __restricted__ pos,
         unsigned long bid = ipre*blockSize + threadIdx.x;
         unsigned int ip = ipreType[ipre];
         unsigned int iip = ip*NTYPE + id;
-        _float str = preTypeStr[ip*NTYPE + id];
+        _float str = preTypeStr[iip];
         _float p = conMat[bid]/sumP[ip];
         if (uniform(&localState) < p*preTypeN[iip]*preTypeDaxn[iip]) {
             if (p > 1) {
@@ -274,7 +272,8 @@ __global__ void generate_connections(_float* __restricted__ pos,
             unsigned int ipre = neighborBlockId[i]*blockSize + j;
             unsigned long bid = (i*blockSize + j)*networkSize + threadIdx.x;
             unsigned int ip = preType[ipre];
-            _float str = preTypeStr[ip*NTYPE + id];
+            unsigned int iip = ip*NTYPE + id;
+            _float str = preTypeStr[iip];
             _float p = conVec[bid]/sumP[ip];
             if (uniform(&localState) < p*preTypeN[iip]*preTypeDaxn[iip]) {
                 if (p > 1) {
