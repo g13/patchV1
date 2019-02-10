@@ -71,9 +71,10 @@ __device__ __forceinline__ void Runge_Kutta_2::reset_v() {
 #if SCHEME == 0
 struct rk2: Runge_Kutta_2 {
     __device__ __forceinline__ rk2(_float _v0, _float _tBack): Runge_Kutta_2(_v0, _tBack) {};
-    __device__ __forceinline__ void rk2::compute_v(_float dt);
-    __device__ __forceinline__ void rk2::recompute_v(_float dt, _float t0 = 0.0f);
-    __device__ __forceinline__ void rk2::recompute_v0(_float dt, _float t0 = 0.0f);
+    __device__ __forceinline__ void compute_v(_float dt);
+	__device__ __forceinline__ void recompute(_float dt, _float t0);
+    __device__ __forceinline__ void recompute_v(_float dt, _float t0 = 0.0f);
+    __device__ __forceinline__ void recompute_v0(_float dt, _float t0 = 0.0f);
 };
 
 __device__ __forceinline__ void rk2::compute_v(_float dt) {
