@@ -45,7 +45,7 @@
 #endif
 
 
-__global__ void init(curandStateMRG32k3a* __restrict__ state,
+__global__ void initialize(curandStateMRG32k3a* __restrict__ state,
                      unsigned int* __restrict__ preType,
                      _float* __restrict__ rden,
                      _float* __restrict__ raxn,
@@ -125,7 +125,7 @@ __global__ void cal_blockPos(_float* __restrict__ pos,
     }
 }
 
-__device__ void compare_distance_with_neighbor_block(unsigned int bid[], _float bx, _float by, _float block_x[], _float block_y[], _float neighborBlockId[], unsigned int offset, unsigned int nPotentialNeigbor, _float radius) {
+__device__ void compare_distance_with_neighbor_block(unsigned int bid[], _float bx, _float by, _float block_x[], _float block_y[], unsigned int neighborBlockId[], unsigned int offset, unsigned int nPotentialNeigbor, _float radius) {
     unsigned int blockId = offset + threadIdx.x;
     _float x = block_x[blockId] - bx;
     _float y = block_y[blockId] - by;
@@ -139,7 +139,7 @@ __device__ void compare_distance_with_neighbor_block(unsigned int bid[], _float 
 
 __global__ void get_neighbor_blockId(_float* __restrict__ block_x,
                                      _float* __restrict__ block_y,
-                                     _float* __restrict__ neighborBlockId,
+                                     unsigned int* __restrict__ neighborBlockId,
                                      unsigned int* __restrict__ nNeighborBlock,
                                      _float max_radius,
                                      unsigned int nPotentialNeigbor) {
