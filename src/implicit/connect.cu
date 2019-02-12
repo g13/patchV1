@@ -44,12 +44,11 @@
     #define abs_value fabsf 
 #endif
 
-
 __global__ void initialize(curandStateMRG32k3a* __restrict__ state,
                      unsigned int* __restrict__ preType,
                      _float* __restrict__ rden,
                      _float* __restrict__ raxn,
-                     _float* __restrict__ preTypeDaxn,
+                     unsigned int* __restrict__ preTypeDaxn,
                      unsigned int* __restrict__ preTypeN,
                      initialize_package init_pack, unsigned long long seed) {
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -58,7 +57,7 @@ __global__ void initialize(curandStateMRG32k3a* __restrict__ state,
     unsigned int i;
     _float rd;
     _float ra;
-    _float da;
+    unsigned int da;
 	#pragma unroll
     for (i=0; i<NTYPE; i++) {
         if (id < init_pack.neuron_type_acc_count[i+1]) {
@@ -125,15 +124,25 @@ __global__ void cal_blockPos(_float* __restrict__ pos,
     }
 }
 
-__device__ void compare_distance_with_neighbor_block(unsigned int bid[], _float bx, _float by, _float block_x[], _float block_y[], unsigned int neighborBlockId[], unsigned int offset, unsigned int nPotentialNeigbor, _float radius) {
+__device__ void compare_distance_with_neighbor_block(unsigned int* __restrict__ bid, 
+													 _float bx,
+													 _float by,
+													 _float* __restrict__ block_x, 
+													 _float* __restrict__ block_y, 
+													 unsigned int* __restrict__ neighborBlockId, 
+													 unsigned int offset, unsigned int nPotentialNeighbor, _float radius) {
     unsigned int blockId = offset + threadIdx.x;
     _float x = block_x[blockId] - bx;
     _float y = block_y[blockId] - by;
     _float distance = square_root(x*x + y*y);
     if (distance < radius) {
         unsigned int current_index = atomicAdd(bid, 1);
-        assert(current_index < nPotentialNeigbor);
-        neighborBlockId[current_index] = blockId;
+		if (current_index >= nPotentialNeighbor/2) {
+			printf("%u: current index = %u, max = %u\n", blockId, current_index, nPotentialNeighbor);
+			assert(current_index < nPotentialNeighbor);
+		}
+        
+        neighborBlockId[nPotentialNeighbor*blockIdx.x + current_index] = blockId;
     }
 }
 
@@ -141,22 +150,20 @@ __global__ void get_neighbor_blockId(_float* __restrict__ block_x,
                                      _float* __restrict__ block_y,
                                      unsigned int* __restrict__ neighborBlockId,
                                      unsigned int* __restrict__ nNeighborBlock,
-                                     _float max_radius,
-                                     unsigned int nPotentialNeigbor) {
+                                     _float max_radius, unsigned int nPotentialNeighbor) {
     __shared__ unsigned int bid[1];
     bid[0] = 0;
-    unsigned int id = blockIdx.x*blockSize + threadIdx.x;
-    _float bx = block_x[id];
-    _float by = block_y[id];
+    _float bx = block_x[blockIdx.x];
+    _float by = block_y[blockIdx.x];
     unsigned int lefted = gridDim.x;
     unsigned int offset = 0;
-    while (lefted > blockSize) {
+    while (lefted >= blockSize) {
         lefted -= blockSize;
-        compare_distance_with_neighbor_block(bid, bx, by, block_x, block_y, neighborBlockId, offset, nPotentialNeigbor, max_radius);
+        compare_distance_with_neighbor_block(bid, bx, by, block_x, block_y, neighborBlockId, offset, nPotentialNeighbor, max_radius);
         offset += blockSize;
     }
-    if (id < lefted) {
-        compare_distance_with_neighbor_block(bid, bx, by, block_x, block_y, neighborBlockId, offset, nPotentialNeigbor, max_radius);
+    if (threadIdx.x < lefted) {
+        compare_distance_with_neighbor_block(bid, bx, by, block_x, block_y, neighborBlockId, offset, nPotentialNeighbor, max_radius);
     }
     if (threadIdx.x == 0) {
         nNeighborBlock[blockIdx.x] = bid[0];
@@ -178,10 +185,9 @@ __global__ void generate_connections(_float* __restrict__ pos,
                                      _float* __restrict__ preTypeStrSum,
                                      _float* __restrict__ preTypeStr,
                                      unsigned int* __restrict__ preType,
-                                     _float* __restrict__ preTypeDaxn,
+                                     unsigned int* __restrict__ preTypeDaxn,
                                      curandStateMRG32k3a* __restrict__ state,
-                                     unsigned int networkSize,
-                                     _float speedOfThought) {
+                                     unsigned int networkSize, _float speedOfThought) {
     __shared__ _float x1[blockSize];
     __shared__ _float y1[blockSize];
     __shared__ unsigned int ipreType[blockSize];
@@ -220,7 +226,7 @@ __global__ void generate_connections(_float* __restrict__ pos,
         _float y = y1[i] - y0;
         _float ra = raxn[ipre];
         _float distance = square_root(x*x + y*y);
-        _float p = connect(distance, ra, rd);
+        _float p = connect(distance, ra, rd) * preTypeDaxn[ip*NTYPE + id];
         sumP[ip] += p;
         conMat[bid] = p;
         delayMat[bid] = distance/speedOfThought;
@@ -238,7 +244,7 @@ __global__ void generate_connections(_float* __restrict__ pos,
             _float y = pos[networkSize+ipre] - y0;
             _float ra = raxn[ipre];
             _float distance = square_root(x*x + y*y);
-            _float p = connect(distance, ra, rd);
+            _float p = connect(distance, ra, rd) * preTypeDaxn[ip*NTYPE + id];
             sumP[ip] += p;
             conVec[bid] = p;
             delayVec[bid] = distance/speedOfThought;
@@ -252,7 +258,7 @@ __global__ void generate_connections(_float* __restrict__ pos,
         unsigned int iip = ip*NTYPE + id;
         _float str = preTypeStr[iip];
         _float p = conMat[bid]/sumP[ip];
-        if (uniform(&localState) < p*preTypeN[iip]*preTypeDaxn[iip]) {
+        if (uniform(&localState) < p*preTypeN[iip]) {
             if (p > 1) {
                 str = str*p;
             }
@@ -275,7 +281,7 @@ __global__ void generate_connections(_float* __restrict__ pos,
             unsigned int iip = ip*NTYPE + id;
             _float str = preTypeStr[iip];
             _float p = conVec[bid]/sumP[ip];
-            if (uniform(&localState) < p*preTypeN[iip]*preTypeDaxn[iip]) {
+            if (uniform(&localState) < p*preTypeN[iip]) {
                 if (p > 1) {
                     str = str*p;
                 }
