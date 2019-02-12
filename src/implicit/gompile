@@ -2,9 +2,10 @@
 #module load cuda
 
 rm -f connect.o
-nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c connect.cu 
+#nvcc -arch=compute_60 -code=sm_70 -rdc=true -v -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c connect.cu 
+nvcc -arch=compute_61 -code=sm_70 -rdc=true -v -Xptxas -O2 -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c connect.cu 
 
 #rm -f genCon.o 
-#nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c genCon.cu 
-
-nvcc -arch=compute_70 -lcurand -lcudart connect.o genCon.o -o genCon 
+#nvcc -arch=compute_70 -code=sm_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c genCon.cu 
+#
+#nvcc -arch=compute_70 -code=sm_70 -lcurand -lcudart connect.o genCon.o -o genCon 
