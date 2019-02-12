@@ -22,26 +22,34 @@ struct initialize_package {
 	}
 };
 
-__global__ void initialize(curandStateMRG32k3a* __restrict__ state,
+__global__ 
+__launch_bounds__(blockSize, 1)
+void initialize(curandStateMRG32k3a* __restrict__ state,
                            unsigned int* __restrict__ preType,
                            _float* __restrict__ rden,
                            _float* __restrict__ raxn,
-                           _float* __restrict__ preTypeDaxn,
+                           unsigned int* __restrict__ preTypeDaxn,
                            unsigned int* __restrict__ preTypeN,
                            initialize_package init_pack, unsigned long long seed);
 
-__global__ void cal_blockPos(_float* __restrict__ pos,
+__global__ 
+__launch_bounds__(blockSize, 1)
+void cal_blockPos(_float* __restrict__ pos,
                              _float* __restrict__ block_x,
                              _float* __restrict__ block_y,
                              unsigned int networkSize);
 
-__global__ void get_neighbor_blockId(_float* __restrict__ block_x,
+__global__ 
+__launch_bounds__(blockSize, 1)
+void get_neighbor_blockId(_float* __restrict__ block_x,
                                      _float* __restrict__ block_y,
                                      unsigned int* __restrict__ neighborBlockId,
                                      unsigned int* __restrict__ nNeighborBlock,
-                                     _float max_radius, unsigned int nPotentialNeigbor);
+                                     _float max_radius, unsigned int nPotentialNeighbor);
 
-__global__ void generate_connections(_float* __restrict__ pos,
+__global__ 
+__launch_bounds__(blockSize, 1)
+void generate_connections(_float* __restrict__ pos,
                                      unsigned int* __restrict__ neighborBlockId,
                                      unsigned int* __restrict__ nNeighborBlock,
                                      _float* __restrict__ rden,
@@ -56,9 +64,8 @@ __global__ void generate_connections(_float* __restrict__ pos,
                                      _float* __restrict__ preTypeStrSum,
                                      _float* __restrict__ preTypeStr,
                                      unsigned int* __restrict__ preType,
-                                     _float* __restrict__ preTypeDaxn,
+                                     unsigned int* __restrict__ preTypeDaxn,
                                      curandStateMRG32k3a* __restrict__ state,
-                                     unsigned int networkSize,
-                                     _float speedOfThought);
+                                     unsigned int networkSize, _float speedOfThought);
 
 #endif
