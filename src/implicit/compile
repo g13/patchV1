@@ -2,10 +2,10 @@
 #module load cuda
 
 rm -f patch.o
-nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c patch.cu
+nvcc -arch=compute_61 -code=sm_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c patch.cu
 rm -f coredynamics.o
-nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c coredynamics.cu
+nvcc -arch=compute_61 -code=sm_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c coredynamics.cu
 rm -f cuda_util.o
-nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c cuda_util.cu 
+nvcc -arch=compute_61 -code=sm_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c cuda_util.cu 
 
-nvcc -arch=compute_70 -lcurand -lcudart patch.o cuda_util.o coredynamics.o -o patch 
+nvcc -arch=compute_61 -code=sm_70 -lcurand -lcudart patch.o cuda_util.o coredynamics.o -o patch 
