@@ -65,16 +65,28 @@ class LineSegment(): # slope ~= 0
             x = self.check_lr(y)
             yield x, y
 
+def polar(radius, aspect_ratio, theta):
+    ecc = np.sqrt(1-1/(aspect_ratio*aspect_ratio))
+    return radius/(np.sqrt(1-ecc*ecc*np.power(np.cos(theta),2)))
+
+def ellipse_angle(radius, aspect_ratio, seg, axis='y'):
+    if axis == 'y':
+        return np.arctan(1.0/aspect_ratio/np.sqrt(np.power(radius/seg,2)-1))
+    else:
+        assert(axis == 'x')
+        return np.arctan(1.0/aspect_ratio*np.sqrt(np.power(radius*aspect_ratio/seg,2)-1))
+            
 class CircularSegment(): # angle < np.pi
-    def __init__(self, x0, y0, radius, phase, angle, lr, checkType = 'lr'):
+    def __init__(self, x0, y0, aspect_ratio, radius, phase, angle, lr, checkType = 'lr'):
         #lr = -1 for the left or bottom segment of the circle
         #lr =  1 for the right or top
         assert(0 < angle and angle < np.pi)
         self.x0 = x0
         self.y0 = y0
-        self.radius = radius
+        self.radius = radius # if ellipse then minor axis
         self.phase = phase%(np.pi*2)
         self.angle = angle
+        self.aspect_ratio = aspect_ratio # x:y
         #print(f'myface = {self.phase}, angel = {self.angle}')
         self.lr = lr
         self.r2 = radius*radius
@@ -100,46 +112,46 @@ class CircularSegment(): # angle < np.pi
             self.check = self.check_bt
     
     def copy(self, phase, angle):
-        copied = CircularSegment(self.x0, self.y0, self.radius, phase, angle, self.lr)
+        copied = CircularSegment(self.x0, self.y0, self.aspect_ratio, self.radius, phase, angle, self.lr)
         return copied
         
     def xmin(self):
         if self.phase < np.pi and np.pi < self.end:
-            return self.x0 - self.radius
+            return self.x0 - self.radius*self.aspect_ratio
         else:
-            return self.x0 + self.radius*min(np.cos(self.end), np.cos(self.phase))
+            return self.x0 + min(polar(self.radius,self.aspect_ratio,self.end)*np.cos(self.end), polar(self.radius,self.aspect_ratio,self.phase)*np.cos(self.phase))
             
     def xmax(self):
         if self.phase < 2*np.pi and 2*np.pi < self.end:
-            return self.x0 + self.radius
+            return self.x0 + self.radius*self.aspect_ratio
         else:
-            return self.x0 + self.radius*max(np.cos(self.end), np.cos(self.phase))
+            return self.x0 + max(polar(self.radius,self.aspect_ratio,self.end)*np.cos(self.end), polar(self.radius,self.aspect_ratio,self.phase)*np.cos(self.phase))
         
     def ymin(self):
         if self.phase < np.pi*3/2 and np.pi*3/2 < self.end:
             return self.y0 - self.radius
         else:
-            return self.y0 + self.radius*min(np.sin(self.end), np.sin(self.phase))
+            return self.y0 + min(polar(self.radius,self.aspect_ratio,self.end)*np.sin(self.end), polar(self.radius,self.aspect_ratio,self.phase)*np.sin(self.phase))
         
     def ymax(self):
         if self.phase < np.pi/2 and np.pi/2 < self.end:
             return self.y0 + self.radius
         else:
-            return self.y0 + self.radius*max(np.sin(self.end), np.sin(self.phase))
-                
+            return self.y0 + max(polar(self.radius,self.aspect_ratio,self.end)*np.sin(self.end), polar(self.radius,self.aspect_ratio,self.phase)*np.sin(self.phase))
         
     def check_lr(self, y):
-        return self.x0 + self.lr*np.sqrt(self.r2 - np.power(y-self.y0,2))
+        return self.x0 + self.lr*self.aspect_ratio*np.sqrt(self.r2 - np.power(y-self.y0,2))
     
     def check_bt(self, x):
-        return self.y0 + self.lr*np.sqrt(self.r2 - np.power(x-self.x0,2))
+        return self.y0 + self.lr*np.sqrt(self.r2 - np.power((x-self.x0)/self.aspect_ratio,2))
     
     def generator(self, ntheta):
         dtheta = self.angle/ntheta
         for itheta in range(ntheta+1):
             theta = self.phase + itheta*dtheta
-            x = self.x0 + self.radius*np.cos(theta)
-            y = self.y0 + self.radius*np.sin(theta)
+            r = polar(self.radius,self.aspect_ratio,theta)
+            x = self.x0 + r*np.cos(theta)
+            y = self.y0 + r*np.sin(theta)
             yield x, y
 
 def draw(n, curve, ax, lw = 1, ls = '-'): # just having fun with generators
@@ -160,8 +172,31 @@ def poly_area(x, y, n):
     return np.abs(r)/2   
 
 def seg_area(angle, radius):
-    theta = angle
-    return radius*radius/2*(theta-np.sin(theta))
+    return radius*radius/2*(angle-np.sin(angle))
+
+def ellipse_lrseg_area(angle1, angle2, radius, aspect_ratio):
+    if angle1 < 0:
+        angle1 = 2*np.pi-angle1
+    if angle2 < 0:
+        angle2 = 2*np.pi-angle2
+    assert(angle2>=angle1)
+    a = radius*aspect_ratio
+    b = radius
+    theta1 = np.arccos(polar(radius, aspect_ratio, angle1)*np.cos(angle1)/a)
+    if angle1 > np.pi:
+        theta1 = 2*np.pi-theta1
+        
+    theta2 = np.arccos(polar(radius, aspect_ratio, angle2)*np.cos(angle2)/a)
+    if angle2 > np.pi:
+        theta2 = 2*np.pi-theta2
+     
+    #print('ellipse angle:', angle1*180/np.pi, angle2*180/np.pi)
+    #print('ref circ angle:', theta1*180/np.pi, theta2*180/np.pi)
+    assert(theta2>=theta1)
+    area = radius*radius*aspect_ratio/2*(theta2-theta1-np.sin(theta2-theta1))
+    assert(area>0)
+    #print(area)
+    return area
 
 # pseudo rands
 def generate_pos_2d(lcurve, rcurve, target_area, ly, ry, n, seed):

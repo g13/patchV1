@@ -5,23 +5,26 @@ from sys import getsizeof
 def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_sobol3d = False):
     pos = np.empty((3,nblock,neuron_per_block), dtype=float)
     print(f'taking up {getsizeof(pos)/1024/1024} Mb')
-    lx = 0
-    ly = 0.8
-    left_radius = 1.3
-    dx =  np.sqrt(left_radius*left_radius - ly*ly)
-    lx = left_radius - dx
-    lx0 = left_radius
+    # left ellipse
+    aspect_ratio = 1.6
+    left_radius = 1.0
+    ly = left_radius * 0.8
+    dx = aspect_ratio*np.sqrt(left_radius*left_radius - ly*ly)
+    lx = left_radius*aspect_ratio - dx
+    lx0 = left_radius*aspect_ratio
     ly0 = 0
-    langle = np.arcsin(ly/left_radius)
+    langle = ellipse_angle(left_radius,aspect_ratio,ly)
     lphase = np.pi - langle
     langle = 2*langle
-    lseg_area = seg_area(langle, left_radius)
-    
-    rx = 2.414694138811714
-    ryl = rx*3
-    rx = rx + lx
-    ry_ratio = 1.2
-    right_radius = 10
+    lseg_area = ellipse_lrseg_area(lphase, lphase+langle, left_radius, aspect_ratio)
+   
+    # right circle
+    _rx = 0.8
+    vol_aspect_ratio = 2.8
+    rx = _rx + lx
+    ryl = _rx * vol_aspect_ratio
+    ry_ratio = 1.0 # asymmetric to y axis 
+    right_radius = 3
     ry = [-ryl/(ry_ratio+1), ryl*ry_ratio/(ry_ratio+1)]
     rx0 = rx - np.sqrt(right_radius*right_radius - ryl*ryl/4)
     ry0 = ry[0] + ryl/2
@@ -39,32 +42,30 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
     area_per_block = area/nblock
     scale_ratio =  np.sqrt(physical_area/area)
     ### now rescale and plot
-    lx = 0 * scale_ratio
-    ly = 0.8 * scale_ratio
-    left_radius = 1.3 * scale_ratio
-    dx =  np.sqrt(left_radius*left_radius - ly*ly)
-    lx = left_radius - dx
-    lx0 = left_radius
-    ly0 = 0 * scale_ratio
-    langle = np.arcsin(ly/left_radius)
+    ly = ly * scale_ratio
+    left_radius = left_radius * scale_ratio
+    dx = aspect_ratio*np.sqrt(left_radius*left_radius - ly*ly)
+    lx = aspect_ratio*left_radius - dx
+    lx0 = aspect_ratio*left_radius
+    ly0 = ly0 * scale_ratio
+    langle = ellipse_angle(left_radius,aspect_ratio,ly)
     lphase = np.pi - langle
     langle = 2*langle
-    lseg_area = seg_area(langle, left_radius)
-    left_seg = CircularSegment(lx0, ly0, left_radius, lphase, langle, -1)
+    lseg_area = ellipse_lrseg_area(lphase, lphase+langle, left_radius, aspect_ratio)
+    left_seg = CircularSegment(lx0, ly0, aspect_ratio, left_radius, lphase, langle, -1)
     lseg = left_seg.generator
     
-    rx = 2.414694138811714 * scale_ratio
-    ryl = rx*3 
+    rx = _rx * scale_ratio
+    ryl = rx * vol_aspect_ratio 
     rx = rx + lx
-    ry_ratio = 1.2
-    right_radius = 10 * scale_ratio
+    right_radius = right_radius * scale_ratio
     ry = [-ryl/(ry_ratio+1), ryl*ry_ratio/(ry_ratio+1)]
     rx0 = rx - np.sqrt(right_radius*right_radius - ryl*ryl/4)
     ry0 = ry[0] + ryl/2
     rphase = -np.arcsin(ryl/2/right_radius)
     rangle = -2*rphase
     rseg_area = seg_area(rangle, right_radius)
-    right_seg = CircularSegment(rx0, ry0, right_radius, rphase, rangle, 1)
+    right_seg = CircularSegment(rx0, ry0, 1.0, right_radius, rphase, rangle, 1)
     rseg = right_seg.generator
     
     rslope = ry0/(rx-lx)
@@ -86,12 +87,13 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
     lr_phase = -np.arcsin(ly/right_radius)
     lr_angle = -2*lr_phase
     lr_x0 = lx - np.sqrt(right_radius*right_radius - ly*ly)
-    left_right_seg = CircularSegment(lr_x0, 0, right_radius, lr_phase, lr_angle, 1)
+    left_right_seg = CircularSegment(lr_x0, 0, 1.0, right_radius, lr_phase, lr_angle, 1)
     lr_seg = left_right_seg.generator
     
     area = lseg_area + rseg_area + mid_area
+    print(f'area {area} = {lseg_area} + {rseg_area} + {mid_area}')
     area_per_block = area/nblock
-    print('area =', area, 'area per block =', area_per_block)
+    print('area per block =', area_per_block)
     
     fig = plt.figure('shape', dpi = 600)
     ax = fig.add_subplot(121)
@@ -124,7 +126,14 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
     nl_nblock = np.round(l_nblock).astype(int)
     cl = np.sqrt(area_per_block)
     print('characteristic_length, cl =', cl)
-    print(nl_nblock, nr_nblock)
+    print(f'left nblock: {nl_nblock}, right nblock: {nr_nblock}')
+    if nl_nblock < 2:
+        print('at least 2 blocks for left segment')
+        return
+    
+    if np.mod(nl_nblock,2) == 1:
+        print('make even nblock for the left segment')
+        return
     
     ##########################################################
     #   construct the right area
@@ -229,7 +238,7 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
             #print(count, 'iterations for slice')
     
         n = (i+1)*nLeftSeg
-        ring_seg[i] = CircularSegment(x0[i+1], y0[i+1], right_radius, slice_phase[i+1], slice_angle[i+1], 1)
+        ring_seg[i] = CircularSegment(x0[i+1], y0[i+1], 1.0, right_radius, slice_phase[i+1], slice_angle[i+1], 1)
         ax.plot(p0[0,i+1], p0[1,i+1], '*', ms=0.1)
         ax.plot(p1[0,i+1], p1[1,i+1], '*', ms=0.1)
         draw(n, ring_seg[i].generator, ax, 0.1)
@@ -362,8 +371,8 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
     #ax.set_aspect('equal')
     ###########################################################
     
-    rstripe = (langle/2*left_radius)/cl
-    nstripe = np.round(rstripe).astype(int)+3
+    rstripe = ly/cl
+    nstripe = np.round(rstripe).astype(int)+1
     print('upper estimate', nstripe, 'stripes')
     stripe_area = np.empty(nstripe)
     nline = nstripe - 1
@@ -376,7 +385,8 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
     i = 0
     sangle = langle
     qangle = lr_angle
-    while (np.round(np.sum(stripe_area[:i])/area_per_block).astype(int) < nl_nblock/2):
+    lefted = larea/2
+    while (np.sum(stripe_area[:i])/area_per_block < nl_nblock/2 and lefted > area_per_block):
         percent = 0.5
         dab = 0.01
         count = 0
@@ -395,9 +405,13 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
         dangle2 = dangle1/langle * lr_angle
         while (percent > tolerance_sig):
             la[i] = (1+lcor[i])*dangle1
-            pll[1,i] = np.sin(langle/2-np.sum(la[:i+1]))*left_radius
-            pll[0,i] = -np.sqrt(l2 - np.power(pll[1,i]-ly0,2)) + lx0
-            left_seg_block = seg_area(la[i], left_radius)
+            angle1 = lphase+np.sum(la[:i])
+            angle2 = angle1+la[i]
+            r = polar(left_radius, aspect_ratio, angle2)
+            pll[1,i] = np.sin(angle2)*r
+            pll[0,i] = np.cos(angle2)*r + lx0
+            #print('i=',i,'count=',count)
+            left_seg_block = ellipse_lrseg_area(angle1, angle2, left_radius, aspect_ratio)
     
             ra[i] = (1+lcor[i])*dangle2
             plr[1,i] = np.sin(lr_angle/2-np.sum(ra[:i+1]))*right_radius
@@ -416,10 +430,13 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
                 target = np.round(current)
                 if target < 1:
                     target = 1
-                if target*area_per_block > larea/2 - np.sum(stripe_area[:i]):
-                    target = (larea/2 - np.sum(stripe_area[:i]))/area_per_block
+                this_area = target*area_per_block
+                lefted = larea/2 - np.sum(stripe_area[:i])
+                if this_area > lefted:
+                    target = lefted/area_per_block
                     print(f'#{i} limited to {target}')
-    
+                lefted = lefted - this_area
+            
             percent = np.abs((current-target)/target)
             if count > 0:
                 if current == old:
@@ -429,20 +446,22 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
             old_dab = dab
             old = current
             count += 1
-            #print(nline - i- 1- sum(lcor[:i]))
+            #print(nline,'-',i,'-',sum(lcor[:i]),lcor[i])
             #print('#', i, count,':', old, '->', current ,'->', target, ':', old_dab, '->', dab)
+            #ax.plot([pll[0,i], plr[0,i]], [pll[1,i], plr[1,i]], ls=':', lw = 0.1*count)    
         literation += count
         #if (np.sum(la[:i+1]) > langle/2):
         #    nline = i+1
         #    print('im here')
         #    break
         ax.plot([pll[0,i], plr[0,i]], [pll[1,i], plr[1,i]], lw = 0.1)    
+        #print(f'stripe area #{i} = {mid_sec_block}+{right_seg_block}+{left_seg_block}, larea = {larea}') 
         #print(i, stripe_area[i]/area_per_block)
         i+=1
     #print(lcor)
     nstripe = i
     nline = nstripe - 1
-    print(nline, sum(stripe_area[:nstripe]/area_per_block), nl_nblock)
+    print(f'{nline} lines top, {sum(stripe_area[:nstripe]/area_per_block)} blocks, total {nl_nblock} blocks')
     pll[0, nline] = 0
     pll[1, nline] = 0
     plr[0, nline] = right_radius + lr_x0
@@ -479,7 +498,9 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
         count = 0
         pcor = 0
         dab = 0.01
-        block_lseg_area = seg_area(la[i], left_radius)
+        angle1 = lphase+np.sum(la[:i])
+        angle2 = angle1 + la[i]
+        block_lseg_area = ellipse_lrseg_area(angle1, angle2, left_radius, aspect_ratio)
         target = area_per_block
         while (percent > tolerance_sig):
             leftp = pll[:,i] + (startp - pll[:,i]) * (1+pcor)
@@ -496,6 +517,7 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
             old_dab = dab
             old = current
             count += 1
+        literation += count
             
         if stripe_block[i] > 1:
             midp[:,0] = leftp
@@ -523,6 +545,7 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
                 old_dab = dab
                 old = current
                 count += 1
+            literation += count
             midp[:,-1] = rightp
             midp_p[:,-1] = rightp_p
             midp[:,1:-1] = get_midp(leftp, rightp, stripe_block[i]-2)
@@ -626,7 +649,7 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
     if not use_sobol3d:
         pos[2, :, :] = np.reshape(rand.uniform(nblock*neuron_per_block),(1,nblock,neuron_per_block))*0.01
         
-    print('avg iterations', literation/nline)
+    print('avg iterations', literation/(nline+2))
     print(f'{blockCount} constructed')
     ax.set_xlabel('mm')
     ax.set_ylabel('mm')
