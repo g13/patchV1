@@ -48,11 +48,11 @@ __global__ void initialize(curandStateMRG32k3a* __restrict__ state,
                            unsigned int* __restrict__ preType,
                            _float* __restrict__ rden,
                            _float* __restrict__ raxn,
-                           _float* __restrict__ preTypeDaxn,
-                           _float* __restrict__ preTypeDend,
+                           _float* __restrict__ dden,
+                           _float* __restrict__ daxn,
                            _float* __restrict__ sTypeMat,
                            _float* __restrict__ pTypeMat,
-                           unsigned int* __restrict__ cTypeMat,
+                           unsigned int* __restrict__ nTypeMat,
                            _float* __restrict__ preTypeS,
                            _float* __restrict__ preTypeP,
                            unsigned int* __restrict__ preTypeN,
@@ -60,32 +60,21 @@ __global__ void initialize(curandStateMRG32k3a* __restrict__ state,
     unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     curand_init(seed, id, 0, &state[id]);
     
-    unsigned int itype;
-    _float rd;
-    _float ra;
-    _float da;
-    _float dd;
 	#pragma unroll
-    for (itype=0; itype<NTYPE; itype++) {
-        if (id < init_pack.neuron_type_acc_count[itype+1]) {
-            rd = init_pack.radius[itype][0];
-            ra = init_pack.radius[itype][1];
-            da = init_pack.den_axn[itype];
-            dd = init_pack.den_den[itype];
-            break;
+    for (unsigned int itype=0; itype<NTYPE; itype++) {
+        if (threadIdx.x < init_pack.neuron_type_acc_count[itype+1]) {
+            preType[id] = itype;
+            rden[id] = init_pack.radius[itype][0];
+            raxn[id] = init_pack.radius[itype][1];
+            dden[id] = init_pack.den_den[itype];
+            daxn[id] = init_pack.den_axn[itype];
+            for (unsigned int jtype=0; jtype<NTYPE; jtype++) {
+                preTypeS[jtype*networkSize+id] = sTypeMat[itype*NTYPE+jtype];
+                preTypeP[jtype*networkSize+id] = pTypeMat[itype*NTYPE+jtype];
+                preTypeN[jtype*networkSize+id] = nTypeMat[itype*NTYPE+jtype];
+            }
+            return;
         }
-    }
-    __syncwarp();
-    preType[id] = itype;
-    rden[id] = rd;
-    raxn[id] = ra;
-    preTypeDaxn[id] = da;
-    preTypeDend[id] = dd;
-
-    for (unsigned int jtype=0; jtype<NTYPE; jtype++) {
-        preTypeS[jtype*networkSize+id] = sTypeMat[itype*NTYPE+jtype];
-        preTypeP[jtype*networkSize+id] = pTypeMat[itype*NTYPE+jtype];
-        preTypeN[jtype*networkSize+id] = cTypeMat[itype*NTYPE+jtype];
     }
 }
 
@@ -137,6 +126,9 @@ __global__ void cal_blockPos(_float* __restrict__ pos,
     if (threadIdx.x == 0) {
         block_y[blockIdx.x] = y[0]/blockSize;
     }
+    //if (threadIdx.x == 0) {
+    //    printf("#%u: (%f,%f)\n", blockIdx.x, block_x[blockIdx.x], block_y[blockIdx.x]);
+    //}
 }
 
 __device__ void compare_distance_with_neighbor_block(unsigned int* __restrict__ bid, 
@@ -150,10 +142,9 @@ __device__ void compare_distance_with_neighbor_block(unsigned int* __restrict__ 
     _float x = block_x[blockId] - bx;
     _float y = block_y[blockId] - by;
     _float distance = square_root(x*x + y*y);
-    if (distance < radius) {
+    if (distance < radius && blockId != blockIdx.x) {
         unsigned int current_index = atomicAdd(bid, 1);
 		if (current_index >= nPotentialNeighbor/2) {
-			printf("%u: current index = %u, max = %u\n", blockId, current_index, nPotentialNeighbor);
 			assert(current_index < nPotentialNeighbor);
 		}
         
@@ -182,6 +173,7 @@ __global__ void get_neighbor_blockId(_float* __restrict__ block_x,
     }
     if (threadIdx.x == 0) {
         nNeighborBlock[blockIdx.x] = bid[0];
+        //printf("block #%u: %u neighbors\n", blockIdx.x, bid[0]);
     }
 }
 
@@ -202,20 +194,26 @@ __global__ void generate_connections(_float* __restrict__ pos,
                                      unsigned int* __restrict__ preTypeAvail,
                                      _float* __restrict__ preTypeStrSum,
                                      unsigned int* __restrict__ preType,
-                                     _float* __restrict__ preTypeDaxn,
-                                     _float* __restrict__ preTypeDend,
+                                     _float* __restrict__ dden,
+                                     _float* __restrict__ daxn,
                                      curandStateMRG32k3a* __restrict__ state,
                                      unsigned int networkSize, unsigned int neighborSize, unsigned int nPotentialNeighbor, _float speedOfThought) {
     __shared__ _float x1[blockSize];
     __shared__ _float y1[blockSize];
     __shared__ unsigned int ipreType[blockSize];
-    _float* tempNeighbor = new _float[blockSize*nPotentialNeighbor];
+    //_float* tempNeighbor = new _float[];
+    unsigned int offset = blockIdx.x*blockSize;
+    unsigned int id = offset + threadIdx.x;
+    unsigned int nb = nNeighborBlock[blockIdx.x]*blockSize;
+    _float* tempNeighbor = new _float[nb];
+    if (!tempNeighbor && nb > 0) {
+        printf("#%u not allocated, requring %f Kb for %u units\n", id, nb*sizeof(_float)/1024.0, networkSize);
+        return;
+    }
     unsigned int sumConType[NTYPE];
     unsigned int sumType[NTYPE];
     unsigned int sumP[NTYPE];
     _float sumStrType[NTYPE];
-    unsigned int offset = blockIdx.x*blockSize;
-    unsigned int id = offset + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
     unsigned int itype = preType[id];
     _float x0 = pos[id];
@@ -246,7 +244,7 @@ __global__ void generate_connections(_float* __restrict__ pos,
         _float y = y1[i] - y0;
         _float ra = raxn[ipre];
         _float distance = square_root(x*x + y*y);
-        _float p = connect(distance, ra, rd) * preTypeDaxn[id] * preTypeDend[id] * preTypeP[ip*networkSize + id];
+        _float p = connect(distance, ra, rd) * daxn[id] * dden[id] * preTypeP[ip*networkSize + id];
         sumP[ip] += p;
         conMat[bid] = p;
         delayMat[bid] = distance/speedOfThought;
@@ -264,18 +262,19 @@ __global__ void generate_connections(_float* __restrict__ pos,
             _float y = pos[networkSize+ipre] - y0;
             _float ra = raxn[ipre];
             _float distance = square_root(x*x + y*y);
-            _float p = connect(distance, ra, rd) * preTypeDaxn[id] * preTypeDend[id] * preTypeP[ip*networkSize+id];
+            _float p = connect(distance, ra, rd);
+            p = p * daxn[ipre] * dden[id] * preTypeP[ip*networkSize+id];
             sumP[ip] += p;
-            printf("bid = %u", bid);
             tempNeighbor[bid] = p;
         }
     }
+    __syncwarp();
     //============= redistribute p of all ==========
     #pragma unroll
     for (unsigned int i=0; i<blockSize; i++) {
         unsigned int ipre = blockIdx.x*blockSize + i;
         unsigned long bid = ipre*blockSize + threadIdx.x;
-        unsigned int ip = ipreType[ipre];
+        unsigned int ip = ipreType[i];
         _float str = preTypeS[ip*networkSize+id];
         _float p = conMat[bid]/sumP[ip]*preTypeN[ip*networkSize+id];
         if (uniform(&localState) < p) {
@@ -307,7 +306,6 @@ __global__ void generate_connections(_float* __restrict__ pos,
                 }
                 sumConType[ip] += 1;
                 sumStrType[ip] += str;
-                conVec[id*neighborSize + nid] = str;
                 vecID[nid] = ipre;
                 conVec[nid] = str;
                 nid += 1;
