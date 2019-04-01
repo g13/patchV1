@@ -126,9 +126,6 @@ __global__ void cal_blockPos(_float* __restrict__ pos,
     if (threadIdx.x == 0) {
         block_y[blockIdx.x] = y[0]/blockSize;
     }
-    //if (threadIdx.x == 0) {
-    //    printf("#%u: (%f,%f)\n", blockIdx.x, block_x[blockIdx.x], block_y[blockIdx.x]);
-    //}
 }
 
 __device__ void compare_distance_with_neighbor_block(unsigned int* __restrict__ bid, 
@@ -147,7 +144,6 @@ __device__ void compare_distance_with_neighbor_block(unsigned int* __restrict__ 
 		if (current_index >= nPotentialNeighbor/2) {
 			assert(current_index < nPotentialNeighbor);
 		}
-        
         neighborBlockId[nPotentialNeighbor*blockIdx.x + current_index] = blockId;
     }
 }
@@ -171,9 +167,10 @@ __global__ void get_neighbor_blockId(_float* __restrict__ block_x,
     if (threadIdx.x < lefted) {
         compare_distance_with_neighbor_block(bid, bx, by, block_x, block_y, neighborBlockId, offset, nPotentialNeighbor, max_radius);
     }
+    __syncthreads();
     if (threadIdx.x == 0) {
         nNeighborBlock[blockIdx.x] = bid[0];
-        //printf("block #%u: %u neighbors\n", blockIdx.x, bid[0]);
+        printf("block #%u: %u neighbors: %u, %u, %u, %u, %u, %u, %u, %u, %u\n", blockIdx.x, bid[0], neighborBlockId[blockIdx.x*nPotentialNeighbor+0], neighborBlockId[blockIdx.x*nPotentialNeighbor+1], neighborBlockId[blockIdx.x*nPotentialNeighbor+2], neighborBlockId[blockIdx.x*nPotentialNeighbor+3],neighborBlockId[blockIdx.x*nPotentialNeighbor+4],neighborBlockId[blockIdx.x*nPotentialNeighbor+5],neighborBlockId[blockIdx.x*nPotentialNeighbor+6],neighborBlockId[blockIdx.x*nPotentialNeighbor+7],neighborBlockId[blockIdx.x*nPotentialNeighbor+8]);
     }
 }
 
@@ -190,6 +187,7 @@ __global__ void generate_connections(_float* __restrict__ pos,
                                      _float* __restrict__ conVec, //for neighbor block connections
                                      _float* __restrict__ delayVec, //for neighbor block connections
                                      unsigned int* __restrict__ vecID,
+                                     unsigned int* __restrict__ nVec,
                                      unsigned int* __restrict__ preTypeConnected,
                                      unsigned int* __restrict__ preTypeAvail,
                                      _float* __restrict__ preTypeStrSum,
@@ -237,17 +235,20 @@ __global__ void generate_connections(_float* __restrict__ pos,
         //matrix, indexed within one block
         unsigned int ipre = blockIdx.x*blockSize + i;
         //type vector, indexed across the network
-        unsigned long bid = ipre*blockSize + threadIdx.x;
-        unsigned int ip = ipreType[i];
-        sumType[ip] += 1;
         _float x = x1[i] - x0;
         _float y = y1[i] - y0;
         _float ra = raxn[ipre];
         _float distance = square_root(x*x + y*y);
-        _float p = connect(distance, ra, rd) * daxn[id] * dden[id] * preTypeP[ip*networkSize + id];
-        sumP[ip] += p;
-        conMat[bid] = p;
-        delayMat[bid] = distance/speedOfThought;
+        _float p = connect(distance, ra, rd);
+        if (p > 0) {
+            unsigned long bid = ipre*blockSize + threadIdx.x;
+            unsigned int ip = ipreType[i];
+            sumType[ip] += 1;
+            p = p * daxn[id] * dden[id] * preTypeP[ip*networkSize + id];
+            sumP[ip] += p;
+            conMat[bid] = p;
+            delayMat[bid] = distance/speedOfThought;
+        }
     }
     for (unsigned int i=0; i<nNeighborBlock[blockIdx.x]; i++) {
         #pragma unroll
@@ -255,20 +256,39 @@ __global__ void generate_connections(_float* __restrict__ pos,
             // index in the network
             unsigned int ipre = neighborBlockId[nPotentialNeighbor*blockIdx.x + i]*blockSize + j;
             // index in conVec
-            unsigned long bid = i*blockSize + j;
-            unsigned int ip = preType[ipre];
-            sumType[ip] += 1;
             _float x = pos[ipre] - x0;
             _float y = pos[networkSize+ipre] - y0;
             _float ra = raxn[ipre];
             _float distance = square_root(x*x + y*y);
             _float p = connect(distance, ra, rd);
-            p = p * daxn[ipre] * dden[id] * preTypeP[ip*networkSize+id];
-            sumP[ip] += p;
-            tempNeighbor[bid] = p;
+            unsigned long bid = i*blockSize + j;
+            tempNeighbor[bid] = 0;
+            if (p > 0) {
+                unsigned int ip = preType[ipre];
+                sumType[ip] += 1;
+                p = p * daxn[ipre] * dden[id] * preTypeP[ip*networkSize+id];
+                sumP[ip] += p;
+                tempNeighbor[bid] = p;
+            }
         }
     }
+    if (sumType[0] == 0) {
+        printf("#%u:0 (%f,%f), %u\n", id, x0, y0, id/blockSize);
+        assert(sumType[0] > 0);
+    }
+    if (sumType[1] == 0) {
+        printf("#%u:1 (%f,%f), %u\n", id, x0, y0, id/blockSize);
+        assert(sumType[1] > 0);
+    }
     __syncwarp();
+
+    for (unsigned int i=0; i<NTYPE; i++) {
+        if (preTypeN[i*networkSize+id] > sumType[i]) {
+            printf("#%u: %u > %u\n", id, preTypeN[i*networkSize+id], sumType[i]);
+            assert(preTypeN[i*networkSize+id] <= sumType[i]);
+        }
+    }
+
     //============= redistribute p of all ==========
     #pragma unroll
     for (unsigned int i=0; i<blockSize; i++) {
@@ -306,12 +326,18 @@ __global__ void generate_connections(_float* __restrict__ pos,
                 }
                 sumConType[ip] += 1;
                 sumStrType[ip] += str;
-                vecID[nid] = ipre;
-                conVec[nid] = str;
+                vecID[neighborSize*id + nid] = ipre;
+                conVec[neighborSize*id + nid] = str;
+                _float x = pos[ipre] - x0;
+                _float y = pos[networkSize+ipre] - y0;
+                delayVec[neighborSize*id + nid] = square_root(x*x + y*y)/speedOfThought;
+                assert(str > 0);
                 nid += 1;
+                assert(nid <= neighborSize);
             }
         }
     }
+    nVec[id] = nid;
     #pragma unroll
     for (unsigned int i=0; i<NTYPE; i++) {
         preTypeConnected[i*networkSize + id] = sumConType[i];

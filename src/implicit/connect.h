@@ -70,6 +70,7 @@ void generate_connections(_float* __restrict__ pos,
                           _float* __restrict__ conVec, //for neighbor block connections
                           _float* __restrict__ delayVec, //for neighbor block connections
                           unsigned int* __restrict__ vecID,
+                          unsigned int* __restrict__ nVec,
                           unsigned int* __restrict__ preTypeConnected,
                           unsigned int* __restrict__ preTypeAvail,
                           _float* __restrict__ preTypeStrSum,

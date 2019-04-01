@@ -25,11 +25,19 @@ int main(int argc, char *argv[])
     std::ifstream pos_file;
     std::string dir(argv[1]);
     std::string theme(argv[2]);
-    std::ofstream conMat_file, conVec_file, stats_file;
+    _float scale;
+    _float max_radius;
+    unsigned int nPotentialNeighbor;
+	sscanf(argv[3], "%f", &scale);
+	sscanf(argv[4], "%f", &max_radius);
+	sscanf(argv[5], "%u", &nPotentialNeighbor);
+    std::ofstream mat_file, vec_file;
+    std::ofstream blockPos_file, neighborBlock_file;
+    std::ofstream stats_file;
+    std::ofstream posR_file;
     unsigned int nblock = 48;
-    unsigned int nPotentialNeighbor = 8;
     unsigned int networkSize = nblock*blockSize;
-    unsigned int neighborSize = 400;
+    unsigned int neighborSize = 500;
     unsigned int usingPosDim = 2;
 
     _float radius[NTYPE][2];
@@ -37,7 +45,6 @@ int main(int argc, char *argv[])
 	_float den_axn[NTYPE];
 	_float den_den[NTYPE];
     // E
-    _float scale = 5.0f;
     radius[0][0] = 0.08f*scale;
     radius[0][1] = 0.15f*scale;
     // I
@@ -79,7 +86,6 @@ int main(int argc, char *argv[])
 
     initialize_package init_pack(radius, neuron_type_acc_count, den_axn, den_den);
     _float speedOfThought = 1.0f; // mm/ms
-    _float max_radius = 0.4f*scale;
     
 	std::string posfn = dir + theme + "_3d_pos.bin";
     pos_file.open(posfn, std::ios::in|std::ios::binary);
@@ -87,8 +93,12 @@ int main(int argc, char *argv[])
 		std::cout << "failed to open pos file:" << posfn << "\n";
 		return EXIT_FAILURE;
 	}
-    conMat_file.open(theme + "_conMat.bin", std::ios::out | std::ios::binary);
-    conVec_file.open(theme + "_conVec.bin", std::ios::out | std::ios::binary);
+    mat_file.open(dir + theme + "_mat.bin", std::ios::out | std::ios::binary);
+    vec_file.open(dir + theme + "_vec.bin", std::ios::out | std::ios::binary);
+    blockPos_file.open(dir + theme + "_blkPos.bin", std::ios::out | std::ios::binary);
+    neighborBlock_file.open(dir + theme + "_neighborBlk.bin", std::ios::out | std::ios::binary);
+    stats_file.open(dir + theme + "_stats.bin", std::ios::out | std::ios::binary);
+    posR_file.open(dir + theme + "_reshaped_pos.bin", std::ios::out|std::ios::binary);
     size_t d_memorySize, memorySize = 0;
 
     // read from file cudaMemcpy to device
@@ -118,6 +128,10 @@ int main(int argc, char *argv[])
         memorySize += networkSize*neighborSize*sizeof(unsigned int);
         outputSize += networkSize*neighborSize*sizeof(unsigned int);
 
+    unsigned int *nVec;
+        memorySize += networkSize*sizeof(unsigned int);
+        outputSize += networkSize*sizeof(unsigned int);
+
     unsigned int *neighborBlockId, *nNeighborBlock;
         memorySize += (nPotentialNeighbor + 1)*nblock*sizeof(unsigned int);
         outputSize += (nPotentialNeighbor + 1)*nblock*sizeof(unsigned int);
@@ -144,7 +158,8 @@ int main(int argc, char *argv[])
     conVec = delayMat + blockSize*blockSize*nblock; 
     delayVec = conVec + networkSize*neighborSize;
     vecID = (unsigned int*) (delayVec + networkSize*neighborSize);
-    neighborBlockId = vecID + networkSize*neighborSize;
+    nVec = vecID + networkSize*neighborSize;
+    neighborBlockId = nVec + networkSize;
     nNeighborBlock = neighborBlockId + nPotentialNeighbor*nblock;
     preTypeConnected = nNeighborBlock + nblock; 
     preTypeAvail = preTypeConnected + NTYPE*networkSize;
@@ -191,7 +206,7 @@ int main(int argc, char *argv[])
     unsigned int *d_preType;
     _float *d_conMat, *d_conVec;
     _float *d_delayMat, *d_delayVec;
-    unsigned int *d_vecID;
+    unsigned int *d_vecID, *d_nVec;
     unsigned int *d_neighborBlockId, *d_nNeighborBlock;
     unsigned int *d_preTypeConnected, *d_preTypeAvail;
     _float *d_preTypeStrSum;
@@ -221,7 +236,8 @@ int main(int argc, char *argv[])
     d_conVec = d_delayMat + blockSize*blockSize*nblock; 
     d_delayVec = d_conVec + networkSize*neighborSize;
     d_vecID = (unsigned int*) d_delayVec + networkSize*neighborSize;
-    d_neighborBlockId = d_vecID + networkSize*neighborSize;
+    d_nVec = d_vecID + networkSize*neighborSize;
+    d_neighborBlockId = d_nVec + networkSize;
     d_nNeighborBlock = d_neighborBlockId + nPotentialNeighbor*nblock;
     d_preTypeConnected = d_nNeighborBlock + nblock;
     d_preTypeAvail = d_preTypeConnected + NTYPE*networkSize;
@@ -305,6 +321,7 @@ int main(int argc, char *argv[])
 																d_conVec, 
 																d_delayVec, 
 																d_vecID,
+                                                                d_nVec,
 																d_preTypeConnected, 
 																d_preTypeAvail, 
 																d_preTypeStrSum, 
@@ -322,12 +339,31 @@ int main(int argc, char *argv[])
 	CUDA_CALL(cudaStreamDestroy(s0));
     CUDA_CALL(cudaStreamDestroy(s1));
     CUDA_CALL(cudaStreamDestroy(s2));
-    /*unsigned long preSumN[NTYPE][NTYPE];
-	unsigned long preSumStr[NTYPE][NTYPE];
+    // output to binary data files
+    mat_file.write((char*)conMat, nblock*blockSize*blockSize*sizeof(_float));
+    mat_file.write((char*)delayMat, nblock*blockSize*blockSize*sizeof(_float));
+    
+    vec_file.write((char*)nVec, networkSize*sizeof(unsigned int));
     for (unsigned int i=0; i<networkSize; i++) {
-        for (unsigned int j=0; j<NTYPE; j++) {
-        }
-    }*/
+        vec_file.write((char*)&(vecID[i*neighborSize]), nVec[i]*sizeof(unsigned int));
+        vec_file.write((char*)&(conVec[i*neighborSize]), nVec[i]*sizeof(_float));
+        vec_file.write((char*)&(delayVec[i*neighborSize]), nVec[i]*sizeof(_float));
+    }
+
+    blockPos_file.write((char*)block_x, nblock*sizeof(_float));
+    blockPos_file.write((char*)block_y, nblock*sizeof(_float));
+
+    neighborBlock_file.write((char*)nNeighborBlock, nblock*sizeof(unsigned int));
+    for (unsigned int i=0; i<nblock; i++) {
+        neighborBlock_file.write((char*)&(neighborBlockId[i*nPotentialNeighbor]), nNeighborBlock[i]*sizeof(unsigned int));
+    }
+
+    stats_file.write((char*)preTypeConnected, NTYPE*networkSize*sizeof(unsigned int));
+    stats_file.write((char*)preTypeAvail, NTYPE*networkSize*sizeof(unsigned int));
+    stats_file.write((char*)preTypeStrSum, NTYPE*networkSize*sizeof(_float));
+    
+    posR_file.write((char*)pos, networkSize*usingPosDim*sizeof(_float));
+
     CUDA_CALL(cudaFree(gpu_chunk));
 	free(cpu_chunk);
     return 0;
