@@ -20,6 +20,7 @@
     #define normal curand_normal_double
     #define uniform curand_uniform_double
     #define arccos acos 
+    #define sine sin 
     #define square_root sqrt
     #define abs_value fabs 
 #else
@@ -40,6 +41,7 @@
     #define normal curand_normal
     #define uniform curand_uniform
     #define arccos acosf 
+    #define sine sinf 
     #define square_root sqrtf
     #define abs_value fabsf 
 #endif
@@ -82,30 +84,36 @@ __device__ _float tri_cos(_float a, _float b, _float c) {
     return (a*a + b*b - c*c)/(2*a*b);
 }
 
-__device__ _float seg(_float cosine, _float radius) {
-    return arccos(cosine)/(radius*radius);
-}
+//__device__ _float seg(_float cosine, _float radius) {
+//    return arccos(cosine)/(radius*radius);
+//}
 
-__device__ _float chord(_float radius, _float cosine) {
-    _float r2 = radius*radius;
-    _float cos2 = cosine*cosine;
-    return square_root(r2- cos2*r2) * radius*cosine;
-}
+//__device__ _float chord(_float radius, _float cosine) {
+//    _float r2 = radius*radius;
+//    _float cos2 = cosine*cosine;
+//    return square_root(r2- cos2*r2) * radius*cosine;
+//}
 
 __device__ _float area(_float raxn, _float rden, _float d) {
     _float cos_theta_axn = tri_cos(raxn, d, rden);
 	_float cos_theta_den = tri_cos(rden, d, raxn);
-	_float seg_axn = seg(cos_theta_axn, raxn);
-	_float seg_den = seg(cos_theta_den, rden);
-	_float chord_axn = chord(cos_theta_axn, raxn);
-	_float chord_den = chord(cos_theta_den, rden);
-    return seg_axn+seg_den-chord_axn-chord_den;
+
+    _float theta_axn = arccos(cos_theta_axn);
+    _float theta_den = arccos(cos_theta_den);
+
+    _float sin_theta_axn = sine(theta_axn);
+    _float sin_theta_den = sine(theta_den);
+
+    return (theta_axn-sin_theta_axn*cos_theta_axn)*raxn*raxn 
+         + (theta_den-sin_theta_den*cos_theta_den)*rden*rden;
 }
 
 __device__ _float connect(_float distance, _float raxn, _float rden) {
-    _float weight = 0;
-    if (raxn +  rden > distance && distance > abs_value(raxn - rden)) {
+    _float weight = 0.0;
+    if (raxn + rden > distance && distance > abs_value(raxn - rden)) {
         weight = area(raxn, rden, distance)/(CUDA_PI*rden*rden);
+    } else if (distance <= abs_value(raxn - rden)) {
+        weight = 1.0;
     }
     __syncwarp();
     return weight;
@@ -224,6 +232,9 @@ __global__ void generate_connections(_float* __restrict__ pos,
         sumStrType[i] = 0;
         sumType[i] = 0;
         sumP[i] = 0;
+        assert(preTypeS[i*networkSize+id] > 0);
+        assert(preTypeP[i*networkSize+id] > 0);
+        assert(preTypeN[i*networkSize+id] > 0);
     }
     x1[threadIdx.x] = x0;
     y1[threadIdx.x] = y0;
@@ -234,20 +245,33 @@ __global__ void generate_connections(_float* __restrict__ pos,
     for (unsigned int i=0; i<blockSize; i++) {
         //matrix, indexed within one block
         unsigned int ipre = blockIdx.x*blockSize + i;
+        assert(ipre<blockSize*gridDim.x);
         //type vector, indexed across the network
         _float x = x1[i] - x0;
         _float y = y1[i] - y0;
         _float ra = raxn[ipre];
         _float distance = square_root(x*x + y*y);
         _float p = connect(distance, ra, rd);
+
+        if (p < 0 || p > 1) {
+            printf("#%u: %f\n", id, p);
+            assert(p >= 0 && p <= 1);
+        }
+        unsigned int ip = ipreType[i];
         if (p > 0) {
             unsigned long bid = ipre*blockSize + threadIdx.x;
-            unsigned int ip = ipreType[i];
+            assert(ip < NTYPE);
             sumType[ip] += 1;
             p = p * daxn[id] * dden[id] * preTypeP[ip*networkSize + id];
             sumP[ip] += p;
             conMat[bid] = p;
             delayMat[bid] = distance/speedOfThought;
+        }
+        if (id == 224 && p == 0) {
+            printf("i:(%f,%f) <- %f, a:%f, d:%f, p=%f\n", x0, y0, distance, ra, rd, p);
+        } else if (id == 224 && p > 0) {
+            printf("sumType[%u] = %f > 0\n", ip, sumP[ip]);
+            assert(sumP[ip] > 0.0);
         }
     }
     for (unsigned int i=0; i<nNeighborBlock[blockIdx.x]; i++) {
@@ -255,16 +279,22 @@ __global__ void generate_connections(_float* __restrict__ pos,
         for (unsigned int j=0; j<blockSize; j++) {
             // index in the network
             unsigned int ipre = neighborBlockId[nPotentialNeighbor*blockIdx.x + i]*blockSize + j;
+            assert(ipre<blockSize*gridDim.x);
             // index in conVec
             _float x = pos[ipre] - x0;
             _float y = pos[networkSize+ipre] - y0;
             _float ra = raxn[ipre];
             _float distance = square_root(x*x + y*y);
             _float p = connect(distance, ra, rd);
+            //if (id == 7072 && p == 0) {
+            //    printf("o:(%f,%f) <- %f, a:%f, d:%f, p=%f\n", x0, y0, distance, ra, rd, p);
+            //    printf("sumType > 0\n");
+            //}
             unsigned long bid = i*blockSize + j;
             tempNeighbor[bid] = 0;
             if (p > 0) {
                 unsigned int ip = preType[ipre];
+                assert(ip < NTYPE);
                 sumType[ip] += 1;
                 p = p * daxn[ipre] * dden[id] * preTypeP[ip*networkSize+id];
                 sumP[ip] += p;
@@ -272,22 +302,15 @@ __global__ void generate_connections(_float* __restrict__ pos,
             }
         }
     }
-    if (sumType[0] == 0) {
-        printf("#%u:0 (%f,%f), %u\n", id, x0, y0, id/blockSize);
+
+    __syncthreads();
+    if (id == 224) {
+        assert(sumP[0] > 0);
+        assert(sumP[1] > 0);
         assert(sumType[0] > 0);
-    }
-    if (sumType[1] == 0) {
-        printf("#%u:1 (%f,%f), %u\n", id, x0, y0, id/blockSize);
         assert(sumType[1] > 0);
     }
-    __syncwarp();
-
-    for (unsigned int i=0; i<NTYPE; i++) {
-        if (preTypeN[i*networkSize+id] > sumType[i]) {
-            printf("#%u: %u > %u\n", id, preTypeN[i*networkSize+id], sumType[i]);
-            assert(preTypeN[i*networkSize+id] <= sumType[i]);
-        }
-    }
+    __syncthreads();
 
     //============= redistribute p of all ==========
     #pragma unroll
@@ -297,7 +320,9 @@ __global__ void generate_connections(_float* __restrict__ pos,
         unsigned int ip = ipreType[i];
         _float str = preTypeS[ip*networkSize+id];
         _float p = conMat[bid]/sumP[ip]*preTypeN[ip*networkSize+id];
-        if (uniform(&localState) < p) {
+        _float xrand = uniform(&localState);
+        assert(xrand >= 0 && xrand <= 1);
+        if (xrand < p) {
             if (p > 1) {
                 str = str*p;
             }
@@ -320,7 +345,9 @@ __global__ void generate_connections(_float* __restrict__ pos,
             unsigned int ip = preType[ipre];
             _float str = preTypeS[ip*networkSize+id];
             _float p = tempNeighbor[bid]/sumP[ip]*preTypeN[ip*networkSize+id];
-            if (uniform(&localState) < p) {
+            _float xrand = uniform(&localState);
+            assert(xrand >= 0 && xrand <= 1);
+            if (xrand < p) {
                 if (p > 1) {
                     str = str*p;
                 }
@@ -333,13 +360,17 @@ __global__ void generate_connections(_float* __restrict__ pos,
                 delayVec[neighborSize*id + nid] = square_root(x*x + y*y)/speedOfThought;
                 assert(str > 0);
                 nid += 1;
-                assert(nid <= neighborSize);
+                if (nid > neighborSize) {
+                    printf("#%u: %u connected, inside = %u, sumP = %f, preN = %u\n", id, sumConType[ip], sumConType[ip] - neighborSize, sumP[ip], preTypeN[ip*networkSize+id]);
+                    //assert(nid <= neighborSize);
+                }
             }
         }
     }
     nVec[id] = nid;
     #pragma unroll
     for (unsigned int i=0; i<NTYPE; i++) {
+        assert(sumConType[i] <= sumType[i]);
         preTypeConnected[i*networkSize + id] = sumConType[i];
         preTypeAvail[i*networkSize + id] = sumType[i];
         preTypeStrSum[i*networkSize + id] = sumStrType[i];

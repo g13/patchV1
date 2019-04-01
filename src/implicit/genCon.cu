@@ -37,7 +37,7 @@ int main(int argc, char *argv[])
     std::ofstream posR_file;
     unsigned int nblock = 48;
     unsigned int networkSize = nblock*blockSize;
-    unsigned int neighborSize = 500;
+    unsigned int neighborSize = 100;
     unsigned int usingPosDim = 2;
 
     _float radius[NTYPE][2];
@@ -67,10 +67,14 @@ int main(int argc, char *argv[])
 
     // 
     unsigned int nTypeMat[NTYPE][NTYPE];
-    nTypeMat[0][0] = 400+20*5; // mean + std*5
-    nTypeMat[0][1] = 100+10*5;
-    nTypeMat[1][0] = 400+20*5;
-    nTypeMat[1][1] = 100+10*5;
+    //nTypeMat[0][0] = 400+20*5; // mean + std*5
+    //nTypeMat[0][1] = 100+10*5;
+    //nTypeMat[1][0] = 400+20*5;
+    //nTypeMat[1][1] = 100+10*5;
+    nTypeMat[0][0] = 40; // mean + std*5
+    nTypeMat[0][1] = 10;
+    nTypeMat[1][0] = 40;
+    nTypeMat[1][1] = 10;
     
     // NTYPE
     neuron_type_acc_count[0] = 0;
