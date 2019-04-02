@@ -376,8 +376,8 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
     print('upper estimate', nstripe, 'stripes')
     stripe_area = np.empty(nstripe)
     nline = nstripe - 1
-    pll = np.empty((2, nline*2 + 1))
-    plr = np.empty((2, nline*2 + 1))
+    pll = np.empty((2, nline*2 + 1)) # point on the left contour of the left seg
+    plr = np.empty((2, nline*2 + 1)) # point on the right contour of the left seg
     la = np.empty(nstripe)
     ra = np.empty(nstripe)
     lcor = np.empty(nstripe)
@@ -386,7 +386,7 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
     sangle = langle
     qangle = lr_angle
     lefted = larea/2
-    while (np.sum(stripe_area[:i])/area_per_block < nl_nblock/2 and lefted > area_per_block):
+    while (np.sum(stripe_area[:i])/area_per_block < nl_nblock/2 and lefted > 0):
         percent = 0.5
         dab = 0.01
         count = 0
@@ -419,7 +419,7 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
             right_seg_block = seg_area(ra[i], right_radius)
             if i==0:
                 mid_sec_block = poly_area([pll[0,i], plr[0,i], left_top_point[0]], \
-                                        [pll[1,i], plr[1,i], left_top_point[1]],3)
+                                        [pll[1,i], plr[1,i], left_top_point[1]],3) # the top mid sec is a triangle
             else:
                 mid_sec_block = poly_area([pll[0,i], plr[0,i], plr[0,i-1], pll[0,i-1]], \
                                         [pll[1,i], plr[1,i], plr[1,i-1], pll[1,i-1]],4)
@@ -432,10 +432,11 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
                     target = 1
                 this_area = target*area_per_block
                 lefted = larea/2 - np.sum(stripe_area[:i])
-                if this_area > lefted:
+                if this_area > lefted or (this_area > 1.5*(lefted-this_area)):
                     target = lefted/area_per_block
-                    print(f'#{i} limited to {target}')
-                lefted = lefted - this_area
+                    print(f'stripe #{i} forced to contain {target} blocks')
+                    lefted = 0
+                    break
             
             percent = np.abs((current-target)/target)
             if count > 0:
@@ -454,7 +455,8 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
         #    nline = i+1
         #    print('im here')
         #    break
-        ax.plot([pll[0,i], plr[0,i]], [pll[1,i], plr[1,i]], lw = 0.1)    
+        if lefted > 0:
+            ax.plot([pll[0,i], plr[0,i]], [pll[1,i], plr[1,i]], lw = 0.1)    
         #print(f'stripe area #{i} = {mid_sec_block}+{right_seg_block}+{left_seg_block}, larea = {larea}') 
         #print(i, stripe_area[i]/area_per_block)
         i+=1
@@ -481,33 +483,37 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
         midp[0,:] = p0[0] + (p1[0]-p0[0])*r
         midp[1,:] = p0[1] + (p1[1]-p0[1])*r
         return midp
-    def get_startp(p0, p1):
-        startp = p0 + (p1-p0)/2
+    def get_startp(p0, p1, n):
+        startp = p0 + (p1-p0)/n
         return startp
     
+    ########### BUILD block within stripes ############
     stripe_block = np.empty(nstripe, dtype=int)
     stripe_block[0] = np.round(stripe_area[0]/area_per_block).astype(int)
     pp = np.empty((nline,2), dtype=object)
     for i in range(1, nstripe):
         stripe_block[i] = np.round(stripe_area[i]/area_per_block).astype(int)
-        startp_p = get_startp(pll[:,i-1], plr[:,i-1])
-        startp = get_startp(pll[:,i], plr[:,i])
+        startp_p = get_startp(pll[:,i-1], plr[:,i-1], stripe_block[i])
+        startp = get_startp(pll[:,i], plr[:,i], stripe_block[i])
         midp_p = np.empty((2,stripe_block[i]-1))
         midp = np.empty((2,stripe_block[i]-1))
         percent = 0.5
         count = 0
         pcor = 0
-        dab = 0.01
+        dab = 0.5
         angle1 = lphase+np.sum(la[:i])
         angle2 = angle1 + la[i]
         block_lseg_area = ellipse_lrseg_area(angle1, angle2, left_radius, aspect_ratio)
+        assert(block_lseg_area > 0)
         target = area_per_block
+        
         while (percent > tolerance_sig):
             leftp = pll[:,i] + (startp - pll[:,i]) * (1+pcor)
             leftp_p = pll[:,i-1] + (startp_p - pll[:,i-1]) * (1+pcor)
             block_sec_area = poly_area([leftp[0], leftp_p[0], pll[0,i-1], pll[0,i]], [leftp[1], leftp_p[1], pll[1,i-1], pll[1,i]], 4)
             block_area = block_sec_area + block_lseg_area
             current = block_area
+            assert(current > 0)
             percent = np.abs((current-target)/target)
             if count > 0:
                 if current == old:
@@ -530,9 +536,11 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
             dab = 0.01
             block_rseg_area = seg_area(ra[i], right_radius)
             target = area_per_block
+            startp = get_startp(plr[:,i], pll[:,i], stripe_block[i])
+            startp_p = get_startp(plr[:,i-1], pll[:,i-1], stripe_block[i])
             while (percent > tolerance_sig):
-                rightp = plr[:,i] - (plr[:,i] - startp) * (1+pcor)
-                rightp_p = plr[:,i-1] - (plr[:,i-1] - startp_p) * (1+pcor)
+                rightp = plr[:,i] + (startp - plr[:,i]) * (1+pcor)
+                rightp_p = plr[:,i-1] + (startp_p - plr[:,i-1]) * (1+pcor)
                 block_sec_area = poly_area([rightp[0], rightp_p[0], plr[0,i-1], plr[0,i]], [rightp[1], rightp_p[1], plr[1,i-1], plr[1,i]], 4)
                 block_area = block_sec_area + block_rseg_area
                 current = block_area
@@ -540,7 +548,7 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
                 if count > 0:
                     if current == old:
                         break
-                    dab = (target - current)/(current - old)*old_dab
+                    dab = (target - current)/(current - old)*dab
                 pcor += dab
                 old_dab = dab
                 old = current
@@ -557,6 +565,7 @@ def construct_macaque_fovea(physical_area, nblock, neuron_per_block, seed, use_s
             ax.plot([midp[0,j], midp_p[0,j]], [midp[1,j], midp_p[1,j]], lw = 0.1)
             # bottom part
             ax.plot([midp[0,j], midp_p[0,j]], [-midp[1,j], -midp_p[1,j]], lw = 0.1)
+    print("individual blocks constructed")
     # rain rands
     for i in range(nstripe):
         for j in range(stripe_block[i]):

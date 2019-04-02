@@ -295,6 +295,7 @@ def generate_pos_3d(lcurve, rcurve, target_area, ly, ry, n, seed):
     ymax = max(ly)
     ymin = min(ly)
     storming_area = (xmax-xmin) * (ymax-ymin);
+    assert(storming_area > 0);
     #print(xmax,xmin,ymax,ymin, storming_area)
 
     ratio = storming_area/target_area
