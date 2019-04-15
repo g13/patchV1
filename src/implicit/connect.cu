@@ -313,7 +313,7 @@ __global__ void generate_connections(_float* __restrict__ pos,
     
     unsigned int nid = 0;
     for (unsigned int i=0; i<nNeighborBlock[blockIdx.x]; i++) {
-        unsigned int bid = neighborBlockId[nPotentialNeighbor*blockIdx.x + i]
+        unsigned int bid = neighborBlockId[nPotentialNeighbor*blockIdx.x + i];
         #pragma unroll
         for (unsigned int j=0; j<blockSize; j++) {
             unsigned int ipre = bid*blockSize + j;
