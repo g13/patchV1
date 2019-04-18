@@ -31,6 +31,7 @@ int main(int argc, char *argv[])
     _float EffsI0 = 0.7;
     _float IffsI0 = 0.7;
 	char tmp[101];
+	char pg[101];
     /* Overwrite parameters */
     for (int i = 0; i<argc; i++) {
         printf(argv[i]);
@@ -69,11 +70,19 @@ int main(int argc, char *argv[])
 		sscanf(argv[argc-13], "%f", &EffsE);
 		sscanf(argv[argc-14], "%d", &nstep);
     #endif
-	    } else {
-            printf("insufficient inputs\n");
+	} else {
+        if (argc = 3) {
+            sscanf(argv[argc-1], "%100s", tmp);
+            sscanf(argv[argc-2], "%100s", pg);
+            sscanf(argv[argc-3], "%u", seed);
+        } else {
+            printf("input format not recognized\n");
             return EXIT_FAILURE;
         }
+    }
 
+	std::string preGenerated = pg;
+	std::cout << "preGenerated parameters = " << preGenerated << "\n";
 	std::string theme = tmp;
 	std::cout << "theme = " << theme << "\n";
     if (!theme.empty()) {

@@ -35,7 +35,7 @@ int main(int argc, char *argv[])
     std::ofstream blockPos_file, neighborBlock_file;
     std::ofstream stats_file;
     std::ofstream posR_file;
-    unsigned int nblock = 48;
+    unsigned int nblock = 24;
     unsigned int networkSize = nblock*blockSize;
     unsigned int neighborSize = 100;
     unsigned int usingPosDim = 2;
