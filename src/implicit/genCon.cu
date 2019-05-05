@@ -23,19 +23,28 @@ int main(int argc, char *argv[])
     printf("max unsigned long = %lu\n", i);
     unsigned long long seed = 7548637;
     std::ifstream pos_file;
-    std::string dir(argv[1]);
-    std::string theme(argv[2]);
+    if (argc < 7) {
+        printf("usage: arg #1: the directory to read neuron positions\n"
+        printf("     : arg #2: theme name to identify newly created data files\n"
+        printf("     : arg #3: number of blocks (1024 neurons per block)\n"
+        printf("     : arg #4: scaling ratio of the neurites' lengths\n"
+        printf("     : arg #5: max radius (center to center) to include neighboring blocks\n"
+        printf("     : arg #6: max neighboring blocks allowed\n"
+    }
     _float scale;
     _float max_radius;
+    unsigned int nblock;
     unsigned int nPotentialNeighbor;
-	sscanf(argv[3], "%f", &scale);
-	sscanf(argv[4], "%f", &max_radius);
-	sscanf(argv[5], "%u", &nPotentialNeighbor);
+    std::string dir(argv[1]);
+    std::string theme(argv[2]);
+	sscanf(argv[3], "%f", &nblock);
+	sscanf(argv[4], "%f", &scale);
+	sscanf(argv[5], "%f", &max_radius);
+	sscanf(argv[6], "%u", &nPotentialNeighbor);
     std::ofstream mat_file, vec_file;
     std::ofstream blockPos_file, neighborBlock_file;
     std::ofstream stats_file;
     std::ofstream posR_file;
-    unsigned int nblock = 48;
     unsigned int networkSize = nblock*blockSize;
     unsigned int neighborSize = 100;
     unsigned int usingPosDim = 2;
@@ -106,45 +115,50 @@ int main(int argc, char *argv[])
     size_t d_memorySize, memorySize = 0;
 
     // read from file cudaMemcpy to device
-    _float *pos;
+    _float* __restrict__ pos;
         memorySize += usingPosDim*networkSize*sizeof(_float);
 	
 	// to receive from device
     unsigned long outputSize = 0;
 
-    _float *block_x, *block_y; // nblock
+    _float* __restrict__ block_x;
+    _float* __restrict__ block_y; // nblock
         memorySize += 2*nblock*sizeof(_float);
         outputSize += 2*nblock*sizeof(_float);
 
-    unsigned int *preType;
+    unsigned int* __restrict__ preType;
         memorySize += networkSize*sizeof(unsigned int);
         outputSize += networkSize*sizeof(unsigned int);
 
-    _float *conMat, *delayMat;
+    _float* __restrict__ conMat;
+    _float* __restrict__ delayMat;
         memorySize += 2*blockSize*blockSize*nblock*sizeof(_float);
         outputSize += 2*blockSize*blockSize*nblock*sizeof(_float);
 
-    _float *conVec, *delayVec;
+    _float* __restrict__ conVec;
+    _float* __restrict__ delayVec;
         memorySize += 2*networkSize*neighborSize*sizeof(_float);
         outputSize += 2*networkSize*neighborSize*sizeof(_float);
 
-    unsigned int *vecID;
+    unsigned int* __restrict__ vecID;
         memorySize += networkSize*neighborSize*sizeof(unsigned int);
         outputSize += networkSize*neighborSize*sizeof(unsigned int);
 
-    unsigned int *nVec;
+    unsigned int* __restrict__ nVec;
         memorySize += networkSize*sizeof(unsigned int);
         outputSize += networkSize*sizeof(unsigned int);
 
-    unsigned int *neighborBlockId, *nNeighborBlock;
+    unsigned int* __restrict__ neighborBlockId;
+    unsigned int* __restrict__ nNeighborBlock;
         memorySize += (nPotentialNeighbor + 1)*nblock*sizeof(unsigned int);
         outputSize += (nPotentialNeighbor + 1)*nblock*sizeof(unsigned int);
 
-    unsigned int *preTypeConnected, *preTypeAvail; // NTYPE*networkSize
+    unsigned int* __restrict__ preTypeConnected
+    unsigned int* __restrict__ preTypeAvail; // NTYPE*networkSize
         memorySize += 2*NTYPE*networkSize*sizeof(unsigned int);
         outputSize += 2*NTYPE*networkSize*sizeof(unsigned int);
 
-    _float *preTypeStrSum;
+    _float* __restrict__ preTypeStrSum;
         memorySize += NTYPE*networkSize*sizeof(_float);
         outputSize += NTYPE*networkSize*sizeof(_float);
 
@@ -174,47 +188,55 @@ int main(int argc, char *argv[])
     // ========== GPU mem ============
     d_memorySize = memorySize;
     // init by kernel, reside on device only
-    _float *rden, *raxn; // NTYPE
+    _float* __restrict__ rden;
+    _float* __restrict__ raxn; // NTYPE
 		d_memorySize += 2*networkSize*sizeof(_float);
 
-    _float *dden, *daxn;
+    _float* __restrict__ dden;
+    _float* __restrict__ daxn;
         d_memorySize += 2*networkSize*sizeof(_float);
 
-    _float *preTypeS;
+    _float* __restrict__ preTypeS;
         d_memorySize += NTYPE*networkSize*sizeof(_float);
 
-    _float *preTypeP;
+    _float* __restrict__ preTypeP;
         d_memorySize += NTYPE*networkSize*sizeof(_float);
 
-    unsigned int *preTypeN;
+    unsigned int* __restrict__ preTypeN;
         d_memorySize += NTYPE*networkSize*sizeof(unsigned int);
 
-    curandStateMRG32k3a* state;
+    curandStateMRG32k3a* __restrict__ state;
         d_memorySize += networkSize*sizeof(curandStateMRG32k3a);
 
     // init by cudaMemcpy for kernel , reside on device only
-    _float *d_sTypeMat;
+    _float* __restrict__ d_sTypeMat;
         d_memorySize += NTYPE*NTYPE*sizeof(_float);
 
-    _float *d_pTypeMat;
+    _float* __restrict__ d_pTypeMat;
         d_memorySize += NTYPE*NTYPE*sizeof(_float);
 
-    unsigned int *d_nTypeMat;
+    unsigned int* __restrict__ d_nTypeMat;
         d_memorySize += NTYPE*NTYPE*sizeof(unsigned int);
 
     // init by cudaMemcpy
-    _float *d_pos;
+    _float* __restrict__ d_pos;
 
     // output to host
-    _float *d_block_x, *d_block_y;
-    unsigned int *d_preType;
-    _float *d_conMat, *d_conVec;
-    _float *d_delayMat, *d_delayVec;
-    unsigned int *d_vecID, *d_nVec;
-    unsigned int *d_neighborBlockId, *d_nNeighborBlock;
-    unsigned int *d_preTypeConnected, *d_preTypeAvail;
-    _float *d_preTypeStrSum;
-    void *gpu_chunk;
+    _float* __restrict__ d_block_x;
+    _float* __restrict__ d_block_y;
+    unsigned int* __restrict__ d_preType;
+    _float* __restrict__ d_conMat;
+    _float* __restrict__ d_conVec;
+    _float* __restrict__ d_delayMat;
+    _float* __restrict__ d_delayVec;
+    unsigned int* __restrict__ d_vecID;
+    unsigned int* __restrict__ d_nVec;
+    unsigned int* __restrict__ d_neighborBlockId;
+    unsigned int* __restrict__ d_nNeighborBlock;
+    unsigned int* __restrict__ d_preTypeConnected;
+    unsigned int* __restrict__ d_preTypeAvail;
+    _float* __restrict__ d_preTypeStrSum;
+    void* __restrict__ gpu_chunk;
 	printf("need to allocate %f MB memory on device\n", static_cast<float>(d_memorySize) / 1024 / 1024);
     CUDA_CALL(cudaMalloc((void**)&gpu_chunk, d_memorySize));
 

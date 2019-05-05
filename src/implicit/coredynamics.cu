@@ -230,6 +230,7 @@ __device__ void evolve_g(ConductanceShape &cond,
         cond.compute_single_input_conductance(g, h, f, dt0-inputTime[i], ig);
     }
 }
+
 __device__ _float prep_cond(ConductanceShape &cond, _float g[], _float h[], _float f[], _float inputTime[], int nInput, unsigned int ngType, _float new_dt, _float dt) {
     // p0 should already be ready.
 	_float g_total = 0.0f;
@@ -240,6 +241,7 @@ __device__ _float prep_cond(ConductanceShape &cond, _float g[], _float h[], _flo
 	}
     return g_total;
 }
+
 __device__ void modify_g(ConductanceShape &cond, _float &g0, _float &h0, _float &g1, _float &h1, _float strength, _float dtsp, _float tsp, _float dt, unsigned int i) {
     if (dtsp == 0) {
         h0 += strength;

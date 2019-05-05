@@ -2,7 +2,7 @@
 #include <cassert>
 #include "cuda_util.h"
 
-#ifdef SINGLE_PRECISION
+#ifndef SINGLE_PRECISION
 	//using func = _float(*)(_float);
 	//__device__ func expp = &expf;
 	//using func0 = _float(*)(curandStateMRG32k3a_t*);
@@ -313,7 +313,7 @@ __global__ void generate_connections(_float* __restrict__ pos,
     
     unsigned int nid = 0;
     for (unsigned int i=0; i<nNeighborBlock[blockIdx.x]; i++) {
-        unsigned int bid = neighborBlockId[nPotentialNeighbor*blockIdx.x + i]
+        unsigned int bid = neighborBlockId[nPotentialNeighbor*blockIdx.x + i];
         #pragma unroll
         for (unsigned int j=0; j<blockSize; j++) {
             unsigned int ipre = bid*blockSize + j;

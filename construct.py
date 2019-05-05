@@ -182,20 +182,36 @@ def ellipse_lrseg_area(angle1, angle2, radius, aspect_ratio):
     assert(angle2>=angle1)
     a = radius*aspect_ratio
     b = radius
-    theta1 = np.arccos(polar(radius, aspect_ratio, angle1)*np.cos(angle1)/a)
+
+    cos_stuff = polar(radius, aspect_ratio, angle1)*np.cos(angle1)/a
+    if np.abs(cos_stuff) > 1:
+        assert(np.abs(cos_stuff-1) < 1e-10)
+        cos_stuff = np.round(cos_stuff)
+
+    theta1 = np.arccos(cos_stuff)
     if angle1 > np.pi:
         theta1 = 2*np.pi-theta1
         
-    theta2 = np.arccos(polar(radius, aspect_ratio, angle2)*np.cos(angle2)/a)
+    cos_stuff = polar(radius, aspect_ratio, angle2)*np.cos(angle2)/a
+    if np.abs(cos_stuff) > 1:
+        assert(np.abs(cos_stuff)-1 < 1e-10)
+        cos_stuff = np.round(cos_stuff)
+
+    theta2 = np.arccos(cos_stuff)
     if angle2 > np.pi:
         theta2 = 2*np.pi-theta2
+
+    #print(f'{polar(radius, aspect_ratio, angle2)*np.cos(angle2)/a}')
      
-    #print('ellipse angle:', angle1*180/np.pi, angle2*180/np.pi)
-    #print('ref circ angle:', theta1*180/np.pi, theta2*180/np.pi)
+    #if theta2 <= theta1:
+    #print(f'{angle1}<{angle2}, {theta1}<{theta2}')
     assert(theta2>=theta1)
+
     area = radius*radius*aspect_ratio/2*(theta2-theta1-np.sin(theta2-theta1))
-    assert(area>0)
-    #print(area)
+    if area < 0:
+        print(f'{theta2-theta1} > {np.sin(theta2-theta1)}')
+        print(area)
+        assert(area>=0)
     return area
 
 # pseudo rands
@@ -204,8 +220,10 @@ def generate_pos_2d(lcurve, rcurve, target_area, ly, ry, n, seed):
     nr = ry.size-1
     assert(len(lcurve) == nl)
     assert(len(rcurve) == nr)
-    assert(min(ly) == min(ry))
-    assert(max(ly) == max(ry))
+    if min(ly) != min(ry):
+        assert(min(ly) == min(ry))
+    if max(ly) != max(ry):
+        assert(max(ly) == max(ry))
     
     def collect_2d(n, x, y):
         selected = np.ones(n, dtype=bool)
@@ -270,8 +288,12 @@ def generate_pos_3d(lcurve, rcurve, target_area, ly, ry, n, seed):
     nr = ry.size-1
     assert(len(lcurve) == nl)
     assert(len(rcurve) == nr)
-    assert(min(ly) == min(ry))
-    assert(max(ly) == max(ry))
+    if min(ly) != min(ry):
+        print(f'{ly}:{ry}')
+        assert(min(ly) == min(ry))
+    if max(ly) != max(ry):
+        print(f'{ly}:{ry}')
+        assert(max(ly) == max(ry))
     
     def collect_3d(n, x, y, z):
         selected = np.ones(n, dtype=bool)
