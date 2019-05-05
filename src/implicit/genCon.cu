@@ -24,12 +24,12 @@ int main(int argc, char *argv[])
     unsigned long long seed = 7548637;
     std::ifstream pos_file;
     if (argc < 7) {
-        printf("usage: arg #1: the directory to read neuron positions\n"
-        printf("     : arg #2: theme name to identify newly created data files\n"
-        printf("     : arg #3: number of blocks (1024 neurons per block)\n"
-        printf("     : arg #4: scaling ratio of the neurites' lengths\n"
-        printf("     : arg #5: max radius (center to center) to include neighboring blocks\n"
-        printf("     : arg #6: max neighboring blocks allowed\n"
+        printf("usage: arg #1: the directory to read neuron positions\n");
+        printf("     : arg #2: theme name to identify newly created data files\n");
+        printf("     : arg #3: number of blocks (1024 neurons per block)\n");
+        printf("     : arg #4: scaling ratio of the neurites' lengths\n");
+        printf("     : arg #5: max radius (center to center) to include neighboring blocks\n");
+        printf("     : arg #6: max neighboring blocks allowed\n");
     }
     _float scale;
     _float max_radius;
@@ -153,7 +153,7 @@ int main(int argc, char *argv[])
         memorySize += (nPotentialNeighbor + 1)*nblock*sizeof(unsigned int);
         outputSize += (nPotentialNeighbor + 1)*nblock*sizeof(unsigned int);
 
-    unsigned int* __restrict__ preTypeConnected
+    unsigned int* __restrict__ preTypeConnected;
     unsigned int* __restrict__ preTypeAvail; // NTYPE*networkSize
         memorySize += 2*NTYPE*networkSize*sizeof(unsigned int);
         outputSize += 2*NTYPE*networkSize*sizeof(unsigned int);
