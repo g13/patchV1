@@ -14,8 +14,6 @@ int main(int argc, char *argv[])
     seed = std::time(0);
     int device;
     int b1,b2;
-    b1 = 32;
-    b2 = 32;
     bool printStep = false;
     bool moreSharedMemThanBlocks = true;
     _float flatRateE = 100.0f; // Hz
@@ -30,8 +28,9 @@ int main(int argc, char *argv[])
     _float sII0 = 0.0;
     _float EffsI0 = 0.7;
     _float IffsI0 = 0.7;
+	std::string preGenerated;
 	char tmp[101];
-	char pg[101];
+	char pgTheme[101];
     /* Overwrite parameters */
     for (int i = 0; i<argc; i++) {
         printf(argv[i]);
@@ -39,6 +38,7 @@ int main(int argc, char *argv[])
     }
     printf("\n");
 	if (argc == 15) {
+        printf("built-in config")
     #ifndef SINGLE_PRECISION
 	    sscanf(argv[argc-1], "%100s", tmp);
 		sscanf(argv[argc-2], "%lf", &t);
@@ -72,8 +72,9 @@ int main(int argc, char *argv[])
     #endif
 	} else {
         if (argc = 3) {
+            printf("read-in config")
             sscanf(argv[argc-1], "%100s", tmp);
-            sscanf(argv[argc-2], "%100s", pg);
+            sscanf(argv[argc-2], "%100s", pgTheme);
             sscanf(argv[argc-3], "%u", seed);
         } else {
             printf("input format not recognized\n");
@@ -81,9 +82,9 @@ int main(int argc, char *argv[])
         }
     }
 
-	std::string preGenerated = pg;
-	std::cout << "preGenerated parameters = " << preGenerated << "\n";
 	std::string theme = tmp;
+    preGenerated = pgTheme;
+	std::cout << "preGenerated parameters = " << preGenerated << "\n";
 	std::cout << "theme = " << theme << "\n";
     if (!theme.empty()) {
         theme = '-'+theme;
@@ -212,6 +213,7 @@ int main(int argc, char *argv[])
     CUDA_CHECK();
     printf("logRand_init completed\n");
 
+    if (
     preMatRandInit<<<init_b1,init_b2>>>(d_preMat, d_v, randState, sEE, sIE, sEI, sII, networkSize, nE, seed);
     CUDA_CHECK();
     CUDA_CALL(cudaMemcpy(preMat, d_preMat, networkSize*networkSize*sizeof(_float),cudaMemcpyDeviceToHost));
@@ -220,7 +222,7 @@ int main(int argc, char *argv[])
 
     unsigned int nbatch, batchEnd, batchStep;
     // v, gE, gI, spikeTrain
-    unsigned int hostMemToDiskPerStep = ceil(networkSize * (sizeof(_float) + ngTypeE*sizeof(_float) + ngTypeI*sizeof(_float) + sizeof(int) )/(1024*1024));
+    unsigned int hostMemToDiskPerStep = ceil(networkSize * (sizeof(_float) + ngTypeE*sizeof(_float) + ngTypeI*sizeof(_float) + sizeof(int) )/(1024.0*1024.0));
     //batchStep = floor(HALF_MEMORY_OCCUPANCY/hostMemToDiskPerStep);
     batchStep = 1;
     if (batchStep < 10) {
@@ -450,16 +452,16 @@ int main(int argc, char *argv[])
             CUDA_CALL(cudaEventRecord(kStart, 0));
         #endif
         dim3 grid3(1);
-        dim3 block3(1024);
+        dim3 block3(blockSize);
         #if SCHEME == 2
-			unsigned int shared_mem = 1024 * sizeof(_float) + 2 * 1024 * sizeof(unsigned int);
+			unsigned int shared_mem = blockSize * sizeof(_float) + 2 * blockSize * sizeof(unsigned int);
 			int_V<<<grid3, block3, shared_mem, s1>>>(d_v, d_dVs, d_gE, d_gI, d_hE, d_hI, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI, i*dt);
         #else
             #ifdef SPIKE_CORRECTION
-                unsigned int shared_mem = 1024*sizeof(_float)+2*1024*sizeof(unsigned int);
+                unsigned int shared_mem = blockSize*sizeof(_float)+2*blockSize*sizeof(unsigned int);
 				compute_V<<<grid3, block3, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI, i*dt);
 			#else
-                unsigned int shared_mem = 1024*sizeof(_float)+1024*sizeof(_float);
+                unsigned int shared_mem = blockSize*sizeof(_float)+blockSize*sizeof(_float);
                 compute_V_without_ssc<<<grid3, block3, shared_mem, s1>>>(d_v, d_gE, d_gI, d_hE, d_hI, d_preMat, d_inputRateE, d_inputRateI, d_eventRateE, d_eventRateI, d_spikeTrain, d_nSpike, tBack, d_fE, d_fI, leftTimeRateE, leftTimeRateI, lastNegLogRandE, lastNegLogRandI, stateE, stateI, condE, condI, dt, networkSize, nE, seed, dInputE, dInputI, i*dt);
 			#endif
         #endif

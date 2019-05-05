@@ -2,7 +2,7 @@
 #include <cassert>
 #include "cuda_util.h"
 
-#ifdef SINGLE_PRECISION
+#ifndef SINGLE_PRECISION
 	//using func = _float(*)(_float);
 	//__device__ func expp = &expf;
 	//using func0 = _float(*)(curandStateMRG32k3a_t*);
