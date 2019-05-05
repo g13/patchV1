@@ -882,7 +882,7 @@ compute_V_without_ssc(_float* __restrict__ v,
     // I
     //recal_G(&lif, shared, ngTypeI, nE, networkSize, condI, gI_local, hI_local, &preMat[nE*networkSize], dt, id, networkSize);
 
-    block_reduce(nsp, lif.spikeCount);
+    block_reduce<unsigned int>(nsp, lif.spikeCount);
     unsigned int total_spike = nsp[0];
     __syncthreads();
     if (total_spike > 0) {

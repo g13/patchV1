@@ -1,10 +1,24 @@
 #!/bin/bash
-#module load cuda
-
+module unload
+module load all
+module load cuda/9.2
+module load gcc/4.9.3
+set -e
+arch=compute_70
+code=sm_70
 rm -f connect.o
-nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c connect.cu 
+#nvcc -gencode=arch=$arch,code=$code -rdc=true -Xcompiler -rdynamic -O0 -std=c++11 -c connect.cu 
+nvcc -gencode=arch=$arch,code=$code -rdc=true -Xcompiler -rdynamic -G -std=c++11 -c connect.cu 
 
-#rm -f genCon.o 
-#nvcc -arch=compute_70 -code=sm_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c genCon.cu 
+rm -f genCon.o 
+nvcc -gencode=arch=$arch,code=$code -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c genCon.cu 
+
+nvcc -gencode=arch=$arch,code=$code -lcurand -lcudart connect.o genCon.o -o genCon 
+
+#rm -f connect.o
+#nvcc -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c connect.cu 
 #
-#nvcc -arch=compute_70 -code=sm_70 -lcurand -lcudart connect.o genCon.o -o genCon 
+#rm -f genCon.o 
+#nvcc -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c genCon.cu 
+#
+#nvcc connect.o genCon.o -lcurand -lcudart -o genCon 

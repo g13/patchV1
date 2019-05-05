@@ -27,6 +27,7 @@ struct ConductanceShape {
 };
 
 __host__ __device__ __forceinline__ ConductanceShape::ConductanceShape(_float rt[], _float dt[], unsigned int ng) {
+    assert(ng < max_ngType);
     for (unsigned int i = 0; i < ng; i++) {
         riseTime[i] = rt[i];
         decayTime[i] = dt[i];
