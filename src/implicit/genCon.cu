@@ -306,7 +306,7 @@ int main(int argc, char *argv[])
 											 preTypeN, 
 											 init_pack, seed, networkSize);
 	CUDA_CHECK();
-	//CUDA_CALL(cudaEventRecord(i1, s1));
+	//CUDA_CALL(cudaEventSynchronizeudaEventRecord(i1, s1));
 	//CUDA_CALL(cudaEventSynchronize(i1));
     printf("initialzied\n");
     unsigned int shared_mem;
@@ -368,6 +368,7 @@ int main(int argc, char *argv[])
     // output to binary data files
     mat_file.write((char*)conMat, nblock*blockSize*blockSize*sizeof(_float));
     mat_file.write((char*)delayMat, nblock*blockSize*blockSize*sizeof(_float));
+    mat_file.close();
     
     vec_file.write((char*)nVec, networkSize*sizeof(unsigned int));
     for (unsigned int i=0; i<networkSize; i++) {
@@ -375,20 +376,25 @@ int main(int argc, char *argv[])
         vec_file.write((char*)&(conVec[i*neighborSize]), nVec[i]*sizeof(_float));
         vec_file.write((char*)&(delayVec[i*neighborSize]), nVec[i]*sizeof(_float));
     }
+    vec_file.close();
 
     blockPos_file.write((char*)block_x, nblock*sizeof(_float));
     blockPos_file.write((char*)block_y, nblock*sizeof(_float));
+    blockPos_file.close();
 
     neighborBlock_file.write((char*)nNeighborBlock, nblock*sizeof(unsigned int));
     for (unsigned int i=0; i<nblock; i++) {
         neighborBlock_file.write((char*)&(neighborBlockId[i*nPotentialNeighbor]), nNeighborBlock[i]*sizeof(unsigned int));
     }
+    neighborBlock_file.close();
 
     stats_file.write((char*)preTypeConnected, NTYPE*networkSize*sizeof(unsigned int));
     stats_file.write((char*)preTypeAvail, NTYPE*networkSize*sizeof(unsigned int));
     stats_file.write((char*)preTypeStrSum, NTYPE*networkSize*sizeof(_float));
-    
+    stats_file.close();
+
     posR_file.write((char*)pos, networkSize*usingPosDim*sizeof(_float));
+    posR_file.close();
 
     CUDA_CALL(cudaFree(gpu_chunk));
 	free(cpu_chunk);
