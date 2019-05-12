@@ -232,7 +232,6 @@ __global__ void LGN_maxResponse(_float* __restrict__ max_convol,
     __shared__ _float linearResponse[warpSize];
     extern __shared__ _float temporalWeight[];
 
-    _float LMcovariant = 0.53753461391295254;
     // consider store LGN_subregion, facRatio to __shared__
 
     unsigned int tid = threadIdx.y*blockDim.x + threadIdx.x;
@@ -285,7 +284,7 @@ __global__ void LGN_maxResponse(_float* __restrict__ max_convol,
     for (unsigned int it=0; it<nKernelSample; it++) {
         // frame phase vs. dt
         _float tmp = temporalWeight[it];
-        _float filtered = spatialProduct(x, y, copy(1.0, tmp)*copy(1.0,center.k), center.k, center.rx, center.ry)*tmp;
+        _float filtered = spatialProduct(x, y, copy(1.0, tmp)*copy(1.0, center.k), center.k, center.rx, center.ry)*tmp;
 
         tmp = temporalWeight[nKernelSample + it];
         _float filtered_prime = spatialProduct(x_prime, y_prime, copy(1.0, tmp)*copy(1.0, surround.k), surround.k, surround.rx, surround.ry)*tmp;

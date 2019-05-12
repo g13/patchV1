@@ -5,6 +5,7 @@
 #include <cuda_runtime.h>
 #include <helper_functions.h>    // includes cuda.h and cuda_runtime_api.h
 #include <helper_cuda.h>         // helper functions for CUDA error check
+#include <math.h>
 #include "DIRECTIVE.h"
 #include "cuda_util.h"
 
@@ -18,16 +19,16 @@ extern texture<float, cudaTextureType2DLayered> S_retinaConSig;
 	#define uniform curand_uniform
 	#define expp expf
 	#define power powf
-	#define fabsf abs 
-    #define copysignf copy
+	#define abs fabsf 
+    #define copy copysignf
 #else
 	#define square_root sqrt
 	#define atan atan2
 	#define uniform curand_uniform_double
 	#define expp exp 
 	#define power pow
-	#define fabs abs 
-    #define copysign copy
+	#define abs fabs 
+    #define copy copysign
 #endif
 
 /*struct LGN_stats {
@@ -91,7 +92,7 @@ extern texture<float, cudaTextureType2DLayered> S_retinaConSig;
 }*/
 
 struct cone_specific {
-    _float* __restrict__ mem_block;
+    _float* mem_block;
     _float* __restrict__ x; // normalize to (0,1)
     _float* __restrict__ rx;
     _float* __restrict__ y; // normalize to (0,1)
@@ -117,10 +118,13 @@ struct cone_specific {
         nR = nD + nLGN;
         ratio = nR + nLGN;
     }
+	void freeMem() {
+		cudaFree(mem_block);
+	}
 };
 
 struct static_nonlinear {
-    _float* __restrict__ mem_block;
+    _float* mem_block;
 
     _float* __restrict__ spont;
     _float* __restrict__ c50;
@@ -132,7 +136,9 @@ struct static_nonlinear {
         c50 = spont + nLGN;
         sharpness = c50 + nLGN;
     }
-
+	void freeMem() {
+		cudaFree(mem_block);
+	}
     __device__
     _float transform(unsigned int id, _float input) {
         _float local_k = sharpness[id];
@@ -156,7 +162,7 @@ struct LGN_parameter {
     cone_specific center, surround;
     static_nonlinear logistic;
 
-    unsigned int* __restrict__ mem_block;
+    unsigned int* mem_block;
     // 0: L
     // 1: M
     // 2: S
@@ -176,10 +182,16 @@ struct LGN_parameter {
 
         CUDA_CALL(cudaMalloc((void**)&mem_block, 2*nLGN*sizeof(unsigned int)));
 
-        centerType = mem_block; 
+        centerType = mem_block;
         surroundType = centerType + nLGN;
         covariant = (_float*) (surroundType + nLGN);
     }
+	void freeMem() {
+		center.freeMem();
+		surround.freeMem();
+		logistic.freeMem();
+		cudaFree(mem_block);
+	}
 };
 
 struct LGN_subregion {

@@ -159,7 +159,7 @@ __global__ void plane_to_retina(float* __restrict__ L,
                                 float sup, float inf,
                                 float tem, float nas,
                                 float yb, float yt,
-                                float xr, float xl) 
+                                float xr, float xl)
 {
     // transform from normalized plane coord to retinal coord (tan)
 
@@ -175,7 +175,7 @@ __global__ void plane_to_retina(float* __restrict__ L,
         unsigned int id = iFrame * height * width + iy*width + ix;
         float x = static_cast<float>(ix+0.5)/width;
         float y = static_cast<float>(iy+0.5)/height;
-   
+
         float xmin = 1.0f/(2.0f*width);
         float ymin = 1.0f/(2.0f*height);
         float dx = xmin*2;
@@ -303,7 +303,7 @@ int main(int argc, char **argv) {
         Group the same cone-specific types together for warp performance
     */
     for (unsigned int i=0; i<nLGN; i++) {
-        pLGN.center.k[i] = 30.0 * (i%2 == 0? 1:-1);
+		pLGN.center.k[i] = 30.0 * (i % 2 == 0 ? 1 : -1);
 		pLGN.center.x[i] = 0.5f/width + fmod(1.0f*i/8.0f, 1.0f - 0.5f/width);
 		pLGN.center.y[i] = 0.5f/height + fmod(1.0f*(i/8)/8.0f, 1.0f - 0.5f/height);
         pLGN.center.rx[i] = 0.15;
