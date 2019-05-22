@@ -16,11 +16,11 @@ void init_layer(texture<float, cudaTextureType2DLayered> &layer) {
     layer.normalized = true;
 }
 
-void prep_frame(int width, int height, float* L, float* M, float* S, cudaArray *dL, cudaArray *dM, cudaArray *dS, int nFrame) { 
+void prep_sample(unsigned int width, unsigned int height, float* L, float* M, float* S, cudaArray *dL, cudaArray *dM, cudaArray *dS, unsigned int nSample) { 
     cudaMemcpy3DParms params = {0};
     params.srcPos = make_cudaPos(0, 0, 0);
     params.dstPos = make_cudaPos(0, 0, 0);
-    params.extent = make_cudaExtent(width, height, nFrame);
+    params.extent = make_cudaExtent(width, height, nSample);
     params.kind = cudaMemcpyDeviceToDevice;
 
     params.srcPtr = make_cudaPitchedPtr(L, width * sizeof(float), width, height);
@@ -36,8 +36,7 @@ void prep_frame(int width, int height, float* L, float* M, float* S, cudaArray *
     checkCudaErrors(cudaMemcpy3D(&params));
 }
 
-unsigned int find_denorm(unsigned int u1, unsigned int u2, bool MorN, unsigned int &norm) 
-{ 
+unsigned int find_denorm(unsigned int u1, unsigned int u2, bool MorN, unsigned int &norm) { 
     unsigned int m, n;
     if (MorN) { //u2 > u1
         m = u1;
@@ -48,7 +47,7 @@ unsigned int find_denorm(unsigned int u1, unsigned int u2, bool MorN, unsigned i
     }
     printf("m = %u, n = %u\n", m, n);
     assert (m>n);
-    for (int i=n; i>1; i--) { 
+    for (int i=n; i>1; i--) {
         if (n%i==0 && m%i==0) { 
             norm = n/i;
             return m/i;
@@ -150,7 +149,7 @@ __global__ void plane_to_retina(float* __restrict__ LMS,
     }
 }
 // to-do:
-//  use non-uniform temporal filtering to mimick cone behavior
+// 1. use non-uniform temporal filtering to mimick cone behavior
 __global__ void intensity_to_contrast(float* __restrict__ LMS,
                                       unsigned int latestFrame,
 									  unsigned int maxFrame,
@@ -255,7 +254,7 @@ int main(int argc, char **argv) {
     fLGN_convol.open("LGN_convol.bin", std::ios::out | std::ios::binary);
     fmax_convol.open("max_convol.bin", std::ios::out | std::ios::binary);
 
-    float init_luminance = 1.0/12.0; //1.0/6.0;
+    float init_luminance = 1.0/6.0; //1.0/6.0;
 
     float sup = 70*M_PI/180.0f; 
     float inf = 30*M_PI/180.0f;
@@ -539,12 +538,12 @@ int main(int argc, char **argv) {
         // convert intensity to contrast for temporal kernel sample points, thus frame-wise info incorporated into kernel sample points
         intensity_to_contrast<<<sampleGrid, spatialBlock>>>(LMS, iFrame, maxFrame, nPixelPerFrame, framePhase, tPerFrame, kernelSampleDt, ave_tau);
 		getLastCudaError("intensity_to_contrast failed");
-        checkCudaErrors(cudaMemcpy(L, cL, nPixelPerFrame*sizeof(float), cudaMemcpyDeviceToHost));
+        checkCudaErrors(cudaMemcpy(L, &(cL[2*nPixelPerFrame]), nPixelPerFrame*sizeof(float), cudaMemcpyDeviceToHost));
         checkCudaErrors(cudaEventRecord(i2));
         checkCudaErrors(cudaEventSynchronize(i2));
         fcontrast.write((char*)L, nPixelPerFrame*sizeof(float));
 		// copy contrast signals to texture
-        prep_frame(width, height, cL, cM, cS, cuArr_L, cuArr_M, cuArr_S, nKernelSample);
+        prep_sample(width, height, cL, cM, cS, cuArr_L, cuArr_M, cuArr_S, nKernelSample);
         // perform kernel convolution with built-in texture interpolation
         LGN_convol<<<convolGrid, convolBlock, sizeof(_float)*2*nKernelSample>>>(d_LGN_fr, dLGN, nKernelSample, kernelSampleDt, nsig, nSpatialSample1D);
 		getLastCudaError("LGN_convol failed");

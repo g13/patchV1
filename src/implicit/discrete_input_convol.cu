@@ -36,16 +36,16 @@ __device__ __inline__ _float get_contrast(unsigned int coneType, float x, float 
     _float contrast;
     switch (coneType) {
         case 0:
-            contrast = tex2DLayered(L_retinaConSig, x, y, iLayer);
+            contrast = static_cast<_float>(tex2DLayered(L_retinaConSig, x, y, iLayer));
             break;
         case 1:
-            contrast = tex2DLayered(M_retinaConSig, x, y, iLayer);
+            contrast = static_cast<_float>(tex2DLayered(M_retinaConSig, x, y, iLayer));
             break;
         case 2:
-            contrast = tex2DLayered(S_retinaConSig, x, y, iLayer);
+            contrast = static_cast<_float>(tex2DLayered(S_retinaConSig, x, y, iLayer));
             break;
         case 3:
-            contrast = tex2DLayered(L_retinaConSig, x, y, iLayer) + tex2DLayered(M_retinaConSig, x, y, iLayer) + tex2DLayered(S_retinaConSig, x, y, iLayer);
+            contrast = static_cast<_float>(tex2DLayered(L_retinaConSig, x, y, iLayer) + tex2DLayered(M_retinaConSig, x, y, iLayer) + tex2DLayered(S_retinaConSig, x, y, iLayer))/3.0;
             break;
         default:
             printf("unrecognized cone type");
@@ -122,22 +122,22 @@ tau = 40*dt
         // center
     unsigned int type = pLGN.centerType[id];
 
-    float xhspan = nsig * center.rx / sqrt2;
-    float dx = 2*xhspan/npixel_1D;
+    _float xhspan = nsig * center.rx / sqrt2;
+    _float dx = 2*xhspan/npixel_1D;
 
-    float yhspan = nsig * center.ry / sqrt2;
-    float dy = 2*yhspan/npixel_1D;
+    _float yhspan = nsig * center.ry / sqrt2;
+    _float dy = 2*yhspan/npixel_1D;
 
-    float x = threadIdx.x*dx - xhspan;
-    float y = threadIdx.y*dy - yhspan;
-    float x0 = center.x + x;
-    float y0 = center.y + y;
+    _float x = threadIdx.x*dx - xhspan;
+    _float y = threadIdx.y*dy - yhspan;
+    float x0 = static_cast<float>(center.x + x);
+    float y0 = static_cast<float>(center.y + y);
 
-    float sample_vol = dx * dy * kernelSampleDt;
+    _float sample_vol = dx * dy * kernelSampleDt;
     _float spatialWeight = spatialProduct(x, y, 1.0f, center.k, center.rx, center.ry);
     
     for (unsigned int iSample=0; iSample<nKernelSample; iSample++) {
-        _float filtered = spatialWeight * static_cast<_float>(get_contrast(type, x0, y0, iSample));
+        _float filtered = spatialWeight * get_contrast(type, x0, y0, iSample);
 
         block_reduce<_float>(linearResponse, filtered);
 
@@ -157,14 +157,14 @@ tau = 40*dt
 
     x = threadIdx.x*dx - xhspan;
     y = threadIdx.y*dy - yhspan;
-    x0 = surround.x + x;
-    y0 = surround.y + y;
+    x0 = static_cast<float>(surround.x + x);
+    y0 = static_cast<float>(surround.y + y);
 
     sample_vol = dx * dy * kernelSampleDt;
     spatialWeight = spatialProduct(x, y, 1.0f, surround.k, surround.rx, surround.ry);
 
     for (unsigned int iSample=0; iSample<nKernelSample; iSample++) {
-        _float filtered = spatialWeight * static_cast<_float>(get_contrast(type, x0, y0, iSample));
+        _float filtered = spatialWeight * get_contrast(type, x0, y0, iSample);
 
         block_reduce<_float>(linearResponse, filtered);
          
