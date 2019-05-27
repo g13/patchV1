@@ -69,17 +69,23 @@ Per frame
 */
 __global__ void LGN_convol(_float* __restrict__ LGNfr,
                            LGN_parameter pLGN, // consider pointer
-                           unsigned int nKernelSample, _float kernelSampleDt, unsigned int nsig, unsigned int npixel_1D) {
+                           unsigned int iSample0,
+                           _float samplePhase, unsigned int nKernelSample, _float kernelSampleDt, unsigned int nsig, unsigned int npixel_1D) {
 
     __shared__ _float linearResponse[warpSize];
     extern __shared__ _float temporalWeight[];
+    _float convol;
 
     // consider store LGN_subregion, facRatio to __shared__
 
-    unsigned int tid = threadIdx.y*blockDim.x + threadIdx.x;
     unsigned int id = blockIdx.x;
+
+    // load
+    LGN_subregion center(pLGN.center, id);
+    LGN_subregion surround(pLGN.surround, id);
+
     _float sqrt2 = square_root(2.0);
-    _float convol;
+    unsigned int tid = threadIdx.y*blockDim.x + threadIdx.x;
     if (tid == 0) {
         convol = 0.0f;
     }
@@ -95,24 +101,20 @@ tau = 40*dt
           
         */
 
-    // load
-    LGN_subregion center(pLGN.center, id);
-    LGN_subregion surround(pLGN.surround, id);
-
     // load temporal weights
     unsigned int block_size = blockDim.x*blockDim.y;
     unsigned int nblock = nKernelSample/block_size;
 
     for (unsigned int iblock = 0; iblock < nblock; iblock++) {
         unsigned int twid = iblock*block_size + tid;
-        _float t = twid*kernelSampleDt;
+        _float t = twid*kernelSampleDt + samplePhase;
         temporalWeight[twid] = temporalKernel(t, center);
         temporalWeight[nKernelSample + twid] = temporalKernel(t, surround);
     }
     
     if (tid < nKernelSample - nblock*block_size) {
         unsigned int twid = nblock*block_size + tid;
-        _float t = twid*kernelSampleDt;
+        _float t = twid*kernelSampleDt + samplePhase;
         temporalWeight[twid] = temporalKernel(t, center);
         temporalWeight[nKernelSample + twid] = temporalKernel(t, surround);
     }
@@ -133,17 +135,28 @@ tau = 40*dt
     float x0 = static_cast<float>(center.x + x);
     float y0 = static_cast<float>(center.y + y);
 
-    _float sample_vol = dx * dy * kernelSampleDt;
+    _float sample_vol = dx * dy;
     _float spatialWeight = spatialProduct(x, y, 1.0f, center.k, center.rx, center.ry);
     
-    for (unsigned int iSample=0; iSample<nKernelSample; iSample++) {
-        _float filtered = spatialWeight * get_contrast(type, x0, y0, iSample);
+    unsigned int it = 0;
+    for (unsigned int iSample=iSample0+nKernelSample; iSample>iSample0; iSample--) {
+        unsigned int jSample = iSample % nKernelSample;
+        _float filtered = spatialWeight * get_contrast(type, x0, y0, jSample);
 
         block_reduce<_float>(linearResponse, filtered);
 
         if (tid == 0) {
-            convol += linearResponse[0]*temporalWeight[iSample]*sample_vol; 
+            filtered = linearResponse[0];
+            if (it == 0) {
+                filtered *= samplePhase;
+            } else {
+                if (it == nKernelSample-1) {
+                    filtered *= kernelSampleDt - samplePhase;
+                }
+            }
+            convol += filtered*temporalWeight[it]*sample_vol; 
         }
+        it++;
     }
 
         // surround
@@ -160,17 +173,28 @@ tau = 40*dt
     x0 = static_cast<float>(surround.x + x);
     y0 = static_cast<float>(surround.y + y);
 
-    sample_vol = dx * dy * kernelSampleDt;
+    sample_vol = dx * dy;
     spatialWeight = spatialProduct(x, y, 1.0f, surround.k, surround.rx, surround.ry);
-
-    for (unsigned int iSample=0; iSample<nKernelSample; iSample++) {
-        _float filtered = spatialWeight * get_contrast(type, x0, y0, iSample);
+    
+    it = 0;
+    for (unsigned int iSample=iSample0+nKernelSample; iSample>iSample0; iSample--) {
+        unsigned int jSample = iSample % nKernelSample;
+        _float filtered = spatialWeight * get_contrast(type, x0, y0, jSample);
 
         block_reduce<_float>(linearResponse, filtered);
          
         if (tid == 0) { // acquire spatial filtered input
-            convol += linearResponse[0]*temporalWeight[nKernelSample + iSample]*sample_vol; 
+            filtered = linearResponse[0];
+            if (it == 0) {
+                filtered *= samplePhase;
+            } else {
+                if (it == nKernelSample-1) {
+                    filtered *= kernelSampleDt - samplePhase;
+                }
+            }
+            convol += filtered*temporalWeight[nKernelSample + it]*sample_vol; 
         }
+        it++;
     }
 
     // output
@@ -199,36 +223,37 @@ __global__ void LGN_maxResponse(_float* __restrict__ max_convol,
 
     __shared__ _float linearResponse[warpSize];
     extern __shared__ _float temporalWeight[];
+    _float convol;
 
     // consider store LGN_subregion, facRatio to __shared__
 
-    unsigned int tid = threadIdx.y*blockDim.x + threadIdx.x;
     unsigned int id = blockIdx.x;
-    _float covariant = pLGN.covariant[id];
-    _float sqrt2 = square_root(2.0);
-    _float convol;
-    if (tid == 0) {
-        convol = 0.0f;
-    }
 
     // load
     LGN_subregion center(pLGN.center, id);
     LGN_subregion surround(pLGN.surround, id);
     
+    unsigned int tid = threadIdx.y*blockDim.x + threadIdx.x;
+    _float covariant = pLGN.covariant[id];
+    _float sqrt2 = square_root(2.0);
+    if (tid == 0) {
+        convol = 0.0f;
+    }
+
     // load temporal weights
     unsigned int block_size = blockDim.x*blockDim.y;
     unsigned int nblock = nKernelSample/block_size;
 
     for (unsigned int iblock = 0; iblock < nblock; iblock++) {
         unsigned int twid = iblock*block_size + tid;
-        _float t = twid*kernelSampleDt;
+        _float t = (twid + 1)*kernelSampleDt;
         temporalWeight[twid] = temporalKernel(t, center);
         temporalWeight[nKernelSample + twid] = temporalKernel(t, surround);
     }
     
     if (tid < nKernelSample - nblock*block_size) {
         unsigned int twid = nblock*block_size + tid;
-        _float t = twid*kernelSampleDt;
+        _float t = (twid + 1)*kernelSampleDt;
         temporalWeight[twid] = temporalKernel(t, center);
         temporalWeight[nKernelSample + twid] = temporalKernel(t, surround);
     }
@@ -237,25 +262,24 @@ __global__ void LGN_maxResponse(_float* __restrict__ max_convol,
     _float signCS = copy(1.0, center.k * surround.k);
     // pair spatial kernel
         // center
-    float xhspan = nsig * center.rx / sqrt2;
-    float dx = 2*xhspan/npixel_1D;
+    _float xhspan = nsig * center.rx / sqrt2;
+    _float dx = 2*xhspan/npixel_1D;
 
-    float yhspan = nsig * center.ry / sqrt2;
-    float dy = 2*yhspan/npixel_1D;
+    _float yhspan = nsig * center.ry / sqrt2;
+    _float dy = 2*yhspan/npixel_1D;
 
-    float x = threadIdx.x*dx - xhspan;
-    float y = threadIdx.y*dy - yhspan;
+    _float x = threadIdx.x*dx - xhspan;
+    _float y = threadIdx.y*dy - yhspan;
 
-    float x_prime = center.x + x - surround.x;
-    float y_prime = center.y + y - surround.y;
+    _float x_prime = center.x + x - surround.x;
+    _float y_prime = center.y + y - surround.y;
 
-    float sample_vol = dx * dy * kernelSampleDt;
+    _float sample_vol = dx * dy * kernelSampleDt;
 
     _float spatialWeightC = spatialProduct(x, y, 1.0, center.k, center.rx, center.ry);
     _float spatialWeightS = spatialProduct(x_prime, y_prime, 1.0, surround.k, surround.rx, surround.ry);
     
     for (unsigned int it=0; it<nKernelSample; it++) {
-
         _float filter = abs(spatialWeightC * temporalWeight[it]);
         _float filter_prime = abs(spatialWeightS * temporalWeight[nKernelSample + it]);
 

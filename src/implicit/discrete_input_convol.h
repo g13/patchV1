@@ -323,7 +323,8 @@ struct LGN_subregion {
 __global__
 __global__ void LGN_convol(_float* __restrict__ LGNfr,
                            LGN_parameter pLGN, // consider pointer
-                           unsigned int nKernelSample, _float kernelSampleDt, unsigned int nsig, unsigned int npixel_1D);
+                           unsigned int iSample0,
+                           _float samplePhase, unsigned int nKernelSample, _float kernelSampleDt, unsigned int nsig, unsigned int npixel_1D);
 
 __global__ 
 void LGN_nonlinear(_float* __restrict__ LGN_fr, static_nonlinear logistic, _float* __restrict__ max_convol);
