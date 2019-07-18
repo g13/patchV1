@@ -19,17 +19,107 @@ extern texture<float, cudaTextureType2DLayered> S_retinaConSig;
 	#define uniform curand_uniform
 	#define expp expf
 	#define power powf
-	#define fabsf abs 
-    #define copysignf copy
+	#define abs fabsf 
+    #define copy copysignf
 #else
 	#define square_root sqrt
 	#define atan atan2
 	#define uniform curand_uniform_double
 	#define expp exp 
 	#define power pow
-	#define fabs abs 
-    #define copysign copy
+	#define abs fabs 
+    #define copy copysign
 #endif
+
+struct hcone_specific {
+    _float* mem_block;
+    _float* __restrict__ x; // normalize to (0,1)
+    _float* __restrict__ rx;
+    _float* __restrict__ y; // normalize to (0,1)
+    _float* __restrict__ ry;
+    _float* __restrict__ k; // its sign determine On-Off
+    _float* __restrict__ tauR;
+    _float* __restrict__ tauD;
+    _float* __restrict__ nD;
+    _float* __restrict__ nR;
+    _float* __restrict__ ratio; // 2 for parvo 1 for magno
+    //_float* __restrict__ delay;
+    //_float* __restrict__ facRatio; mem-calc balance
+    void alloc(unsigned int nLGN) {
+        mem_block = new _float[10*nLGN];
+        x = mem_block;
+        rx = x + nLGN;
+        y = rx + nLGN;
+        ry = y + nLGN;
+        k = ry + nLGN;
+        tauR = k + nLGN;
+        tauD = tauR + nLGN;
+        nD = tauD + nLGN;
+        nR = nD + nLGN;
+        ratio = nR + nLGN;
+    }
+	void freeMem() {
+		delete []mem_block;
+	}
+};
+
+struct hstatic_nonlinear {
+    _float* mem_block;
+
+    _float* __restrict__ spont;
+    _float* __restrict__ c50;
+    _float* __restrict__ sharpness;
+
+    void alloc(unsigned int nLGN) {
+        mem_block = new _float[3*nLGN];
+        spont = mem_block;
+        c50 = spont + nLGN;
+        sharpness = c50 + nLGN;
+    }
+	void freeMem() {
+		delete []mem_block;
+	}
+};
+
+struct hLGN_parameter {
+    // block allocation
+    unsigned int nLGN;
+    hcone_specific center, surround;
+    hstatic_nonlinear logistic;
+
+    unsigned int* mem_block;
+    // 0: L
+    // 1: M
+    // 2: S
+    // 3: L+M+S
+    // 4: L+M
+    // 5: M+S
+    // 6: S+L
+    unsigned int* __restrict__ centerType;
+    unsigned int* __restrict__ surroundType;
+    _float* __restrict__ covariant; // color in the surround and center ay covary
+    
+    hLGN_parameter(unsigned int _nLGN) {
+        nLGN = _nLGN;
+        center.alloc(nLGN);
+        surround.alloc(nLGN);
+        logistic.alloc(nLGN);
+
+
+        mem_block = new unsigned int[2*nLGN];
+        centerType = mem_block;
+        surroundType = centerType + nLGN;
+        covariant = new _float[nLGN];
+    }
+	void freeMem() {
+		center.freeMem();
+		surround.freeMem();
+		logistic.freeMem();
+		delete []mem_block;
+		delete []covariant;
+	}
+};
+
 
 /*struct LGN_stats {
     // min, mean, max
@@ -92,7 +182,7 @@ extern texture<float, cudaTextureType2DLayered> S_retinaConSig;
 }*/
 
 struct cone_specific {
-    _float* __restrict__ mem_block;
+    _float* mem_block;
     _float* __restrict__ x; // normalize to (0,1)
     _float* __restrict__ rx;
     _float* __restrict__ y; // normalize to (0,1)
@@ -105,8 +195,8 @@ struct cone_specific {
     _float* __restrict__ ratio; // 2 for parvo 1 for magno
     //_float* __restrict__ delay;
     //_float* __restrict__ facRatio; mem-calc balance
-    void alloc(unsigned int nLGN) {
-        CUDA_CALL(cudaMalloc((void**)&mem_block, 10*nLGN*sizeof(_float)));
+    void allocAndMemcpy(unsigned int nLGN, hcone_specific &host) {
+        checkCudaErrors(cudaMalloc((void**)&mem_block, 10*nLGN*sizeof(_float)));
         x = mem_block;
         rx = x + nLGN;
         y = rx + nLGN;
@@ -117,23 +207,30 @@ struct cone_specific {
         nD = tauD + nLGN;
         nR = nD + nLGN;
         ratio = nR + nLGN;
+        checkCudaErrors(cudaMemcpy(mem_block, host.mem_block, nLGN*10*sizeof(_float), cudaMemcpyHostToDevice));
     }
+	void freeMem() {
+		cudaFree(mem_block);
+	}
 };
 
 struct static_nonlinear {
-    _float* __restrict__ mem_block;
+    _float* mem_block;
 
     _float* __restrict__ spont;
     _float* __restrict__ c50;
     _float* __restrict__ sharpness;
 
-    void alloc(unsigned int nLGN) {
-        CUDA_CALL(cudaMalloc((void**)&mem_block, 3*nLGN*sizeof(_float)));
+    void allocAndMemcpy(unsigned int nLGN, hstatic_nonlinear &host) {
+        checkCudaErrors(cudaMalloc((void**)&mem_block, 3*nLGN*sizeof(_float)));
         spont = mem_block;
         c50 = spont + nLGN;
         sharpness = c50 + nLGN;
+        checkCudaErrors(cudaMemcpy(mem_block, host.mem_block, 3*nLGN*sizeof(_float), cudaMemcpyHostToDevice));
     }
-
+	void freeMem() {
+		cudaFree(mem_block);
+	}
     __device__
     _float transform(unsigned int id, _float input) {
         _float local_k = sharpness[id];
@@ -157,7 +254,7 @@ struct LGN_parameter {
     cone_specific center, surround;
     static_nonlinear logistic;
 
-    unsigned int* __restrict__ mem_block;
+    unsigned int* mem_block;
     // 0: L
     // 1: M
     // 2: S
@@ -169,18 +266,26 @@ struct LGN_parameter {
     unsigned int* __restrict__ surroundType;
     _float* __restrict__ covariant; // color in the surround and center ay covary
     
-    LGN_parameter(unsigned int _nLGN) {
+    LGN_parameter(unsigned int _nLGN, hLGN_parameter &host) {
         nLGN = _nLGN;
-        center.alloc(nLGN);
-        surround.alloc(nLGN);
-        logistic.alloc(nLGN);
+        center.allocAndMemcpy(nLGN, host.center);
+        surround.allocAndMemcpy(nLGN, host.surround);
+        logistic.allocAndMemcpy(nLGN, host.logistic);
 
-        CUDA_CALL(cudaMalloc((void**)&mem_block, 2*nLGN*sizeof(unsigned int)));
+        checkCudaErrors(cudaMalloc((void**)&mem_block, 2*nLGN*sizeof(unsigned int)+nLGN*sizeof(_float)));
 
-        centerType = mem_block; 
+        centerType = mem_block;
         surroundType = centerType + nLGN;
         covariant = (_float*) (surroundType + nLGN);
+        checkCudaErrors(cudaMemcpy(mem_block, host.mem_block, nLGN*2*sizeof(unsigned int), cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(covariant, host.covariant, nLGN*sizeof(_float), cudaMemcpyHostToDevice));
     }
+	void freeMem() {
+		center.freeMem();
+		surround.freeMem();
+		logistic.freeMem();
+		cudaFree(mem_block);
+	}
 };
 
 struct LGN_subregion {
@@ -216,16 +321,17 @@ struct LGN_subregion {
 */
 
 __global__
-void LGN_convol(_float* __restrict__ LGNfr,
-				LGN_parameter pLGN, // consider pointer
-				unsigned int nFrame, _float framePhase, _float tPerFrame, unsigned int frame0, _float kernelSampleDt, _float tau, unsigned int nsig, unsigned int npixel_1D);
+__global__ void LGN_convol(_float* __restrict__ LGNfr,
+                           LGN_parameter pLGN, // consider pointer
+                           unsigned int iSample0,
+                           _float samplePhase, unsigned int nKernelSample, _float kernelSampleDt, unsigned int nsig, unsigned int npixel_1D);
 
 __global__ 
 void LGN_nonlinear(_float* __restrict__ LGN_fr, static_nonlinear logistic, _float* __restrict__ max_convol);
 
 __global__
-void LGN_maxResponse(_float* __restrict__ max_convol,
-					 LGN_parameter pLGN, // consider pointer
-					 _float kernelSampleDt, unsigned int nsig, unsigned int npixel_1D, unsigned int nKernelSample);
+__global__ void LGN_maxResponse(_float* __restrict__ max_convol,
+                                LGN_parameter pLGN, // consider pointer
+                                unsigned int nKernelSample, _float kernelSampleDt, unsigned int nsig, unsigned int npixel_1D);
 
 #endif
