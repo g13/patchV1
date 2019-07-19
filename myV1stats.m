@@ -304,10 +304,12 @@ else
     end
 end
 
-if ~exist('figlist','var') || isempty(figlist) && ~statsOnly
-    figlist = [1:4 7 100:101 120:124 130:133 140:142 150:160 170:171 176 180:189];
-else
-    figlist = [];
+if ~exist('figlist','var')
+    if isempty(figlist) && ~statsOnly
+        figlist = [1:4 7 100:101 120:124 130:133 140:142 150:160 170:171 176 180:189];
+    else
+        figlist = [];
+    end
 end
 % plotfig(i) = 1 means plot figure(i).
 plotfig = logical(zeros(1,1000)); plotfig(figlist) = 1;
