@@ -569,6 +569,7 @@ for ENcounter = whichones
         stats.fig(Figs+100).g1{ENcounter} = g1;
         [amp, stats.OD_OR_I_angMode] = max(h(:,1));
         stats.OD_OR_I_ang_overMean = amp/mean(h(:,1));
+        stats.OD_OR_I_angMode = h(stats.OD_OR_I_angMode,2);
     end
     % Plot this figure
     if plotfig(Figs)
@@ -613,6 +614,7 @@ for ENcounter = whichones
         stats.fig(Figs+100).g1{ENcounter} = g1;
         [amp, stats.OD_OR_B_angMode] = max(h(:,1));
         stats.OD_OR_B_ang_overMean = amp/mean(h(:,1));
+        stats.OD_OR_B_angMode = h(stats.OD_OR_B_angMode,2);
     end
     % Plot this figure
     if plotfig(Figs)
@@ -687,7 +689,7 @@ for ENcounter = whichones
         repmat(sch+1-2*(Figss(2)+wnt+wnb),2,1)];
     for i=1:Varsn
         % Compute histogram and statistics if required here or elsewhere
-        if any(plotfig([Figs(i) Figs(i)+100 34]))
+        if any(plotfig([Figs(i) Figs(i)+100 34])) || statsOnly
             % Histogram weighting angles according to their moduli of OD gradient:
             [h,KLu,L2u,m,s,g1] = ...
                 ENhist(ENxangle(Vars(:,i),B1_ang)*180/pi,...	% Map against boundary
@@ -701,9 +703,11 @@ for ENcounter = whichones
             if i == 1
                 [amp, stats.OD_B_angMode] = max(h(:,1));
                 stats.OD_B_ang_overMean = amp/mean(h(:,1));
+                stats.OD_B_angMode = h(stats.OD_B_angMode,2);
             else
                 [amp, stats.OR_B_angMode] = max(h(:,1));
                 stats.OR_B_ang_overMean = amp/mean(h(:,1));
+                stats.OR_B_angMode = h(stats.OR_B_angMode,2);
             end
         end
         if plotfig(Figs(i))
@@ -790,7 +794,7 @@ for ENcounter = whichones
     Figss = Figl;
     for i=1:Varsn
         % Compute DFT and statistics if required here or elsewhere
-        if any(plotfig([Figs(i) Figs(i)+100 142 50:59 150:160 70:75 170:171]))
+        if any(plotfig([Figs(i) Figs(i)+100 142 50:59 150:160 70:75 170:171])) || statsOnly
             [tmpfft,tmpkM,tmplM,tmptM,tmpkm,tmplm] = myfft2(G,Vars(:,i),Pi);
             switch i
                 case 1
@@ -882,7 +886,7 @@ for ENcounter = whichones
         end
         
     end
-    if any(plotfig([50:54 60 150:154 160]))
+    if any(plotfig([50:54 60 150:154 160])) || statsOnly
         % Locate the OD borders:
         ODborders = ENV1ODbord(G,mu(:,id.OD),v(id.OD,2:3));
     end
@@ -928,7 +932,7 @@ for ENcounter = whichones
     % --- Figures 51-54: orientation pinwheels wrt ocular dominance borders
     
     % Compute histogram and statistics if required here or elsewhere
-    if any(plotfig([50:54 150:154 160]))
+    if any(plotfig([50:54 60 150:154 160])) || statsOnly
         % Unweighted histogram of the distance between a pinwheel and its
         % closest OD border, for all pinwheels (using absolute frequencies)
         % for two cases:
@@ -1162,6 +1166,7 @@ for ENcounter = whichones
         Hrnd = {h,KLu,L2u,m,s,g1};
         [amp, stats.normD_mode] = max(hact);
         stats.normD_overMean = amp/mean(h(:,1));
+        stats.normD_mode = h(stats.normD_mode,2);
         
         if plotfig(60)
             % Plot the histograms of pinwheel distances and display statistics:

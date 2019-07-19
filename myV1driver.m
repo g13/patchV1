@@ -28,8 +28,6 @@
 % domain of (VFx,VFy,OD,ORt).
 function stats=myV1driver(seed,ENproc,ENfilename,non_cortical_lr,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new)
     datafileabsolpath = [pwd,'/',ENfilename,'.mat'];
-    disp(['exist(',datafileabsolpath, ')=',num2str(exist(datafileabsolpath,'file'))]);
-
     if ~exist(datafileabsolpath,'file') || new
         ENtraining = 'canonical';
         
@@ -334,11 +332,11 @@ function stats=myV1driver(seed,ENproc,ENfilename,non_cortical_lr,cortical_shape,
             otherwise
                 % Do nothing.
         end
+        disp(['ratio of L/R = ', num2str(sum(mu(logical(Pi),id.OD) < 0)/sum(mu(logical(Pi),id.OD) > 0))]);
     else
         disp('data exist');
         load([ENfilename,'.mat']);
     end
-    disp(['ratio of L/R = ', num2str(sum(mu(logical(Pi),id.OD) < 0)/sum(mu(logical(Pi),id.OD) > 0))]);
     if plots
         figlist = [1,2,3,4,7,100,102,34, 40, 41, 50, 54, 60];
     else

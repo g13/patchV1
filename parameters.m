@@ -14,7 +14,7 @@ end
 format = 'fig';
 
 % Processing of intermediate (historical) parameters:
-ENproc = 'save';		% One of 'var', 'save', 'varplot', 'saveplot'
+ENproc = 'var';		% One of 'var', 'save', 'varplot', 'saveplot'
 ENfilename0 = ['rec_93'];   % Simulation name ***
 non_cortical_lr = false;
 % non_cortical_lr = true;
@@ -74,16 +74,16 @@ var = 'nvf';
 i = 1;
 poolobj = gcp('nocreate'); % If no pool, do not create new one.
 if ~isempty(poolobj)
-    delete(poolobj);
+    if ~ (poolobj.NumWorkers == length(range))
+        delete(poolobj);
+        parpool(length(range));
+    end
 end
-parpool(length(range));
 parfor i = 1:length(range)
     nvf = range(i);
     ENfilename = [ENfilename0,'-',var,'-',num2str(nvf)];
-    disp(ENfilename);
     stats(i) = myV1driver(seed,ENproc,ENfilename,non_cortical_lr,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new);
 end
-delete(poolobj);
 nnpinw = [stats.npinw];
 nnpinw = nnpinw./mean(nnpinw);
 normD_overMean = [stats.normD_overMean];
@@ -91,23 +91,29 @@ OD_OR_I_ang_overMean = [stats.OD_OR_I_ang_overMean];
 OD_OR_B_ang_overMean = [stats.OD_OR_B_ang_overMean];
 OD_B_ang_overMean = [stats.OD_B_ang_overMean];
 OR_B_ang_overMean = [stats.OR_B_ang_overMean];
+
+normD_mode = [stats.normD_mode];
+OD_OR_I_angMode = [stats.OD_OR_I_angMode];
+OD_OR_B_angMode = [stats.OD_OR_B_angMode];
+OD_B_angMode = [stats.OD_B_angMode];
+OR_B_angMode = [stats.OR_B_angMode];
 h = figure;
 subplot(1,2,1);
 hold on
 plot(range,nnpinw,'or');
 plot(range,normD_overMean,'-k');
 plot(range,normD_mode,':k');
-plot(range,OD_OR_I_ang_overMean,'s');
-plot(range,OD_OR_B_ang_overMean,'*');
-plot(range,OD_B_ang_overMean,'^');
-plot(range,OR_B_ang_overMean,'.');
+plot(range,OD_OR_I_ang_overMean,'s-');
+plot(range,OD_OR_B_ang_overMean,'*-');
+plot(range,OD_B_ang_overMean,'^-');
+plot(range,OR_B_ang_overMean,'>-');
 legend({'npinw','normDamp','normDmode','ODOR_I','ODOR_B','OD_B','OR_B'});
 subplot(1,2,2);
 hold on
-plot(range,OD_OR_I_angMode,'s');
-plot(range,OD_OR_B_angMode,'*');
-plot(range,OD_B_angMode,'^');
-plot(range,OR_B_angMode,'.');
+plot(range,OD_OR_I_angMode,'s-');
+plot(range,OD_OR_B_angMode,'*-');
+plot(range,OD_B_angMode,'^-');
+plot(range,OR_B_angMode,'>-');
 legend({'ODOR_I','ODOR_B','OD_B','OR_B'});
 figname = [ENfilename0,'-stats'];
-print(h, figname, format);
+saveas(h, figname, format);
