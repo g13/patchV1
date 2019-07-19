@@ -234,7 +234,10 @@
 % Copyright (c) 2002 by Miguel A. Carreira-Perpinan
 
 function stats = ...
-    myV1stats(G,bc,ENlist,v,whichones,T,Pi,murange,id,tens,opt,figlist)
+    myV1stats(G,bc,ENlist,v,whichones,T,Pi,murange,id,tens,opt,figlist,statsOnly)
+if nargin < 13
+    statsOnly = false;
+end
 
 L = length(G);                  % Net dimensionality
 if L == 1 G = [G 1]; end        % So that both L=1 and L=2 work
@@ -301,8 +304,10 @@ else
     end
 end
 
-if ~exist('figlist','var') || isempty(figlist)
+if ~exist('figlist','var') || isempty(figlist) && ~statsOnly
     figlist = [1:4 7 100:101 120:124 130:133 140:142 150:160 170:171 176 180:189];
+else
+    figlist = [];
 end
 % plotfig(i) = 1 means plot figure(i).
 plotfig = logical(zeros(1,1000)); plotfig(figlist) = 1;
@@ -550,7 +555,7 @@ for ENcounter = whichones
     % Interior points
     Figs = 30;
     % Compute histogram and statistics if required here or elsewhere
-    if any(plotfig([Figs Figs+100 34]))
+    if any(plotfig([Figs Figs+100 34])) || statsOnly
         xangI_OD_OR = ENxangle(gt(I_ind,id.OD),gt(I_ind,id.OR))*180/pi;
         % Histogram weighting angles according to their combined moduli of OD
         % and ORt gradients:
@@ -562,6 +567,8 @@ for ENcounter = whichones
         stats.fig(Figs+100).m{ENcounter} = m;
         stats.fig(Figs+100).s{ENcounter} = s;
         stats.fig(Figs+100).g1{ENcounter} = g1;
+        [amp, stats.OD_OR_I_angMode] = max(h(:,1));
+        stats.OD_OR_I_ang_overMean = amp/mean(h(:,1));
     end
     % Plot this figure
     if plotfig(Figs)
@@ -590,7 +597,7 @@ for ENcounter = whichones
     % Boundary points
     Figs = 31;
     % Compute histogram and statistics if required here or elsewhere
-    if any(plotfig([Figs Figs+100 34]))
+    if any(plotfig([Figs Figs+100 34])) || statsOnly
         if B_width > 0
             xangB_OD_OR = ENxangle(gt(B_ind,id.OD),gt(B_ind,id.OR))*180/pi;
             [h,KLu,L2u,m,s,g1] = ...
@@ -604,6 +611,8 @@ for ENcounter = whichones
         stats.fig(Figs+100).m{ENcounter} = m;
         stats.fig(Figs+100).s{ENcounter} = s;
         stats.fig(Figs+100).g1{ENcounter} = g1;
+        [amp, stats.OD_OR_B_angMode] = max(h(:,1));
+        stats.OD_OR_B_ang_overMean = amp/mean(h(:,1));
     end
     % Plot this figure
     if plotfig(Figs)
@@ -689,6 +698,13 @@ for ENcounter = whichones
             stats.fig(Figs(i)+100).m{ENcounter} = m;
             stats.fig(Figs(i)+100).s{ENcounter} = s;
             stats.fig(Figs(i)+100).g1{ENcounter} = g1;
+            if i == 1
+                [amp, stats.OD_B_angMode] = max(h(:,1));
+                stats.OD_B_ang_overMean = amp/mean(h(:,1));
+            else
+                [amp, stats.OR_B_angMode] = max(h(:,1));
+                stats.OR_B_ang_overMean = amp/mean(h(:,1));
+            end
         end
         if plotfig(Figs(i))
             if firstone
@@ -823,12 +839,13 @@ for ENcounter = whichones
     % --- Figure 50: orientation pinwheels
     
     % Compute pinwheel locations and statistics if required here or elsewhere
-    if any(plotfig([50:59 150:160 70:75 170:171]))
+    if any(plotfig([50:59 150:160 70:75 170:171])) || statsOnly
         % Locate all the pinwheels:
         [ORpinw ORwindno] = ENV1pinw(G,[mu(:,[id.OR, id.ORr]) gr(:,id.OR)],v([id.OR, id.ORr],:));
         ORpinwp = ORpinw(ORwindno > 0,:);
         ORpinwn = ORpinw(ORwindno < 0,:);
         npinw = size(ORpinw,1)
+        stats.npinw = npinw;
         npinwp = size(ORpinwp,1);
         npinwn = size(ORpinwn,1);
         
@@ -1097,7 +1114,7 @@ for ENcounter = whichones
         end
     end
 
-    if plotfig(60) % normalized fig. 54
+    if plotfig(60) || statsOnly % normalized fig. 54
         if any(plotfig([54 154])) && (npinw >= 1)
             Ntrials = NTrials;
         else
@@ -1143,37 +1160,41 @@ for ENcounter = whichones
             [h,KLu,L2u,m,s,g1] = deal(NaN(nbins,4),NaN,NaN,NaN,NaN,NaN);
         end
         Hrnd = {h,KLu,L2u,m,s,g1};
+        [amp, stats.normD_mode] = max(hact);
+        stats.normD_overMean = amp/mean(h(:,1));
         
-        % Plot the histograms of pinwheel distances and display statistics:
-        Vars = {Hact,Hrnd};
-        Varsn = length(Vars);
-        Varsl = {'(actual, all)', ['(random, all, ' num2str(Ntrials) ' trials)']};
-        Figss = [560 420];
-        Figsp = [repmat(scw+1-Figss(1)-2*wnb,1,1) ...
-            -linspace((Figss(2)+wnt+wnb)-sch-1,...
-            2*(Figss(2)+wnt+wnb)-sch-1,1)'];
-        tmp = 1.05*max([hact;have+hstd]);
-        if ~ishandle(60)
-            figure(60);
-        end
-        set(60,'Position',[Figsp Figss],...
-            'Name','Histogram of pinwheel-OD-border norm. dist',...
-            'Color','w','PaperPositionMode','auto');
-        set(0,'CurrentFigure',60); cla;
-        H = plot(h(:,2),[h(:,1) hact]');
-        hold on;
-        H1 = plot([0 distM],[1 1]*npinw/nbins,':g');
-        errorbar(h(:,2),have,hstd,hstd,'b.');
-        % $$$ 	    errorbar(h(:,2),have,zeros(nbins,1),hstd,'b.');
-        hold on;
-        set(H,'LineWidth',2);
-        legend([H1;H],'random (all), theory','random (all), simulated', 'actual (all)','Location','best');
-        set(gca,'XLim',[0 distM],'YLim',[0 tmp]);
-        xlabel('norm. dist inbetween ODborder');
-        drawnow;
-        if ~isempty(ENdir)
-            print(60,'-loose','-r90',['-d' EXT],...
-                sprintf('fig%03d.%s',Figs(i),EXT));
+        if plotfig(60)
+            % Plot the histograms of pinwheel distances and display statistics:
+            Vars = {Hact,Hrnd};
+            Varsn = length(Vars);
+            Varsl = {'(actual, all)', ['(random, all, ' num2str(Ntrials) ' trials)']};
+            Figss = [560 420];
+            Figsp = [repmat(scw+1-Figss(1)-2*wnb,1,1) ...
+                -linspace((Figss(2)+wnt+wnb)-sch-1,...
+                2*(Figss(2)+wnt+wnb)-sch-1,1)'];
+            tmp = 1.05*max([hact;have+hstd]);
+            if ~ishandle(60)
+                figure(60);
+            end
+            set(60,'Position',[Figsp Figss],...
+                'Name','Histogram of pinwheel-OD-border norm. dist',...
+                'Color','w','PaperPositionMode','auto');
+            set(0,'CurrentFigure',60); cla;
+            H = plot(h(:,2),[h(:,1) hact]');
+            hold on;
+            H1 = plot([0 distM],[1 1]*npinw/nbins,':g');
+            errorbar(h(:,2),have,hstd,hstd,'b.');
+            % $$$ 	    errorbar(h(:,2),have,zeros(nbins,1),hstd,'b.');
+            hold on;
+            set(H,'LineWidth',2);
+            legend([H1;H],'random (all), theory','random (all), simulated', 'actual (all)','Location','best');
+            set(gca,'XLim',[0 distM],'YLim',[0 tmp]);
+            xlabel('norm. dist inbetween ODborder');
+            drawnow;
+            if ~isempty(ENdir)
+                print(60,'-loose','-r90',['-d' EXT],...
+                    sprintf('fig%03d.%s',Figs(i),EXT));
+            end
         end
     end
     

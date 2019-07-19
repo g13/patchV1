@@ -26,143 +26,199 @@
 % scaffolding for the underlying continuous set of training vectors.
 % 'noisy' and 'uniform*' approximate online training over the continuous
 % domain of (VFx,VFy,OD,ORt).
-clear all
-clc;
-addpath('C:\Users\gueux\Dropbox\Visual\Macaque V1\Model\Carreira_et-al-2005')
 ENtraining = 'canonical';
+% ----------------------------- USER VALUES -----------------------------
+gen = 'twister';
+clear seed
+seed = 1425269650;
+%seed = 1422230161;
+if exist('seed','var')
+    rng(seed,gen);
+else
+    scurr = rng('shuffle')
+    seed = scurr.Seed;
+end
 
-if exist('ENsetupdone') ~= 1, ENsetupdone = 'no'; end;
-if ~strcmp(ENsetupdone,'yes')
-    % ----------------------------- USER VALUES -----------------------------
-    % Processing of intermediate (historical) parameters:
-    %ENproc = 'varplot';		% One of 'var', 'save', 'varplot', 'saveplot'
-%     ENproc = 'saveplot';
+% Processing of intermediate (historical) parameters:
+ENproc = 'save';		% One of 'var', 'save', 'varplot', 'saveplot'
+%ENproc = 'varplot';		% One of 'var', 'save', 'varplot', 'saveplot'
+%ENproc = 'saveplot';
+ENfilename = ['rec_93'];   % Simulation name ***
+non_cortical_lr = false;
+% non_cortical_lr = true;
+% cortical_shape = true;
+cortical_shape = false;
+uniform_LR = true;
+% uniform_LR = false;
+if ~cortical_shape
+%     test_dw = 15;
+%     test_dh = 20;
+    test_dw = 5;
+    test_dh = 7;
+end
+copyfile('parameters.m',[ENfilename,'_p.m']);
+% Objective function weights
 
-    % Canonical training set: uniform grids for retinotopy, OD and OR as
-    % follows:
-    % -- T is created for ploting purposes
-    % -- retinotopy to be generated independently
-    parameters;
-    %%%% copy from parameters.m
-    
-    % - OR: NOR values in a periodic interval [-pi/2,pi/2] with modulus r,
-    rORt = [-pi/2 pi/2];		% Range of ORtheta
-    rORr = [0 r];			% Range of ORr
-    tmp1 = linspace(rORt(1),rORt(2),NOR+1); tmp1 = tmp1(1:NOR);
-    %dOR = diff(rORt)/(NOR-1)*r;
-    % - SF: spatial frequency, same as OD, to be tested with larger NSF
-    lSF = 0.14;
-    NSF = 2;
-    rSF = [-lSF lSF];
-    dSF = diff(rSF)/(NSF-1);
-    
-    T = ENtrset('grid',zeros(1,5),...
-        linspace(rx(1),rx(2),Nx),...	% VFx
-        linspace(ry(1),ry(2),Ny),...	% VFy
-        linspace(rOD(1),rOD(2),NOD),...	% OD
-        tmp1,...				% ORtheta
-        linspace(rORr(1),rORr(2),1));%,... % ORr
-    
+alpha = 1;			% Fitness term weight
+beta = 100;  		% Tension term weight
+% Training parameters
+iters = 10;%21;			% No. of annealing iterations (saved)
+max_it = 10;%12;			% No. of annealing iterations (not saved) ***
+Kin = 0.14;			% Initial K ***
+Kend = 0.02;        % Final K ***    
+% - VFx: Nx points in [0,1], with interpoint separation dx.
+Nx = 8;			% Number of points along VFx ***
+nvf = 4;
+rx = [0 0.16]*nvf;			% Range of VFx
+dx = diff(rx)/(Nx-1);		% Separation between points along VFx
+% - VFy: ditto for Ny, dy.
+Ny = 13;			% Number of points along VFy ***
+ry = [0 0.26]*nvf;			% Range of VFy
+dy = diff(ry)/(Ny-1);		% Separation between points along VFy    
+d = (dx + dy)/2;
+% - OD: NOD values in range rOD, with interpoint separation dOD.
+l = 0.12;			% Half-separation between OD layers ***
+NOD = 2;			% Number of points along OD
+rOD = [-l l];			% Range of OD
+dOD = diff(rOD)/(NOD-1);	% Separation between points along OD
+%  coded as NOR Cartesian-coordinate pairs (ORx,ORy). -- later by pol2cart
+%  r = 6*l/pi
+r = 1.0*l;			% OR modulus -- the radius of pinwheel
+NOR = 8;	 %8;		% Number of points along OR    
+% for myCortex patch
+ODnoise = l*0.0;
+ODabsol = 1.0;
+nG = 2;
+G = [64 104]*nG;		% Number of centroids *** 
+ecc = 2;
+nod = 25;
+a = 0.635; b = 96.7; k = sqrt(140)*0.873145;
+fign = 106;
+
+% Canonical training set: uniform grids for retinotopy, OD and OR as
+% follows:
+% -- T is created for ploting purposes
+% -- retinotopy to be generated independently
+%%%% copy from parameters.m
+
+% - OR: NOR values in a periodic interval [-pi/2,pi/2] with modulus r,
+rORt = [-pi/2 pi/2];		% Range of ORtheta
+rORr = [0 r];			% Range of ORr
+tmp1 = linspace(rORt(1),rORt(2),NOR+1); tmp1 = tmp1(1:NOR);
+%dOR = diff(rORt)/(NOR-1)*r;
+% - SF: spatial frequency, same as OD, to be tested with larger NSF
+lSF = 0.14;
+NSF = 2;
+rSF = [-lSF lSF];
+dSF = diff(rSF)/(NSF-1);
+
+T = ENtrset('grid',zeros(1,5),...
+    linspace(rx(1),rx(2),Nx),...	% VFx
+    linspace(ry(1),ry(2),Ny),...	% VFy
+    linspace(rOD(1),rOD(2),NOD),...	% OD
+    tmp1,...				% ORtheta
+    linspace(rORr(1),rORr(2),1));%,... % ORr
+
 %     T = ENtrset('grid',zeros(1,3),...
 %         linspace(rx(1),rx(2),Nx),...	% VFx
 %         linspace(ry(1),ry(2),Ny),...	% VFy
 %         linspace(rOD(1),rOD(2),NOD));
-    
-    %linspace(rSF(1),rSF(2),NSF),... % SF
-    [N,D] = size(T);
-    
-    % match feature with id
-    id = struct('VFx',1,'VFy',2,'OD',3,'ORx',4,'ORy',5,'OR',6,'ORr',7);
+
+%linspace(rSF(1),rSF(2),NSF),... % SF
+[N,D] = size(T);
+
+% match feature with id
+id = struct('VFx',1,'VFy',2,'OD',3,'ORx',4,'ORy',5,'OR',6,'ORr',7);
 %     id = struct('VFx',1,'VFy',2,'OD',3,'ORx',4,'ORy',5,'OR',6,'ORr',7);
 %     id = struct('VFx',1,'VFy',2,'OD',3);
     % Ranges of stimuli variables (for greyscales, etc.)
 %     v = [1 rx;2 ry;3 rOD];
-    v = [1 rx;2 ry;3 rOD;4 -r r;5 -r r;6 -pi/2 pi/2;7 0 r];
-    %v = [1 NaN NaN;2 NaN NaN;3 -l l;4 NaN NaN;5 NaN NaN;6 -pi/2 pi/2;7 0 r];
-    %v = [1 rOD; 2 -r r; 3 -r r; 4 -pi/2 pi/2; 5 0 r]; % -- last 2 rows: OR augmented by polar
-    disp([num2str(size(T,1)),' references(cities) x ',num2str(size(T,2)),' features']);
-    if isfield(id, 'ORx')
-        [tmp1,tmp2] = pol2cart(2*T(:,id.ORx),T(:,id.ORy)); % polar coords to Cartesian coords
-        T(:,[id.ORx,id.ORy]) = [tmp1 tmp2];			% ORx, ORy
-    end
-    
-    % The training set is slightly noisy to avoid symmetry artifacts.
-    
+v = [1 rx;2 ry;3 rOD;4 -r r;5 -r r;6 -pi/2 pi/2;7 0 r];
+%v = [1 NaN NaN;2 NaN NaN;3 -l l;4 NaN NaN;5 NaN NaN;6 -pi/2 pi/2;7 0 r];
+%v = [1 rOD; 2 -r r; 3 -r r; 4 -pi/2 pi/2; 5 0 r]; % -- last 2 rows: OR augmented by polar
+disp([num2str(size(T,1)),' references(cities) x ',num2str(size(T,2)),' features']);
+if isfield(id, 'ORx')
+    [tmp1,tmp2] = pol2cart(2*T(:,id.ORx),T(:,id.ORy)); % polar coords to Cartesian coords
+    T(:,[id.ORx,id.ORy]) = [tmp1 tmp2];			% ORx, ORy
+end
+
+% The training set is slightly noisy to avoid symmetry artifacts.
+
 %     T = T + (rand(size(T))-1)/10000;		% Tiny noise
     
-    % Training parameters
-    max_cyc = 1;		% Number of cycles per annealing iteration
-    min_K = eps;		% Smallest K before K is taken as 0
-    tol = -1;			% Smallest centroid update
-    method = 'Cholesky';		% Training method
-    annrate = (Kend/Kin)^(1/(max_it*iters-1));	% Annealing rate
-    disp(['annealing rate: ', num2str(annrate)]);
-    Ksched = Kin*repmat(annrate^max_it,1,iters).^(0:iters-1);
+% Training parameters
+max_cyc = 1;		% Number of cycles per annealing iteration
+min_K = eps;		% Smallest K before K is taken as 0
+tol = -1;			% Smallest centroid update
+method = 'Cholesky';		% Training method
+annrate = (Kend/Kin)^(1/(max_it*iters-1));	% Annealing rate
+disp(['annealing rate: ', num2str(annrate)]);
+Ksched = Kin*repmat(annrate^max_it,1,iters).^(0:iters-1);
 %     Ksched = Ksched(4:10);
 %     iters = 7;
 
     % Elastic net configuration: 2D
 %     G = [64 104]*nG;		% Number of centroids ***    
 %     G = [64 96]*nG;		% Number of centroids ***   3.4
-    bc = 'nonperiodic';		% One of 'nonperiodic', 'periodic' ***
-    p = 1;			% Stencil order (of derivative) ***
-    s = {[0 -1 1],[0;-1;1]};	% Stencil list ***
-    L = length(G); M = prod(G);
-    % For non-rectangular cortex shapes, create a suitable Pi here:
+bc = 'nonperiodic';		% One of 'nonperiodic', 'periodic' ***
+p = 1;			% Stencil order (of derivative) ***
+s = {[0 -1 1],[0;-1;1]};	% Stencil list ***
+L = length(G); M = prod(G);
+% For non-rectangular cortex shapes, create a suitable Pi here:
 
-    resol = 1;
-    disp(['estimated lambda OD =', num2str(8*l/(1/G(1)+1/G(2)))]); %
-    disp(['estimated lambda OR =', num2str(2*pi*r/(1/G(1)+1/G(2)))]); %
-    if cortical_shape
-        [Pi, W, LR] = myCortex(G,ecc,a,b,k,resol, nod, rOD*ODabsol, ODnoise, ~non_cortical_lr && ~uniform_LR, ~uniform_LR * fign);
-    else
-        Pi = zeros(G);
-        Pi(1+test_dw*nG:G(1)-nG*test_dw, 1+test_dh*nG:G(2)-nG*test_dh) = 1;
-        %Pi = [];			% Don't disable any centroid
-        W = G(1)-nG*test_dw;			% Net width along 1st var. (arbitrary units)
-    end
-    if non_cortical_lr || ~cortical_shape
-        LR = ones(G(1),G(2));
-        OD_width = 20; % in pixels
-        for i=1:round(G(1)/OD_width)
-            if mod(i,2) == 0
-                is = (i-1)*OD_width+1;
-                ie = min(is + OD_width-1, G(1));
-                LR(is:ie, :) = -1;
-            end
+resol = 1;
+disp(['estimated lambda OD =', num2str(8*l/(1/G(1)+1/G(2)))]); %
+disp(['estimated lambda OR =', num2str(2*pi*r/(1/G(1)+1/G(2)))]); %
+if cortical_shape
+    [Pi, W, LR] = myCortex(G,ecc,a,b,k,resol, nod, rOD*ODabsol, ODnoise, ~non_cortical_lr && ~uniform_LR, ~uniform_LR * fign);
+else
+    Pi = zeros(G);
+    Pi(1+test_dw*nG:G(1)-nG*test_dw, 1+test_dh*nG:G(2)-nG*test_dh) = 1;
+    %Pi = [];			% Don't disable any centroid
+    W = G(1)-nG*test_dw;			% Net width along 1st var. (arbitrary units)
+end
+if non_cortical_lr || ~cortical_shape
+    LR = ones(G(1),G(2));
+    OD_width = 20; % in pixels
+    for i=1:round(G(1)/OD_width)
+        if mod(i,2) == 0
+            is = (i-1)*OD_width+1;
+            ie = min(is + OD_width-1, G(1));
+            LR(is:ie, :) = -1;
         end
-        LR = LR*l*ODabsol + ODnoise*randn(G(1),G(2));
-        LR(LR < -l) = -l;
-        LR(LR > l) = l;
     end
+    LR = LR*l*ODabsol + ODnoise*randn(G(1),G(2));
+    LR(LR < -l) = -l;
+    LR(LR > l) = l;
+end
 %     pause;
-    %gridVF = zeros(G(1), G(2),2);
-    %for iy =1:G(2)
-    %    gridVF(logical(Pi(:,iy)),iy,1) = linspace(rx(1),rx(2),sum(Pi(:,iy)))';
-    %end
-    %for ix =1:G(1)
-    %    gridVF(ix,logical(Pi(ix,:)),2) = linspace(ry(1),ry(2),sum(Pi(ix,:)));
-    %end
-    Pi = Pi(:)';
-    [S,DD,knot,A,LL] = ENgridtopo(G,bc,Pi,s{:});
-    normcte = ENstennorm(G,W,p,s{:});	% Normalisation constant
-    % $$$   % Use normcte = 1; when disregarding the step size and resolution:
-    % $$$   normcte = 1;
-    
-    % Initial elastic net: retinotopic with some noise and random, uniform
-    % OD and OR.
-    
-    mu = ENtrset('grid',zeros(1,2),...		% Small noise
-        linspace(rx(1),rx(2),G(1)),...	% VFx
-        linspace(ry(1),ry(2),G(2)));	% VFy
+%gridVF = zeros(G(1), G(2),2);
+%for iy =1:G(2)
+%    gridVF(logical(Pi(:,iy)),iy,1) = linspace(rx(1),rx(2),sum(Pi(:,iy)))';
+%end
+%for ix =1:G(1)
+%    gridVF(ix,logical(Pi(ix,:)),2) = linspace(ry(1),ry(2),sum(Pi(ix,:)));
+%end
+Pi = Pi(:)';
+[S,DD,knot,A,LL] = ENgridtopo(G,bc,Pi,s{:});
+normcte = ENstennorm(G,W,p,s{:});	% Normalisation constant
+% $$$   % Use normcte = 1; when disregarding the step size and resolution:
+% $$$   normcte = 1;
+
+% Initial elastic net: retinotopic with some noise and random, uniform
+% OD and OR.
+
+mu = ENtrset('grid',zeros(1,2),...		% Small noise
+    linspace(rx(1),rx(2),G(1)),...	% VFx
+    linspace(ry(1),ry(2),G(2)));	% VFy
 %    mu = reshape(gridVF, M, 2);
-    if uniform_LR
-        mu = [mu, ENtrset('uniform',rOD,M)];
-    else
-        mu = [mu reshape(LR,M,1)];		% OD
-    end
-  
-    %     mu = [mu ENtrset('uniform',...
+if uniform_LR
+    mu = [mu, ENtrset('uniform',rOD,M)];
+else
+    mu = [mu reshape(LR,M,1)];		% OD
+end
+
+%     mu = [mu ENtrset('uniform',...
 %         [-pi/2,pi/2;...		% ORtheta
 %         0,r],...        %ORr
 %         M)];
@@ -171,21 +227,20 @@ if ~strcmp(ENsetupdone,'yes')
 %        linspace(rx(1),rx(2),G(1)),...	% VFx
 %        linspace(ry(1),ry(2),G(2)));	% VFy
 %     mu = [mu ENtrset('uniform',[-l l;...		% OD
-    mu = [mu ENtrset('uniform',[-pi/2 pi/2;...		% ORtheta
-       0 r],... % ORr
-       M)];
+mu = [mu ENtrset('uniform',[-pi/2 pi/2;...		% ORtheta
+   0 r],... % ORr
+   M)];
 %         -lSF lSF],...   % -- SF
 %         M)];
-    if isfield(id, 'ORx')    
-        [tmp1,tmp2] = pol2cart(2*mu(:,id.ORx),mu(:,id.ORy));
-        mu(:,[id.ORx, id.ORy]) = [tmp1 tmp2];			% ORx, ORy
-    end
-    if ~isempty(Pi), mu(Pi==0,:) = 0; end;
-    disp([num2str(size(mu,1)),' centroids x ',num2str(size(mu,2)),' features']);
-
-    betanorm = beta*normcte;	% Normalised beta
-    % ----------------------------- USER VALUES -----------------------------
+if isfield(id, 'ORx')    
+    [tmp1,tmp2] = pol2cart(2*mu(:,id.ORx),mu(:,id.ORy));
+    mu(:,[id.ORx, id.ORy]) = [tmp1 tmp2];			% ORx, ORy
 end
+if ~isempty(Pi), mu(Pi==0,:) = 0; end;
+disp([num2str(size(mu,1)),' centroids x ',num2str(size(mu,2)),' features']);
+
+betanorm = beta*normcte;	% Normalised beta
+
 
 % Actual ranges of centroids (for axes)
 if isfield(id, 'OR')
