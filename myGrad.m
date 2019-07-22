@@ -103,10 +103,10 @@ gt = reshape(gt,M,D); gr = reshape(gr,M,D);
 
 % For periodic variables, check gr is less than range/2
 for i=1:size(whichper,1)
-    tmp = sum(gr(:,whichper(i,1)) > diff(whichper(i,2:3)/2));
-    if tmp > 0
+    tmp = sum(gr(logical(Pi),whichper(i,1)) > diff(whichper(i,2:3)/2)+5*eps);
+    if tmp > 0 
         disp(['Note: for periodic variable ' num2str(whichper(i,1)) ...
-            ', ' num2str(tmp) ' of ' num2str(M) ...
+            ', ' num2str(tmp) ' of ' num2str(sum(logical(Pi))) ...
             ' gradient moduli exceed half the range']);
     end
 end

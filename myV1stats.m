@@ -438,7 +438,7 @@ for ENcounter = whichones
     
     % ------------------------------------------------------------------------
     % Compute gradients
-    %     [gx,gy,gt,gr] = ENgrad(G,mu,v(id.OR,:));
+    % [gx,gy,gt,gr] = ENgrad(G,mu,v(id.OR,:));
     [gx,gy,gt,gr] = myGrad(G,mu,B1_ind,I1_ind,logical(Pi),v(id.OR,:));
     % Augment gr with the visual field gradient gVF, obtained simply as the
     % sum of the gradient moduli of VFx and VFy:
@@ -952,7 +952,7 @@ for ENcounter = whichones
         %    underlying borders (typically spaced around 1 pixel) means that
         %    there is an artifactual scarcity of very short distances (only
         %    apparent for small ODlm).
-        if any(plotfig([54 154])) & (npinw >= 1)
+        if any(plotfig([54 60 154])) && (npinw >= 1) || statsOnly
             Ntrials = NTrials;
         else
             Ntrials = 0;
@@ -1121,12 +1121,6 @@ for ENcounter = whichones
     end
 
     if plotfig(60) || statsOnly % normalized fig. 54
-        if any(plotfig([54 154])) && (npinw >= 1)
-            Ntrials = NTrials;
-        else
-            Ntrials = 0;
-        end
-        
         % The index Ntrials+1 in dist(:,i) and disth(:,i) corresponds to the
         % actual pinwheels.
         if npinw >= 1
@@ -1166,8 +1160,8 @@ for ENcounter = whichones
             [h,KLu,L2u,m,s,g1] = deal(NaN(nbins,4),NaN,NaN,NaN,NaN,NaN);
         end
         Hrnd = {h,KLu,L2u,m,s,g1};
-        [amp, stats.normD_mode] = max(hact);
-        stats.normD_overMean = amp/mean(h(:,1));
+        [amp, stats.normD_mode] = max(hact,[],1,'omitnan');
+        stats.normD_overMean = amp/mean(h(:,1),'omitnan');
         stats.normD_mode = h(stats.normD_mode,2);
         
         if plotfig(60)

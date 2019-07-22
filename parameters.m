@@ -36,12 +36,9 @@ if ~isempty(poolobj)
 end
 copyfile('parameters.m',[ENfilename0,'_p.m']);
 parfor i = 1:length(range)
-    if ~cortical_shape
-    %     test_dw = 15;
-    %     test_dh = 20;
-        test_dw = 5;
-        test_dh = 7;
-    end
+    % for non_cortical_shape edge boundaries
+    test_dw = 5;
+    test_dh = 7;
     % Objective function weights
 
     alpha = 1;			% Fitness term weight
@@ -116,3 +113,4 @@ plot(range,OR_B_angMode,'>-');
 legend({'ODOR_I','ODOR_B','OD_B','OR_B'});
 figname = [ENfilename0,'-stats'];
 saveas(h, figname, format);
+eval(['save ', ENfilename0 '-stats.mat stats']); 
