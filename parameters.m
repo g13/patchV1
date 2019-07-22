@@ -11,7 +11,7 @@ else
     scurr = rng('shuffle')
     seed = scurr.Seed;
 end
-format = 'fig';
+format = 'png';
 
 % Processing of intermediate (historical) parameters:
 ENproc = 'var';		% One of 'var', 'save', 'varplot', 'saveplot'
@@ -112,5 +112,8 @@ plot(range,OD_B_angMode,'^-');
 plot(range,OR_B_angMode,'>-');
 legend({'ODOR_I','ODOR_B','OD_B','OR_B'});
 figname = [ENfilename0,'-stats'];
-saveas(h, figname, format);
+
+set(gcf,'PaperPositionMode','auto')
+print(h, figname, format);
+
 eval(['save ', ENfilename0 '-stats.mat stats']); 
