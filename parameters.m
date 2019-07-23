@@ -11,22 +11,25 @@ else
     scurr = rng('shuffle')
     seed = scurr.Seed;
 end
-format = 'png';
+format = '-dpng';
 
 % Processing of intermediate (historical) parameters:
 ENproc = 'var';		% One of 'var', 'save', 'varplot', 'saveplot'
 ENfilename0 = ['rec_93'];   % Simulation name ***
+mkdir(ENfilename0);
 non_cortical_lr = false;
 % non_cortical_lr = true;
 % cortical_shape = true;
 cortical_shape = false;
 uniform_LR = true;
 % uniform_LR = false;
-plots = false;
+plots = true;
 new = false;
 range = [2,4,6,8,10];
+%range = [2];
 var = 'nvf';
 i = 1;
+copyfile('parameters.m',[ENfilename0,'/',ENfilename0,'_p.m']);
 poolobj = gcp('nocreate'); % If no pool, do not create new one.
 if ~isempty(poolobj)
     if ~ (poolobj.NumWorkers == length(range))
@@ -34,15 +37,15 @@ if ~isempty(poolobj)
         parpool(length(range));
     end
 end
-copyfile('parameters.m',[ENfilename0,'_p.m']);
 parfor i = 1:length(range)
+%for i = 1:length(range)
     % for non_cortical_shape edge boundaries
     test_dw = 5;
     test_dh = 7;
     % Objective function weights
 
     alpha = 1;			% Fitness term weight
-    beta = 100;  		% Tension term weight
+    beta = 100;
     % Training parameters
     iters = 10;%21;			% No. of annealing iterations (saved)
     max_it = 10;%12;			% No. of annealing iterations (not saved) ***
@@ -78,7 +81,7 @@ parfor i = 1:length(range)
     a = 0.635; b = 96.7; k = sqrt(140)*0.873145;
     fign = 106;
     ENfilename = [ENfilename0,'-',var,'-',num2str(range(i))];
-    stats(i) = myV1driver(seed,ENproc,ENfilename,non_cortical_lr,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new);
+    stats(i) = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_lr,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new);
 end
 nnpinw = [stats.npinw];
 nnpinw = nnpinw./mean(nnpinw);
@@ -99,6 +102,7 @@ hold on
 plot(range,nnpinw,'or');
 plot(range,normD_overMean,'-k');
 plot(range,normD_mode,':k');
+plot(range,zeros(size(range))+0.5,':g');
 plot(range,OD_OR_I_ang_overMean,'s-');
 plot(range,OD_OR_B_ang_overMean,'*-');
 plot(range,OD_B_ang_overMean,'^-');
@@ -111,9 +115,10 @@ plot(range,OD_OR_B_angMode,'*-');
 plot(range,OD_B_angMode,'^-');
 plot(range,OR_B_angMode,'>-');
 legend({'ODOR_I','ODOR_B','OD_B','OR_B'});
-figname = [ENfilename0,'-stats'];
+figname = [ENfilename0,'/',ENfilename0,'-stats'];
 
 set(gcf,'PaperPositionMode','auto')
-print(h, figname, format);
+print(gcf, figname, format, '-r150');
+saveas(gcf,[figname,'.fig']);
 
-eval(['save ', ENfilename0 '-stats.mat stats']); 
+eval(['save ', ENfilename0 '/' ENfilename0 '-stats.mat stats']); 
