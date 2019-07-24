@@ -466,7 +466,7 @@ if any(plotfig(100:102))
     for ENcounter = 2:length(ENlist)
         its(ENcounter) = its(ENcounter-1) + size(ENlist(ENcounter).stats.K,1);
         Ks = [Ks;ENlist(ENcounter).stats.K];
-        Es = [Es;[ENlist(ENcounter).stats.E, ENlist(ENcounter).stats.tension_vec]];		% Objective function
+        Es = [Es;ENlist(ENcounter).stats.E];		% Objective function
         Tens = [Tens;ENlist(ENcounter).stats.tension_vec];
         times = [times;ENlist(ENcounter).stats.time];	% Computation time
     end
@@ -505,9 +505,9 @@ if any(plotfig(100:102))
                 num2str(Ks(XT),3),'HorizontalAlignment','center','FontSize',6);
             text(mean(Varsax(i,1:2)),Varsax(i,4)+0.065*diff(Varsax(i,3:4)),'K');
             if Figs(i) == 100
-                legend('Total','Fitness term','Tension term','Tens VFx','Tens VFy','Tens OD','Location','best'); % -- updated by Wei May 31 2019
+                legend('Total','Fitness term','Tension term with beta','Location','best'); % -- updated by Wei May 31 2019
             else
-                legend('Total','Fitness term','Tension term','Location','best');
+                legend('Total','Fitness term','Tension term with beta','Location','best');
             end
             %legend('Total','Fitness term','Tension term',0);
         end
@@ -516,6 +516,7 @@ if any(plotfig(100:102))
         figure(102);
         plot(Tens);
         legend('Tens VFx', 'Tens VFy', 'Tens OD', 'Tens ORx', 'Tens ORy', 'Location','best');
+		title('Tension terms without beta');
     end
 end
 

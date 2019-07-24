@@ -5,30 +5,24 @@ gen = 'twister';
 clear seed
 seed = 1425269650;
 %seed = 1422230161;
-if exist('seed','var')
-    rng(seed,gen);
-else
-    scurr = rng('shuffle')
-    seed = scurr.Seed;
-end
 format = '-dpng';
 
+plots = true;
+new = true;
+ENproc = 'var';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
-ENproc = 'var';		% One of 'var', 'save', 'varplot', 'saveplot'
-ENfilename0 = ['rec_93'];   % Simulation name ***
-mkdir(ENfilename0);
+ENfilename0 = ['rec_94'];   % Simulation name ***
+range = [2,4,6,8,10]/10;
+%range = [2];
+var = 'nG';
 non_cortical_lr = false;
 % non_cortical_lr = true;
 % cortical_shape = true;
 cortical_shape = false;
 uniform_LR = true;
 % uniform_LR = false;
-plots = true;
-new = false;
-range = [2,4,6,8,10];
-%range = [2];
-var = 'nvf';
-i = 1;
+
+mkdir(ENfilename0);
 copyfile('parameters.m',[ENfilename0,'/',ENfilename0,'_p.m']);
 poolobj = gcp('nocreate'); % If no pool, do not create new one.
 if ~isempty(poolobj)
@@ -37,6 +31,12 @@ if ~isempty(poolobj)
         parpool(length(range));
     end
 end
+if exist('seed','var')
+    rng(seed,gen);
+else
+    scurr = rng('shuffle')
+    seed = scurr.Seed;
+end
 parfor i = 1:length(range)
 %for i = 1:length(range)
     % for non_cortical_shape edge boundaries
@@ -44,8 +44,8 @@ parfor i = 1:length(range)
     test_dh = 7;
     % Objective function weights
 
-    alpha = 1;			% Fitness term weight
-    beta = 100;
+    alpha = 1;		% Fitness term weight
+	beta = 20;		%*range(i)/range(end);
     % Training parameters
     iters = 10;%21;			% No. of annealing iterations (saved)
     max_it = 10;%12;			% No. of annealing iterations (not saved) ***
@@ -53,8 +53,9 @@ parfor i = 1:length(range)
     Kend = 0.02;        % Final K ***    
     % - VFx: Nx points in [0,1], with interpoint separation dx.
     Nx = 8;			% Number of points along VFx ***
-    nvf = range(i);
-%     nvf = 4;
+	%nvf = 4;
+    %nvf = range(i);
+    nvf = 6;
     rx = [0 0.16]*nvf;			% Range of VFx
     dx = diff(rx)/(Nx-1);		% Separation between points along VFx
     % - VFy: ditto for Ny, dy.
@@ -69,12 +70,12 @@ parfor i = 1:length(range)
     dOD = diff(rOD)/(NOD-1);	% Separation between points along OD
     %  coded as NOR Cartesian-coordinate pairs (ORx,ORy). -- later by pol2cart
     %  r = 6*l/pi
-    r = 1.0*l;			% OR modulus -- the radius of pinwheel
+    r = range(i)*l;			% OR modulus -- the radius of pinwheel
     NOR = 8;	 %8;		% Number of points along OR    
     % for myCortex patch
     ODnoise = l*0.0;
     ODabsol = 1.0;
-    nG = 2;
+    nG = 4;
     G = [64 104]*nG;		% Number of centroids *** 
     ecc = 2;
     nod = 25;

@@ -28,6 +28,8 @@
 % domain of (VFx,VFy,OD,ORt).
 function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_lr,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new)
     datafileabsolpath = [pwd,'/',ENfilename0,'/',ENfilename,'.mat'];
+	stream = RandStream('mt19937ar','Seed',seed);
+
     if ~exist(datafileabsolpath,'file') || new
         ENtraining = 'canonical';
         
@@ -59,12 +61,12 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_lr,cor
             linspace(ry(1),ry(2),Ny),...	% VFy
             linspace(rOD(1),rOD(2),NOD),...	% OD
             tmp1,...				% ORtheta
-            linspace(rORr(1),rORr(2),1));%,... % ORr
+            linspace(rORr(1),rORr(2),1),stream);%,... % ORr
         
         %T = ENtrset('grid',zeros(1,3),...
         %    linspace(rx(1),rx(2),Nx),...	% VFx
         %    linspace(ry(1),ry(2),Ny),...	% VFy
-        %    linspace(rOD(1),rOD(2),NOD));
+        %    linspace(rOD(1),rOD(2),NOD),stream);
         
         %linspace(rSF(1),rSF(2),NSF),... % SF
         [N,D] = size(T);
@@ -86,7 +88,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_lr,cor
         
         % The training set is slightly noisy to avoid symmetry artifacts.
         
-        %     T = T + (rand(size(T))-1)/10000;		% Tiny noise
+        %     T = T + (rand(stream,size(T))-1)/10000;		% Tiny noise
         
         % Training parameters
         max_cyc = 1;		% Number of cycles per annealing iteration
@@ -112,7 +114,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_lr,cor
         disp(['estimated lambda OD =', num2str(8*l/(1/G(1)+1/G(2)))]); %
         disp(['estimated lambda OR =', num2str(2*pi*r/(1/G(1)+1/G(2)))]); %
         if cortical_shape
-            [Pi, W, LR] = myCortex(G,ecc,a,b,k,resol, nod, rOD*ODabsol, ODnoise, ~non_cortical_lr && ~uniform_LR, ~uniform_LR * fign);
+            [Pi, W, LR] = myCortex(stream,G,ecc,a,b,k,resol, nod, rOD*ODabsol, ODnoise, ~non_cortical_lr && ~uniform_LR, ~uniform_LR * fign);
         else
             Pi = zeros(G);
             Pi(1+test_dw*nG:G(1)-nG*test_dw, 1+test_dh*nG:G(2)-nG*test_dh) = 1;
@@ -129,7 +131,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_lr,cor
                     LR(is:ie, :) = -1;
                 end
             end
-            LR = LR*l*ODabsol + ODnoise*randn(G(1),G(2));
+            LR = LR*l*ODabsol + ODnoise*randn(stream,G(1),G(2));
             LR(LR < -l) = -l;
             LR(LR > l) = l;
         end
@@ -152,10 +154,10 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_lr,cor
         
         mu = ENtrset('grid',zeros(1,2),...		% Small noise
             linspace(rx(1),rx(2),G(1)),...	% VFx
-            linspace(ry(1),ry(2),G(2)));	% VFy
+            linspace(ry(1),ry(2),G(2)),stream);	% VFy
         %    mu = reshape(gridVF, M, 2);
         if uniform_LR
-            mu = [mu, ENtrset('uniform',rOD,M)];
+            mu = [mu, ENtrset('uniform',rOD,M,stream)];
         else
             mu = [mu reshape(LR,M,1)];		% OD
         end
@@ -163,15 +165,14 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_lr,cor
         % mu = [mu ENtrset('uniform',...
         %     [-pi/2,pi/2;...		% ORtheta
         %     0,r],...        %ORr
-        %     M)];
+        %     M,stream)];
         
         % mu = ENtrset('grid',zeros(1,2),...		% Small noise
         %    linspace(rx(1),rx(2),G(1)),...	% VFx
-        %    linspace(ry(1),ry(2),G(2)));	% VFy
-        % mu = [mu ENtrset('uniform',[-l l;...		% OD
+        %    linspace(ry(1),ry(2),G(2)),stream);	% VFy
         mu = [mu ENtrset('uniform',[-pi/2 pi/2;...		% ORtheta
            0 r],... % ORr
-           M)];
+           M,stream)];
         %         -lSF lSF],...   % -- SF
         %         M)];
         if isfield(id, 'ORx')    
@@ -248,14 +249,14 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_lr,cor
                 case 'noisy'
                     % Noise level to add to T as a fraction of the smallest variable range
                     Tr_noise = 0.5;
-                    Tr = T + (rand(size(T))-0.5)*Tr_noise*min(diff([rx;ry;rOD;rORr]'));
+                    Tr = T + (rand(stream,size(T))-0.5)*Tr_noise*min(diff([rx;ry;rOD;rORr]'));
                 case 'uniform1'
-                    Tr = ENtrset('uniform',[rx;ry;rOD;rORt;rORr],N);
+                    Tr = ENtrset('uniform',[rx;ry;rOD;rORt;rORr],N,stream);
                     [tmp1,tmp2] = pol2cart(2*Tr(:,4),Tr(:,5));
                     Tr(:,4:5) = [tmp1 tmp2];			% ORx, ORy
                 case 'uniform2'
-                    Tr = [ENtrset('uniform',[rx;ry;-l -l;rORt;r r],floor(N/2));...
-                        ENtrset('uniform',[rx;ry;l l;rORt;r r],N-floor(N/2))];
+                    Tr = [ENtrset('uniform',[rx;ry;-l -l;rORt;r r],floor(N/2),stream);...
+                        ENtrset('uniform',[rx;ry;l l;rORt;r r],N-floor(N/2),stream)];
                     [tmp1,tmp2] = pol2cart(2*Tr(:,4),Tr(:,5));
                     Tr(:,4:5) = [tmp1 tmp2];			% ORx, ORy
                 otherwise
@@ -265,7 +266,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_lr,cor
             % Update parameters:
         %     disp(['K#',num2str(ENcounter),' = ', num2str(Ksched(ENcounter))]);
             [mu,stats] = ENtr_ann(Tr,S,Pi,mu,Ksched(ENcounter),alpha,betanorm,...
-                annrate,max_it,max_cyc,min_K,tol,method);
+                annrate,max_it,max_cyc,min_K,tol,method,0,stream);
             if isfield(id, 'OR')
                 [tmp1,tmp2] = cart2pol(mu(:,id.ORx),mu(:,id.ORy));
                 tmp1 = tmp1 / 2;
@@ -342,5 +343,5 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_lr,cor
     else
         figlist = [];
     end
-    stats = myV1stats(G,bc,ENlist,v,'last',T,Pi,murange,id,[],[ENfilename0,'/',ENfilename,'.png'],figlist,true);
+    stats = myV1stats(stream,G,bc,ENlist,v,'last',T,Pi,murange,id,[],[ENfilename0,'/',ENfilename,'.png'],figlist,true);
 end

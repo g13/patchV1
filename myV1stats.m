@@ -1,4 +1,4 @@
-% stats = ENV1stats2(G,bc,ENlist,v[,whichones,T,Pi,murange,tens,opt,figlist])
+% stats = ENV1stats2(stream,G,bc,ENlist,v[,whichones,T,Pi,murange,tens,opt,figlist])
 % Quantitative measurements of a collection of 2D generalised elastic nets
 % for cortical map modelling.
 %
@@ -234,7 +234,7 @@
 % Copyright (c) 2002 by Miguel A. Carreira-Perpinan
 
 function stats = ...
-    myV1stats(G,bc,ENlist,v,whichones,T,Pi,murange,id,tens,opt,figlist,statsOnly)
+    myV1stats(stream,G,bc,ENlist,v,whichones,T,Pi,murange,id,tens,opt,figlist,statsOnly)
 if nargin < 13
     statsOnly = false;
 end
@@ -306,7 +306,7 @@ end
 
 if ~exist('figlist','var')
     if isempty(figlist) && ~statsOnly
-        figlist = [1:4 7 100:101 120:124 130:133 140:142 150:160 170:171 176 180:189];
+        figlist = [1:4 7 100:102 120:124 130:133 140:142 150:160 170:171 176 180:189];
     else
         figlist = [];
     end
@@ -475,9 +475,13 @@ for ENcounter = whichones
     myV1replay(G,bc,ENlist,v,ENcounter,T(:,1:5),Pi,murange,id,tens,[],figlist);
 
     if ~isempty(ENdir)
-        Figs = [1:12, 100:102];		% Energy and cpu time get printed at end only
+        Figs = [1:12]; % Energy and cpu time get printed at end only
         for i=find(plotfig(Figs))
             print(i,'-loose','-r150',['-d' EXT],sprintf('%s-fig%03d.%s',frame,i,EXT));
+        end
+ 		Figs = [100:102];		
+        for i=find(plotfig(Figs))
+            print(i+99,'-loose','-r150',['-d' EXT],sprintf('%s-fig%03d.%s',frame,i+99,EXT));
         end
     end
     if plotfig(100)
@@ -967,7 +971,7 @@ for ENcounter = whichones
             for i=1:Ntrials
                 ipinw = 1;
                 while ipinw <= npinw
-                    tmp = (rand(npinw,2)*diag(G-1))+1;
+                    tmp = (rand(stream,npinw,2)*diag(G-1))+1;
                     pick = find(Pi(sub2ind(G,round(tmp(:,1)),round(tmp(:,2)))) > 0);
                     npick = length(pick);
                     if npick > 0
@@ -1239,7 +1243,7 @@ for ENcounter = whichones
             disth = zeros(nbins,Ntrials+1);	% Histogram for each trial
             % Random pinwheels, independent of sign:
             for i=1:Ntrials
-                tmp = ENsqdist(rand(npinw,2)*diag(G)+repmat(1/2,npinw,2));
+                tmp = ENsqdist(rand(stream,npinw,2)*diag(G)+repmat(1/2,npinw,2));
                 ltmp = size(tmp,1); tmp(sub2ind(size(tmp),1:ltmp,1:ltmp)) = NaN;
                 dist(:,i) = sqrt(min(tmp,[],2));
             end

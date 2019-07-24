@@ -1,4 +1,4 @@
-function [Pi, W, LR] = myCortex(G, ecc, a, b, k, resol, nod, rOD, noise, getLR, plot_patch)
+function [Pi, W, LR] = myCortex(stream, G, ecc, a, b, k, resol, nod, rOD, noise, getLR, plot_patch)
     if nargin < 11
         plot_patch = 0;
         if nargin < 10
@@ -9,8 +9,8 @@ function [Pi, W, LR] = myCortex(G, ecc, a, b, k, resol, nod, rOD, noise, getLR, 
     ny = G(2);
     Pi = ones(nx,ny);
     if getLR
-        LR_noise = noise * randn(nx,ny);
-        LR = rOD(1) + (rOD(2)-rOD(1))*rand(nx,ny);
+        LR_noise = noise * randn(stream,nx,ny);
+        LR = rOD(1) + (rOD(2)-rOD(1))*rand(stream,nx,ny);
         %     LR = zeros(nx,ny);
     else
         LR = zeros(nx,ny);
@@ -76,7 +76,7 @@ function [Pi, W, LR] = myCortex(G, ecc, a, b, k, resol, nod, rOD, noise, getLR, 
         plot(x0,by,'k');
     end
     if getLR
-        i0 = randi([1,2]);
+        i0 = randi(stream,[1,2]);
         lr = rOD(i0);
         current_x0 = 1;
         np = ny*resol;
@@ -90,7 +90,7 @@ function [Pi, W, LR] = myCortex(G, ecc, a, b, k, resol, nod, rOD, noise, getLR, 
         for ie = 2:nband
             tw = tw0*1;
             pp = 0.5;
-            %rate = rate0*(pp + (1+pp-pp)*rand*(nband-ie)/nband);
+            %rate = rate0*(pp + (1+pp-pp)*rand(stream)*(nband-ie)/nband);
             if ie <= icrit
                 %       bp = bot_polar;
                 %       tp = top_polar;
@@ -184,7 +184,7 @@ function [Pi, W, LR] = myCortex(G, ecc, a, b, k, resol, nod, rOD, noise, getLR, 
                     plot(top_lx, top_ly);
                 end
             end
-            if rand > 0.5
+            if rand(stream) > 0.5
                 LR = assignLR(Pi, x, y, bot_lx, bot_ly, bot_rx, bot_ry, current_x0, nx, ny, LR, lr, LR_noise, -1, plot_patch, tw, rate, len_bot, na);
                 [LR, current_x0] = assignLR(Pi, x, y, top_lx, top_ly, top_rx, top_ry, current_x0, nx, ny, LR, lr, LR_noise, 1, plot_patch, tw, rate, len_top, na);
             else
@@ -226,19 +226,19 @@ function [LR, current_x0] = assignLR(Pi, x, y, lx, ly, rx, ry, current_x0, nx, n
     end
     min_dis = 3*tw;
     turn = zeros(round(len(end)/min_dis),2)-1;
-    rr = randn;
+    rr = randn(stream);
     if rr < 0.3
         rr = 0.3;
     end
     rate = (1 + rr)*rate;
-    pos = log(rand)/rate;
-    %pos = -rand/rate;
+    pos = log(rand(stream))/rate;
+    %pos = -rand(stream)/rate;
     %pos = 0;
     midp = zeros(size(turn,1),1);
     change = zeros(length(len),2);
     il = 0;
     while pos < len(end)
-        pos = pos - log(rand)/rate;
+        pos = pos - log(rand(stream))/rate;
 %        pos = pos + 1/rate;
         if pos >= len(end)
             break;
@@ -246,7 +246,7 @@ function [LR, current_x0] = assignLR(Pi, x, y, lx, ly, rx, ry, current_x0, nx, n
         if pos + tw > len(1)
             il = il+1;
             turn(il,1) = pos;
-            turn(il,2) = randi(na);
+            turn(il,2) = randi(stream,na);
             if il>1
                 backstab = turn(il,2) == 2 && ht > 0 || turn(il,2) == 3 && ht < 0;
                 forward = turn(il-1,2) == 3 && ht > 0 || turn(il-1,2) == 2 && ht < 0;
