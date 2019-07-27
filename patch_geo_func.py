@@ -218,7 +218,7 @@ def get_pos_3d(x,y,area,n,skip=602):
 def cut_blocks(pos,iblock,nblock,total_block,block_area,e0,e1,model_block,get_x,get_y,ax=None,skip=602,s1=0.76,s2=0.1821,blockSize=1024,block_tol=1e-10,max_it=10,bp=32):
     p = np.linspace(-np.pi/2,np.pi/2,nblock+1)
     e_range = np.exp(np.linspace(np.log(e0+1),np.log(e1+1),bp))-1
-    cut_p = np.zeros(nblock)
+    cut_p = np.zeros(nblock) + p[0]
     for i in range(nblock):
         it = 0
         if i < nblock-1:
@@ -271,10 +271,8 @@ def cut_blocks(pos,iblock,nblock,total_block,block_area,e0,e1,model_block,get_x,
     #return pos
 
 def plot_patch(a,b,k,ecc,block_area,total_target,ax=None,skip=602,s1=0.76,s2=0.1821,ret_fig=False,blockSize=32):
-    #e = np.linspace(0,np.pi/2,100)
     e = np.exp(np.linspace(np.log(1),np.log(ecc+1),100))-1
     p = np.linspace(-np.pi/2,np.pi/2,100)
-    #w = lambda ecc, polar: k*np.log(ecc*np.exp(1j*polar)+a)
     get_x = lambda e, p:  x_ep(e,p,k,a,b,s1,s2)
     get_y = lambda e, p:  y_ep(e,p,k,a,b,s1,s2)
     xlim = x_ep(e[-1],0,k,a,b,s1,s2)

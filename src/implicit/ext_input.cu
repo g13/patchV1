@@ -291,46 +291,46 @@ int main(int argc, char **argv) {
     // set test param for LGN subregion RF kernel 
     /*
         Group the same cone-specific types together for warp performance
+		Check ./patchV1/LGN_kernel.ipynb
     */
     for (unsigned int i=0; i<nLGN; i++) {
-		hLGN.center.k[i] = 100.0 * (i % 4 < 2 ? 1 : -1); // on - off center
+		// subject to function of eccentricity
 		hLGN.center.x[i] = 0.5f/width + (i%nLGN_x) * (1.0f-1.0f/width)/(nLGN_x-1);
 		hLGN.center.y[i] = 0.5f/height + (i/nLGN_y) * (1.0f-1.0f/height)/(nLGN_y-1);
-        hLGN.center.rx[i] = 0.015;
+        hLGN.center.rx[i] = 0.015;		
 		hLGN.center.ry[i] = 0.015;
-        hLGN.center.tauR[i] = 5.5;
-        hLGN.center.tauD[i] = 14;
-        hLGN.center.nR[i] = 6;
-        hLGN.center.nD[i] = 7;
-		assert(hLGN.center.nR[i] < hLGN.center.nD[i]);
-        hLGN.center.ratio[i] = 2;
 
-        hLGN.surround.k[i] = -copy(50.0, hLGN.center.k[i]);
+		// subject to some distribution
+		hLGN.center.k[i] = 16.5 * (i % 4 < 2 ? 1 : -1); // on - off center
+        hLGN.center.tauR[i] = 5.2/1.55;
+        hLGN.center.tauD[i] = 17/1.55;
+        hLGN.center.nR[i] = 10;
+        hLGN.center.nD[i] = 6;
+		hLGN.center.delay[i] = 3.5+2.95 
+        hLGN.center.ratio[i] = 25.9/16.5;
+
+		// subject to function of eccentricity
 		hLGN.surround.x[i] = hLGN.center.x[i];
 		hLGN.surround.y[i] = hLGN.center.y[i];
-        hLGN.surround.rx[i] = 0.03;
+        hLGN.surround.rx[i] = 0.03;  	// function of eccentricity
 		hLGN.surround.ry[i] = 0.03;
+
+		// subject to some distribution
+        hLGN.surround.k[i] = -copy(6.4, hLGN.center.k[i]);
         hLGN.surround.tauR[i] = 8;
         hLGN.surround.tauD[i] = 14;
-        hLGN.surround.nR[i] = 6;
-        hLGN.surround.nD[i] = 7;
-		assert(hLGN.surround.nR[i] < hLGN.surround.nD[i]);
-		hLGN.surround.ratio[i] = 2;
+        hLGN.surround.nR[i] = 13;
+        hLGN.surround.nD[i] = 6
+		hLGN.surround.delay[i] = 3.5+1.21+15
+		hLGN.surround.ratio[i] = 17.6/6.4;
 
-        hLGN.covariant[i] = 0.53753461391295254; //between L and M
+        hLGN.covariant[i] = 0.53753461391295254; //between L and M, significantly overlap in cone response curve
         hLGN.centerType[i] = i%2;
         hLGN.surroundType[i] = (i+1)%2;
 
         hLGN.logistic.spont[i] = 0.0;
         hLGN.logistic.c50[i] = 0.5;
         hLGN.logistic.sharpness[i] = 1.0;
-        /* print (x,y)
-        printf("(%f,%f)", hLGN.center.x[i],hLGN.center.y[i]);
-        if ((i+1)%nLGN_x != 0) {
-            printf(", ");
-        } else {
-            printf("\n");
-        }*/
     }
 
     LGN_parameter dLGN(nLGN, hLGN);
