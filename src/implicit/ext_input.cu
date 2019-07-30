@@ -306,7 +306,7 @@ int main(int argc, char **argv) {
         hLGN.center.tauD[i] = 17/1.55;
         hLGN.center.nR[i] = 10;
         hLGN.center.nD[i] = 6;
-		hLGN.center.delay[i] = 3.5+2.95 
+		hLGN.center.delay[i] = 3.5+2.95;
         hLGN.center.ratio[i] = 25.9/16.5;
 
 		// subject to function of eccentricity
@@ -320,8 +320,8 @@ int main(int argc, char **argv) {
         hLGN.surround.tauR[i] = 8;
         hLGN.surround.tauD[i] = 14;
         hLGN.surround.nR[i] = 13;
-        hLGN.surround.nD[i] = 6
-		hLGN.surround.delay[i] = 3.5+1.21+15
+        hLGN.surround.nD[i] = 6;
+		hLGN.surround.delay[i] = 3.5+1.21+15;
 		hLGN.surround.ratio[i] = 17.6/6.4;
 
         hLGN.covariant[i] = 0.53753461391295254; //between L and M, significantly overlap in cone response curve

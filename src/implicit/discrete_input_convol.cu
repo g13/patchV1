@@ -18,6 +18,7 @@ __inline__ __device__ _float spatialProduct(_float x, _float y, _float contrast,
 }
 
 __inline__ __device__ _float temporalKernel(_float tau, LGN_subregion subr) {
+	// address delay
     _float fac1 = 1.0f;
     for (unsigned int i=1; i<subr.nR; i++) fac1*=i;
     _float fac2 = fac1;

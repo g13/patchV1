@@ -177,7 +177,7 @@ struct static_nonlinear {
 	}
     __device__
     _float transform(unsigned int id, _float input) {
-		// redundant calculatoin move to allocAndMemcpy
+		// *** redundant calculatoin move to allocAndMemcpy
         _float local_k = sharpness[id];
         _float local_c50 = c50[id];
         _float local_spont = spont[id];
