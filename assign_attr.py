@@ -352,6 +352,8 @@ class macroMap:
         nL = np.sum(pL)
         model_block = lambda p, e: model_block_ep(e,p,self.k,self.a,self.b)
         area = integrate.dblquad(model_block,0,self.ecc,self.p_range[0],self.p_range[-1])[0]
+        areaL = area * nL/(nR+nL)
+        areaR = area * nR/(nR+nL)
         subgrid = np.array([self.x[1] - self.x[0], self.y[1] - self.y[0]])
 
         # right OD boundary 
@@ -364,12 +366,15 @@ class macroMap:
         LR[self.LR == 1] = 0
         OD_boundL, btypeL = self.define_bound(LR)
 
-        cl_L = np.sqrt(area/nL)
+        cl_L = np.sqrt(areaL/nL)
         kL = 1
-        self.pos[:,pL] = simulate_repel(area, subgrid, self.pos[:,pL], dt, OD_boundL, btypeL, ax = ax1, seed = seed)
-        cl_R = np.sqrt(area/nR)
+        _, sposL = simulate_repel(area, subgrid, self.pos[:,pL].copy(), dt, OD_boundL, btypeL, ax = ax1, seed = seed)
+        #self.pos[:,pL], sposL = simulate_repel(area, subgrid, self.pos[:,pL], dt, OD_boundL, btypeL, ax = ax1, seed = seed)
+        cl_R = np.sqrt(areaR/nR)
         kR = 1
-        self.pos[:,pR] = simulate_repel(area, subgrid, self.pos[:,pR], dt, OD_boundR, btypeR, ax = ax2, seed = seed)
+        _, sposR = simulate_repel(area, subgrid, self.pos[:,pR].copy(), dt, OD_boundR, btypeR, ax = ax2, seed = seed)
+        #self.pos[:,pR], sposR = simulate_repel(area, subgrid, self.pos[:,pR], dt, OD_boundR, btypeR, ax = ax2, seed = seed)
+        return sposR, sposL
 
     def spread_vpos(self, m=0.5, rext=2, ax1 = None, ax2 = None):
         #self.pos as starting position 
