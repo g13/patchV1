@@ -106,6 +106,7 @@ class macroMap:
         y0 = self.y[:-1]
         y1 = self.y[1:]
 
+        self.outSideRaggedBound = np.empty(self.networkSize, dtype = bool)
         self.ODlabel = np.zeros((self.networkSize))
         i = np.nonzero(np.logical_and(np.tile(self.pos[1,:],(self.ny-1,1))-y0.reshape(self.ny-1,1) > 0, np.tile(self.pos[1,:],(self.ny-1,1))-y1.reshape(self.ny-1,1) < 0).T)[1]
         j = np.nonzero(np.logical_and(np.tile(self.pos[0,:],(self.nx-1,1))-x0.reshape(self.nx-1,1) > 0, np.tile(self.pos[0,:],(self.nx-1,1))-x1.reshape(self.nx-1,1) < 0).T)[1]
@@ -128,6 +129,14 @@ class macroMap:
         d2 = np.zeros((self.networkSize,4))
         for ic in range(4):
             d2[:,ic] = get_d(ic)
+        # pick neurons that is outside the discrete ragged boundary
+        jpick = np.argmin(d2,1)
+        self.outSideRaggedBound[np.logical_and(self.Pi[i,    j] <= 0, jpick == 0])] = True
+        self.outSideRaggedBound[np.logical_and(self.Pi[i+1,  j] <= 0, jpick == 1])] = True
+        self.outSideRaggedBound[np.logical_and(self.Pi[i,  j+1] <= 0, jpick == 2])] = True
+        self.outSideRaggedBound[np.logical_and(self.Pi[i+1,j+1] <= 0, jpick == 3])] = True
+
+        self.outSideRaggedBound[Pi[i,j]<=0] = True
         d2[self.Pi[i,j]<=0,    0] = np.float('inf')
         d2[self.Pi[i+1,j]<=0,  1] = np.float('inf')
         d2[self.Pi[i,j+1]<=0,  2] = np.float('inf')
@@ -138,6 +147,15 @@ class macroMap:
         self.ODlabel[ipick == 1] = self.LR[i+1,  j][ipick == 1]
         self.ODlabel[ipick == 2] = self.LR[i,  j+1][ipick == 2]
         self.ODlabel[ipick == 3] = self.LR[i+1,j+1][ipick == 3]
+        
+        # retain neurons inside the discrete ragged boundary
+        x = np.mod(ipick[self.outSideRaggedBound],2)
+        y = ipick[self.outSideRaggedBound]//2
+        bx = self.xx[i[self.outSideRaggedBound] + x , j[self.outSideRaggedBound] + y]
+        by = self.yy[i[self.outSideRaggedBound] + x , j[self.outSideRaggedBound] + y]
+        self.pos[0,self.outSideRaggedBound] = self.pos[0,self.outSideRaggedBound] + (self.pos[0,self.outSideRaggedBound] - bx)/2
+        self.pos[1,self.outSideRaggedBound] = self.pos[1,self.outSideRaggedBound] + (self.pos[1,self.outSideRaggedBound] - by)/2
+        
         self.pODready = True
         return self.ODlabel
     # boundary define by 4 corners
@@ -366,10 +384,17 @@ class macroMap:
         LR[self.LR == 1] = 0
         OD_boundL, btypeL = self.define_bound(LR)
 
+        if ax1 is not None:
+            ax1.plot(self.xx[self.LR < 0], self.yy[self.LR < 0], ',r')
+            ax1.plot(self.xx[self.LR > 0], self.yy[self.LR > 0], ',b')
+
         cl_L = np.sqrt(areaL/nL)
         kL = 1
         _, sposL = simulate_repel(area, subgrid, self.pos[:,pL].copy(), dt, OD_boundL, btypeL, ax = ax1, seed = seed)
         #self.pos[:,pL], sposL = simulate_repel(area, subgrid, self.pos[:,pL], dt, OD_boundL, btypeL, ax = ax1, seed = seed)
+        if ax2 is not None:
+            ax2.plot(self.xx[self.LR > 0], self.yy[self.LR > 0], ',r')
+            ax2.plot(self.xx[self.LR < 0], self.yy[self.LR < 0], ',b')
         cl_R = np.sqrt(areaR/nR)
         kR = 1
         _, sposR = simulate_repel(area, subgrid, self.pos[:,pR].copy(), dt, OD_boundR, btypeR, ax = ax2, seed = seed)

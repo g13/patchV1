@@ -327,6 +327,7 @@ def simulate_repel(area, subgrid, pos, dt, boundary, btype, particle_param = Non
     # sample points to follow:
     if ax is not None:
         ax.plot(boundary[:,0,:].squeeze(), boundary[:,1,:].squeeze(), ',g')
+        ax.plot(pos[0,:], pos[1,:], ',k')
     if ax is not None and ns == 0:
         print('no sample points selected')
     if ax is not None and ns > 0: 
@@ -345,7 +346,7 @@ def simulate_repel(area, subgrid, pos, dt, boundary, btype, particle_param = Non
             spos[i+1,:,:] =  pos[:,spick]
     if ax is not None and ns > 0:
         ax.plot(spos[:,0,:].squeeze(), spos[:,1,:].squeeze(),'-b', lw=0.1)
-        ax.plot(spos[0,0,:].squeeze(), spos[0,1,:].squeeze(),',k')
+        ax.plot(spos[0,0,:].squeeze(), spos[0,1,:].squeeze(),',y')
         ax.plot(spos[1,0,:].squeeze(), spos[1,1,:].squeeze(),',r')
 
     return pos, spos
