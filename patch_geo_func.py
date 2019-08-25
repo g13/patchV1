@@ -9,6 +9,7 @@ import os
 os.environ['NUMBAPRO_CUDALIB']='C:/Users/gueux/Miniconda3/envs/py36_7/Library/bin'
 np.seterr(all='raise')
 special.seterr(all='raise')
+sobol_set = True
 
 # f-function related
 def fp(e,p,ab,s1=0.76,s2=0.1821):
@@ -195,7 +196,13 @@ def get_pos_3d(x,y,area,n,skip=602):
     while count < max_trial:
         #irands = np.empty((2,ntmp), dtype='uint32')
         #print(f'generating {count}: ({i}+{ntmp})/{n}')
-        rands = ss.i4_sobol_generate(3, ntmp, skip=skip) 
+        # sobol sequence
+        if sobol_set:
+            rands = ss.i4_sobol_generate(3, ntmp, skip=skip) 
+            # add noise to avoid complete overlap
+            rands = rands * (1 + np.random.normal(0, 0.05, (ntmp,3)))
+        else:
+            rands = np.random.rand(ntmp, 3) # transformed compared with sobol
 
         px = xmin + (xmax-xmin) * rands[:,0]
         py = ymin + (ymax-ymin) * rands[:,1]
@@ -214,7 +221,8 @@ def get_pos_3d(x,y,area,n,skip=602):
         #print(f'{count}: {ntmp}/{n}')
         if i < n:
             ntmp = max(np.ceil((n-i)*ratio).astype(int),10)
-            skip = skip + ntmp
+            if sobol_set:
+                skip = skip + ntmp
         else:
             assert(i==n)
             break
@@ -279,6 +287,8 @@ def cut_blocks(pos,iblock,nblock,total_block,block_area,e0,e1,model_block,get_x,
 
 def plot_patch(a,b,k,ecc,softedge,total_target,ax=None,skip=602,s1=0.76,s2=0.1821,ret_fig=False,blockSize=32):
 
+    model_block = lambda p, e: model_block_ep(e,p,k,a,b,s1,s2)
+    np.random.seed(skip)
     get_x = lambda e, p:  x_ep(e,p,k,a,b,s1,s2)
     get_y = lambda e, p:  y_ep(e,p,k,a,b,s1,s2)
 
@@ -295,14 +305,17 @@ def plot_patch(a,b,k,ecc,softedge,total_target,ax=None,skip=602,s1=0.76,s2=0.182
         fig = plt.figure('patch', figsize = (8, 8*fig_ratio), dpi=300)
         ax = fig.add_subplot(111)
         ax.set_aspect('equal')
-    rx = [x_ep(ecc,x,k,a,b,s1,s2) for x in p]
-    ry = [y_ep(ecc,x,k,a,b,s1,s2) for x in p]
+    rx = [get_x(ecc,x) for x in p]
+    ry = [get_y(ecc,x) for x in p]
     ax.plot(tx, ty, 'k', lw = 0.5)
     ax.plot(bx, by, 'k', lw = 0.5)
-    ax.plot(rx, ry, 'k', lw = 0.5) 
+    ax.plot(rx, ry, 'k', lw = 0.5)
     ## leave space for visual field expansion from compressed OD column stripes
     # characteristic inter-neuron distance
     adjusted_ecc = e_x(xlim-softedge,k,a,b)
+    rx0 = [get_x(adjusted_ecc,x) for x in p]
+    ry0 = [get_y(adjusted_ecc,x) for x in p]
+    ax.plot(rx0, ry0, ':k', lw =0.5)
     r = integrate.dblquad(model_block,0,adjusted_ecc,-np.pi/2,np.pi/2)
     total_area = r[0]
     block_area = total_area/total_target
