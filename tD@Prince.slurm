@@ -1,11 +1,9 @@
 #!/bin/bash
-#SBATCH -p serial 
-#SBATCH -n 1
-#SBATCH --mem-per-cpu=4GB
+#SBATCH --job-name=formMap
 #SBATCH --nodes=1
-#SBATCH --time=0:20:00
+#SBATCH --mem-per-cpu=12GB
+#SBATCH --time=4:00:00
 #SBATCH --cpus-per-task=5
-#SBATCH -J formMap
 #SBATCH -o log/fM_%J.out
 #SBATCH --mail-user=wd554@nyu.edu
 #SBATCH --mail-type=END

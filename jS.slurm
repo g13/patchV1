@@ -27,5 +27,5 @@ date
 conda activate general
 # <<< conda initialize <<<
 
-python jScriptR.py
+python jScript.py
 date

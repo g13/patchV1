@@ -344,7 +344,7 @@ class macroMap:
         self.pos[:,pR], convergenceR, nlimitedR = simulate_repel(areaR, self.subgrid, self.pos[:,pR], dt, self.OD_boundR, self.btypeR, boundary_param, particle_param, ax = ax2, seed = seed, ns = 0)
         return oldpos, convergenceL, convergenceR, nlimitedL, nlimitedR
 
-    def spread_pos_VF(self, dt, vpfile, lrfile, lrpick, seed = None, firstTime = True, particle_param = None, particle_param = None, boundary_param = None, ax = None):
+    def spread_pos_VF(self, dt, vpfile, lrfile, lrpick, seed = None, firstTime = True, particle_param = None, boundary_param = None, ax = None):
         ngrid = np.sum(self.Pi).astype(int)
         if LRlabel == 'L':
             LRpick = self.ODlabel < 0
