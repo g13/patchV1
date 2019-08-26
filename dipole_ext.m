@@ -3,7 +3,7 @@ function w = dipole_ext(ecc, polar, a, b, k)
 end
 function anisotropy = f(ecc, polar, ab)
     s1 = 0.76;
-    s2 = 0.18;
+    s2 = 0.1821;
     anisotropy = cosh(polar).^(-2*s2./((ecc/ab).^s1 + (ecc/ab).^(-s1)));
     anisotropy(isnan(anisotropy)) = 0;
 end
