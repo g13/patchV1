@@ -55,6 +55,9 @@ class macroMap:
         self.pODready = False
         self.pVFready = False
         self.LR_boundary_defined = False 
+        self.vposLready = False
+        self.vposRready = False
+        # not used
         self.OD_VF_reconciled = False 
             
     # memory requirement high, faster 
@@ -232,8 +235,9 @@ class macroMap:
         bp[(nhpick+nvpick):,:,:] = bpGrid[btype2pick,:,:]
         return bp, btype
     #awaits vectorization
-    def assign_pos_VF(self, pos):
-        self.vpos = np.empty((2,self.networkSize))
+    def assign_pos_VF(self):
+        if not hasattr(self, 'vpos') and self.vposLready and self.vposRready:
+            raise Exception('vpos is not ready')
         d0 = np.zeros(self.npolar-1)
         d1 = np.zeros(self.npolar-1)
         ix0 = np.zeros(self.npolar-1,dtype='int')
@@ -340,10 +344,54 @@ class macroMap:
         self.pos[:,pR], convergenceR, nlimitedR = simulate_repel(areaR, self.subgrid, self.pos[:,pR], dt, self.OD_boundR, self.btypeR, boundary_param, particle_param, ax = ax2, seed = seed, ns = 0)
         return oldpos, convergenceL, convergenceR, nlimitedL, nlimitedR
 
-    def spread_vpos(self, dt, pos, LR, seed = None, particle_param = None, boundary_param = None, ax = None):
+    def spread_pos_VF(self, dt, vpfile, lrfile, lrpick, seed = None, firstTime = True, particle_param = None, particle_param = None, boundary_param = None, ax = None):
+        ngrid = np.sum(self.Pi).astype(int)
+        if LRlabel == 'L':
+            LRpick = self.ODlabel < 0
+        else:
+            assert(LRlabel == 'R')
+            LRpick = self.ODlabel > 0
+
+        if firstTime is True:
+            if LRlabel == 'L':
+                LR = self.LR.copy()
+                LR[LR > 0] = 0
+                LR[LR < 0] = 1
+            else:
+                LR = self.LR.copy()
+                LR[LR < 0] = 0
+                LR[LR > 0] = 1
+        else:
+            self.vpos = self.empty(self.pos.shape)
+            with open(vpfile,'rb') as f:
+                self.vpos[:,LRpick] = np.fromfile(f).reshape(2, np.sum(LRpick))
+            with open(lrfile,'rb') as f:
+                LR = np.fromfile(f).reshape(self.Pi.shape)
+
+        if np.sum(LR) < ngrid:
+            spreaded = False
+            while spreaded is False:
+                self.vpos[:, LRpick], LR, spreaded = self.spread(dt, self.vpos[:, LRpick], LR, seed, particle_param, boundary_param, ax)
+                print(f'{np.sum(L).astype(int)}/{ngrid}')
+                with open(vpfile,'wb') as f:
+                    self.vpos[:, LRpick].tofile(f)
+                with open(lrfile,'wb') as f:
+                    LR.tofile(f)
+
+        self.vpos[:, LRpick], _, _ = self.spread(dt, self.vpos[:, LRpick], LR, seed, particle_param, boundary_param, ax)
+        with open(vpfile,'wb') as f:
+            self.vpos[:, LRpick].tofile(f)
+        with open(lrfile,'wb') as f:
+            LR.tofile(f)
+
+        if LRlabel == 'L':
+            self.vposLready = True
+        else:
+            self.vposRready = True
+
+    def spread(self, dt, pos, LR, seed = None, particle_param = None, boundary_param = None, ax = None):
         spreaded = False
         n = pos.shape[1]
-        #while spreaded is False:
         LR, spreaded = self.diffuse_bound(LR)
 
         subarea = self.subgrid[0] * self.subgrid[1]
@@ -355,42 +403,6 @@ class macroMap:
 
         return pos, LR, spreaded
 
-    def spread_pos(self, dt, nlayer = 10, layer_seq = None, seed = None, particle_param = None, boundary_param = None, pos = None, initial_v = None, ax1 = None, ax2 = None, ret_vel = False, useOldLayer = True):
-        # crossing usage of OD_boundL and OD_boundR as soft boundaries
-        if self.LR_boundary_defined is False:
-            self.define_bound_LR()
-
-        pL = self.ODlabel < 0
-        pR = self.ODlabel > 0
-        boundary, btype = self.define_bound(self.Pi)
-        area = self.subgrid[0] * self.subgrid[1] * np.sum(self.Pi == 1)
-        if useOldLayer:
-            if self.layer is not None:
-                layer = self.layer
-                print('old layer is used, nlayer is overriddenn')
-                nlayer = self.layer.shape[0]
-            else:
-                raise Exception('no old layer information')
-        else:
-            layer = None
-
-        if pos is None:
-            # to be fed to assign_pos_VF to be transformed to vpos
-            pos = self.pos.copy()
-        if ret_vel is False:
-            pos[:,pL], convergenceL, nlimitedL, self.layer = simulate_repel(area, self.subgrid, pos[:,pL], dt, boundary, btype, boundary_param, particle_param, initial_v, nlayer, layer, layer_seq, self.OD_boundR, self.btypeR, ax1, seed, 0, ret_vel)
-            #pos[:,pR], convergenceR, nlimitedR = simulate_repel(area, self.subgrid, pos[:,pR], dt, boundary, btype, boundary_param, particle_param, initial_v, nlayer, self.OD_boundL, self.btypeL, ax2, seed, np.sum(pR), False)
-            convergenceR = convergenceL
-            nlimitedR = nlimitedL
-            return pos, convergenceL, convergenceR, nlimitedL, nlimitedR
-        else:
-            vel = np.zeros((2,self.networkSize))
-            pos[:,pL], convergenceL, nlimitedL, self.layer, vel[:,pL] = simulate_repel(area, self.subgrid, pos[:,pL], dt, boundary, btype, boundary_param, particle_param, initial_v, nlayer, layer, layer_seq, self.OD_boundR, self.btypeR, ax1, seed, 0, ret_vel)
-            #pos[:,pR], convergenceR, nlimitedR, vel[:,pR] = simulate_repel(area, self.subgrid, pos[:,pR], dt, boundary, btype, boundary_param, particle_param, initial_v, nlayer, self.OD_boundL, self.btypeL, ax2, seed, np.sum(pR), True)
-            convergenceR = convergenceL
-            nlimitedR = nlimitedL
-            return pos, convergenceL, convergenceR, nlimitedL, nlimitedR, vel
-        
     def plot_map(self,ax1,ax2,pltOD=True,pltVF=True,ngridLine=4):
         if pltOD == True:
             if self.pODready == False:
@@ -420,15 +432,20 @@ class macroMap:
                     if ie % (self.necc//ngridLine)== 0:
                         plt.polar(self.p_range, self.e_range[ie]+np.zeros(self.npolar),':',c='0.5', lw = 0.1)
 
-    def save_pos(self, pos_file):
-        pos = np.empty((self.nblock, 3, self.blockSize))
-        pos[:,0,:] = self.pos[0,:].reshape(self.nblock,self.blockSize)
-        pos[:,1,:] = self.pos[1,:].reshape(self.nblock,self.blockSize)
-        pos[:,2,:] = self.zpos
-        with open(pos_file,'wb') as f:
-            pos.tofile(f)
-        with open(pos_file,'ab') as f:
-            self.ODlabel.tofile(f)
+    def save(self, pos_file = None, OD_file = None, VF_file = None):
+        if pos_file is not None:
+            with open(pos_file,'wb') as f:
+                pos = np.empty((self.nblock, 3, self.blockSize))
+                pos[:,0,:] = self.pos[0,:].reshape(self.nblock,self.blockSize)
+                pos[:,1,:] = self.pos[1,:].reshape(self.nblock,self.blockSize)
+                pos[:,2,:] = self.zpos
+                pos.tofile(f)
+        if OD_file is not None:
+            with open(OD_file,'ab') as f:
+                self.ODlabel.tofile(f)
+        if VF_file is not None:
+            with open(VF_file,'ab') as f:
+                self.vpos.tofile(f)
 
     ######## rarely-used functions ##############
     # memory requirement low, slower
@@ -483,9 +500,7 @@ class macroMap:
         self.pODready = True
         return self.ODlabel
 
-    ######## FAILED functions ##############
-    #was for assign_pos_VF0 but actually is wrong, the visual field position flipped inside the OD stripes
-    def reconcile_OD_VF(self, seed=None):
+    def flip_pos_along_OD(self, seed=None):
         if self.OD_VF_reconciled == False:
             if self.pVFready == False:
                 self.assign_pos_VF()

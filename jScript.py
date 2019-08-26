@@ -52,29 +52,29 @@ ax2.set_ylim(mMap.y[0]-dy/2, mMap.y[-1]+dy/2)
 ax2.set_aspect('equal') 
 with open('vposL.bin','rb') as f:
     vposL = np.fromfile(f).reshape(2, np.sum(mMap.ODlabel<0))
-#while spreaded is False:
 ax1.plot(np.vstack((vposL[0,:], mMap.pos[0,mMap.ODlabel<0])), np.vstack((vposL[1,:], mMap.pos[1,mMap.ODlabel<0])), '-b', lw = 0.01)
 ax1.plot(vposL[0,:], vposL[1,:], ',k')
 ax1.plot(mMap.pos[0,mMap.ODlabel<0], mMap.pos[1,mMap.ODlabel<0], ',m')
 ax2.plot(vposL[0,:], vposL[1,:], ',k')
 fig.savefig('spread_VF_L.png', dpi = 1000)
 
-#fig = plt.figure('vposR', dpi = 1000)
-#dx = mMap.x[1] - mMap.x[0]
-#dy = mMap.y[1] - mMap.y[0]
-#ax1 = fig.add_subplot(121)
-#ax1.set_xlim(mMap.x[0]-dx/2, mMap.x[-1]+dx/2)
-#ax1.set_ylim(mMap.y[0]-dy/2, mMap.y[-1]+dy/2)
-#ax1.set_aspect('equal') 
-#ax2 = fig.add_subplot(122)
-#ax2.set_xlim(mMap.x[0]-dx/2, mMap.x[-1]+dx/2)
-#ax2.set_ylim(mMap.y[0]-dy/2, mMap.y[-1]+dy/2)
-#ax2.set_aspect('equal') 
-#with open('vposR.bin','rb') as f:
-#    vposR = np.fromfile(f).reshape(2, np.sum(mMap.ODlabel>0))
-##while spreaded is False:
-#ax1.plot(np.vstack((vposR[0,:], mMap.pos[0,mMap.ODlabel>0])), np.vstack((vposR[1,:], mMap.pos[1,mMap.ODlabel>0])), '-b', lw = 0.01)
-#ax1.plot(vposR[0,:], vposR[1,:], ',k')
-#ax1.plot(mMap.pos[0,mMap.ODlabel>0], mMap.pos[1,mMap.ODlabel>0], ',m')
-#ax2.plot(vposR[0,:], vposR[1,:], ',k')
-#fig.savefig('spread_VF_R.png', dpi = 1000)
+fig = plt.figure('vposR', dpi = 1000)
+dx = mMap.x[1] - mMap.x[0]
+dy = mMap.y[1] - mMap.y[0]
+ax1 = fig.add_subplot(121)
+ax1.set_xlim(mMap.x[0]-dx/2, mMap.x[-1]+dx/2)
+ax1.set_ylim(mMap.y[0]-dy/2, mMap.y[-1]+dy/2)
+ax1.set_aspect('equal') 
+ax2 = fig.add_subplot(122)
+ax2.set_xlim(mMap.x[0]-dx/2, mMap.x[-1]+dx/2)
+ax2.set_ylim(mMap.y[0]-dy/2, mMap.y[-1]+dy/2)
+ax2.set_aspect('equal') 
+with open('vposR.bin','rb') as f:
+    vposR = np.fromfile(f).reshape(2, np.sum(mMap.ODlabel>0))
+ax1.plot(np.vstack((vposR[0,:], mMap.pos[0,mMap.ODlabel>0])), np.vstack((vposR[1,:], mMap.pos[1,mMap.ODlabel>0])), '-b', lw = 0.01)
+ax1.plot(vposR[0,:], vposR[1,:], ',k')
+ax1.plot(mMap.pos[0,mMap.ODlabel>0], mMap.pos[1,mMap.ODlabel>0], ',m')
+ax2.plot(vposR[0,:], vposR[1,:], ',k')
+fig.savefig('spread_VF_R.png', dpi = 1000)
+
+mMap.save(VF_file = 'vpos.bin')

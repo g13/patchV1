@@ -92,11 +92,11 @@ else:
         L = np.fromfile(f).reshape(mMap.Pi.shape)
         print(np.sum(L>0))
 spreaded = False
-#while spreaded is False:
-vposL, L, spreaded = mMap.spread_vpos(dt, vposL, L, seed = 17482321, ax = ax1)
-print(np.sum(L>0))
-with open('vposL.bin','wb') as f:
-    vposL.tofile(f)
-with open('L.bin','wb') as f:
-    L.tofile(f)
+while spreaded is False:
+    vposL, L, spreaded = mMap.spread_vpos(dt, vposL, L, seed = 17482321, ax = ax1)
+    print(np.sum(L>0))
+    with open('vposL.bin','wb') as f:
+        vposL.tofile(f)
+    with open('L.bin','wb') as f:
+        L.tofile(f)
 fig.savefig('spread_VF_L.png', dpi = 1000)

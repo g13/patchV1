@@ -81,8 +81,8 @@ spreaded = False
 while spreaded is False:
     vposR, R, spreaded = mMap.spread_vpos(dt, vposR, R, seed = 17482321, ax = ax1)
     print(np.sum(R>0))
-with open('vposR.bin','wb') as f:
-    vposR.tofile(f)
-with open('R.bin','wb') as f:
-    R.tofile(f)
+    with open('vposR.bin','wb') as f:
+        vposR.tofile(f)
+    with open('R.bin','wb') as f:
+        R.tofile(f)
 fig.savefig('spread_VF_R.png', dpi = 1000)
