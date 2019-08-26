@@ -40,26 +40,30 @@ struct hcone_specific {
     _float* __restrict__ k; // its sign determine On-Off
     _float* __restrict__ tauR;
     _float* __restrict__ tauD;
-    _float* __restrict__ nD;
-    _float* __restrict__ nR;
     _float* __restrict__ ratio; // 2 for parvo 1 for magno
+    _float* __restrict__ delay;
+    unsigned int* __restrict__ nD;
+    unsigned int* __restrict__ nR;
     //_float* __restrict__ delay;
     //_float* __restrict__ facRatio; mem-calc balance
     void alloc(unsigned int nLGN) {
-        mem_block = new _float[10*nLGN];
-        x = mem_block;
+        mem_block_f = new _float[9*nLGN];
+        mem_block_i = new unsigned int[2*nLGN];
+        x = mem_block_f;
         rx = x + nLGN;
         y = rx + nLGN;
         ry = y + nLGN;
         k = ry + nLGN;
         tauR = k + nLGN;
         tauD = tauR + nLGN;
-        nD = tauD + nLGN;
+        ratio = tauD + nLGN;
+		delay = ratio + nLGN;
+        nD = mem_block_i;
         nR = nD + nLGN;
-        ratio = nR + nLGN;
     }
 	void freeMem() {
-		delete []mem_block;
+		delete []mem_block_f;
+		delete []mem_block_i;
 	}
 };
 
@@ -105,7 +109,6 @@ struct hLGN_parameter {
         surround.alloc(nLGN);
         logistic.alloc(nLGN);
 
-
         mem_block = new unsigned int[2*nLGN];
         centerType = mem_block;
         surroundType = centerType + nLGN;
@@ -120,67 +123,6 @@ struct hLGN_parameter {
 	}
 };
 
-
-/*struct LGN_stats {
-    // min, mean, max
-    // array of 19 * 3 = 57 
-    const int n = 19;
-    _float stats[n*3];
-    // idist/stats:     0,    1,    2
-    //  0: uniform:     lmin, rmax
-    //  1: gauss:       mode, lstd, rstd
-    //  2: log-normal:  mean, std,  cutoff
-    //  3: triangle:    a,    b,    c
-    unsigned int idist[n];
-    //spatial parameters
-    _float* __restrict__ kc, // center
-    _float* __restrict__ rc;
-    _float* __restrict__ ks; // surround
-    _float* __restrict__ rs;
-    //temporal parameters
-    _float* __restrict__ cHs; // center
-    _float* __restrict__ ctauS;
-    _float* __restrict__ cNL;
-    _float* __restrict__ ctauL;
-    _float* __restrict__ cD;
-    _float* __restrict__ cA;
-    _float* __restrict__ sHs; // surround 
-    _float* __restrict__ stauS;
-    _float* __restrict__ sNL;
-    _float* __restrict__ stauL;
-    _float* __restrict__ sD;
-    _float* __restrict__ sA;
-    //static nonlineariry parameters
-    _float* __restrict__ spont;
-    _float* __restrict__ c50;
-    _float* __restrict__ sharpness;
-    LGN_stats () {
-
-        kc = stats;
-        rc = kc + 3;
-        ks = rc + 3;
-        rs = ks + 3;
-
-        cHs = rs + 3;
-        ctauS = cHs + 3;
-        cNL = ctauS + 3;
-        ctauL = cNL + 3;
-        cD = ctauL + 3;
-        cA = cD + 3;
-
-        sHs = cA + 3;
-        stauS = sHs + 3;
-        sNL = stauS + 3;
-        stauL = sNL + 3;
-        sD = stauL + 3;
-        sA = sD + 3;
-
-        spont = sA + 3;
-        c50 = spont + 3;
-        sharpness = c50 + 3;
-    }
-}*/
-
 struct cone_specific {
     _float* mem_block;
     _float* __restrict__ x; // normalize to (0,1)
@@ -190,13 +132,14 @@ struct cone_specific {
     _float* __restrict__ k; // its sign determine On-Off
     _float* __restrict__ tauR;
     _float* __restrict__ tauD;
-    _float* __restrict__ nD;
-    _float* __restrict__ nR;
+    _float* __restrict__ delay;
     _float* __restrict__ ratio; // 2 for parvo 1 for magno
-    //_float* __restrict__ delay;
-    //_float* __restrict__ facRatio; mem-calc balance
+    unsigned int* __restrict__ nD;
+    unsigned int* __restrict__ nR;
+
     void allocAndMemcpy(unsigned int nLGN, hcone_specific &host) {
-        checkCudaErrors(cudaMalloc((void**)&mem_block, 10*nLGN*sizeof(_float)));
+		size_t memSize = 9*nLGN*sizeof(_float) + 2*nLGN*sizeof(unsigned int);
+        checkCudaErrors(cudaMalloc((void**)&mem_block, memSize));
         x = mem_block;
         rx = x + nLGN;
         y = rx + nLGN;
@@ -204,10 +147,11 @@ struct cone_specific {
         k = ry + nLGN;
         tauR = k + nLGN;
         tauD = tauR + nLGN;
-        nD = tauD + nLGN;
+		delay = tauR + nLGN;
+        ratio = delay + nLGN;
+        nD = (unsigned int*) (ratio + nLGN);
         nR = nD + nLGN;
-        ratio = nR + nLGN;
-        checkCudaErrors(cudaMemcpy(mem_block, host.mem_block, nLGN*10*sizeof(_float), cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(mem_block, host.mem_block, memSize, cudaMemcpyHostToDevice));
     }
 	void freeMem() {
 		cudaFree(mem_block);
@@ -233,6 +177,7 @@ struct static_nonlinear {
 	}
     __device__
     _float transform(unsigned int id, _float input) {
+		// *** redundant calculatoin move to allocAndMemcpy
         _float local_k = sharpness[id];
         _float local_c50 = c50[id];
         _float local_spont = spont[id];
@@ -296,9 +241,10 @@ struct LGN_subregion {
     _float k;
     _float tauR;
     _float tauD;
-    _float nD;
-    _float nR;
+	_float delay;
     _float ratio;
+    unsigned int nD;
+    unsigned int nR;
 	
 	__device__ LGN_subregion(cone_specific p, unsigned int id) {
         x = p.x[id];
@@ -308,9 +254,10 @@ struct LGN_subregion {
         k = p.k[id];
         tauR = p.tauR[id];
         tauD = p.tauD[id];
+        delay = p.delay[id];
+        ratio = p.ratio[id];
         nD = p.nD[id];
         nR = p.nR[id];
-        ratio = p.ratio[id];
     }
 };
 
