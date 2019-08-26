@@ -516,7 +516,7 @@ if any(plotfig(100:102))
         figure(102);
         plot(Tens);
         legend('Tens VFx', 'Tens VFy', 'Tens OD', 'Tens ORx', 'Tens ORy', 'Location','best');
-		title('Tension terms without beta');
+		title('Tension terms with beta');
     end
 end
 

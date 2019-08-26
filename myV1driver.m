@@ -26,13 +26,13 @@
 % scaffolding for the underlying continuous set of training vectors.
 % 'noisy' and 'uniform*' approximate online training over the continuous
 % domain of (VFx,VFy,OD,ORt).
-function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_lr,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new)
+function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_lr,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR)
     datafileabsolpath = [pwd,'/',ENfilename0,'/',ENfilename,'.mat'];
 	stream = RandStream('mt19937ar','Seed',seed);
 
     if ~exist(datafileabsolpath,'file') || new
         ENtraining = 'canonical';
-        
+
         if exist('ENsetupdone') ~= 1, ENsetupdone = 'no'; end;
         % ----------------------------- USER VALUES -----------------------------
         % Processing of intermediate (historical) parameters:
@@ -120,7 +120,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_lr,cor
             Pi(1+test_dw*nG:G(1)-nG*test_dw, 1+test_dh*nG:G(2)-nG*test_dh) = 1;
             %Pi = [];			% Don't disable any centroid
             W = G(1)-nG*test_dw;			% Net width along 1st var. (arbitrary units)
-        end
+		end
         if non_cortical_lr || ~cortical_shape
             LR = ones(G(1),G(2));
             OD_width = 20; % in pixels
@@ -135,6 +135,11 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_lr,cor
             LR(LR < -l) = -l;
             LR(LR > l) = l;
         end
+		if saveLR
+			fID = fopen([ENfilename0,'/',ENfilename,'-LR_Pi.bin'],'w')
+			fwrite(fID, Pi, 'int');
+			fclose(fID);
+		end
         %     pause;
         %gridVF = zeros(G(1), G(2),2);
         %for iy =1:G(2)
@@ -148,7 +153,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_lr,cor
         normcte = ENstennorm(G,W,p,s{:});	% Normalisation constant
         % $$$   % Use normcte = 1; when disregarding the step size and resolution:
         % $$$   normcte = 1;
-        
+
         % Initial elastic net: retinotopic with some noise and random, uniform
         % OD and OR.
         
@@ -325,7 +330,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_lr,cor
             otherwise
                 % Do nothing.
         end
-        
+
         % Plot some statistics for the objective function value and computation time
         switch ENproc
             case {'varplot','saveplot'}
@@ -344,4 +349,9 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_lr,cor
         figlist = [];
     end
     stats = myV1stats(stream,G,bc,ENlist,v,'last',T,Pi,murange,id,[],[ENfilename0,'/',ENfilename,'.png'],figlist,true);
+	if saveLR
+		fID = fopen([ENfilename0,'/',ENfilename,'-LR_Pi.bin'],'a')
+		fwrite(fID, ENlist(end).mu(:,id.OD), 'double');
+		fclose(fID);
+	end
 end
