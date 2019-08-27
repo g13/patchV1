@@ -185,11 +185,11 @@ function [Pi, W, LR] = myCortex(stream, G, ecc, a, b, k, resol, nod, rOD, noise,
                 end
             end
             if rand(stream) > 0.5
-                LR = assignLR(Pi, x, y, bot_lx, bot_ly, bot_rx, bot_ry, current_x0, nx, ny, LR, lr, LR_noise, -1, plot_patch, tw, rate, len_bot, na);
-                [LR, current_x0] = assignLR(Pi, x, y, top_lx, top_ly, top_rx, top_ry, current_x0, nx, ny, LR, lr, LR_noise, 1, plot_patch, tw, rate, len_top, na);
+                LR = assignLR(Pi, x, y, bot_lx, bot_ly, bot_rx, bot_ry, current_x0, nx, ny, LR, lr, LR_noise, -1, plot_patch, tw, rate, len_bot, na, stream);
+                [LR, current_x0] = assignLR(Pi, x, y, top_lx, top_ly, top_rx, top_ry, current_x0, nx, ny, LR, lr, LR_noise, 1, plot_patch, tw, rate, len_top, na, stream);
             else
-                LR = assignLR(Pi, x, y, top_lx, top_ly, top_rx, top_ry, current_x0, nx, ny, LR, lr, LR_noise, 1, plot_patch, tw, rate, len_top, na);
-                [LR, current_x0] = assignLR(Pi, x, y, bot_lx, bot_ly, bot_rx, bot_ry, current_x0, nx, ny, LR, lr, LR_noise, -1, plot_patch, tw, rate, len_bot, na);
+                LR = assignLR(Pi, x, y, top_lx, top_ly, top_rx, top_ry, current_x0, nx, ny, LR, lr, LR_noise, 1, plot_patch, tw, rate, len_top, na, stream);
+                [LR, current_x0] = assignLR(Pi, x, y, bot_lx, bot_ly, bot_rx, bot_ry, current_x0, nx, ny, LR, lr, LR_noise, -1, plot_patch, tw, rate, len_bot, na, stream);
             end
             lr = rOD(mod(i0+ie-2,2)+1);
             bot_lx = bot_rx;
@@ -216,7 +216,7 @@ function anisotropy = f(ecc, polar, ab)
     anisotropy(isnan(anisotropy)) = 0;
 end
 
-function [LR, current_x0] = assignLR(Pi, x, y, lx, ly, rx, ry, current_x0, nx, ny, LR, lr, LR_noise, ht, plot_patch, tw, rate, len, na)
+function [LR, current_x0] = assignLR(Pi, x, y, lx, ly, rx, ry, current_x0, nx, ny, LR, lr, LR_noise, ht, plot_patch, tw, rate, len, na, stream)
     band_started = false;
     lr = ht*lr;
     if ht > 0

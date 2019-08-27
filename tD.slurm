@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -p serial 
 #SBATCH -n 1
-#SBATCH --mem-per-cpu=4GB
+#SBATCH --mem-per-cpu=10GB
 #SBATCH --nodes=1
-#SBATCH --time=2:00:00
+#SBATCH --time=6:00:00
 #SBATCH --cpus-per-task=5
 #SBATCH -J formMap
 #SBATCH -o log/fM_%J.out
