@@ -234,7 +234,7 @@
 % Copyright (c) 2002 by Miguel A. Carreira-Perpinan
 
 function stats = ...
-    myV1stats(stream,G,bc,ENlist,v,whichones,T,Pi,murange,id,tens,opt,figlist,statsOnly)
+    myV1stats(stream,G,bc,ENlist,v,whichones,T,Pi,murange,id,tens,opt,figlist,statsOnly,right_open)
 if nargin < 13
     statsOnly = false;
 end
@@ -301,8 +301,11 @@ else
     tmp = findstr('.',opt);
     if ~isempty(tmp)		% Print figures
         ENdir = opt(1:tmp(end)-1); EXT = lower(opt(tmp(end)+1:end));
+	    [tmp,tmp] = mkdir(ENdir);
     end
 end
+
+
 
 if ~exist('figlist','var')
     if isempty(figlist) && ~statsOnly
@@ -328,9 +331,9 @@ if strcmp(bc,'periodic')
     I_ind = (1:M)';
     B_ind = [];
 else
-    test_boundary = false;
+    test_boundary = true;
     B_width = 5;
-    [B_ind, I_ind, I1_ind, B1_ind, B1_ang] = set_bc(reshape(logical(Pi),G(1),G(2)), B_width, test_boundary);
+    [B_ind, I_ind, I1_ind, B1_ind, B1_ang] = set_bc(reshape(logical(Pi),G(1),G(2)), B_width, right_open, test_boundary, ENdir);
     
     %     [tmp1,tmp2] = ndgrid(B_width+1:G(1)-B_width,B_width+1:G(2)-B_width);
     %     I_ind = sub2ind(G,tmp1(:),tmp2(:));
@@ -400,10 +403,6 @@ GRplotv = struct('type','img',...			% Plot type
 Figl = floor(min(scw,sch)/4);				% Largest dimension
 % --------------------------------------------------------------------------
 
-if ~isempty(ENdir)
-    [tmp,tmp] = mkdir(ENdir);
-end
-
 % "firstone" is used to set to create and the figure position only the
 % first time in the ENcounter loop.
 firstone = logical(1);
@@ -437,7 +436,8 @@ for ENcounter = whichones
     % ------------------------------------------------------------------------
     % Compute gradients
     % [gx,gy,gt,gr] = ENgrad(G,mu,v(id.OR,:));
-    [gx,gy,gt,gr] = myGrad(G,mu,B1_ind,I1_ind,logical(Pi),v(id.OR,:));
+	test_grad = true;
+    [gx,gy,gt,gr] = myGrad(G,mu,B1_ind,I1_ind,logical(Pi),v(id.OR,:),test_grad,ENdir);
     % Augment gr with the visual field gradient gVF, obtained simply as the
     % sum of the gradient moduli of VFx and VFy:
     gr = [gr sum(gr(:,[id.VFx id.VFy]),2)];
@@ -473,6 +473,10 @@ for ENcounter = whichones
     
     % --- Figures 1-12,100-101: plot current net
     myV1replay(G,bc,ENlist,v,ENcounter,T(:,1:5),Pi,murange,id,tens,[],figlist);
+
+	fID = fopen([ENdir,'/','ORcolor.bin'],'w');
+	fwrite(fID, mu(:,id.OR), 'double');
+	fclose(fID);
 
     if ~isempty(ENdir)
         Figs = [1:12]; % Energy and cpu time get printed at end only

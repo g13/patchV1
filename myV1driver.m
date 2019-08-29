@@ -348,7 +348,9 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_lr,cor
     else
         figlist = [];
     end
-    stats = myV1stats(stream,G,bc,ENlist,v,'last',T,Pi,murange,id,[],[ENfilename0,'/',ENfilename,'.png'],figlist,true);
+	statsOnly = true;
+	right_open = cortical_shape;
+    stats = myV1stats(stream,G,bc,ENlist,v,'last',T,Pi,murange,id,[],[ENfilename0,'/',ENfilename,'.png'],figlist,statsOnly,right_open);
 	if saveLR
 		fID = fopen([ENfilename0,'/',ENfilename,'-LR_Pi.bin'],'a')
 		fwrite(fID, ENlist(end).mu(:,id.OD), 'double');

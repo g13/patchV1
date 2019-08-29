@@ -50,12 +50,11 @@
 
 % Copyright (c) 2002 by Miguel A. Carreira-Perpinan
 
-function [gx,gy,gt,gr] = myGrad(G,mu,B1_ind,I1_ind,Pi,whichper)
+function [gx,gy,gt,gr] = myGrad(G,mu,B1_ind,I1_ind,Pi,whichper,checkGrad,ENdir)
 
 L = length(G);                  	% Net dimensionality
 if L == 1 G = [G 1]; end        	% So that both L=1 and L=2 work
 [M,D] = size(mu);
-checkGrad = false;
 [b_r, b_c] = ind2sub(G,B1_ind);
 [i_r, i_c] = ind2sub(G,I1_ind);
 % Argument defaults
@@ -90,8 +89,9 @@ switch L
         gy = myGradcorr(gy,fdy,cdy,whichper);
         if checkGrad
             for d=1:D
-                figure(1000+d);
+                figure;
                 quiver(1:G(2),1:G(1),gx(:,:,d),gy(:,:,d))
+				print(gcf,'-loose','-r600','-dpng', [ENdir,'/gradCheck-var', num2str(d)]);
             end
         end
 end
@@ -116,11 +116,13 @@ function [gx, gy, fdx, cdx, fdy, cdy] = myGradient(v, bp, ip, Pi)
     G = size(v);
     gx = zeros(G);
     gy = gx;
+	% extend for difference calculation, unnecessary when G has extended to contain the regime before hand
     Pi_ex = reshape(Pi,G);
     Pi_ex = [zeros(G(1),1), Pi_ex, zeros(G(1),1)];
     Pi_ex = [zeros(1,G(2)+2); Pi_ex; zeros(1,G(2)+2)];
     G_ex = [G(1)+2, G(2)+2];
     % boundary points, forward difference
+	% row is y:1, column is x:2
     xr = Pi_ex(sub2ind(G_ex,1+bp(:,1),1+bp(:,2)+1));
     xl = Pi_ex(sub2ind(G_ex,1+bp(:,1),1+bp(:,2)-1));
     yu = Pi_ex(sub2ind(G_ex,1+bp(:,1)+1,1+bp(:,2)));
@@ -162,7 +164,7 @@ function [gx, gy, fdx, cdx, fdy, cdy] = myGradient(v, bp, ip, Pi)
 
     ypick = ~yu & yd;
     fd = sub2ind(G,bp(ypick,1),bp(ypick,2));
-    gy(sub2ind(G,bp(ypick,1),bp(ypick,2))) = v(sub2ind(G,bp(ypick,1),bp(ypick,2)))-v(sub2ind(G,bp(ypick,1)-1,bp(ypick,2)));
+    gy(fd) = v(sub2ind(G,bp(ypick,1),bp(ypick,2)))-v(sub2ind(G,bp(ypick,1)-1,bp(ypick,2)));
     if nargout > 2
         fdy = [fdy; fd];
     end

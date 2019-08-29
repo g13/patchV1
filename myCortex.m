@@ -42,9 +42,10 @@ function [Pi, W, LR] = myCortex(stream, G, ecc, a, b, k, resol, nod, rOD, noise,
     ty = [ty fliplr(ry((ny*resol/2+1):ny*resol))];
     
     W = dipole(ecc,0,a,b,k)-k*log(a/b);
-    d = (1+2/nx)*W/nx;
-    x = linspace(-W/nx, W+W/nx, nx);
-    W = W+2*W/nx;
+    x = linspace(-W/(2*nx-4), W+W/(2*nx-4), nx);
+	assert(x(1) + x(2) == 0);
+    W = W+W/(nx-2);
+	d = W/(nx-1); 
     H = d*ny;
     y = linspace(-H/2, H/2, ny);
     

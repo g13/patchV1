@@ -3,7 +3,7 @@
 #SBATCH -n 1
 #SBATCH --mem-per-cpu=10GB
 #SBATCH --nodes=1
-#SBATCH --time=6:00:00
+#SBATCH --time=4:00:00
 #SBATCH --cpus-per-task=5
 #SBATCH -J formMap
 #SBATCH -o log/fM_%J.out
@@ -15,6 +15,16 @@ module load all
 module load matlab/R2017a
 ulimit -s unlimited
 
+fdr="t1"
+if [ -d "$fdr"] 
+then
+	rm -rf $fdr/*
+else
+	mkdir $fdr	
+fi
+cp *.m $fdr
+cd $fdr
 date
     matlab -nosplash -nodesktop -r "parameters;exit"
 date
+cd ..

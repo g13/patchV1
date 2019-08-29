@@ -12,16 +12,16 @@ plots = true;
 new = true;
 ENproc = 'var';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
-var = 'beta';
-ENfilename0 = ['cortex_nG4-',var];   % Simulation name ***
+var = 'max_it';
+ENfilename0 = ['cortex_nG2-1-',var];   % Simulation name ***
 range = [2,4,6,8,10];
 %range = [2];
-%non_cortical_lr = false;
-non_cortical_lr = true;
+non_cortical_lr = false;
+% non_cortical_lr = true;
 % cortical_shape = false;
 cortical_shape = true;
 uniform_LR = true;
-%uniform_LR = false;
+% uniform_LR = false;
 
 mkdir(ENfilename0);
 copyfile('parameters.m',[ENfilename0,'/',ENfilename0,'_p.m']);
@@ -46,37 +46,37 @@ parfor i = 1:length(range)
     % Objective function weights
 
     alpha = 1;		% Fitness term weight
-	beta = 200*range(i)/range(end);
+	beta = 150;
     % Training parameters
-    iters = 10;%21;			% No. of annealing rates (saved)
-    max_it = 5;%12;			% No. of iterations per annealing rate (not saved) ***
+	iters = 10; %21;			% No. of annealing rates (saved)
+    max_it = round(20 *range(i)/range(end)); %12;			% No. of iterations per annealing rate (not saved) ***
     Kin = 0.15;			% Initial K ***
-    Kend = 0.02;        % Final K ***    
+    Kend = 0.03;        % Final K ***    
     % - VFx: Nx points in [0,1], with interpoint separation dx.
     Nx = 8;			% Number of points along VFx ***
-	nvf = 8;
+	nvf = 10;
     %nvf = range(i);
     rx = [0 0.16]*nvf;			% Range of VFx
     dx = diff(rx)/(Nx-1);		% Separation between points along VFx
     % - VFy: ditto for Ny, dy.
-    Ny = 12;			% Number of points along VFy ***
-    ry = [0 0.24]*nvf;			% Range of VFy
+    Ny = 13;			% Number of points along VFy ***
+    ry = [0 0.26]*nvf;			% Range of VFy
     dy = diff(ry)/(Ny-1);		% Separation between points along VFy    
     d = (dx + dy)/2;
     % - OD: NOD values in range rOD, with interpoint separation dOD.
-    l = 0.12;			% Half-separation between OD layers ***
+    l = 0.11;			% Half-separation between OD layers ***
     NOD = 2;			% Number of points along OD
     rOD = [-l l];			% Range of OD
     dOD = diff(rOD)/(NOD-1);	% Separation between points along OD
     %  coded as NOR Cartesian-coordinate pairs (ORx,ORy). -- later by pol2cart
     %  r = 6*l/pi
 	%r = (1.0+range(i)/range(end))*l;			% OR modulus -- the radius of pinwheel
-	r = 1.4*l;
+	r = 1.6*l;
     NOR = 8;	 %8;		% Number of points along OR    
     % for myCortex patch
     ODnoise = l*0.0;
     ODabsol = 1.0;
-    nG = 4;
+    nG = 2;
     G = round([64 104]*nG);		% Number of centroids *** 
     ecc = 2;
     nod = 25;

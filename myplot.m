@@ -155,7 +155,6 @@
 % Copyright (c) 2001 by Miguel A. Carreira-Perpinan
 
 function myplot(G,bc,mu,plottype,v,T,Pi,fg,ax)
-
 L = length(G);                  % Net dimensionality
 if L == 1 G = [G 1]; end        % So that both L=1 and L=2 work
 [M,D] = size(mu);

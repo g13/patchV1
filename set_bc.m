@@ -1,11 +1,40 @@
-function [B_ind, I_ind, I1_ind, B1_ind, B1_ang] = set_bc(Pi, bw, check_boundary)
+function [B_ind, I_ind, I1_ind, B1_ind, B1_ang] = set_bc(Pi, bw, right_open, check_boundary, ENdir)
+	% assuming horizontal symmetry
+	right_most = 0;
+	% the open boundary is to the right
     [nx, ny] = size(Pi);
-    blank = find(Pi==0);
     B_ind = zeros(nx*ny,1);
     B1_ind = zeros(nx*ny,1);
     i = 0;
     j = 0;
-    for ix = 1:nx
+    for iy = 1:ny
+        head = find(Pi(:,iy),bw,'first'); 
+		if ~right_open
+        	tail = find(Pi(:,iy),bw,'last');
+		end
+        if ~isempty(head)
+			if right_most < head(end)
+				right_most = head(end);
+			end
+			if ~right_open
+            	B_ind(i+1:i+length(head)+length(tail)) = (iy-1)*nx + [head; tail];
+            	i = i + length(head)+length(tail);
+            	B1_ind(j+1:j+2) = (iy-1)*nx + [head(1); tail(end)];
+            	j = j + 2;
+			else
+            	B_ind(i+1:i+length(head)) = (iy-1)*nx + head;
+            	i = i + length(head);
+            	B1_ind(j+1) = (iy-1)*nx + head(1);
+            	j = j + 1;
+			end
+        else
+			if ~right_open
+            	assert(isempty(tail));
+			end
+        end
+    end
+	assert(right_most >= 1);
+    for ix = 1:right_most
         head = find(Pi(ix,:),bw,'first');
         tail = find(Pi(ix,:),bw,'last');
         if ~isempty(head)    
@@ -17,28 +46,17 @@ function [B_ind, I_ind, I1_ind, B1_ind, B1_ang] = set_bc(Pi, bw, check_boundary)
             assert(isempty(tail));
         end
     end
-    for iy = 1:ny
-        head = find(Pi(:,iy),bw,'first'); 
-        tail = find(Pi(:,iy),bw,'last');
-        if ~isempty(head)
-            B_ind(i+1:i+length(head)+length(tail)) = (iy-1)*nx + [head; tail];
-            B1_ind(j+1:j+2) = (iy-1)*nx + [head(1); tail(end)];
-            i = i + length(head)+length(tail);
-            j = j + 2;
-        else
-            assert(isempty(tail));
-        end
-    end
     B_ind = B_ind(1:i);
     B_ind = unique(B_ind);
     B1_ind = B1_ind(1:j);
     B1_ind = unique(B1_ind);
-    Pi_tmp = Pi;    
-    Pi_tmp([blank; B_ind]) = 0;
-    I_ind = find(Pi_tmp>0);
+    Pi_tmp = ~Pi;    
+    Pi_tmp(B_ind) = 1;
+    I_ind = find(Pi_tmp==0);
     Pi_tmp = ~Pi;
     Pi_tmp(B1_ind) = 1;
     I1_ind = find(Pi_tmp==0);
+	% find boundary tangential angles
     B1_ang = zeros(size(B1_ind));
     nbp = length(B1_ind);
     Pi_tmp = zeros(size(Pi));
@@ -52,17 +70,16 @@ function [B_ind, I_ind, I1_ind, B1_ind, B1_ang] = set_bc(Pi, bw, check_boundary)
     for i = 1:nbp
         [r, c] = ind2sub(size(Pi),B1_ind(i));
         [ilist, localSize] = check(r,c,nx,ny,bw);
+		% find local boundary points in the subgrid
         local_ind = find(Pi_tmp(ilist)>0);
-        assert(length(local_ind) >= bw);
+		% generate indices for the subgrid
         [rlocal, clocal] = ind2sub(localSize,local_ind);
         % WRONG!!! row is y, colum is x
         coeff = pca([clocal-mean(clocal), rlocal-mean(rlocal)]);
+		% estimate the local slope with local boundary points
         B1_ang(i) = atan2(coeff(2,1),coeff(1,1));
-%         B1_ang(i) = atan2(max(clocal) - min(clocal), max(rlocal) - min(rlocal));
 
         if check_boundary
-            %figure;
-            %hold on
             k = tan(B1_ang(i));
             if abs(k) > 1
                 y = [r-oneside,r,r+oneside];
@@ -73,15 +90,15 @@ function [B_ind, I_ind, I1_ind, B1_ind, B1_ang] = set_bc(Pi, bw, check_boundary)
             end
             plot(x,y,'-');
             plot(c,r,'*r');
-            %plot(rlocal+r-mid,clocal+c-mid,'ob');
-            %plot(mean(rlocal+r-mid),mean(clocal+c-mid),'*b');
-            %daspect([1,1,1]);
         end
     end
     if check_boundary
         daspect([1,1,1]);
+		saveas(gcf,[ENdir,'/boundary_check.png']);
+		close(gcf);
     end
 end
+% return the indices of the boundary point's nearby subgrid (w x w) in the big grid
 function [ilist, localSize] = check(ix,iy,nx,ny,w)
     oneside = (w-1)/2;
     lx = max([1,ix-oneside]);
