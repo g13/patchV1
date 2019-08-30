@@ -1,14 +1,14 @@
-function [Pi, W, LR] = myCortex(stream, G, ecc, a, b, k, resol, nod, rOD, noise, getLR, plot_patch)
+function [Pi, W, LR] = myCortex(stream, G, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch)
     if nargin < 11
         plot_patch = 0;
         if nargin < 10
-            getLR = true;
+            manual_LR = true;
         end
     end
     nx = G(1);
     ny = G(2);
     Pi = ones(nx,ny);
-    if getLR
+    if manual_LR
         LR_noise = noise * randn(stream,nx,ny);
         LR = rOD(1) + (rOD(2)-rOD(1))*rand(stream,nx,ny);
         %     LR = zeros(nx,ny);
@@ -76,7 +76,7 @@ function [Pi, W, LR] = myCortex(stream, G, ecc, a, b, k, resol, nod, rOD, noise,
         plot(x0,ty,'k');
         plot(x0,by,'k');
     end
-    if getLR
+    if manual_LR
         i0 = randi(stream,[1,2]);
         lr = rOD(i0);
         current_x0 = 1;

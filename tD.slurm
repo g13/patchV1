@@ -16,8 +16,9 @@ module load matlab/R2017a
 ulimit -s unlimited
 
 fdr="t1"
-if [ -d "$fdr"] 
+if [ -d "$fdr" ]
 then
+	echo deleting contents in $fdr
 	rm -rf $fdr/*
 else
 	mkdir $fdr	

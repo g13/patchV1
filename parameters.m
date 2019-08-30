@@ -16,12 +16,13 @@ var = 'max_it';
 ENfilename0 = ['cortex_nG2-1-',var];   % Simulation name ***
 range = [2,4,6,8,10];
 %range = [2];
-non_cortical_lr = false;
-% non_cortical_lr = true;
-% cortical_shape = false;
-cortical_shape = true;
+non_cortical_LR = false;
+% non_cortical_LR = true;
 uniform_LR = true;
 % uniform_LR = false;
+% SET both LR to false for manual_LR
+% cortical_shape = false;
+cortical_shape = true;
 
 mkdir(ENfilename0);
 copyfile('parameters.m',[ENfilename0,'/',ENfilename0,'_p.m']);
@@ -88,7 +89,7 @@ parfor i = 1:length(range)
 	else
 		saveLR = false;
 	end
-    stats(i) = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_lr,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR);
+    stats(i) = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR);
 end
 nnpinw = [stats.npinw];
 nnpinw = nnpinw./mean(nnpinw);

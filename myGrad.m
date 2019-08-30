@@ -91,7 +91,8 @@ switch L
             for d=1:D
                 figure;
                 quiver(1:G(2),1:G(1),gx(:,:,d),gy(:,:,d))
-				print(gcf,'-loose','-r600','-dpng', [ENdir,'/gradCheck-var', num2str(d)]);
+				print(gcf,'-loose','-r900','-dpng', [ENdir,'/gradCheck-var', num2str(d)]);
+				close(gcf);
             end
         end
 end
@@ -100,7 +101,6 @@ end
 % Return as list of M reference vectors
 gx = reshape(gx,M,D); gy = reshape(gy,M,D);
 gt = reshape(gt,M,D); gr = reshape(gr,M,D);
-
 % For periodic variables, check gr is less than range/2
 for i=1:size(whichper,1)
     tmp = sum(gr(logical(Pi),whichper(i,1)) > diff(whichper(i,2:3)/2)+5*eps);

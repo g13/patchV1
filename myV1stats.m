@@ -331,9 +331,9 @@ if strcmp(bc,'periodic')
     I_ind = (1:M)';
     B_ind = [];
 else
-    test_boundary = true;
+    test_boundary = false;
     B_width = 5;
-    [B_ind, I_ind, I1_ind, B1_ind, B1_ang] = set_bc(reshape(logical(Pi),G(1),G(2)), B_width, right_open, test_boundary, ENdir);
+    [B_ind, I_ind, B1_ind, I1_ind, B2_ind, I2_ind, B1_ang] = set_bc(reshape(logical(Pi),G(1),G(2)), B_width, right_open, test_boundary, ENdir);
     
     %     [tmp1,tmp2] = ndgrid(B_width+1:G(1)-B_width,B_width+1:G(2)-B_width);
     %     I_ind = sub2ind(G,tmp1(:),tmp2(:));
@@ -341,12 +341,21 @@ else
     %     B_ind = find(tmp);
     % $$$   % You can visually check the boundary/interior regions like this:
     if test_boundary
-        tmp = ones(G); tmp(I_ind) = 0;
+        tmp = ones(G); 
+		tmp(I_ind) = 0;
+		tmp(B_ind) = 0.5;
         figure(910); clf; myplot(G,bc,tmp(:),'img',[1 0 1]);
-        tmp = ones(G); tmp(B_ind) = 0;
+        print(910,'-loose','-r600', '-dpng', [ENdir,'/BI_ind.png']);
+        tmp = ones(G); 
+		tmp(I1_ind) = 0;
+		tmp(B1_ind) = 0.5;
         figure(911); clf; myplot(G,bc,tmp(:),'img',[1 0 1]);
-        tmp = ones(G); tmp(B1_ind) = 0;
+        print(911,'-loose','-r600', '-dpng', [ENdir,'/B1I1_ind.png']);
+        tmp = ones(G); 
+		tmp(I2_ind) = 0;
+		tmp(B2_ind) = 0.5;
         figure(912); clf; myplot(G,bc,tmp(:),'img',[1 0 1]);
+        print(912,'-loose','-r600', '-dpng', [ENdir,'/B2I2_ind.png']);
     end
 end
 
@@ -436,8 +445,8 @@ for ENcounter = whichones
     % ------------------------------------------------------------------------
     % Compute gradients
     % [gx,gy,gt,gr] = ENgrad(G,mu,v(id.OR,:));
-	test_grad = true;
-    [gx,gy,gt,gr] = myGrad(G,mu,B1_ind,I1_ind,logical(Pi),v(id.OR,:),test_grad,ENdir);
+	test_grad = false;
+    [gx,gy,gt,gr] = myGrad(G,mu,B2_ind,I2_ind,logical(Pi),v(id.OR,:),test_grad,ENdir);
     % Augment gr with the visual field gradient gVF, obtained simply as the
     % sum of the gradient moduli of VFx and VFy:
     gr = [gr sum(gr(:,[id.VFx id.VFy]),2)];
@@ -700,8 +709,9 @@ for ENcounter = whichones
         % Compute histogram and statistics if required here or elsewhere
         if any(plotfig([Figs(i) Figs(i)+100 34])) || statsOnly
             % Histogram weighting angles according to their moduli of OD gradient:
+            xangB = ENxangle(Vars(:,i),B1_ang)*180/pi;	% Map against boundary
             [h,KLu,L2u,m,s,g1] = ...
-                ENhist(ENxangle(Vars(:,i),B1_ang)*180/pi,...	% Map against boundary
+                ENhist(xangB,...	% Map against boundary
                 gr(B1_ind,Varsi(i)),nbins,[0 90]);
             xangh(:,i+2) = h(:,1);
             stats.fig(Figs(i)+100).KLu{ENcounter} = KLu;
@@ -749,6 +759,9 @@ for ENcounter = whichones
     
     % --- Figure 34: combination of figs. 30-33.
     % Uses Figsp and h from the previous figure.
+	%
+	disp('xang = ');
+	disp(xangh);
     Figs = 34;
     Figss = [560 420];
     Figsp = Figsp(1,:) + Figss/2;
