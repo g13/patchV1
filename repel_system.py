@@ -11,7 +11,7 @@ class repel_system:
         self.cl = np.sqrt(3*(area/self.nn)/unit_hexagon_area)
         print(f'characteristic length (inter-particle-distance) as twice the raidus of an hexagon {self.cl:.3f}')
         p_scale = 1.2 # potential extension
-        b_scale = 0.8 # potential extension
+        b_scale = 0.6 # potential extension
         self.damp = 0.15
         a_particle = self.cl*p_scale
         a_boundary = self.cl*b_scale
@@ -27,12 +27,12 @@ class repel_system:
 
         print('particle:')
         if particle_param is None:
-            self.particle = point_particle(initial_x, L_J_potiential(a_particle,a_particle,2,1,self.cl*p_scale), initial_v)
+            self.particle = point_particle(initial_x, L_J_potiential(a_particle,a_particle,2,1,self.cl), initial_v)
         else:
             self.particle = point_particle(initial_x, particle_param, initial_v)
         print('boundary:')
         if boundary_param is None:
-            self.boundary = rec_boundary(subgrid, bp, btype, L_J_potiential(a_boundary,a_boundary,2,1,self.cl/2*b_scale), enough_memory)
+            self.boundary = rec_boundary(subgrid, bp, btype, L_J_potiential(a_boundary,a_boundary,2,1,self.cl/2), enough_memory)
         else:
             self.boundary = rec_boundary(subgrid, bp, btype, boundary_param, enough_memory)
 
