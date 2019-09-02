@@ -26,7 +26,7 @@
 % scaffolding for the underlying continuous set of training vectors.
 % 'noisy' and 'uniform*' approximate online training over the continuous
 % domain of (VFx,VFy,OD,ORt).
-function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR)
+function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR)
     datafileabsolpath = [pwd,'/',ENfilename0,'/',ENfilename,'.mat'];
 	stream = RandStream('mt19937ar','Seed',seed);
 
@@ -115,7 +115,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         disp(['estimated lambda OR =', num2str(2*pi*r/(1/G(1)+1/G(2)))]); %
         if cortical_shape
 			manual_LR = ~non_cortical_LR && ~uniform_LR;
-            [Pi, W, LR] = myCortex(stream,G,ecc,a,b,k,resol, nod, rOD*ODabsol, ODnoise, manual_LR, ~uniform_LR * fign);
+            [Pi, W, LR, VF] = myCortex(stream, G, rx, ry, ecc, a, b, k, resol, nod, rOD*ODabsol, ODnoise, manual_LR, ~uniform_LR*fign, ENfilename0);
         else
             Pi = zeros(G);
             Pi(1+test_dw*nG:G(1)-nG*test_dw, 1+test_dh*nG:G(2)-nG*test_dh) = 1;
@@ -159,9 +159,13 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         % Initial elastic net: retinotopic with some noise and random, uniform
         % OD and OR.
         
-        mu = ENtrset('grid',zeros(1,2),...		% Small noise
-            linspace(rx(1),rx(2),G(1)),...	% VFx
-            linspace(ry(1),ry(2),G(2)),stream);	% VFy
+       	if cortical_VF && cortical_shape
+            mu = reshape(VF, M, 2);
+		else
+        	mu = ENtrset('grid',zeros(1,2),...		% Small noise
+        	    linspace(rx(1),rx(2),G(1)),...	% VFx
+        	    linspace(ry(1),ry(2),G(2)),stream);	% VFy
+		end
         %    mu = reshape(gridVF, M, 2);
         if uniform_LR
             mu = [mu, ENtrset('uniform',rOD,M,stream)];

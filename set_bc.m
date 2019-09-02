@@ -91,26 +91,27 @@ function [B_ind, I_ind, B1_ind, I1_ind, B2_ind, I2_ind, B1_ang] = set_bc(Pi, bw,
 		% generate indices for the subgrid
         [rlocal, clocal] = ind2sub(localSize,local_ind);
         % WRONG!!! row is y, colum is x
-        coeff = pca([clocal-mean(clocal), rlocal-mean(rlocal)]);
+        % WRONG!!! row is x, colum is y
+        coeff = pca([rlocal-mean(rlocal), clocal-mean(clocal)]);
 		% estimate the local slope with local boundary points
         B1_ang(i) = atan2(coeff(2,1),coeff(1,1));
 
         if check_boundary
             k = tan(B1_ang(i));
             if abs(k) > 1
-                y = [r-oneside,r,r+oneside];
-                x = 1/k*(y-r)+c;
+                y = [c-oneside,c,c+oneside];
+                x = 1/k*(y-c)+r;
             else
-                x = [c-oneside,c,c+oneside];
-                y = k*(x-c)+r;
+                x = [r-oneside,r,r+oneside];
+                y = k*(x-r)+c;
             end
             plot(x,y,'-');
-            plot(c,r,'*r', 'MarkerSize', 0.5);
+            plot(r,c,'*r', 'MarkerSize', 0.5);
         end
     end
     if check_boundary
         daspect([1,1,1]);
-		print(gcf, '-loose', '-r900', '-dpng', [ENdir,'/boundary_angle.png']);
+		print(gcf, '-loose', '-r2000', '-dpng', [ENdir,'/boundary_angle.png']);
 		close(gcf);
     end
 end

@@ -3,7 +3,7 @@
 #SBATCH -n 1
 #SBATCH --mem-per-cpu=10GB
 #SBATCH --nodes=1
-#SBATCH --time=4:00:00
+#SBATCH --time=5:00:00
 #SBATCH --cpus-per-task=5
 #SBATCH -J formMap
 #SBATCH -o log/fM_%J.out

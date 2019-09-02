@@ -760,8 +760,6 @@ for ENcounter = whichones
     % --- Figure 34: combination of figs. 30-33.
     % Uses Figsp and h from the previous figure.
 	%
-	disp('xang = ');
-	disp(xangh);
     Figs = 34;
     Figss = [560 420];
     Figsp = Figsp(1,:) + Figss/2;
@@ -856,7 +854,7 @@ for ENcounter = whichones
             drawnow;
             if ~isempty(ENdir)
                 print(Figs(i),'-loose','-r150',['-d' EXT],...
-                    sprintf('%s-fig%03d.%s',frame,Figs(i),EXT));
+                    sprintf('%s-fig%03d-%s.%s',frame,Figs(i),Varsl{i},EXT));
             end
         end
     end

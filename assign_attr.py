@@ -241,22 +241,28 @@ class macroMap:
         d0 = np.zeros(self.npolar-1)
         d1 = np.zeros(self.npolar-1)
         ix0 = np.zeros(self.npolar-1,dtype='int')
+        # top polar line excluded such that the coord of the nearest vertex will always be left and lower to the neuron's position, ready for interpolation
         for i in range(self.networkSize):
-            # find iso-polar lines whose xrange does not include x-coord of the neuron 
+            # vx/vy(ecc,polar)
             mask = np.logical_and(pos[0,i] - self.vx[:-1,:-1] > 0, pos[0,i] - self.vx[1:,:-1] < 0)
+            # find iso-polar lines whose xrange include x-coord of the neuron 
             pmask = mask.any(0)
+            # find iso-polar lines whose xrange does not include x-coord of the neuron 
             pnull = np.logical_not(pmask)
+            # find the preceding ecc index of the iso-polar lines that does includ the x-coord
             ix = np.nonzero(mask.T)[1]
             ix0[pmask] = ix
             ix0[pnull] = -1
+            # calculate distance to the nearby VF grid vertex
             d0[pmask] = np.power(self.vx[ix,  np.arange(self.npolar-1)[pmask]] - pos[0,i],2) + np.power(self.vy[ix,  np.arange(self.npolar-1)[pmask]] - pos[1,i],2)
             d1[pmask] = np.power(self.vx[ix+1,np.arange(self.npolar-1)[pmask]] - pos[0,i],2) + np.power(self.vy[ix+1,np.arange(self.npolar-1)[pmask]] - pos[1,i],2)
             d0[pnull] = np.float('inf')
             d1[pnull] = np.float('inf')
-            #find minimum distance to iso-ecc and iso-polar node indices
+            #find minimum distance to the nearest vertex
             dis = np.min(np.vstack([d0, d1]),0)
-            idp = np.argmin(dis)
-            idx = ix0[idp]
+            # get the ecc and polar indices of the vertex
+            idp = np.argmin(dis) # polar index
+            idx = ix0[idp] # ecc index
             ## interpolate VF-ecc to pos
             self.vpos[0,i] = np.exp(np.log(self.e_range[idx]+1) + (np.log(self.e_range[idx+1]+1) - np.log(self.e_range[idx]+1)) * np.sqrt(dis[idp])/(np.sqrt(d0[idp])+np.sqrt(d1[idp])))-1
             ## interpolate VF-polar to pos

@@ -90,8 +90,9 @@ switch L
         if checkGrad
             for d=1:D
                 figure;
-                quiver(1:G(2),1:G(1),gx(:,:,d),gy(:,:,d))
-				print(gcf,'-loose','-r900','-dpng', [ENdir,'/gradCheck-var', num2str(d)]);
+                quiver(1:G(1),1:G(2),gx(:,:,d)',gy(:,:,d)', 'LineWidth', 0.1);
+				daspect([1,1,1]);
+				print(gcf,'-loose','-r1200','-dpng', [ENdir,'/gradCheck-var', num2str(d)]);
 				close(gcf);
             end
         end
@@ -122,57 +123,57 @@ function [gx, gy, fdx, cdx, fdy, cdy] = myGradient(v, bp, ip, Pi)
     Pi_ex = [zeros(1,G(2)+2); Pi_ex; zeros(1,G(2)+2)];
     G_ex = [G(1)+2, G(2)+2];
     % boundary points, forward difference
-	% row is y:1, column is x:2
-    xr = Pi_ex(sub2ind(G_ex,1+bp(:,1),1+bp(:,2)+1));
-    xl = Pi_ex(sub2ind(G_ex,1+bp(:,1),1+bp(:,2)-1));
-    yu = Pi_ex(sub2ind(G_ex,1+bp(:,1)+1,1+bp(:,2)));
-    yd = Pi_ex(sub2ind(G_ex,1+bp(:,1)-1,1+bp(:,2)));
+	% row is x:1, column is y:2
+    xr = Pi_ex(sub2ind(G_ex,1+bp(:,1)+1,1+bp(:,2)));
+    xl = Pi_ex(sub2ind(G_ex,1+bp(:,1)-1,1+bp(:,2)));
+    yu = Pi_ex(sub2ind(G_ex,1+bp(:,1),1+bp(:,2)+1));
+    yd = Pi_ex(sub2ind(G_ex,1+bp(:,1),1+bp(:,2)-1));
     
     xpick = xr & xl;
     cd = sub2ind(G,bp(xpick,1),bp(xpick,2));
-    gx(cd) = 0.5*(v(sub2ind(G,bp(xpick,1),bp(xpick,2)+1))-v(sub2ind(G,bp(xpick,1),bp(xpick,2)-1)));
+    gx(cd) = 0.5*(v(sub2ind(G,bp(xpick,1)+1,bp(xpick,2)))-v(sub2ind(G,bp(xpick,1)-1,bp(xpick,2))));
     if nargout > 2
         cdx = cd;
     end
     xpick = xr & ~xl;
     fd = sub2ind(G,bp(xpick,1),bp(xpick,2));
-    gx(fd) = v(sub2ind(G,bp(xpick,1),bp(xpick,2)+1))-v(sub2ind(G,bp(xpick,1),bp(xpick,2)));
+    gx(fd) = v(sub2ind(G,bp(xpick,1)+1,bp(xpick,2)))-v(sub2ind(G,bp(xpick,1),bp(xpick,2)));
     if nargout > 2
         fdx = fd;
     end
     
     xpick = ~xr & xl;
     fd = sub2ind(G,bp(xpick,1),bp(xpick,2));
-    gx(fd) = v(sub2ind(G,bp(xpick,1),bp(xpick,2)))-v(sub2ind(G,bp(xpick,1),bp(xpick,2)-1));
+    gx(fd) = v(sub2ind(G,bp(xpick,1),bp(xpick,2)))-v(sub2ind(G,bp(xpick,1)-1,bp(xpick,2)));
     if nargout > 2
         fdx = [fdx; fd];
     end
     
     ypick = yu & yd;
     cd = sub2ind(G,bp(ypick,1),bp(ypick,2));
-    gy(cd) = 0.5*(v(sub2ind(G,bp(ypick,1)+1,bp(ypick,2)))-v(sub2ind(G,bp(ypick,1)-1,bp(ypick,2))));
+    gy(cd) = 0.5*(v(sub2ind(G,bp(ypick,1),bp(ypick,2)+1))-v(sub2ind(G,bp(ypick,1),bp(ypick,2)-1)));
     if nargout > 2
         cdy = cd;
     end
     
     ypick = yu & ~yd;
     fd = sub2ind(G,bp(ypick,1),bp(ypick,2));
-    gy(fd) = v(sub2ind(G,bp(ypick,1)+1,bp(ypick,2)))-v(sub2ind(G,bp(ypick,1),bp(ypick,2)));
+    gy(fd) = v(sub2ind(G,bp(ypick,1),bp(ypick,2)+1))-v(sub2ind(G,bp(ypick,1),bp(ypick,2)));
     if nargout > 2
         fdy = fd;
     end
 
     ypick = ~yu & yd;
     fd = sub2ind(G,bp(ypick,1),bp(ypick,2));
-    gy(fd) = v(sub2ind(G,bp(ypick,1),bp(ypick,2)))-v(sub2ind(G,bp(ypick,1)-1,bp(ypick,2)));
+    gy(fd) = v(sub2ind(G,bp(ypick,1),bp(ypick,2)))-v(sub2ind(G,bp(ypick,1),bp(ypick,2)-1));
     if nargout > 2
         fdy = [fdy; fd];
     end
     
     % interior points center difference
     cd = sub2ind(G,ip(:,1),ip(:,2));
-    gx(cd) = 0.5*(v(sub2ind(G,ip(:,1),ip(:,2)+1))-v(sub2ind(G,ip(:,1),ip(:,2)-1)));
-    gy(cd) = 0.5*(v(sub2ind(G,ip(:,1)+1,ip(:,2)))-v(sub2ind(G,ip(:,1)-1,ip(:,2))));
+    gx(cd) = 0.5*(v(sub2ind(G,ip(:,1)+1,ip(:,2)))-v(sub2ind(G,ip(:,1)-1,ip(:,2))));
+    gy(cd) = 0.5*(v(sub2ind(G,ip(:,1),ip(:,2)+1))-v(sub2ind(G,ip(:,1),ip(:,2)-1)));
     if nargout > 2
         cdx = [cdx; cd];
         cdy = [cdy; cd];

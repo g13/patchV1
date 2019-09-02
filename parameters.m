@@ -12,10 +12,11 @@ plots = true;
 new = true;
 ENproc = 'var';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
-var = 'max_it';
-ENfilename0 = ['cortex_nG2-1-',var];   % Simulation name ***
+var = 'ORr';
+ENfilename0 = ['cortex_nG2-',var];   % Simulation name ***
 range = [2,4,6,8,10];
 %range = [2];
+cortical_VF = true;
 non_cortical_LR = false;
 % non_cortical_LR = true;
 uniform_LR = true;
@@ -26,12 +27,14 @@ cortical_shape = true;
 
 mkdir(ENfilename0);
 copyfile('parameters.m',[ENfilename0,'/',ENfilename0,'_p.m']);
-poolobj = gcp('nocreate'); % If no pool, do not create new one.
-if ~isempty(poolobj)
-    if ~ (poolobj.NumWorkers == length(range))
-        delete(poolobj);
-        parpool(length(range));
-    end
+if length(range) > 1
+	poolobj = gcp('nocreate'); % If no pool, do not create new one.
+	if ~isempty(poolobj)
+	    if ~ (poolobj.NumWorkers == length(range))
+	        delete(poolobj);
+	        parpool(length(range));
+	    end
+	end
 end
 if exist('seed','var')
     rng(seed,gen);
@@ -50,7 +53,8 @@ parfor i = 1:length(range)
 	beta = 150;
     % Training parameters
 	iters = 10; %21;			% No. of annealing rates (saved)
-    max_it = round(20 *range(i)/range(end)); %12;			% No. of iterations per annealing rate (not saved) ***
+    max_it = 10;		        % No. of iterations per annealing rate (not saved) ***
+	%max_it = round(20 *range(i)/range(end)); 
     Kin = 0.15;			% Initial K ***
     Kend = 0.03;        % Final K ***    
     % - VFx: Nx points in [0,1], with interpoint separation dx.
@@ -65,14 +69,14 @@ parfor i = 1:length(range)
     dy = diff(ry)/(Ny-1);		% Separation between points along VFy    
     d = (dx + dy)/2;
     % - OD: NOD values in range rOD, with interpoint separation dOD.
-    l = 0.11;			% Half-separation between OD layers ***
+	l = 0.11;
     NOD = 2;			% Number of points along OD
     rOD = [-l l];			% Range of OD
     dOD = diff(rOD)/(NOD-1);	% Separation between points along OD
     %  coded as NOR Cartesian-coordinate pairs (ORx,ORy). -- later by pol2cart
     %  r = 6*l/pi
-	%r = (1.0+range(i)/range(end))*l;			% OR modulus -- the radius of pinwheel
-	r = 1.6*l;
+	r = (0.8+range(i)/range(end))*l;			% OR modulus -- the radius of pinwheel
+	%r = 1.2*l;
     NOR = 8;	 %8;		% Number of points along OR    
     % for myCortex patch
     ODnoise = l*0.0;
@@ -89,7 +93,7 @@ parfor i = 1:length(range)
 	else
 		saveLR = false;
 	end
-    stats(i) = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR);
+    stats(i) = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,i,plots,new,saveLR);
 end
 nnpinw = [stats.npinw];
 nnpinw = nnpinw./mean(nnpinw);

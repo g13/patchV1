@@ -1,13 +1,8 @@
-function [Pi, W, LR] = myCortex(stream, G, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch)
-    if nargin < 11
-        plot_patch = 0;
-        if nargin < 10
-            manual_LR = true;
-        end
-    end
+function [Pi, W, LR, VF] = myCortex(stream, G, xrange, yrange, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch,savepath)
     nx = G(1);
     ny = G(2);
     Pi = ones(nx,ny);
+    VF = zeros(nx,ny,2);
     if manual_LR
         LR_noise = noise * randn(stream,nx,ny);
         LR = rOD(1) + (rOD(2)-rOD(1))*rand(stream,nx,ny);
@@ -15,7 +10,8 @@ function [Pi, W, LR] = myCortex(stream, G, ecc, a, b, k, resol, nod, rOD, noise,
     else
         LR = zeros(nx,ny);
     end
-    e = exp(linspace(log(1),log(ecc+1),nx*resol))-1;
+	log_e = linspace(log(1),log(ecc+1),nx*resol);
+    e = exp(log_e)-1;
     band_e = exp(linspace(log(1),log(ecc+1),nod+1))-1;
     p = -pi/2;
     w = dipole(e,p,a,b,k);
@@ -28,9 +24,8 @@ function [Pi, W, LR] = myCortex(stream, G, ecc, a, b, k, resol, nod, rOD, noise,
     ty = imag(w);
     assert(sum(bx-tx)==0);
     
-    e = ecc;
     p = linspace(-pi/2, pi/2,ny*resol);
-    w = dipole(e,p,a,b,k);
+	w = dipole(e(end),p,a,b,k);
     rx = real(w);
     ry = imag(w);
     
@@ -43,7 +38,7 @@ function [Pi, W, LR] = myCortex(stream, G, ecc, a, b, k, resol, nod, rOD, noise,
     
     W = dipole(ecc,0,a,b,k)-k*log(a/b);
     x = linspace(-W/(2*nx-4), W+W/(2*nx-4), nx);
-	assert(x(1) + x(2) == 0);
+	disp(x(1) + x(2));
     W = W+W/(nx-2);
 	d = W/(nx-1); 
     H = d*ny;
@@ -66,16 +61,99 @@ function [Pi, W, LR] = myCortex(stream, G, ecc, a, b, k, resol, nod, rOD, noise,
         end
     end
     if plot_patch > 0
-        if ishandle(plot_patch)
-            close(plot_patch);
-        end
-        figure(plot_patch);
+        figure;
+		subplot(1,2,1)
         daspect([1,1,1]);
         xlim([x0(1), x0(end)]);
         hold on
         plot(x0,ty,'k');
         plot(x0,by,'k');
     end
+	% ecc-polar grid for VF see COMMENTs in function assign_pos_VF of assign_attr.py 
+	me = nx*resol;
+	mp = ny*resol;
+	vx = zeros(me, mp);
+	vy = zeros(me, mp);
+	for ip = 1:mp
+		w = dipole(e,p(ip),a,b,k)-k*log(a/b);
+		vx(:,ip) = real(w);
+		vy(:,ip) = imag(w);
+	end
+	ix0 = zeros(mp-1, 1);
+	d0 = zeros(mp-1, 1);
+	d1 = zeros(mp-1, 1);
+	prange = 1:mp-1;
+	f = 0;
+	for i = 1:nx
+		mask = (x(i) - vx(1:me-1,1:mp-1) > 0 & x(i) - vx(2:me,1:mp-1) < 0);
+		pmask = any(mask,1);
+		if ~any(pmask)
+			continue;
+		else
+			f = f + 1;
+		end
+		assert(length(pmask) == mp-1);
+		pnull = ~pmask;
+		[ix, ~] = find(mask);
+		assert(sum(pmask) == length(ix));
+		ix0(pmask) = ix;
+		ix0(pnull) = -1;
+		for j = 1:ny
+			if Pi(i,j) == 0
+				continue;
+			end
+			ind = sub2ind([me,mp],ix,prange(pmask)');
+			d0(pmask) = (vx(ind) - x(i)).^2 + (vy(ind) - y(j)).^2;
+			ind = sub2ind([me,mp],ix+1,prange(pmask)');
+			d1(pmask) = (vx(ind) - x(i)).^2 + (vy(ind) - y(j)).^2;
+			d0(pnull) = inf;
+			d1(pnull) = inf;
+			dis = min([d0, d1], [], 2);
+			assert(length(dis) == mp-1);
+			[~, idp] = min(dis);
+			idx = ix0(idp);
+			VF(i,j,1) =  log_e(idx) + (log_e(idx+1) - log_e(idx)) * sqrt(dis(idp))/(sqrt(d0(idp))+sqrt(d1(idp)));
+			w = dipole(exp(VF(i,j,1))-1,p(idp),k,a,b) - k*log(a/b);
+            vp_x0 = real(w);
+            vp_y0 = imag(w);
+			w = dipole(exp(VF(i,j,1))-1,p(idp+1),k,a,b) - k*log(a/b);
+            vp_y1 = real(w);
+            vp_x1 = imag(w);
+            dp0 = sqrt((x(i)-vp_x0)^2 + (y(j)-vp_y0)^2);
+            dp1 = sqrt((x(i)-vp_x1)^2 + (y(j)-vp_y1)^2);
+            VF(i,j,2) = p(idp) + (p(idp+1) - p(idp)) * dp0/(dp0+dp1);
+		end
+	end
+    if plot_patch > 0
+		subplot(2,2,2)
+		%disp([num2str(log_e(1)),'->',num2str(log_e(me))]);
+		imagesc(VF(:,:,1));
+		colorbar;
+        daspect([1,1,1]);
+		subplot(2,2,4)
+		%disp([num2str(p(1)),'->',num2str(p(mp))]);
+		imagesc(VF(:,:,2));
+		colorbar;
+        daspect([1,1,1]);
+		if manual_LR
+			subplot(1,2,1)
+		end
+	end
+	%for i = 1:nx-1
+	%	pmask = Pi(i,:) > 0 & Pi(i+1,:) > 0;
+	%	mask = VF(i,pmask,1) < VF(i+1,pmask,1);
+	%	assert(all(mask));
+	%end
+	pPi = reshape(Pi > 0, prod(G),1);
+	VF = reshape(VF, prod(G), 2);
+	maxVFx = max(max(VF(pPi,1)));
+	minVFx = min(min(VF(pPi,1)));
+	VF(pPi,1) = xrange(1) + (VF(pPi,1) - minVFx)/(maxVFx - minVFx)*(xrange(2)-xrange(1));
+	maxVFy = max(max(VF(pPi,2)));
+	minVFy = min(min(VF(pPi,2)));
+	VF(pPi,2) = yrange(1) + (VF(pPi,2) - minVFy)/(maxVFy - minVFy)*(yrange(2)-yrange(1));
+	VF(~pPi,:) = 0.0;
+	VF = reshape(VF, [G, 2]);
     if manual_LR
         i0 = randi(stream,[1,2]);
         lr = rOD(i0);
@@ -204,6 +282,9 @@ function [Pi, W, LR] = myCortex(stream, G, ecc, a, b, k, resol, nod, rOD, noise,
             title(num2str(icrit));
         end
     end
+    if plot_patch > 0
+		print(gcf,'-loose', '-r600', '-dpng', [savepath,'/cortical_OD_VF-',num2str(plot_patch),'.png']);
+	end
 end
 
 function w = dipole(ecc, polar, a, b, k)
@@ -215,6 +296,13 @@ function anisotropy = f(ecc, polar, ab)
     s2 = 0.1821;
     anisotropy = cosh(polar).^(-2*s2./((ecc/ab).^s1 + (ecc/ab).^(-s1)));
     anisotropy(isnan(anisotropy)) = 0;
+end
+
+function y = y_ep(ecc,polar,k,a,b)
+	ratio = R
+end
+function x = x_ep(ecc,polar,k,a,b)
+
 end
 
 function [LR, current_x0] = assignLR(Pi, x, y, lx, ly, rx, ry, current_x0, nx, ny, LR, lr, LR_noise, ht, plot_patch, tw, rate, len, na, stream)
