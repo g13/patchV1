@@ -99,13 +99,15 @@ switch L
 end
 [gt,gr] = cart2pol(gx,gy);
 for i = gtEstList
-	gt(:,:,i) = gtEstimate(gt(:,:,i), gr(:,:,i), Pi);
-	[gx(:,:,i), gy(:,:,i)] = pol2cart(gt(:,:,i), gr(:,:,i));
+	gt_b = gtEstimate(gt(:,:,i), gr(:,:,i), Pi);
+	b_ind = sub2ind([G,D],b_r,b_c,i);
+	gt(b_ind) = gt_b(B1_ind);
+	[gx(b_ind), gy(b_ind)] = pol2cart(gt(b_ind), gr(b_ind));
 	if checkGrad
     	figure;
     	quiver(1:G(1),1:G(2),gx(:,:,i)',gy(:,:,i)', 'LineWidth', 0.1);
 		daspect([1,1,1]);
-		print(gcf,'-loose','-r1200','-dpng', [prefix,'gradRecheck-var', num2str(i)]);
+		print(gcf,'-loose','-r1200','-dpng', [prefix,'gradRebound-var', num2str(i)]);
 		close(gcf);
 	end
 end
