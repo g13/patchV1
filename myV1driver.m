@@ -26,7 +26,7 @@
 % scaffolding for the underlying continuous set of training vectors.
 % 'noisy' and 'uniform*' approximate online training over the continuous
 % domain of (VFx,VFy,OD,ORt).
-function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR)
+function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR,separateData)
     datafileabsolpath = [pwd,'/',ENfilename0,'/',ENfilename,'.mat'];
 	stream = RandStream('mt19937ar','Seed',seed);
 
@@ -110,7 +110,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         L = length(G); M = prod(G);
         % For non-rectangular cortex shapes, create a suitable Pi here:
         
-        resol = 1;
+        resol = 10;
         disp(['estimated lambda OD =', num2str(8*l/(1/G(1)+1/G(2)))]); %
         disp(['estimated lambda OR =', num2str(2*pi*r/(1/G(1)+1/G(2)))]); %
         if cortical_shape
@@ -356,7 +356,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
     end
 	statsOnly = true;
 	right_open = cortical_shape;
-    stats = myV1stats(stream,G,bc,ENlist,v,'last',T,Pi,murange,id,[],[ENfilename0,'/',ENfilename,'.png'],figlist,statsOnly,right_open);
+    stats = myV1stats(stream,G,bc,ENlist,v,'last',T,Pi,murange,id,[],[ENfilename0,'/',ENfilename,'.png'],figlist,statsOnly,right_open,separateData);
 	if saveLR
 		fID = fopen([ENfilename0,'/',ENfilename,'-LR_Pi.bin'],'a')
 		fwrite(fID, ENlist(end).mu(:,id.OD), 'double');

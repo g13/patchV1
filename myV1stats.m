@@ -234,7 +234,7 @@
 % Copyright (c) 2002 by Miguel A. Carreira-Perpinan
 
 function stats = ...
-    myV1stats(stream,G,bc,ENlist,v,whichones,T,Pi,murange,id,tens,opt,figlist,statsOnly,right_open)
+    myV1stats(stream,G,bc,ENlist,v,whichones,T,Pi,murange,id,tens,opt,figlist,statsOnly,right_open,separateData)
 if nargin < 13
     statsOnly = false;
 end
@@ -294,15 +294,20 @@ all = [min(all);max(all)];
 
 if ~exist('tens','var') tens = []; end;
 
-ENdir = [];
+ENdir = '';
 if ~exist('opt','var') || isempty(opt)
     opt = '';
 else
     tmp = findstr('.',opt);
     if ~isempty(tmp)		% Print figures
         ENdir = opt(1:tmp(end)-1); EXT = lower(opt(tmp(end)+1:end));
-	    [tmp,tmp] = mkdir(ENdir);
-    end
+		if separateData
+	    	[tmp,tmp] = mkdir(ENdir);
+			prefix = [ENdir, '/'];
+		else
+			prefix = [ENdir, '-'];
+		end
+	end
 end
 
 
@@ -316,6 +321,20 @@ if ~exist('figlist','var')
 end
 % plotfig(i) = 1 means plot figure(i).
 plotfig = logical(zeros(1,1000)); plotfig(figlist) = 1;
+figName = cellstr([repmat('fig-',1000,1), num2str((1:1000)','%03d')]);
+figName{1} = 'OD_map';
+figName{2} = 'OD-OR_contour';
+figName{3} = 'OR_angleMap';
+figName{4} = 'OR_polarMap';
+figName{7} = 'ORpinw_map';
+figName{34} = 'crossing_angles';
+figName{40} = 'FFT-OD';
+figName{41} = 'FFT-OR';
+figName{50} = 'pinw-OD';
+figName{54} = 'dis_pinw2OD';
+figName{60} = 'normDis_pinw2OD';
+figName{100} = 'obj_fitness-tension';
+figName{102} = 'tension';
 
 % Output argument
 stats = struct('whichones',whichones,'Ks',[],'its',[],'fig',[]);
@@ -333,7 +352,7 @@ if strcmp(bc,'periodic')
 else
     test_boundary = false;
     B_width = 5;
-    [B_ind, I_ind, B1_ind, I1_ind, B2_ind, I2_ind, B1_ang] = set_bc(reshape(logical(Pi),G(1),G(2)), B_width, right_open, test_boundary, ENdir);
+    [B_ind, I_ind, B1_ind, I1_ind, B2_ind, I2_ind, B1_ang] = set_bc(reshape(logical(Pi),G(1),G(2)), B_width, right_open, test_boundary, prefix);
     
     %     [tmp1,tmp2] = ndgrid(B_width+1:G(1)-B_width,B_width+1:G(2)-B_width);
     %     I_ind = sub2ind(G,tmp1(:),tmp2(:));
@@ -345,17 +364,17 @@ else
 		tmp(I_ind) = 0;
 		tmp(B_ind) = 0.5;
         figure(910); clf; myplot(G,bc,tmp(:),'img',[1 0 1]);
-        print(910,'-loose','-r600', '-dpng', [ENdir,'/BI_ind.png']);
+        print(910,'-loose','-r600', '-dpng',[prefix,'BI_ind.png']);
         tmp = ones(G); 
 		tmp(I1_ind) = 0;
 		tmp(B1_ind) = 0.5;
         figure(911); clf; myplot(G,bc,tmp(:),'img',[1 0 1]);
-        print(911,'-loose','-r600', '-dpng', [ENdir,'/B1I1_ind.png']);
+        print(911,'-loose','-r600', '-dpng', [prefix,'B1I1_ind.png']);
         tmp = ones(G); 
 		tmp(I2_ind) = 0;
 		tmp(B2_ind) = 0.5;
         figure(912); clf; myplot(G,bc,tmp(:),'img',[1 0 1]);
-        print(912,'-loose','-r600', '-dpng', [ENdir,'/B2I2_ind.png']);
+        print(912,'-loose','-r600', '-dpng', [prefix,'B2I2_ind.png']);
     end
 end
 
@@ -416,10 +435,8 @@ Figl = floor(min(scw,sch)/4);				% Largest dimension
 % first time in the ENcounter loop.
 firstone = logical(1);
 for ENcounter = whichones
-    
-    if ~isempty(ENdir)
-        frame = [ENdir,'/frame' num2str(ENcounter,'%04d')];
-    end
+
+    frame = ['f', num2str(ENcounter,'%04d')];
     
     % Extract current net
     mu = ENlist(ENcounter).mu;
@@ -445,8 +462,8 @@ for ENcounter = whichones
     % ------------------------------------------------------------------------
     % Compute gradients
     % [gx,gy,gt,gr] = ENgrad(G,mu,v(id.OR,:));
-	test_grad = false;
-    [gx,gy,gt,gr] = myGrad(G,mu,B2_ind,I2_ind,logical(Pi),v(id.OR,:),test_grad,ENdir);
+	test_grad = true;
+    [gx,gy,gt,gr] = myGrad(G,mu,B2_ind,I2_ind,logical(Pi),v(id.OR,:),[id.OD],test_grad,prefix);
     % Augment gr with the visual field gradient gVF, obtained simply as the
     % sum of the gradient moduli of VFx and VFy:
     gr = [gr sum(gr(:,[id.VFx id.VFy]),2)];
@@ -483,18 +500,18 @@ for ENcounter = whichones
     % --- Figures 1-12,100-101: plot current net
     myV1replay(G,bc,ENlist,v,ENcounter,T(:,1:5),Pi,murange,id,tens,[],figlist);
 
-	fID = fopen([ENdir,'/','ORcolor.bin'],'w');
+	fID = fopen([prefix,'ORcolor-',frame,'.bin'],'w');
 	fwrite(fID, mu(:,id.OR), 'double');
 	fclose(fID);
 
     if ~isempty(ENdir)
         Figs = [1:12]; % Energy and cpu time get printed at end only
         for i=find(plotfig(Figs))
-            print(i,'-loose','-r150',['-d' EXT],sprintf('%s-fig%03d.%s',frame,i,EXT));
+            print(i,'-loose','-r900',['-d' EXT], [prefix,figName{i},'-',frame,'.',EXT]);
         end
  		Figs = [100:102];		
         for i=find(plotfig(Figs))
-            print(i+99,'-loose','-r150',['-d' EXT],sprintf('%s-fig%03d.%s',frame,i+99,EXT));
+            print(Figs(i),'-loose','-r300',['-d' EXT],[prefix,figName{Figs(i)},'-',frame,'.',EXT]);
         end
     end
     if plotfig(100)
@@ -558,8 +575,8 @@ for ENcounter = whichones
                 ';   \gamma_1=' num2str(g1,3)],'Visible','on');
             drawnow;
             if ~isempty(ENdir)
-                print(Figs(i),'-loose','-r150',['-d' EXT],...
-                    sprintf('%s-fig%03d.%s',frame,Figs(i),EXT));
+                print(Figs(i),'-loose','-r300',['-d' EXT],...
+                    [prefix,figName{Figs(i)},'-',frame,'.',EXT]);
             end
         end
     end
@@ -609,7 +626,8 @@ for ENcounter = whichones
             '\circ;   \gamma_1=' num2str(g1,3)],'Visible','on');
         drawnow;
         if ~isempty(ENdir)
-            print(Figs,'-loose','-r150',['-d' EXT],sprintf('%s-fig%03d.%s',frame,Figs,EXT));
+            print(Figs,'-loose','-r300',['-d' EXT],...
+                [prefix,figName{Figs},'-',frame,'.',EXT]);
         end
     end
     
@@ -661,7 +679,8 @@ for ENcounter = whichones
             '\circ;   \gamma_1=' num2str(g1,3)],'Visible','on');
         drawnow;
         if ~isempty(ENdir)
-            print(Figs,'-loose','-r150',['-d' EXT],sprintf('%s-fig%03d.%s',frame,Figs,EXT));
+            print(Figs,'-loose','-r300',['-d' EXT],...
+                [prefix,figName{Figs},'-',frame,'.',EXT]);
         end
     end
     
@@ -750,8 +769,8 @@ for ENcounter = whichones
                 '\circ;   \gamma_1=' num2str(g1,3)],'Visible','on');
             drawnow;
             if ~isempty(ENdir)
-                print(Figs(i),'-loose','-r150',['-d' EXT],...
-                    sprintf('%s-fig%03d.%s',frame,Figs(i),EXT));
+            	print(Figs(i),'-loose','-r300',['-d' EXT],...
+            	    [prefix,figName{Figs(i)},'-',frame,'.',EXT]);
             end
         end
     end
@@ -782,8 +801,8 @@ for ENcounter = whichones
             'OD/boundary','ORt/boundary','Location','best');
         drawnow;
         if ~isempty(ENdir)
-            print(Figs,'-loose','-r150',['-d' EXT],...
-                sprintf('%s-fig%03d.%s',frame,Figs,EXT));
+            print(Figs,'-loose','-r300',['-d' EXT],...
+                [prefix,figName{Figs},'-',frame,'.',EXT]);
         end
     end
     
@@ -853,8 +872,8 @@ for ENcounter = whichones
                 'FontSize',8,'Visible','on');
             drawnow;
             if ~isempty(ENdir)
-                print(Figs(i),'-loose','-r150',['-d' EXT],...
-                    sprintf('%s-fig%03d-%s.%s',frame,Figs(i),Varsl{i},EXT));
+            	print(Figs(i),'-loose','-r300',['-d' EXT],...
+            	    [prefix,figName{Figs(i)},'-',frame,'.',EXT]);
             end
         end
     end
@@ -945,7 +964,8 @@ for ENcounter = whichones
             'Visible','on','FontSize',9);
         drawnow;
         if ~isempty(ENdir)
-            print(Figs,'-loose','-r150',['-d' EXT],sprintf('%s-fig%03d.%s',frame,Figs,EXT));
+            print(Figs,'-loose','-r300',['-d' EXT],...
+            	[prefix,figName{Figs},'-',frame,'.',EXT]);
         end
     end
     
@@ -1131,8 +1151,8 @@ for ENcounter = whichones
                     ' pixels;   \gamma_1=' num2str(g1,3)],'Visible','on');
                 drawnow;
                 if ~isempty(ENdir)
-                    print(Figs(i),'-loose','-r150',['-d' EXT],...
-                        sprintf('%s-fig%03d.%s',frame,Figs(i),EXT));
+            		print(Figs(i),'-loose','-r300',['-d' EXT],...
+            			[prefix,figName{Figs(i)},'-',frame,'.',EXT]);
                 end
             end
         end
@@ -1211,8 +1231,8 @@ for ENcounter = whichones
             xlabel('norm. dist inbetween ODborder');
             drawnow;
             if ~isempty(ENdir)
-                print(60,'-loose','-r150',['-d' EXT],...
-                    sprintf('%s-fig%03d.%s',frame,60,EXT));
+            	print(60,'-loose','-r300',['-d' EXT],...
+            		[prefix,figName{60},'-',frame,'.',EXT]);
             end
         end
     end
@@ -1396,8 +1416,8 @@ for ENcounter = whichones
                     ' pixels;   \gamma_1=' num2str(g1,3)],'Visible','on');
                 drawnow;
                 if ~isempty(ENdir)
-                    print(Figs(i),'-loose','-r150',['-d' EXT],...
-                        sprintf('%s-fig%03d.%s',frame,Figs(i),EXT));
+            		print(Figs(i),'-loose','-r300',['-d' EXT],...
+            			[prefix,figName{Figs(i)},'-',frame,'.',EXT]);
                 end
             end
         end
@@ -1513,8 +1533,8 @@ for ENcounter = whichones
                         ';   Angle cosine c = ' num2str(c(i,j),3)],'Visible','on');
                     drawnow;
                     if ~isempty(ENdir)
-                        print(Figs,'-loose','-r150',['-d' EXT],...
-                            sprintf('%s-fig%03d.%s',frame,Figs,EXT));
+            			print(Figs,'-loose','-r300',['-d' EXT],...
+            				[prefix,figName{Figs},'-',frame,'.',EXT]);
                     end
                 end
                 Figs = Figs + 1;
@@ -1560,7 +1580,8 @@ for ENcounter = whichones
             ';   \gamma_1=' num2str(g1,3)],'Visible','on');
         drawnow;
         if ~isempty(ENdir)
-            print(Figs,'-loose','-r150',['-d' EXT],sprintf('%s-fig%03d.%s',frame,Figs,EXT));
+            print(Figs,'-loose','-r300',['-d' EXT],...
+            	[prefix,figName{Figs},'-',frame,'.',EXT]);
         end
     end
     
@@ -1620,8 +1641,8 @@ for ENcounter = whichones
                 '\circ;   \gamma_1=' num2str(g1,3)],'Visible','on');
             drawnow;
             if ~isempty(ENdir)
-                print(Figs(i),'-loose','-r150',['-d' EXT],...
-                    sprintf('%s-fig%03d.%s',frame,Figs(i),EXT));
+            	print(Figs(i),'-loose','-r300',['-d' EXT],...
+            		[prefix,figName{Figs(i)},'-',frame,'.',EXT]);
             end
         end
         
@@ -1671,8 +1692,8 @@ for ENcounter = whichones
                 '\circ;   \gamma_1=' num2str(g1,3)],'Visible','on');
             drawnow;
             if ~isempty(ENdir)
-                print(Figs(i)+Varsn,'-loose','-r150',['-d' EXT],...
-                    sprintf('%s-fig%03d.%s',frame,Figs(i)+Varsn,EXT));
+            	print(Figs(i)+Varsn,'-loose','-r300',['-d' EXT],...
+            		[prefix,figName{Figs(i)+Varsn},'-',frame,'.',EXT]);
             end
         end
     end
@@ -1710,8 +1731,8 @@ for ENcounter = whichones
             end
             drawnow;
             if ~isempty(ENdir)
-                print(Figs(i),'-loose','-r150',['-d' EXT],...
-                    sprintf('%s-fig%03d.%s',frame,Figs(i),EXT));
+            	print(Figs(i),'-loose','-r300',['-d' EXT],...
+            		[prefix,figName{Figs(i)},'-',frame,'.',EXT]);
             end
         end
     end
@@ -1749,16 +1770,16 @@ for ENcounter = whichones
             myplot(G,bc,mu,ORplotv,v(id.OR,:),T,Pi,[Figsp(i,:) Figss]);
             title(Kstr,'Visible','on'); drawnow;
             if ~isempty(ENdir)
-                print(Figs(i),'-loose','-r150',['-d' EXT],...
-                    sprintf('%s-fig%03d.%s',frame,Figs(i),EXT));
+            	print(Figs(i),'-loose','-r300',['-d' EXT],...
+            		[prefix,figName{Figs(i)},'-',frame,'.',EXT]);
             end
         end
     end
     if firstone & any(plotfig(Figs))
         ENcolorbar([],Figs(end)+1,min(find(plotfig(Figs)))+Figs(1)-1); drawnow;
         if ~isempty(ENdir)
-            print(Figs(end)+1,'-loose','-r150',['-d' EXT],...
-			sprintf('%s-fig%03d.%s',frame,Figs(end)+1,EXT));
+			print(Figs(end)+1,'-loose','-r300',['-d' EXT],...
+				[prefix,figName{Figs(end)+1},'-',frame,'.',EXT]);
         end
     end
     
@@ -1812,8 +1833,8 @@ Figs = 100:101;
 for i=find(plotfig(Figs))
     ENV1replay2(G,bc,ENlist,v,1,T(:,1:5),Pi,murange,tens,[],Figs(i));
     if ~isempty(ENdir)
-        print(Figs(i),'-loose','-r150',['-d' EXT],...
-            sprintf([ENdir,'/fig%03d.%s'],Figs(i),EXT));
+        print(Figs(i),'-loose','-r300',['-d' EXT],...
+            [prefix,figName{Figs(i)},'.',EXT]);
     end
 end
 
@@ -1930,8 +1951,8 @@ for i=find(plotfig(Figs))
     end
     drawnow;
     if ~isempty(ENdir)
-        print(Figs(i),'-loose','-r150',['-d' EXT],...
-            sprintf([ENdir,'/fig%03d.%s'],Figs(i),EXT));
+        print(Figs(i),'-loose','-r300',['-d' EXT],...
+            [prefix,figName{Figs(i)},'.',EXT]);
     end
 end
 
@@ -1990,8 +2011,8 @@ for i=find(plotfig(Figs))
     legend([H1 H5 H2],'\lambda_M','\lambda_m','\alpha_M','Location','best');
     drawnow;
     if ~isempty(ENdir)
-        print(Figs(i),'-loose','-r150',['-d' EXT],...
-            sprintf([ENdir,'/fig%03d.%s'],Figs(i),EXT));
+        print(Figs(i),'-loose','-r300',['-d' EXT],...
+            [prefix,figName{Figs(i)},'.',EXT]);
     end
 end
 
@@ -2030,8 +2051,8 @@ if plotfig(142)
         '\lambda_m(OD)','\lambda_m(OR)','Location','best');
     drawnow;
     if ~isempty(ENdir)
-        print(Figs,'-loose','-r150',['-d' EXT],...
-            sprintf([ENdir,'/fig%03d.%s'],Figs,EXT));
+        print(Figs,'-loose','-r300',['-d' EXT],...
+            [prefix,figName{Figs},'.',EXT]);
     end
 end
 
@@ -2112,8 +2133,8 @@ for i=find(plotfig(Figs))
         '\rho_{OR,M}','\rho_{OD,M}','\rho_{OR,m}','\rho_{OD,m}','Location','best');
     drawnow;
     if ~isempty(ENdir)
-        print(Figs(i),'-loose','-r150',['-d' EXT],...
-            sprintf([ENdir,'/fig%03d.%s'],Figs(i),EXT));
+        print(Figs(i),'-loose','-r300',['-d' EXT],...
+            [prefix,figName{Figs(i)},'.',EXT]);
     end
 end
 
@@ -2155,8 +2176,8 @@ for i=find(plotfig(Figs))
     legend('gVF-gOD','gVF-gORt','gVF-ORr','gOD-gORt','gOD-ORr','gORt-ORr','Location','best');
     drawnow;
     if ~isempty(ENdir)
-        print(Figs(i),'-loose','-r150',['-d' EXT],...
-            sprintf([ENdir,'/fig%03d.%s'],Figs(i),EXT));
+        print(Figs(i),'-loose','-r300',['-d' EXT],...
+            [prefix,figName{Figs(i)},'.',EXT]);
     end
 end
 % --------------------------------------------------------------------------

@@ -50,7 +50,7 @@
 
 % Copyright (c) 2002 by Miguel A. Carreira-Perpinan
 
-function [gx,gy,gt,gr] = myGrad(G,mu,B1_ind,I1_ind,Pi,whichper,checkGrad,ENdir)
+function [gx,gy,gt,gr] = myGrad(G,mu,B1_ind,I1_ind,Pi,whichper,gtEstList,checkGrad,prefix)
 
 L = length(G);                  	% Net dimensionality
 if L == 1 G = [G 1]; end        	% So that both L=1 and L=2 work
@@ -92,13 +92,23 @@ switch L
                 figure;
                 quiver(1:G(1),1:G(2),gx(:,:,d)',gy(:,:,d)', 'LineWidth', 0.1);
 				daspect([1,1,1]);
-				print(gcf,'-loose','-r1200','-dpng', [ENdir,'/gradCheck-var', num2str(d)]);
+				print(gcf,'-loose','-r1200','-dpng', [prefix,'gradCheck-var', num2str(d)]);
 				close(gcf);
             end
         end
 end
 [gt,gr] = cart2pol(gx,gy);
-
+for i = gtEstList
+	gt(:,:,i) = gtEstimate(gt(:,:,i), gr(:,:,i), Pi);
+	[gx(:,:,i), gy(:,:,i)] = pol2cart(gt(:,:,i), gr(:,:,i));
+	if checkGrad
+    	figure;
+    	quiver(1:G(1),1:G(2),gx(:,:,i)',gy(:,:,i)', 'LineWidth', 0.1);
+		daspect([1,1,1]);
+		print(gcf,'-loose','-r1200','-dpng', [prefix,'gradRecheck-var', num2str(i)]);
+		close(gcf);
+	end
+end
 % Return as list of M reference vectors
 gx = reshape(gx,M,D); gy = reshape(gy,M,D);
 gt = reshape(gt,M,D); gr = reshape(gr,M,D);

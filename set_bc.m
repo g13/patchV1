@@ -1,4 +1,4 @@
-function [B_ind, I_ind, B1_ind, I1_ind, B2_ind, I2_ind, B1_ang] = set_bc(Pi, bw, right_open, check_boundary, ENdir)
+function [B_ind, I_ind, B1_ind, I1_ind, B2_ind, I2_ind, B1_ang] = set_bc(Pi, bw, right_open, check_boundary, prefix)
 	% assuming horizontal symmetry
 	right_most = 0;
 	% the open boundary is to the right
@@ -111,7 +111,7 @@ function [B_ind, I_ind, B1_ind, I1_ind, B2_ind, I2_ind, B1_ang] = set_bc(Pi, bw,
     end
     if check_boundary
         daspect([1,1,1]);
-		print(gcf, '-loose', '-r2000', '-dpng', [ENdir,'/boundary_angle.png']);
+		print(gcf, '-loose', '-r2000', '-dpng', [prefix,'boundary_angle.png']);
 		close(gcf);
     end
 end

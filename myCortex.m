@@ -298,13 +298,6 @@ function anisotropy = f(ecc, polar, ab)
     anisotropy(isnan(anisotropy)) = 0;
 end
 
-function y = y_ep(ecc,polar,k,a,b)
-	ratio = R
-end
-function x = x_ep(ecc,polar,k,a,b)
-
-end
-
 function [LR, current_x0] = assignLR(Pi, x, y, lx, ly, rx, ry, current_x0, nx, ny, LR, lr, LR_noise, ht, plot_patch, tw, rate, len, na, stream)
     band_started = false;
     lr = ht*lr;
