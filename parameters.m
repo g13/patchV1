@@ -25,8 +25,13 @@ uniform_LR = true;
 % SET both LR to false for manual_LR
 % cortical_shape = false;
 cortical_shape = true;
+if exist(ENfilename0, 'dir') && new
+    rmdir(ENfilename0,'s');
+end
+if ~exist(ENfilename0, 'dir')
+    mkdir(ENfilename0);
+end
 
-mkdir(ENfilename0);
 copyfile('parameters.m',[ENfilename0,'/',ENfilename0,'_p.m']);
 if length(range) > 1
 	poolobj = gcp('nocreate'); % If no pool, do not create new one.
@@ -59,13 +64,13 @@ for i = 1:length(range)
     Kin = 0.15;			% Initial K ***
     Kend = 0.03;        % Final K ***    
     % - VFx: Nx points in [0,1], with interpoint separation dx.
-	Nx = 20;			% Number of points along VFx ***
+	Nx = 10;			% Number of points along VFx ***
 	nvf = 10;
     %nvf = range(i);
     rx = [0 0.15]*nvf;			% Range of VFx
     dx = diff(rx)/(Nx-1);		% Separation between points along VFx
     % - VFy: ditto for Ny, dy.
-	Ny = 40;			% Number of points along VFy ***
+	Ny = 20;			% Number of points along VFy ***
     ry = [0 0.3]*nvf;			% Range of VFy
     dy = diff(ry)/(Ny-1);		% Separation between points along VFy    
     d = (dx + dy)/2;
