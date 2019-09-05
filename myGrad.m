@@ -100,7 +100,7 @@ end
 [gt,gr] = cart2pol(gx,gy);
 for i = gtEstList
 	gt_b = gtEstimate(gt(:,:,i), gr(:,:,i), Pi);
-	b_ind = sub2ind([G,D],b_r,b_c,i);
+	b_ind = sub2ind([G,D],b_r,b_c,zeros(length(b_r),1)+i);
 	gt(b_ind) = gt_b(B1_ind);
 	[gx(b_ind), gy(b_ind)] = pol2cart(gt(b_ind), gr(b_ind));
 	if checkGrad

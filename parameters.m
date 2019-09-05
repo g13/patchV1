@@ -13,7 +13,7 @@ plots = true;
 new = true;
 ENproc = 'var';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
-var = 'beta';
+var = 'beta2';
 ENfilename0 = ['cortex_nG2-',var];   % Simulation name ***
 %range = [2,4,6,8,10];
 range = [2];

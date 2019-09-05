@@ -94,7 +94,8 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         max_cyc = 1;		% Number of cycles per annealing iteration
         min_K = eps;		% Smallest K before K is taken as 0
         tol = -1;			% Smallest centroid update
-        method = 'Cholesky';		% Training method
+        %method = 'Cholesky';		% Training method
+        method = 'gradient';		% Training method
         annrate = (Kend/Kin)^(1/(max_it*iters-1));	% Annealing rate
         disp(['annealing rate: ', num2str(annrate)]);
         Ksched = Kin*repmat(annrate^max_it,1,iters).^(0:iters-1);
@@ -113,9 +114,10 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         resol = 10;
         disp(['estimated lambda OD =', num2str(8*l/(1/G(1)+1/G(2)))]); %
         disp(['estimated lambda OR =', num2str(2*pi*r/(1/G(1)+1/G(2)))]); %
+        fign = 0;
         if cortical_shape
 			manual_LR = ~non_cortical_LR && ~uniform_LR;
-            [Pi, W, LR, VF] = myCortex(stream, G, rx, ry, ecc, a, b, k, resol, nod, rOD*ODabsol, ODnoise, manual_LR, ~uniform_LR*fign, ENfilename0);
+            [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, rx, ry, ecc, a, b, k, resol, nod, rOD*ODabsol, ODnoise, manual_LR, fign, ENfilename0);
         else
             Pi = zeros(G);
             Pi(1+test_dw*nG:G(1)-nG*test_dw, 1+test_dh*nG:G(2)-nG*test_dh) = 1;
@@ -138,10 +140,18 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
             LR(LR > l) = l;
         end
 		if saveLR
-			fID = fopen([ENfilename0,'/',ENfilename,'-LR_Pi.bin'],'w')
+			fID = fopen([ENfilename0,'/',ENfilename,'-LR_Pi.bin'],'w');
 			fwrite(fID, Pi, 'int');
 			fclose(fID);
-		end
+        end
+        %%% parameters that does not matter
+        % test_boundary = false;
+        % prefix = '';
+        % right_open = false;
+        % B_width = 1;
+        %%% acquire boundary points, for exact boundary setup for matrix S
+        %[~, ~, B1_ind, ~, ~, ~, ~] = set_bc(reshape(logical(Pi),G(1),G(2)), B_width, right_open, test_boundary, prefix);
+        
         %     pause;
         %gridVF = zeros(G(1), G(2),2);
         %for iy =1:G(2)
@@ -276,7 +286,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
             
             % Update parameters:
         %     disp(['K#',num2str(ENcounter),' = ', num2str(Ksched(ENcounter))]);
-            [mu,stats] = ENtr_ann(Tr,S,Pi,mu,Ksched(ENcounter),alpha,betanorm,...
+            [mu,stats] = ENtr_ann(Tr,S,Pi,mu,VFy_ratio,(ry(1)+ry(2))/2,Ksched(ENcounter),alpha,betanorm,...
                 annrate,max_it,max_cyc,min_K,tol,method,0,stream);
             if isfield(id, 'OR')
                 [tmp1,tmp2] = cart2pol(mu(:,id.ORx),mu(:,id.ORy));
@@ -358,7 +368,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
 	right_open = cortical_shape;
     stats = myV1stats(stream,G,bc,ENlist,v,'last',T,Pi,murange,id,[],[ENfilename0,'/',ENfilename,'.png'],figlist,statsOnly,right_open,separateData);
 	if saveLR
-		fID = fopen([ENfilename0,'/',ENfilename,'-LR_Pi.bin'],'a')
+		fID = fopen([ENfilename0,'/',ENfilename,'-LR_Pi.bin'],'a');
 		fwrite(fID, ENlist(end).mu(:,id.OD), 'double');
 		fclose(fID);
 	end

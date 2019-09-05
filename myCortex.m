@@ -1,8 +1,9 @@
-function [Pi, W, LR, VF] = myCortex(stream, G, xrange, yrange, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch,savepath)
+function [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, xrange, yrange, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch,savepath)
     nx = G(1);
     ny = G(2);
     Pi = ones(nx,ny);
     VF = zeros(nx,ny,2);
+    VFy_ratio = zeros(nx,ny);
     if manual_LR
         LR_noise = noise * randn(stream,nx,ny);
         LR = rOD(1) + (rOD(2)-rOD(1))*rand(stream,nx,ny);
@@ -28,6 +29,7 @@ function [Pi, W, LR, VF] = myCortex(stream, G, xrange, yrange, ecc, a, b, k, res
 	w = dipole(e(end),p,a,b,k);
     rx = real(w);
     ry = imag(w);
+    max_y = max(ry);
     
     tw0 = sum(sqrt(diff(tx).^2 + diff(ty).^2))/nod;
     rate0 = 1/(6*tw0);
@@ -78,7 +80,17 @@ function [Pi, W, LR, VF] = myCortex(stream, G, xrange, yrange, ecc, a, b, k, res
 		w = dipole(e,p(ip),a,b,k)-k*log(a/b);
 		vx(:,ip) = real(w);
 		vy(:,ip) = imag(w);
+        if plot_patch >0 && mod(ip,resol*10) == 0
+            plot(vx(:,ip), vy(:,ip),':k');
+        end
 	end
+    if plot_patch >0
+	    for ie = 1:me
+            if plot_patch >0 && mod(ie,resol*10) == 0
+                plot(vx(ie,:), vy(ie,:),':r');
+            end
+        end
+    end
 	ix0 = zeros(mp-1, 1);
 	d0 = zeros(mp-1, 1);
 	d1 = zeros(mp-1, 1);
@@ -113,15 +125,22 @@ function [Pi, W, LR, VF] = myCortex(stream, G, xrange, yrange, ecc, a, b, k, res
 			[~, idp] = min(dis);
 			idx = ix0(idp);
 			VF(i,j,1) =  log_e(idx) + (log_e(idx+1) - log_e(idx)) * sqrt(dis(idp))/(sqrt(d0(idp))+sqrt(d1(idp)));
-			w = dipole(exp(VF(i,j,1))-1,p(idp),k,a,b) - k*log(a/b);
+			%VF(i,j,1) =  exp(log_e(idx) + (log_e(idx+1) - log_e(idx)) * sqrt(dis(idp))/(sqrt(d0(idp))+sqrt(d1(idp))))-1;
+			w = dipole(exp(VF(i,j,1))-1,p(idp),a,b,k) - k*log(a/b);
+			%w = dipole(VF(i,j,1),p(idp),a,b,k) - k*log(a/b);
             vp_x0 = real(w);
             vp_y0 = imag(w);
-			w = dipole(exp(VF(i,j,1))-1,p(idp+1),k,a,b) - k*log(a/b);
+			w = dipole(exp(VF(i,j,1))-1,p(idp+1),a,b,k) - k*log(a/b);
+			%w = dipole(VF(i,j,1),p(idp+1),a,b,k) - k*log(a/b);
             vp_y1 = real(w);
             vp_x1 = imag(w);
             dp0 = sqrt((x(i)-vp_x0)^2 + (y(j)-vp_y0)^2);
             dp1 = sqrt((x(i)-vp_x1)^2 + (y(j)-vp_y1)^2);
             VF(i,j,2) = p(idp) + (p(idp+1) - p(idp)) * dp0/(dp0+dp1);
+            w = dipole(VF(i,j,1),pi/2,a,b,k);
+            vp_y = imag(w);
+            VFy_ratio(i,j) = vp_y/max_y;
+            assert(VFy_ratio(i,j) <= 1.0);
 		end
 	end
     if plot_patch > 0

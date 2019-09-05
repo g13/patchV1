@@ -74,18 +74,18 @@ function [B_ind, I_ind, B1_ind, I1_ind, B2_ind, I2_ind, B1_ang] = set_bc(Pi, bw,
     I2_ind = find(Pi_tmp==0);
 	% find boundary tangential angles
     B1_ang = zeros(size(B1_ind));
+    bbw = max(3,bw);
     nbp = length(B1_ind);
     Pi_tmp = zeros(size(Pi));
     Pi_tmp(B1_ind) = 1;
-    mid = (bw+1)/2;
-    oneside = (bw-1)/2;
+    oneside = (bbw-1)/2;
     if check_boundary
         figure;
         hold on
     end
     for i = 1:nbp
         [r, c] = ind2sub(size(Pi),B1_ind(i));
-        [ilist, localSize] = check(r,c,nx,ny,bw);
+        [ilist, localSize] = check(r,c,nx,ny,bbw);
 		% find local boundary points in the subgrid
         local_ind = find(Pi_tmp(ilist)>0);
 		% generate indices for the subgrid
