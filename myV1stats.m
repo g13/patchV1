@@ -234,7 +234,7 @@
 % Copyright (c) 2002 by Miguel A. Carreira-Perpinan
 
 function stats = ...
-    myV1stats(stream,G,bc,ENlist,v,whichones,T,Pi,murange,id,tens,opt,figlist,statsOnly,right_open,separateData)
+    myV1stats(stream,G,bc,ENlist,v,whichones,T,Pi,murange,id,scale_VFy,VFy_ratio,meany,tens,opt,figlist,statsOnly,right_open,separateData)
 if nargin < 13
     statsOnly = false;
 end
@@ -462,7 +462,36 @@ for ENcounter = whichones
     % ------------------------------------------------------------------------
     % Compute gradients
     % [gx,gy,gt,gr] = ENgrad(G,mu,v(id.OR,:));
-	test_grad = true;
+	figure;
+	if scale_VFy
+		subplot(3,1,1)
+	else
+		subplot(2,1,1)
+	end
+	imagesc(reshape(mu(:,1),G));
+	colormap(viridis);
+	colorbar;
+    daspect([1,1,1]);
+	if scale_VFy
+		subplot(3,1,2)
+	else
+		subplot(2,1,2)
+	end
+	imagesc(reshape(mu(:,2),G));
+	colormap(viridis);
+	colorbar;
+    daspect([1,1,1]);
+	if scale_VFy
+		subplot(3,1,3)
+		imagesc(reshape((mu(:,2)-meany).*reshape(VFy_ratio,prod(G),1),G)+meany);
+		colormap(viridis);
+		colorbar;
+    	daspect([1,1,1]);
+	end
+    print(gcf,'-loose','-r900',['-d' EXT], [prefix,'postVF-',frame,'.',EXT]);
+	close(gcf);
+
+	test_grad = false;
     [gx,gy,gt,gr] = myGrad(G,mu,B2_ind,I2_ind,logical(Pi),v(id.OR,:),[id.OD],test_grad,prefix);
     % Augment gr with the visual field gradient gVF, obtained simply as the
     % sum of the gradient moduli of VFx and VFy:
@@ -509,10 +538,12 @@ for ENcounter = whichones
         for i=find(plotfig(Figs))
             print(i,'-loose','-r900',['-d' EXT], [prefix,figName{i},'-',frame,'.',EXT]);
         end
- 		Figs = [100:102];		
-        for i=find(plotfig(Figs))
-            print(Figs(i),'-loose','-r300',['-d' EXT],[prefix,figName{Figs(i)},'-',frame,'.',EXT]);
-        end
+		if ENcounter == whichones(1)
+ 			Figs = [100:102];		
+        	for i=find(plotfig(Figs))
+        	    print(Figs(i),'-loose','-r300',['-d' EXT],[prefix,figName{Figs(i)},'.',EXT]);
+        	end
+		end
     end
     if plotfig(100)
         stats.fig(100).K{ENcounter} = ENlist(ENcounter).stats.K;
@@ -1016,9 +1047,9 @@ for ENcounter = whichones
                     end
                 end
                 dist(:,i) = sqrt(min(...
-                    ENsqdist(rndpinw+repmat(1/2,npinw,2),ODborders),...
+                    ENsqdist(rndpinw(1:npinw,:)+repmat(1/2,npinw,2),ODborders),...
                     [],2));
-                pinwR(:,:,i) = rndpinw; 
+                pinwR(:,:,i) = rndpinw(1:npinw,:); 
             end
             % Actual pinwheels, independent of sign:
             dist(:,end) = sqrt(min(ENsqdist(ORpinw,ODborders),[],2));

@@ -25,6 +25,7 @@ else
 fi
 cp *.m $fdr
 cd $fdr
+
 date
     matlab -nosplash -nodesktop -r "parameters;exit"
 date

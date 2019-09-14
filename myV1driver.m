@@ -26,7 +26,7 @@
 % scaffolding for the underlying continuous set of training vectors.
 % 'noisy' and 'uniform*' approximate online training over the continuous
 % domain of (VFx,VFy,OD,ORt).
-function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR,separateData)
+function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR,separateData,scale_VFy,plotting)
     datafileabsolpath = [pwd,'/',ENfilename0,'/',ENfilename,'.mat'];
 	stream = RandStream('mt19937ar','Seed',seed);
 
@@ -114,10 +114,9 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         resol = 10;
         disp(['estimated lambda OD =', num2str(8*l/(1/G(1)+1/G(2)))]); %
         disp(['estimated lambda OR =', num2str(2*pi*r/(1/G(1)+1/G(2)))]); %
-        fign = 0;
         if cortical_shape
 			manual_LR = ~non_cortical_LR && ~uniform_LR;
-            [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, rx, ry, ecc, a, b, k, resol, nod, rOD*ODabsol, ODnoise, manual_LR, fign, ENfilename0);
+            [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, rx, ry, ecc, a, b, k, resol, nod, rOD*ODabsol, ODnoise, manual_LR, fign, ENfilename0, scale_VFy);
         else
             Pi = zeros(G);
             Pi(1+test_dw*nG:G(1)-nG*test_dw, 1+test_dh*nG:G(2)-nG*test_dh) = 1;
@@ -286,7 +285,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
             
             % Update parameters:
         %     disp(['K#',num2str(ENcounter),' = ', num2str(Ksched(ENcounter))]);
-            [mu,stats] = ENtr_ann(Tr,S,Pi,mu,VFy_ratio,(ry(1)+ry(2))/2,Ksched(ENcounter),alpha,betanorm,...
+            [mu,stats] = ENtr_ann(Tr,S,Pi,mu,scale_VFy,VFy_ratio,(ry(1)+ry(2))/2,Ksched(ENcounter),alpha,betanorm,...
                 annrate,max_it,max_cyc,min_K,tol,method,0,stream);
             if isfield(id, 'OR')
                 [tmp1,tmp2] = cart2pol(mu(:,id.ORx),mu(:,id.ORy));
@@ -321,7 +320,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
             case {'var','varplot'}
                 eval(['save ' ENfilename0 '/' ENfilename '.mat ENfilename '...
                     'Nx rx dx Ny ry dy NOD rOD dOD l NOR rORt rORr r seed v ' ...
-                    'ENlist murange id ' ...
+                    'ENlist murange id VFy_ratio ' ...
                     'N D L M G bc p s T Pi S DD knot A LL Kin Kend iters Ksched '...
                 	'alpha beta annrate max_it max_cyc min_K tol method '...
                     'W normcte betanorm']);
@@ -338,7 +337,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
                 end
                 eval(['save ' ENfilename0 '/' ENfilename '.mat ENfilename '...
                     'Nx rx dx Ny ry dy NOD rOD dOD l NOR rORt rORr r seed v ' ...
-                    'ENlist murange id ' ...
+                    'ENlist murange id VFy_ratio ' ...
                     'N D L M G bc p s T Pi S DD knot A LL Kin Kend iters Ksched '...
                     'alpha beta annrate max_it max_cyc min_K tol method '...
                     'W normcte betanorm']);
@@ -366,7 +365,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
     end
 	statsOnly = true;
 	right_open = cortical_shape;
-    stats = myV1stats(stream,G,bc,ENlist,v,'last',T,Pi,murange,id,[],[ENfilename0,'/',ENfilename,'.png'],figlist,statsOnly,right_open,separateData);
+    stats = myV1stats(stream,G,bc,ENlist,v,plotting,T,Pi,murange,id,scale_VFy,VFy_ratio,(ry(1)+ry(2))/2,[],[ENfilename0,'/',ENfilename,'.png'],figlist,statsOnly,right_open,separateData);
 	if saveLR
 		fID = fopen([ENfilename0,'/',ENfilename,'-LR_Pi.bin'],'a');
 		fwrite(fID, ENlist(end).mu(:,id.OD), 'double');

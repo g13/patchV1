@@ -1,4 +1,4 @@
-function [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, xrange, yrange, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch,savepath)
+function [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, xrange, yrange, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch,savepath,scale_VFy)
     nx = G(1);
     ny = G(2);
     Pi = ones(nx,ny);
@@ -124,19 +124,20 @@ function [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, xrange, yrange, ecc, a
 			assert(length(dis) == mp-1);
 			[~, idp] = min(dis);
 			idx = ix0(idp);
-			VF(i,j,1) =  log_e(idx) + (log_e(idx+1) - log_e(idx)) * sqrt(dis(idp))/(sqrt(d0(idp))+sqrt(d1(idp)));
-			%VF(i,j,1) =  exp(log_e(idx) + (log_e(idx+1) - log_e(idx)) * sqrt(dis(idp))/(sqrt(d0(idp))+sqrt(d1(idp))))-1;
-			w = dipole(exp(VF(i,j,1))-1,p(idp),a,b,k) - k*log(a/b);
-			%w = dipole(VF(i,j,1),p(idp),a,b,k) - k*log(a/b);
+			%VF(i,j,1) =  log_e(idx) + (log_e(idx+1) - log_e(idx)) * sqrt(dis(idp))/(sqrt(d0(idp))+sqrt(d1(idp)));
+			VF(i,j,1) =  exp(log_e(idx) + (log_e(idx+1) - log_e(idx)) * sqrt(dis(idp))/(sqrt(d0(idp))+sqrt(d1(idp))))-1;
+			%w = dipole(exp(VF(i,j,1))-1,p(idp),a,b,k) - k*log(a/b);
+			w = dipole(VF(i,j,1),p(idp),a,b,k) - k*log(a/b);
             vp_x0 = real(w);
             vp_y0 = imag(w);
-			w = dipole(exp(VF(i,j,1))-1,p(idp+1),a,b,k) - k*log(a/b);
-			%w = dipole(VF(i,j,1),p(idp+1),a,b,k) - k*log(a/b);
+			%w = dipole(exp(VF(i,j,1))-1,p(idp+1),a,b,k) - k*log(a/b);
+			w = dipole(VF(i,j,1),p(idp+1),a,b,k) - k*log(a/b);
             vp_y1 = real(w);
             vp_x1 = imag(w);
             dp0 = sqrt((x(i)-vp_x0)^2 + (y(j)-vp_y0)^2);
             dp1 = sqrt((x(i)-vp_x1)^2 + (y(j)-vp_y1)^2);
             VF(i,j,2) = p(idp) + (p(idp+1) - p(idp)) * dp0/(dp0+dp1);
+            %w = dipole(exp(VF(i,j,1))-1,pi/2,a,b,k);
             w = dipole(VF(i,j,1),pi/2,a,b,k);
             vp_y = imag(w);
             VFy_ratio(i,j) = vp_y/max_y;
@@ -144,25 +145,35 @@ function [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, xrange, yrange, ecc, a
 		end
 	end
     if plot_patch > 0
-		subplot(2,2,2)
-		%disp([num2str(log_e(1)),'->',num2str(log_e(me))]);
+		if scale_VFy
+			subplot(3,2,2)
+		else
+			subplot(2,2,2)
+		end
 		imagesc(VF(:,:,1));
+		colormap(viridis);
 		colorbar;
         daspect([1,1,1]);
-		subplot(2,2,4)
-		%disp([num2str(p(1)),'->',num2str(p(mp))]);
+		if scale_VFy
+			subplot(3,2,4)
+		else
+			subplot(2,2,4)
+		end
 		imagesc(VF(:,:,2));
+		colormap(viridis);
 		colorbar;
         daspect([1,1,1]);
+		if scale_VFy
+			subplot(3,2,6)
+			imagesc(VF(:,:,2).*VFy_ratio);
+			colormap(viridis);
+			colorbar;
+        	daspect([1,1,1]);
+		end
 		if manual_LR
 			subplot(1,2,1)
 		end
 	end
-	%for i = 1:nx-1
-	%	pmask = Pi(i,:) > 0 & Pi(i+1,:) > 0;
-	%	mask = VF(i,pmask,1) < VF(i+1,pmask,1);
-	%	assert(all(mask));
-	%end
 	pPi = reshape(Pi > 0, prod(G),1);
 	VF = reshape(VF, prod(G), 2);
 	maxVFx = max(max(VF(pPi,1)));

@@ -602,11 +602,11 @@ for ENcounter = whichones
         myplot(G,bc,DDmu2(:,ENcounter),DDplotv,DDmu2v,T,Pi,fg11,ax11);
         title(Kstr,'Visible','on'); drawnow;
     end
-    if plotfig(100)
+    if plotfig(100) && domovie
         set(0,'CurrentFigure',100);
         hold on; plot(its(ENcounter),thisE,'ro'); hold off; drawnow;
     end
-    if plotfig(101)
+    if plotfig(101) && domovie
         set(0,'CurrentFigure',101);
         hold on; plot(its(ENcounter),thistime,'ro'); hold off; drawnow;
     end

@@ -1,10 +1,10 @@
 clear all
 clc;
-addpath('/home/wd554/MATLAB/ElasticNet/')
+addpath(genpath('/home/wd554/MATLAB/'))
  
 gen = 'twister';
 clear seed
-seed = 1425269650;
+seed = 1425269651;
 %seed = 1422230161;
 format = '-dpng';
 
@@ -13,11 +13,13 @@ plots = true;
 new = true;
 ENproc = 'var';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
-var = 'beta2';
-ENfilename0 = ['cortex_nG2-',var];   % Simulation name ***
-%range = [2,4,6,8,10];
-range = [2];
-cortical_VF = true;
+var = 'NxNy2';
+ENfilename0 = ['cortex_nG3-',var];   % Simulation name ***
+plotting = 'last' % 'all', 'first', >0 frame, <0 frame:end
+%range = [6,8,10,12,14];
+range = [0.6,0.8,1.0,1.2,1.4];
+%range = [2];
+cortical_VF = false;
 non_cortical_LR = false;
 % non_cortical_LR = true;
 uniform_LR = true;
@@ -25,6 +27,7 @@ uniform_LR = true;
 % SET both LR to false for manual_LR
 % cortical_shape = false;
 cortical_shape = true;
+scale_VFy = false*cortical_VF;
 if exist(ENfilename0, 'dir') && new
     rmdir(ENfilename0,'s');
 end
@@ -48,34 +51,35 @@ else
     scurr = rng('shuffle')
     seed = scurr.Seed;
 end
-%parfor i = 1:length(range)
-for i = 1:length(range)
+parfor i = 1:length(range)
+%for i = 1:length(range)
     % for non_cortical_shape edge boundaries
     test_dw = 5;
     test_dh = 7;
     % Objective function weights
 
-    alpha = 1;		% Fitness term weight
-	beta = 100*range(i);
+    alpha = 0.5;		% Fitness term weight
+	%beta = 50*range(i);
+	beta = 500;
     % Training parameters
-	iters = 10; %21;			% No. of annealing rates (saved)
-    max_it = 10;		        % No. of iterations per annealing rate (not saved) ***
+	iters = 20; %21;			% No. of annealing rates (saved)
+    max_it = 15;		        % No. of iterations per annealing rate (not saved) ***
 	%max_it = round(20 *range(i)/range(end)); 
     Kin = 0.15;			% Initial K ***
-    Kend = 0.03;        % Final K ***    
+    Kend = 0.005;        % Final K ***    
     % - VFx: Nx points in [0,1], with interpoint separation dx.
-	Nx = 10;			% Number of points along VFx ***
-	nvf = 10;
+	Nx = round(16*range(i));			% Number of points along VFx ***
+	nvf = range(i);
     %nvf = range(i);
-    rx = [0 0.15]*nvf;			% Range of VFx
+    rx = [0 0.16]*nvf;			% Range of VFx
     dx = diff(rx)/(Nx-1);		% Separation between points along VFx
     % - VFy: ditto for Ny, dy.
-	Ny = 20;			% Number of points along VFy ***
-    ry = [0 0.3]*nvf;			% Range of VFy
+	Ny = round(25*range(i));			% Number of points along VFy ***
+    ry = [0 0.25]*nvf;			% Range of VFy
     dy = diff(ry)/(Ny-1);		% Separation between points along VFy    
     d = (dx + dy)/2;
     % - OD: NOD values in range rOD, with interpoint separation dOD.
-	l = 0.11;
+	l = 0.08;
     NOD = 2;			% Number of points along OD
     rOD = [-l l];			% Range of OD
     dOD = diff(rOD)/(NOD-1);	% Separation between points along OD
@@ -87,7 +91,7 @@ for i = 1:length(range)
     % for myCortex patch
     ODnoise = l*0.0;
     ODabsol = 1.0;
-    nG = 2;
+    nG = 3;
     G = round([64 104]*nG);		% Number of centroids *** 
     ecc = 2;
     nod = 25;
@@ -99,7 +103,7 @@ for i = 1:length(range)
 	else
 		saveLR = false;
 	end
-    stats(i) = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,i,plots,new,saveLR,separateData);
+    stats(i) = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,scale_VFy,plotting);
 end
 nnpinw = [stats.npinw];
 nnpinw = nnpinw./mean(nnpinw);
