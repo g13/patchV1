@@ -981,8 +981,8 @@ for ENcounter = whichones
         myplot(G,bc,ones(M,1),'img',[1 0 1],[],Pi,[Figsp Figss]);
         hold on;
         plot(ODborders(:,1),ODborders(:,2),'k-','LineWidth',1);
-        plot(ORpinwp(:,1),ORpinwp(:,2),'r*');
-        plot(ORpinwn(:,1),ORpinwn(:,2),'bo');
+        plot(ORpinwp(:,1),ORpinwp(:,2),'r*', 'MarkerSize', 2);
+        plot(ORpinwn(:,1),ORpinwn(:,2),'bo', 'MarkerSize', 2);
         hold off;
         % There is no space in the figure title to put all statistics
         title(['#: '  num2str(pinw(1,1)) ...
@@ -1539,11 +1539,11 @@ for ENcounter = whichones
                     % Mark pinwheels
                     hold on;
                     if npinwp >= 1
-                        plot(Vars(ORpinwip(:,3),i),Vars(ORpinwip(:,3),j),'ro');
+                        plot(Vars(ORpinwip(:,3),i),Vars(ORpinwip(:,3),j),'r*', 'MarkerSize', 2);
                     end
                     if npinwn >= 1
-                        plot(Vars(ORpinwin(:,3),i),Vars(ORpinwin(:,3),j),'bo');
-                    end
+                        plot(Vars(ORpinwin(:,3),i),Vars(ORpinwin(:,3),j),'bo', 'MarkerSize', 2);
+                    end                                                      
                     % Draw regression lines
                     tmpm = linregr(i,j).mean;
                     tmpl = norm(diff([Varsax(:,i) Varsax(:,j)],1));

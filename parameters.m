@@ -13,13 +13,13 @@ plots = true;
 new = true;
 ENproc = 'var';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
-var = 'NxNy2';
+var = 'nvf';
 ENfilename0 = ['cortex_nG3-',var];   % Simulation name ***
-plotting = 'last' % 'all', 'first', >0 frame, <0 frame:end
+plotting = 'all' % 'all', 'first', >0 frame, <0 frame:end
 %range = [6,8,10,12,14];
 range = [0.6,0.8,1.0,1.2,1.4];
 %range = [2];
-cortical_VF = false;
+cortical_VF = true;
 non_cortical_LR = false;
 % non_cortical_LR = true;
 uniform_LR = true;
@@ -63,23 +63,23 @@ parfor i = 1:length(range)
 	beta = 500;
     % Training parameters
 	iters = 20; %21;			% No. of annealing rates (saved)
-    max_it = 15;		        % No. of iterations per annealing rate (not saved) ***
+    max_it = 20;		        % No. of iterations per annealing rate (not saved) ***
 	%max_it = round(20 *range(i)/range(end)); 
     Kin = 0.15;			% Initial K ***
     Kend = 0.005;        % Final K ***    
     % - VFx: Nx points in [0,1], with interpoint separation dx.
-	Nx = round(16*range(i));			% Number of points along VFx ***
-	nvf = range(i);
+	Nx = 16;			% Number of points along VFx ***
+	nvf = 10*range(i);
     %nvf = range(i);
     rx = [0 0.16]*nvf;			% Range of VFx
     dx = diff(rx)/(Nx-1);		% Separation between points along VFx
     % - VFy: ditto for Ny, dy.
-	Ny = round(25*range(i));			% Number of points along VFy ***
+	Ny = 25;			% Number of points along VFy ***
     ry = [0 0.25]*nvf;			% Range of VFy
     dy = diff(ry)/(Ny-1);		% Separation between points along VFy    
     d = (dx + dy)/2;
     % - OD: NOD values in range rOD, with interpoint separation dOD.
-	l = 0.08;
+	l = 0.10;
     NOD = 2;			% Number of points along OD
     rOD = [-l l];			% Range of OD
     dOD = diff(rOD)/(NOD-1);	% Separation between points along OD

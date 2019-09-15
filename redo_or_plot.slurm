@@ -2,7 +2,7 @@
 #SBATCH --job-name=plotmap
 #SBATCH --nodes=1
 #SBATCH --mem-per-cpu=12GB
-#SBATCH --time=2:00:00
+#SBATCH --time=8:00:00
 #SBATCH --cpus-per-task=5
 #SBATCH -o log/plot_%J.out
 #SBATCH --mail-user=wd554@nyu.edu

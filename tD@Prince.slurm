@@ -12,7 +12,7 @@ module purge
 module load matlab/2018a
 ulimit -s unlimited
 
-fdr="qb"
+fdr="qc"
 if [ -d "$fdr" ]
 then
 	echo deleting contents in $fdr
