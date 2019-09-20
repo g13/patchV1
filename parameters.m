@@ -13,7 +13,7 @@ plots = true;
 new = true;
 ENproc = 'var';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
-var = 'NxC';
+var = 'NxHomo';
 ENfilename0 = ['cortex_nG3-',var];   % Simulation name ***
 plotting = 'last' % 'all', 'first', >0 frame, <0 frame:end
 %range = [6,8,10,12,14];
@@ -30,7 +30,7 @@ uniform_LR = true;
 % cortical_shape = false;
 cortical_shape = true;
 scale_VFy = false*cortical_VF;
-heteroAlpha = true; % if true specify in myV1driver.m
+heteroAlpha = false; % if true specify in myV1driver.m
 if exist(ENfilename0, 'dir') && new
     rmdir(ENfilename0,'s');
 end

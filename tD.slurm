@@ -14,7 +14,7 @@ module load all
 module load matlab/R2017a
 ulimit -s unlimited
 
-fdr="toTestAlphaNecc"
+fdr="testAlpha"
 if [ -d "$fdr" ]
 then
 	echo deleting contents in $fdr

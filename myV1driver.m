@@ -49,6 +49,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         rORt = [-pi/2 pi/2];		% Range of ORtheta
         rORr = [0 r];			% Range of ORr
         tmp1 = linspace(rORt(1),rORt(2),NOR+1); tmp1 = tmp1(1:NOR);
+		NORr = 1;
         %dOR = diff(rORt)/(NOR-1)*r;
         % - SF: spatial frequency, same as OD, to be tested with larger NSF
         lSF = 0.14;
@@ -57,26 +58,25 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         dSF = diff(rSF)/(NSF-1);
        
 		if cortical_shape
-			xecc_max = real(dipole_ext(ecc, 0, a, b, k));
+			xecc_max = real(dipole_ext(ecc, 0, a, b, k) - k*log(a/b));
 			xecc0 = linspace(0, xecc_max, Nx+1); 
 			xecc = (xecc0(1:Nx) + xecc0(2:Nx+1))/2;
-			x2ecc = @(x) (exp(x/k)-1)./(a-b*exp(x/k));
-			recc = x2ecc(xecc);
+			x2ecc = @(x) (a-b*exp(x/k))./(exp(x/k)-1);
+			recc = x2ecc(xecc+k*log(a/b));
 			x_vec = rx(1) + (recc-min(recc))/(max(recc) - min(recc)) * (rx(2) - rx(1));
-			rx
-			x_vec
 			%%% specifying alpha, heterogeneos in space
 			ypolar0 = linspace(-pi/2, pi/2, Ny+1);
-			recc0 = x2ecc(xecc0);
+			recc0 = x2ecc(xecc0+k*log(a/b));
 			if heteroAlpha
 				darea = @(e, p) dblock(e,p,k,a,b);
-				alpha_v = zeros(Nx,Ny);
-				for i = 1:Nx
-					for j = 1:Ny
-						alpha_v(i,j) = integral2(darea, recc0(i), recc0(i+1), ypolar0(j), ypolar0(j+1));
+				alpha_v = zeros(Nx*Ny,1);
+				for j = 1:Ny
+					for i = 1:Nx
+						alpha_v((j-1)*Nx + i) = integral2(darea, recc0(i), recc0(i+1), ypolar0(j), ypolar0(j+1));
 					end
 				end
-				alpha_v = alpha_v * alpha
+				alpha_v = repmat(alpha_v, NOD*NOR*NORr,1);
+				alpha = alpha_v/sum(alpha_v)*length(alpha_v) * alpha;
 			end
 		else
 			x_vec = linspace(rx(1),rx(2),Nx);
@@ -87,7 +87,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
             linspace(ry(1),ry(2),Ny),...	% VFy
             linspace(rOD(1),rOD(2),NOD),...	% OD
             tmp1,...				% ORtheta
-            linspace(rORr(1),rORr(2),1),stream);%,... % ORr
+            linspace(rORr(1),rORr(2),NORr),stream);%,... % ORr
         
         %T = ENtrset('grid',zeros(1,3),...
         %    linspace(rx(1),rx(2),Nx),...	% VFx

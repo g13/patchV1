@@ -9,7 +9,7 @@
 #SBATCH --mail-type=END
 
 module purge
-module load matlab/2018a
+module load matlab/2017a
 ulimit -s unlimited
 
 date
