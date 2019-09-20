@@ -26,7 +26,7 @@
 % scaffolding for the underlying continuous set of training vectors.
 % 'noisy' and 'uniform*' approximate online training over the continuous
 % domain of (VFx,VFy,OD,ORt).
-function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR,separateData,scale_VFy,plotting)
+function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR,separateData,scale_VFy,plotting,heteroAlpha)
     datafileabsolpath = [pwd,'/',ENfilename0,'/',ENfilename,'.mat'];
 	stream = RandStream('mt19937ar','Seed',seed);
 
@@ -55,9 +55,35 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         NSF = 2;
         rSF = [-lSF lSF];
         dSF = diff(rSF)/(NSF-1);
-        
+       
+		if cortical_shape
+			xecc_max = real(dipole_ext(ecc, 0, a, b, k));
+			xecc0 = linspace(0, xecc_max, Nx+1); 
+			xecc = (xecc0(1:Nx) + xecc0(2:Nx+1))/2;
+			x2ecc = @(x) (exp(x/k)-1)./(a-b*exp(x/k));
+			recc = x2ecc(xecc);
+			x_vec = rx(1) + (recc-min(recc))/(max(recc) - min(recc)) * (rx(2) - rx(1));
+			rx
+			x_vec
+			%%% specifying alpha, heterogeneos in space
+			ypolar0 = linspace(-pi/2, pi/2, Ny+1);
+			recc0 = x2ecc(xecc0);
+			if heteroAlpha
+				darea = @(e, p) dblock(e,p,k,a,b);
+				alpha_v = zeros(Nx,Ny);
+				for i = 1:Nx
+					for j = 1:Ny
+						alpha_v(i,j) = integral2(darea, recc0(i), recc0(i+1), ypolar0(j), ypolar0(j+1));
+					end
+				end
+				alpha_v = alpha_v * alpha
+			end
+		else
+			x_vec = linspace(rx(1),rx(2),Nx);
+		end
+
         T = ENtrset('grid',zeros(1,5),...
-            linspace(rx(1),rx(2),Nx),...	% VFx
+            x_vec,...	% VFx
             linspace(ry(1),ry(2),Ny),...	% VFy
             linspace(rOD(1),rOD(2),NOD),...	% OD
             tmp1,...				% ORtheta
@@ -94,8 +120,8 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         max_cyc = 1;		% Number of cycles per annealing iteration
         min_K = eps;		% Smallest K before K is taken as 0
         tol = -1;			% Smallest centroid update
-        %method = 'Cholesky';		% Training method
-        method = 'gradient';		% Training method
+        method = 'Cholesky';		% Training method
+        %method = 'gradient';		% Training method
         annrate = (Kend/Kin)^(1/(max_it*iters-1));	% Annealing rate
         disp(['annealing rate: ', num2str(annrate)]);
         Ksched = Kin*repmat(annrate^max_it,1,iters).^(0:iters-1);

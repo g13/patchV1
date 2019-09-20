@@ -45,9 +45,8 @@ def d_fp_e(e,p,ab,s1=0.76,s2=0.1821,eval_fp=np.nan):
         return 0
     else:
         if np.isnan(eval_fp):
-            return fp(e,p,ab,s1,s2)*np.log(1/np.cosh(p)) * d_sech_log(e,ab,s1,s2)
-        else:
-            return eval_fp*np.log(1/np.cosh(p)) * d_sech_log(e,ab,s1,s2)
+            eval_fp = fp(e,p,ab,s1,s2)
+        return eval_fp*np.log(1/np.cosh(p)) * d_sech_log(e,ab,s1,s2)
     
 def d_fp_p(e,p,ab,s1=0.76,s2=0.1821,eval_fp=np.nan):
     if e == 0:
@@ -74,9 +73,8 @@ def d_fpp_p(e,p,ab,s1=0.76,s2=0.1821,eval_fp=np.nan):
         return 1
     else:
         if np.isnan(eval_fp):
-            return p*d_fp_p(e,p,ab,s1,s2) + fp(e,p,ab,s1,s2)
-        else:
-            return p*d_fp_p(e,p,ab,s1,s2,eval_fp) + eval_fp
+            eval_fp = fp(e,p,ab,s1,s2)
+        return p*d_fp_p(e,p,ab,s1,s2,eval_fp) + eval_fp
         
 # e,p -> x,y mapping
 def R_ep(e,p,ab,s1=0.76,s2=0.1821,eval_fp=np.nan,cos_eval_fp=np.nan):

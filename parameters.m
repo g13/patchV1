@@ -4,7 +4,7 @@ addpath(genpath('/home/wd554/MATLAB/'))
  
 gen = 'twister';
 clear seed
-seed = 1425269651;
+seed = 1435269651;
 %seed = 1422230161;
 format = '-dpng';
 
@@ -13,21 +13,24 @@ plots = true;
 new = true;
 ENproc = 'var';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
-var = 'nvf';
+var = 'NxC';
 ENfilename0 = ['cortex_nG3-',var];   % Simulation name ***
-plotting = 'all' % 'all', 'first', >0 frame, <0 frame:end
+plotting = 'last' % 'all', 'first', >0 frame, <0 frame:end
 %range = [6,8,10,12,14];
+%range = [1.2,1.3,1.4,1.5,1.6];
 range = [0.6,0.8,1.0,1.2,1.4];
-%range = [2];
+%range = [1.0];
+%range = [1];
 cortical_VF = true;
 non_cortical_LR = false;
 % non_cortical_LR = true;
 uniform_LR = true;
-% uniform_LR = false;
+%uniform_LR = false;
 % SET both LR to false for manual_LR
 % cortical_shape = false;
 cortical_shape = true;
 scale_VFy = false*cortical_VF;
+heteroAlpha = true; % if true specify in myV1driver.m
 if exist(ENfilename0, 'dir') && new
     rmdir(ENfilename0,'s');
 end
@@ -62,14 +65,15 @@ parfor i = 1:length(range)
 	%beta = 50*range(i);
 	beta = 500;
     % Training parameters
-	iters = 20; %21;			% No. of annealing rates (saved)
-    max_it = 20;		        % No. of iterations per annealing rate (not saved) ***
+	iters = 10; %21;			% No. of annealing rates (saved)
+    max_it = 5;		        % No. of iterations per annealing rate (not saved) ***
 	%max_it = round(20 *range(i)/range(end)); 
     Kin = 0.15;			% Initial K ***
-    Kend = 0.005;        % Final K ***    
+    Kend = 0.03;        % Final K ***    
     % - VFx: Nx points in [0,1], with interpoint separation dx.
-	Nx = 16;			% Number of points along VFx ***
-	nvf = 10*range(i);
+	Nx = round(16*range(i));			% Number of points along VFx ***
+	%Nx = 16;			% Number of points along VFx ***
+	nvf = 10;
     %nvf = range(i);
     rx = [0 0.16]*nvf;			% Range of VFx
     dx = diff(rx)/(Nx-1);		% Separation between points along VFx
@@ -85,7 +89,7 @@ parfor i = 1:length(range)
     dOD = diff(rOD)/(NOD-1);	% Separation between points along OD
     %  coded as NOR Cartesian-coordinate pairs (ORx,ORy). -- later by pol2cart
     %  r = 6*l/pi
-	%r = (0.8+range(i)/range(end))*l;			% OR modulus -- the radius of pinwheel
+	%r = range(i)*l;			% OR modulus -- the radius of pinwheel
 	r = 1.4*l;
     NOR = 8;	 %8;		% Number of points along OR    
     % for myCortex patch
@@ -103,7 +107,7 @@ parfor i = 1:length(range)
 	else
 		saveLR = false;
 	end
-    stats(i) = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,scale_VFy,plotting);
+    stats(i) = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,scale_VFy,plotting,heteroAlpha);
 end
 nnpinw = [stats.npinw];
 nnpinw = nnpinw./mean(nnpinw);

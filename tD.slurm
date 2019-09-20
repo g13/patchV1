@@ -1,11 +1,10 @@
 #!/bin/bash
 #SBATCH -p serial 
-#SBATCH -n 1
-#SBATCH --mem-per-cpu=60GB
 #SBATCH --nodes=1
-#SBATCH --time=8:00:00
-#SBATCH --cpus-per-task=1
-#SBATCH -J formMap
+#SBATCH --mem=65GB
+#SBATCH --time=4:00:00
+#SBATCH --cpus-per-task=5
+#SBATCH --job-name=formMap
 #SBATCH -o log/fM_%J.out
 #SBATCH --mail-user=wd554@nyu.edu
 #SBATCH --mail-type=END
@@ -15,7 +14,7 @@ module load all
 module load matlab/R2017a
 ulimit -s unlimited
 
-fdr="t"
+fdr="toTestAlphaNecc"
 if [ -d "$fdr" ]
 then
 	echo deleting contents in $fdr
@@ -24,7 +23,9 @@ else
 	mkdir $fdr	
 fi
 cp *.m $fdr
+cp redo_or_plot@Dalma.slurm $fdr
 cd $fdr
+mkdir log
 
 date
     matlab -nosplash -nodesktop -r "parameters;exit"
