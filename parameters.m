@@ -13,12 +13,12 @@ plots = true;
 new = true;
 ENproc = 'var';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
-var = 'NxHomo';
+var = 'heteroNvf2';
 ENfilename0 = ['cortex_nG3-',var];   % Simulation name ***
 plotting = 'last' % 'all', 'first', >0 frame, <0 frame:end
 %range = [6,8,10,12,14];
 %range = [1.2,1.3,1.4,1.5,1.6];
-range = [0.6,0.8,1.0,1.2,1.4];
+range = [0.5,0.75,1.0,1.25,1.5];
 %range = [1.0];
 %range = [1];
 cortical_VF = true;
@@ -29,8 +29,8 @@ uniform_LR = true;
 % SET both LR to false for manual_LR
 % cortical_shape = false;
 cortical_shape = true;
-scale_VFy = false*cortical_VF;
-heteroAlpha = false; % if true specify in myV1driver.m
+scale_VFy = false*cortical_VF; % keep it false
+heteroAlpha = true; % if true specify in myV1driver.m
 if exist(ENfilename0, 'dir') && new
     rmdir(ENfilename0,'s');
 end
@@ -61,29 +61,31 @@ parfor i = 1:length(range)
     test_dh = 7;
     % Objective function weights
 
-    alpha = 0.5;		% Fitness term weight
+    alpha = 1.0;		% Fitness term weight
 	%beta = 50*range(i);
 	beta = 500;
     % Training parameters
 	iters = 10; %21;			% No. of annealing rates (saved)
-    max_it = 5;		        % No. of iterations per annealing rate (not saved) ***
+    max_it = 10;		        % No. of iterations per annealing rate (not saved) ***
 	%max_it = round(20 *range(i)/range(end)); 
     Kin = 0.15;			% Initial K ***
     Kend = 0.03;        % Final K ***    
     % - VFx: Nx points in [0,1], with interpoint separation dx.
-	Nx = round(16*range(i));			% Number of points along VFx ***
-	%Nx = 16;			% Number of points along VFx ***
-	nvf = 10;
-    %nvf = range(i);
+	Nx = 16;			% Number of points along VFx ***
+	%Nx = round(16*range(i)); %			% Number of points along VFx ***
+	%nvf = 10;
+    nvf = 10*range(i);
     rx = [0 0.16]*nvf;			% Range of VFx
     dx = diff(rx)/(Nx-1);		% Separation between points along VFx
     % - VFy: ditto for Ny, dy.
-	Ny = 25;			% Number of points along VFy ***
-    ry = [0 0.25]*nvf;			% Range of VFy
+	
+	 Ny = 24;
+	%Ny = round(25*range(i));			% Number of points along VFy ***
+    ry = [0 0.12]*nvf;			% Range of VFy
     dy = diff(ry)/(Ny-1);		% Separation between points along VFy    
     d = (dx + dy)/2;
     % - OD: NOD values in range rOD, with interpoint separation dOD.
-	l = 0.10;
+	l = 0.11;
     NOD = 2;			% Number of points along OD
     rOD = [-l l];			% Range of OD
     dOD = diff(rOD)/(NOD-1);	% Separation between points along OD

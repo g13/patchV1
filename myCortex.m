@@ -1,4 +1,4 @@
-function [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, xrange, yrange, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch,savepath,scale_VFy)
+function [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, xrange, recc, yrange, rpolar, VFweights, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch,savepath,scale_VFy)
     nx = G(1);
     ny = G(2);
     Pi = ones(nx,ny);
@@ -64,12 +64,13 @@ function [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, xrange, yrange, ecc, a
     end
     if plot_patch > 0
         figure;
-		subplot(1,2,1)
+		subplot(2,2,1)
         daspect([1,1,1]);
         xlim([x0(1), x0(end)]);
         hold on
         plot(x0,ty,'k');
         plot(x0,by,'k');
+		xlabel('Initial mu interpolation points density x 0.01');
     end
 	% ecc-polar grid for VF see COMMENTs in function assign_pos_VF of assign_attr.py 
 	me = nx*resol;
@@ -81,15 +82,30 @@ function [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, xrange, yrange, ecc, a
 		vx(:,ip) = real(w);
 		vy(:,ip) = imag(w);
         if plot_patch >0 && mod(ip,resol*10) == 0
-            plot(vx(:,ip), vy(:,ip),':k');
+			subplot(2,2,1)
+            plot(vx(:,ip), vy(:,ip),'k');
         end
 	end
     if plot_patch >0
+		subplot(2,2,1)
 	    for ie = 1:me
-            if plot_patch >0 && mod(ie,resol*10) == 0
-                plot(vx(ie,:), vy(ie,:),':r');
+            if mod(ie,resol*10) == 0
+                plot(vx(ie,:), vy(ie,:),'r');
             end
         end
+		tr_x = zeros(length(recc),length(rpolar));
+		tr_y = zeros(length(recc),length(rpolar));
+		for ip = 1:length(rpolar)
+			w = dipole(recc,rpolar(ip),a,b,k)-k*log(a/b);
+			tr_x(:,ip) = real(w);
+			tr_y(:,ip) = imag(w);
+		end
+		subplot(2,2,3)
+		pcolor(tr_x,tr_y,VFweights);
+        daspect([1,1,1]);
+		colormap(viridis);
+		colorbar;
+		xlabel('Training Points');
     end
 	ix0 = zeros(mp-1, 1);
 	d0 = zeros(mp-1, 1);

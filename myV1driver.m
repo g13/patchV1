@@ -63,28 +63,31 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
 			xecc = (xecc0(1:Nx) + xecc0(2:Nx+1))/2;
 			x2ecc = @(x) (a-b*exp(x/k))./(exp(x/k)-1);
 			recc = x2ecc(xecc+k*log(a/b));
-			x_vec = rx(1) + (recc-min(recc))/(max(recc) - min(recc)) * (rx(2) - rx(1));
+			recc0 = x2ecc(xecc0+k*log(a/b));
+			x_vec = rx(1) + (recc-min(recc0))/(max(recc0) - min(recc0)) * (rx(2) - rx(1));
 			%%% specifying alpha, heterogeneos in space
 			ypolar0 = linspace(-pi/2, pi/2, Ny+1);
-			recc0 = x2ecc(xecc0+k*log(a/b));
+			ypolar = (ypolar0(1:Ny) + ypolar0(2:Ny+1))/2;
+			y_vec = ry(1) + (ypolar-min(ypolar0))/(max(ypolar0) - min(ypolar0)) * (ry(2) - ry(1));
+			VFweights = ones(Nx,Ny);
 			if heteroAlpha
 				darea = @(e, p) dblock(e,p,k,a,b);
-				alpha_v = zeros(Nx*Ny,1);
 				for j = 1:Ny
 					for i = 1:Nx
-						alpha_v((j-1)*Nx + i) = integral2(darea, recc0(i), recc0(i+1), ypolar0(j), ypolar0(j+1));
+						VFweights(i,j) = integral2(darea, recc0(i), recc0(i+1), ypolar0(j), ypolar0(j+1));
 					end
 				end
-				alpha_v = repmat(alpha_v, NOD*NOR*NORr,1);
+				alpha_v = repmat(VFweights(:), NOD*NOR*NORr,1);
 				alpha = alpha_v/sum(alpha_v)*length(alpha_v) * alpha;
 			end
 		else
 			x_vec = linspace(rx(1),rx(2),Nx);
+			y_vec = linspace(ry(1),ry(2),Ny);
 		end
 
         T = ENtrset('grid',zeros(1,5),...
             x_vec,...	% VFx
-            linspace(ry(1),ry(2),Ny),...	% VFy
+            y_vec,...	% VFy
             linspace(rOD(1),rOD(2),NOD),...	% OD
             tmp1,...				% ORtheta
             linspace(rORr(1),rORr(2),NORr),stream);%,... % ORr
@@ -142,7 +145,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         disp(['estimated lambda OR =', num2str(2*pi*r/(1/G(1)+1/G(2)))]); %
         if cortical_shape
 			manual_LR = ~non_cortical_LR && ~uniform_LR;
-            [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, rx, ry, ecc, a, b, k, resol, nod, rOD*ODabsol, ODnoise, manual_LR, fign, ENfilename0, scale_VFy);
+            [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, rx, recc0(1:Nx), ry, ypolar(1:Ny), VFweights, ecc, a, b, k, resol, nod, rOD*ODabsol, ODnoise, manual_LR, fign, ENfilename0, scale_VFy);
         else
             Pi = zeros(G);
             Pi(1+test_dw*nG:G(1)-nG*test_dw, 1+test_dh*nG:G(2)-nG*test_dh) = 1;
