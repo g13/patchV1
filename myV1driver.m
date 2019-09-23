@@ -62,6 +62,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
 			if strcmp(equi,'VF')
 				x_vec0 = linspace(rx(1),rx(2),Nx+1);
 				y_vec0 = linspace(ry(1),ry(2),Ny+1);
+				% use midpoints for training
 				x_vec = midpoints(x_vec0);
 				y_vec = midpoints(y_vec0);
         		T = ENtrset('grid',zeros(1,5),...
@@ -78,36 +79,26 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
 					% shape is (y,x) in vfx and vfy
 					[vfx, vfy] = meshgrid(vfx, vfy);
 					[vfpolar, vfecc] = cart2pol(vfx, vfy);
-					darea = @(e, p) dblock(e,p,k,a,b);
+                    w = dipole_ext(vfecc,vfpolar,a,b,k) - k*log(a/b);
+                    x_cortex = real(w);
+                    y_cortex = imag(w);
 					VFweights = ones(halfNy,Nx);
-					p_mid = zeros(1,Nx);
-					p_mid_old = zeros(1,Nx);
-					for j = 1:Nx
-						p_mid(j) = integral2(darea, vfecc(1,j), vfecc(1,j+1), vfpolar(1,j+1), vfpolar(1,j))/2;
-					end
+                    p = zeros(2,4);
 					for i = 1:halfNy
-						p_mid_old = p_mid;
-						p_side_old = integral2(darea, vfecc(i,1), vfecc(i+1,1), vfpolar(i,1), vfpolar(i+1,1))/2;
 						for j = 1:Nx
-							assert(vfecc(i,j) < vfecc(i+1,j));
-							assert(vfecc(i,j) < vfecc(i,j+1));
-							assert(vfecc(i,j) < vfecc(i+1,j+1));
-							assert(vfpolar(i,j) >= vfpolar(i,j+1));
-							assert(vfpolar(i,j) <= vfpolar(i+1,j));
-							p_mid(j) = integral2(darea, vfecc(i+1,j), vfecc(i+1,j+1), vfpolar(i+1,j+1), vfpolar(i+1,j))/2;
-							p_side = integral2(darea, vfecc(i,j+1), vfecc(i+1,j+1), vfpolar(i,j+1), vfpolar(i+1,j+1))/2;
-							VFweights(i,j) = p_side + p_mid(j) + p_side_old + p_mid_old(j);
-							p_side_old = p_side;
-							assert(VFweights(i,j) >= 0);
+                            p(:,1) = [x_cortex(i,j),     y_cortex(i,j)]';
+                            p(:,2) = [x_cortex(i,j+1),   y_cortex(i,j+1)]';
+                            p(:,3) = [x_cortex(i+1,j+1), y_cortex(i+1,j+1)]';
+                            p(:,4) = [x_cortex(i+1,j),   y_cortex(i+1,j)]';
+                            VFweights(i,j) = find_area(p);
 						end
 					end
-					VFweights = [flipud(VFweights); VFweights];
-					% use midpoints
-					vfx = midpoints(linspace(0,ecc,Nx+1));
-					vfy = midpoints(linspace(0,ecc,halfNy+1));
-					[vfx, vfy] = meshgrid(vfx, [-fliplr(vfy), vfy]);
-					[vfpolar, vfecc] = cart2pol(vfx, vfy);
-					VFweights(vfecc>ecc) = 0.0;
+                    VFweights_hlf = VFweights;
+					VFweights_hlf(vfecc(1:halfNy,1:Nx)>ecc) = 0.0;
+					VFweights = [flipud(VFweights_hlf); VFweights_hlf]
+					darea = @(e, p) dblock(e,p,k,a,b);
+                    disp(['integral sum: ', num2str(integral2(darea,0,ecc,-pi/2,pi/2))]);
+                    disp(['estimated sum: ', num2str(sum(sum(VFweights)))]);
 
 					alpha_v = repmat(VFweights(:), NOD*NOR*NORr,1);
 					alpha = alpha_v/sum(alpha_v)*length(alpha_v) * alpha;
@@ -124,21 +115,9 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
 				ecc_cortex0(1) = 0;
 				ecc_cortex = x2ecc(x_cortex+k*log(a/b));
 
-				%y_cortex = zeros(1,Nx);
-				%y_cortex0 = zeros(1,Nx+1);
-				%yline = @(e) dline(e,pi/2,k,a,b);
-				%y_cortex(1) = integral(yline,0,ecc_cortex(1));
-				%for i = 2:Nx
-				%	y_cortex(i) = y_cortex(i-1) + integral(yline,ecc_cortex(i-1),ecc_cortex(i));
-				%	y_cortex0(i) = y_cortex(i-1) + integral(yline,ecc_cortex0(i-1),ecc_cortex0(i));
-				%end
-				%y_cortex0(end) = y_cortex(end-1) + integral(yline,ecc_cortex0(end-1),ecc_cortex0(end));
-				%% transfer from cortex sheet interval ratios to VF
-				%y_cortex0 = y_cortex0/y_cortex0(end)*x_cortex_max;
-				%y_cortex = y_cortex/y_cortex0(end)*x_cortex_max;
-				% transform to ry
+				% use transformed midpoints for training points
 				x_vec = rx(1) + ecc_cortex*(rx(2)-rx(1))/ecc;
-				y_vec = ry(1) + [-ecc_cortex, ecc_cortex]*(ry(2)-ry(1))/(2*ecc);
+				y_vec = ry(1) + [-fliplr(ecc_cortex), ecc_cortex]*(ry(2)-ry(1))/(2*ecc);
         		T = ENtrset('grid',zeros(1,5),...
         		    x_vec,...	% VFx
         		    y_vec,...	% VFy
@@ -150,34 +129,26 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
 					halfNy = Ny/2;
 					[vfx, vfy] = meshgrid(ecc_cortex0, ecc_cortex0);
 					[vfpolar, vfecc] = cart2pol(vfx, vfy);
-					darea = @(e, p) dblock(e,p,k,a,b);
+                    w = dipole_ext(vfecc,vfpolar,a,b,k) - k*log(a/b);
+                    x_cortex = real(w);
+                    y_cortex = imag(w);
 					VFweights = ones(halfNy,Nx);
-					p_mid = zeros(1,Nx);
-					p_mid_old = zeros(1,Nx);
-					for j = 1:Nx
-						p_mid(j) = integral2(darea, vfecc(1,j), vfecc(1,j+1), vfpolar(1,j+1), vfpolar(1,j))/2;
-					end
+                    p = zeros(2,4);
 					for i = 1:halfNy
-						p_mid_old = p_mid;
-						p_side_old = integral2(darea, vfecc(i,1), vfecc(i+1,1), vfpolar(i,1), vfpolar(i+1,1))/2;
 						for j = 1:Nx
-							assert(vfecc(i,j) < vfecc(i+1,j));
-							assert(vfecc(i,j) < vfecc(i,j+1));
-							assert(vfecc(i,j) < vfecc(i+1,j+1));
-							assert(vfpolar(i,j) >= vfpolar(i,j+1));
-							assert(vfpolar(i,j) <= vfpolar(i+1,j));
-							p_mid(j) = integral2(darea, vfecc(i+1,j), vfecc(i+1,j+1), vfpolar(i+1,j+1), vfpolar(i+1,j))/2;
-							p_side = integral2(darea, vfecc(i,j+1), vfecc(i+1,j+1), vfpolar(i,j+1), vfpolar(i+1,j+1))/2;
-							VFweights(i,j) = p_side + p_mid(j) + p_side_old + p_mid_old(j);
-							p_side_old = p_side;
-							assert(VFweights(i,j) >= 0);
+                            p(:,1) = [x_cortex(i,j),     y_cortex(i,j)]';
+                            p(:,2) = [x_cortex(i,j+1),   y_cortex(i,j+1)]';
+                            p(:,3) = [x_cortex(i+1,j+1), y_cortex(i+1,j+1)]';
+                            p(:,4) = [x_cortex(i+1,j),   y_cortex(i+1,j)]';
+                            VFweights(i,j) = find_area(p);
 						end
 					end
-					VFweights = [flipud(VFweights); VFweights];
-					% use midpoints
-					[vfx, vfy] = meshgrid(ecc_cortex, [-fliplr(ecc_cortex), ecc_cortex]);
-					[vfpolar, vfecc] = cart2pol(vfx, vfy);
-					VFweights(vfecc>ecc) = 0.0;
+                    VFweights_hlf = VFweights;
+					VFweights_hlf(vfecc(1:halfNy,1:Nx)>ecc) = 0.0;
+					VFweights = [flipud(VFweights_hlf); VFweights_hlf]
+					darea = @(e, p) dblock(e,p,k,a,b);
+                    disp(['integral sum: ', num2str(integral2(darea,0,ecc,-pi/2,pi/2))]);
+                    disp(['estimated sum: ', num2str(sum(sum(VFweights)))]);
 
 					alpha_v = repmat(VFweights(:), NOD*NOR*NORr,1);
 					alpha = alpha_v/sum(alpha_v)*length(alpha_v) * alpha;
@@ -196,14 +167,8 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         % For non-rectangular cortex shapes, create a suitable Pi here:
         resol = 10;
         if cortical_shape
-			assert(size(vfecc,1) == Ny);
-			assert(size(vfecc,2) == Nx);
-			assert(size(vfecc,1) == size(vfpolar,1));
-			assert(size(vfecc,2) == size(vfpolar,2));
-			assert(size(vfecc,1) == size(VFweights,1));
-			assert(size(vfecc,2) == size(VFweights,2));
 			manual_LR = ~non_cortical_LR && ~uniform_LR;
-            [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, rx, vfecc, ry, vfpolar, VFweights, ecc, a, b, k, resol, nod, rOD*ODabsol, ODnoise, manual_LR, fign, ENfilename0, scale_VFy);
+            [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, rx, x_cortex, ry, y_cortex, VFweights_hlf, ecc, a, b, k, resol, nod, rOD*ODabsol, ODnoise, manual_LR, fign, ENfilename0, scale_VFy);
         else
             Pi = zeros(G);
             Pi(1+test_dw*nG:G(1)-nG*test_dw, 1+test_dh*nG:G(2)-nG*test_dh) = 1;
@@ -514,4 +479,14 @@ function f = midpoints(v)
 		v = zeros(size(v,1), size(v,2)-1);
 		f = (v(:,1:end-1) + v(:,2:end))/2;
 	end
+end
+function area = find_area(p)
+    assert(size(p,1) == 2);
+    a = p(:,2) - p(:,1);
+    b = p(:,4) - p(:,1);
+    area = abs(a(1)*b(2) - a(2)*b(1));
+    a = p(:,2) - p(:,3);
+    b = p(:,4) - p(:,3);
+    area = area + abs(a(1)*b(2) - a(2)*b(1));
+    area = area/2;
 end

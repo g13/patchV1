@@ -1,4 +1,4 @@
-function [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, xrange, recc, yrange, rpolar, VFweights, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch,savepath,scale_VFy)
+function [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, xrange, tr_x, yrange, tr_y, VFweights, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch,savepath,scale_VFy)
     nx = G(1);
     ny = G(2);
     Pi = ones(nx,ny);
@@ -93,45 +93,34 @@ function [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, xrange, recc, yrange, 
                 plot(vx(ie,:), vy(ie,:),'r');
             end
         end
-		assert(ndims(recc)==2);
-		if size(recc,1) == 1
-			tr_x = zeros(length(recc),length(rpolar));
-			tr_y = zeros(length(recc),length(rpolar));
-			for ip = 1:length(rpolar)
-				w = dipole(recc,rpolar(ip),a,b,k)-k*log(a/b);
-				tr_x(:,ip) = real(w);
-				tr_y(:,ip) = imag(w);
-			end
-		else
-			tr_x = zeros(size(recc));
-			tr_y = zeros(size(rpolar));
-			for ix = 1:size(recc,2)
-				for iy = 1:size(recc,1)
-					w = dipole(recc(iy,ix),rpolar(iy,ix),a,b,k)-k*log(a/b);
-					tr_x(iy,ix) = real(w);
-					tr_y(iy,ix) = imag(w);
-				end
-			end
-		end
 		subplot(2,2,3)
-		if size(recc,1) > 1
-        	hold on
-			contourf(tr_x,tr_y,VFweights);
-        	plot(x0,ty,'-r');
-        	plot(x0,by,'-r');
-			for i = 1:size(recc,1)
-				plot(tr_x(i,:), tr_y(i,:),'r');
-			end
-			for i = 1:size(recc,2)
-				plot(tr_x(:,i), tr_y(:,i),'r');
-			end
-		else
-			pcolor(tr_x,tr_y,VFweights,10);
-		end
+        hold on
+        pcolor(tr_x(1:end-1,1:end-1), tr_y(1:end-1,1:end-1),log(VFweights));
+		pcolor(tr_x(1:end-1,1:end-1),-tr_y(1:end-1,1:end-1),log(VFweights));
+        % plot outbounds
+        plot(tr_x(end,:),tr_y(end,:),'-r');
+        plot(tr_x(end,:),-tr_y(end,:),'-r');
+        plot(tr_x(end-1,:),tr_y(end-1,:),'-r');
+        plot(tr_x(end-1,:),-tr_y(end-1,:),'-r');
+        plot([tr_x(:,end), flipud(tr_x(:,end))],[tr_y(:,end),-flipud(tr_y(:,end))],'-r');
+        plot([tr_x(:,end-1), flipud(tr_x(:,end-1))],[tr_y(:,end-1),-flipud(tr_y(:,end-1))],'-r');
+        for i=1:size(tr_x,2)
+            plot(tr_x(end-1:end,:), tr_y(end-1:end,:),'-r');
+            plot(tr_x(end-1:end,:),-tr_y(end-1:end,:),'-r');
+        end
+        for i=1:size(tr_x,1)
+            plot(tr_x(:,end-1:end)', tr_y(:,end-1:end)','-r');
+            plot(tr_x(:,end-1:end)',-tr_y(:,end-1:end)','-r');
+        end
+            
+        plot(x0,ty,'-r');
+        plot(x0,by,'-r');
+        xlim([min([min(x0),min(tr_x(:))]),max([max(x0),max(tr_x(:))])]);
+        ylim([min([min(by),min(tr_y(:))]),max([max(ty),max(tr_y(:))])]);
         daspect([1,1,1]);
 		colormap(viridis);
 		colorbar;
-		xlabel('Training Points');
+		xlabel('Training Points weights in log(area)');
     end
 	ix0 = zeros(mp-1, 1);
 	d0 = zeros(mp-1, 1);
