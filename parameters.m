@@ -13,18 +13,20 @@ plots = true;
 new = true;
 ENproc = 'var';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
-var = 'heteroNvf2';
+var = 'test';
 ENfilename0 = ['cortex_nG3-',var];   % Simulation name ***
 plotting = 'last' % 'all', 'first', >0 frame, <0 frame:end
 %range = [6,8,10,12,14];
 %range = [1.2,1.3,1.4,1.5,1.6];
-range = [0.5,0.75,1.0,1.25,1.5];
-%range = [1.0];
+%range = [0.5,0.75,1.0,1.25,1.5];
+range = [1.0];
 %range = [1];
 cortical_VF = true;
 non_cortical_LR = false;
 % non_cortical_LR = true;
 uniform_LR = true;
+equi = 'cortex';
+%equi = 'VF';
 %uniform_LR = false;
 % SET both LR to false for manual_LR
 % cortical_shape = false;
@@ -54,8 +56,8 @@ else
     scurr = rng('shuffle')
     seed = scurr.Seed;
 end
-parfor i = 1:length(range)
-%for i = 1:length(range)
+%parfor i = 1:length(range)
+for i = 1:length(range)
     % for non_cortical_shape edge boundaries
     test_dw = 5;
     test_dh = 7;
@@ -71,17 +73,21 @@ parfor i = 1:length(range)
     Kin = 0.15;			% Initial K ***
     Kend = 0.03;        % Final K ***    
     % - VFx: Nx points in [0,1], with interpoint separation dx.
-	Nx = 16;			% Number of points along VFx ***
+	Nx = 12;			% Number of points along VFx ***
 	%Nx = round(16*range(i)); %			% Number of points along VFx ***
 	%nvf = 10;
     nvf = 10*range(i);
-    rx = [0 0.16]*nvf;			% Range of VFx
+    rx = [0 0.20]*nvf;			% Range of VFx
     dx = diff(rx)/(Nx-1);		% Separation between points along VFx
     % - VFy: ditto for Ny, dy.
-	
-	 Ny = 24;
+	%
+	% even
+	Ny = 24; 
+	if cortical_VF
+		assert(Nx*2 == Ny);
+	end
 	%Ny = round(25*range(i));			% Number of points along VFy ***
-    ry = [0 0.12]*nvf;			% Range of VFy
+    ry = [0 0.20]*nvf;			% Range of VFy
     dy = diff(ry)/(Ny-1);		% Separation between points along VFy    
     d = (dx + dy)/2;
     % - OD: NOD values in range rOD, with interpoint separation dOD.
@@ -109,7 +115,7 @@ parfor i = 1:length(range)
 	else
 		saveLR = false;
 	end
-    stats(i) = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,scale_VFy,plotting,heteroAlpha);
+    stats(i) = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,scale_VFy,plotting,heteroAlpha,equi);
 end
 nnpinw = [stats.npinw];
 nnpinw = nnpinw./mean(nnpinw);

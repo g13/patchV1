@@ -40,7 +40,7 @@ function [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, xrange, recc, yrange, 
     
     W = dipole(ecc,0,a,b,k)-k*log(a/b);
     x = linspace(-W/(2*nx-4), W+W/(2*nx-4), nx);
-	disp(x(1) + x(2));
+	disp(['starting at x = ', num2str((x(1) + x(2))/2)]);
     W = W+W/(nx-2);
 	d = W/(nx-1); 
     H = d*ny;
@@ -93,15 +93,41 @@ function [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, xrange, recc, yrange, 
                 plot(vx(ie,:), vy(ie,:),'r');
             end
         end
-		tr_x = zeros(length(recc),length(rpolar));
-		tr_y = zeros(length(recc),length(rpolar));
-		for ip = 1:length(rpolar)
-			w = dipole(recc,rpolar(ip),a,b,k)-k*log(a/b);
-			tr_x(:,ip) = real(w);
-			tr_y(:,ip) = imag(w);
+		assert(ndims(recc)==2);
+		if size(recc,1) == 1
+			tr_x = zeros(length(recc),length(rpolar));
+			tr_y = zeros(length(recc),length(rpolar));
+			for ip = 1:length(rpolar)
+				w = dipole(recc,rpolar(ip),a,b,k)-k*log(a/b);
+				tr_x(:,ip) = real(w);
+				tr_y(:,ip) = imag(w);
+			end
+		else
+			tr_x = zeros(size(recc));
+			tr_y = zeros(size(rpolar));
+			for ix = 1:size(recc,2)
+				for iy = 1:size(recc,1)
+					w = dipole(recc(iy,ix),rpolar(iy,ix),a,b,k)-k*log(a/b);
+					tr_x(iy,ix) = real(w);
+					tr_y(iy,ix) = imag(w);
+				end
+			end
 		end
 		subplot(2,2,3)
-		pcolor(tr_x,tr_y,VFweights);
+		if size(recc,1) > 1
+        	hold on
+			contourf(tr_x,tr_y,VFweights);
+        	plot(x0,ty,'-r');
+        	plot(x0,by,'-r');
+			for i = 1:size(recc,1)
+				plot(tr_x(i,:), tr_y(i,:),'r');
+			end
+			for i = 1:size(recc,2)
+				plot(tr_x(:,i), tr_y(:,i),'r');
+			end
+		else
+			pcolor(tr_x,tr_y,VFweights,10);
+		end
         daspect([1,1,1]);
 		colormap(viridis);
 		colorbar;
@@ -194,9 +220,23 @@ function [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, xrange, recc, yrange, 
 	VF = reshape(VF, prod(G), 2);
 	maxVFx = max(max(VF(pPi,1)));
 	minVFx = min(min(VF(pPi,1)));
-	VF(pPi,1) = xrange(1) + (VF(pPi,1) - minVFx)/(maxVFx - minVFx)*(xrange(2)-xrange(1));
 	maxVFy = max(max(VF(pPi,2)));
 	minVFy = min(min(VF(pPi,2)));
+	disp('ecc range:');
+	disp([minVFx, maxVFx]);
+	disp('polar range:');
+	disp([minVFy, maxVFy]);
+	[VF(:,1), VF(:,2)] = pol2cart(VF(:,2), VF(:,1));
+
+	maxVFx = max(max(VF(pPi,1)));
+	minVFx = min(min(VF(pPi,1)));
+	maxVFy = max(max(VF(pPi,2)));
+	minVFy = min(min(VF(pPi,2)));
+	disp('x range:');
+	disp([minVFx, maxVFx]);
+	disp('y range:');
+	disp([minVFy, maxVFy]);
+	VF(pPi,1) = xrange(1) + (VF(pPi,1) - minVFx)/(maxVFx - minVFx)*(xrange(2)-xrange(1));
 	VF(pPi,2) = yrange(1) + (VF(pPi,2) - minVFy)/(maxVFy - minVFy)*(yrange(2)-yrange(1));
 	VF(~pPi,:) = 0.0;
 	VF = reshape(VF, [G, 2]);

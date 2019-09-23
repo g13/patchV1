@@ -26,7 +26,7 @@
 % scaffolding for the underlying continuous set of training vectors.
 % 'noisy' and 'uniform*' approximate online training over the continuous
 % domain of (VFx,VFy,OD,ORt).
-function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR,separateData,scale_VFy,plotting,heteroAlpha)
+function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR,separateData,scale_VFy,plotting,heteroAlpha,equi)
     datafileabsolpath = [pwd,'/',ENfilename0,'/',ENfilename,'.mat'];
 	stream = RandStream('mt19937ar','Seed',seed);
 
@@ -58,39 +58,179 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         dSF = diff(rSF)/(NSF-1);
        
 		if cortical_shape
-			xecc_max = real(dipole_ext(ecc, 0, a, b, k) - k*log(a/b));
-			xecc0 = linspace(0, xecc_max, Nx+1); 
-			xecc = (xecc0(1:Nx) + xecc0(2:Nx+1))/2;
-			x2ecc = @(x) (a-b*exp(x/k))./(exp(x/k)-1);
-			recc = x2ecc(xecc+k*log(a/b));
-			recc0 = x2ecc(xecc0+k*log(a/b));
-			x_vec = rx(1) + (recc-min(recc0))/(max(recc0) - min(recc0)) * (rx(2) - rx(1));
-			%%% specifying alpha, heterogeneos in space
-			ypolar0 = linspace(-pi/2, pi/2, Ny+1);
-			ypolar = (ypolar0(1:Ny) + ypolar0(2:Ny+1))/2;
-			y_vec = ry(1) + (ypolar-min(ypolar0))/(max(ypolar0) - min(ypolar0)) * (ry(2) - ry(1));
-			VFweights = ones(Nx,Ny);
-			if heteroAlpha
-				darea = @(e, p) dblock(e,p,k,a,b);
-				for j = 1:Ny
-					for i = 1:Nx
-						VFweights(i,j) = integral2(darea, recc0(i), recc0(i+1), ypolar0(j), ypolar0(j+1));
+			assert(2*Nx == Ny);
+			if strcmp(equi,'VF')
+				x_vec0 = linspace(rx(1),rx(2),Nx+1);
+				y_vec0 = linspace(ry(1),ry(2),Ny+1);
+				x_vec = midpoints(x_vec0);
+				y_vec = midpoints(y_vec0);
+        		T = ENtrset('grid',zeros(1,5),...
+        		    x_vec,...	% VFx
+        		    y_vec,...	% VFy
+        		    linspace(rOD(1),rOD(2),NOD),...	% OD
+        		    tmp1,...				% ORtheta
+        		    linspace(rORr(1),rORr(2),NORr),stream);%,... % ORr
+
+				if heteroAlpha
+					halfNy = Ny/2;
+					vfx = linspace(0,ecc,Nx+1);
+					vfy = linspace(0,ecc,halfNy+1);
+					% shape is (y,x) in vfx and vfy
+					[vfx, vfy] = meshgrid(vfx, vfy);
+					[vfpolar, vfecc] = cart2pol(vfx, vfy);
+					darea = @(e, p) dblock(e,p,k,a,b);
+					VFweights = ones(halfNy,Nx);
+					p_mid = zeros(1,Nx);
+					p_mid_old = zeros(1,Nx);
+					for j = 1:Nx
+						p_mid(j) = integral2(darea, vfecc(1,j), vfecc(1,j+1), vfpolar(1,j+1), vfpolar(1,j))/2;
 					end
+					for i = 1:halfNy
+						p_mid_old = p_mid;
+						p_side_old = integral2(darea, vfecc(i,1), vfecc(i+1,1), vfpolar(i,1), vfpolar(i+1,1))/2;
+						for j = 1:Nx
+							assert(vfecc(i,j) < vfecc(i+1,j));
+							assert(vfecc(i,j) < vfecc(i,j+1));
+							assert(vfecc(i,j) < vfecc(i+1,j+1));
+							assert(vfpolar(i,j) >= vfpolar(i,j+1));
+							assert(vfpolar(i,j) <= vfpolar(i+1,j));
+							p_mid(j) = integral2(darea, vfecc(i+1,j), vfecc(i+1,j+1), vfpolar(i+1,j+1), vfpolar(i+1,j))/2;
+							p_side = integral2(darea, vfecc(i,j+1), vfecc(i+1,j+1), vfpolar(i,j+1), vfpolar(i+1,j+1))/2;
+							VFweights(i,j) = p_side + p_mid(j) + p_side_old + p_mid_old(j);
+							p_side_old = p_side;
+							assert(VFweights(i,j) >= 0);
+						end
+					end
+					VFweights = [flipud(VFweights); VFweights];
+					% use midpoints
+					vfx = midpoints(linspace(0,ecc,Nx+1));
+					vfy = midpoints(linspace(0,ecc,halfNy+1));
+					[vfx, vfy] = meshgrid(vfx, [-fliplr(vfy), vfy]);
+					[vfpolar, vfecc] = cart2pol(vfx, vfy);
+					VFweights(vfecc>ecc) = 0.0;
+
+					alpha_v = repmat(VFweights(:), NOD*NOR*NORr,1);
+					alpha = alpha_v/sum(alpha_v)*length(alpha_v) * alpha;
 				end
-				alpha_v = repmat(VFweights(:), NOD*NOR*NORr,1);
-				alpha = alpha_v/sum(alpha_v)*length(alpha_v) * alpha;
+			else
+				assert(strcmp(equi,'cortex'));
+				x2ecc = @(x) (a-b*exp(x/k))./(exp(x/k)-1);
+
+				x_cortex_max = dipole_ext(ecc,0,a,b,k)-k*log(a/b);
+				x_cortex0 = linspace(0,x_cortex_max,Nx+1);
+				x_cortex = midpoints(x_cortex0);
+				% equi-distance cortex ecc
+				ecc_cortex0 = x2ecc(x_cortex0+k*log(a/b));
+				ecc_cortex0(1) = 0;
+				ecc_cortex = x2ecc(x_cortex+k*log(a/b));
+
+				%y_cortex = zeros(1,Nx);
+				%y_cortex0 = zeros(1,Nx+1);
+				%yline = @(e) dline(e,pi/2,k,a,b);
+				%y_cortex(1) = integral(yline,0,ecc_cortex(1));
+				%for i = 2:Nx
+				%	y_cortex(i) = y_cortex(i-1) + integral(yline,ecc_cortex(i-1),ecc_cortex(i));
+				%	y_cortex0(i) = y_cortex(i-1) + integral(yline,ecc_cortex0(i-1),ecc_cortex0(i));
+				%end
+				%y_cortex0(end) = y_cortex(end-1) + integral(yline,ecc_cortex0(end-1),ecc_cortex0(end));
+				%% transfer from cortex sheet interval ratios to VF
+				%y_cortex0 = y_cortex0/y_cortex0(end)*x_cortex_max;
+				%y_cortex = y_cortex/y_cortex0(end)*x_cortex_max;
+				% transform to ry
+				x_vec = rx(1) + ecc_cortex*(rx(2)-rx(1))/ecc;
+				y_vec = ry(1) + [-ecc_cortex, ecc_cortex]*(ry(2)-ry(1))/(2*ecc);
+        		T = ENtrset('grid',zeros(1,5),...
+        		    x_vec,...	% VFx
+        		    y_vec,...	% VFy
+        		    linspace(rOD(1),rOD(2),NOD),...	% OD
+        		    tmp1,...				% ORtheta
+        		    linspace(rORr(1),rORr(2),NORr),stream);%,... % ORr
+
+				if heteroAlpha
+					halfNy = Ny/2;
+					[vfx, vfy] = meshgrid(ecc_cortex0, ecc_cortex0);
+					[vfpolar, vfecc] = cart2pol(vfx, vfy);
+					darea = @(e, p) dblock(e,p,k,a,b);
+					VFweights = ones(halfNy,Nx);
+					p_mid = zeros(1,Nx);
+					p_mid_old = zeros(1,Nx);
+					for j = 1:Nx
+						p_mid(j) = integral2(darea, vfecc(1,j), vfecc(1,j+1), vfpolar(1,j+1), vfpolar(1,j))/2;
+					end
+					for i = 1:halfNy
+						p_mid_old = p_mid;
+						p_side_old = integral2(darea, vfecc(i,1), vfecc(i+1,1), vfpolar(i,1), vfpolar(i+1,1))/2;
+						for j = 1:Nx
+							assert(vfecc(i,j) < vfecc(i+1,j));
+							assert(vfecc(i,j) < vfecc(i,j+1));
+							assert(vfecc(i,j) < vfecc(i+1,j+1));
+							assert(vfpolar(i,j) >= vfpolar(i,j+1));
+							assert(vfpolar(i,j) <= vfpolar(i+1,j));
+							p_mid(j) = integral2(darea, vfecc(i+1,j), vfecc(i+1,j+1), vfpolar(i+1,j+1), vfpolar(i+1,j))/2;
+							p_side = integral2(darea, vfecc(i,j+1), vfecc(i+1,j+1), vfpolar(i,j+1), vfpolar(i+1,j+1))/2;
+							VFweights(i,j) = p_side + p_mid(j) + p_side_old + p_mid_old(j);
+							p_side_old = p_side;
+							assert(VFweights(i,j) >= 0);
+						end
+					end
+					VFweights = [flipud(VFweights); VFweights];
+					% use midpoints
+					[vfx, vfy] = meshgrid(ecc_cortex, [-fliplr(ecc_cortex), ecc_cortex]);
+					[vfpolar, vfecc] = cart2pol(vfx, vfy);
+					VFweights(vfecc>ecc) = 0.0;
+
+					alpha_v = repmat(VFweights(:), NOD*NOR*NORr,1);
+					alpha = alpha_v/sum(alpha_v)*length(alpha_v) * alpha;
+				end
 			end
 		else
 			x_vec = linspace(rx(1),rx(2),Nx);
 			y_vec = linspace(ry(1),ry(2),Ny);
+        	T = ENtrset('grid',zeros(1,5),...
+        	    x_vec,...	% VFx
+        	    y_vec,...	% VFy
+        	    linspace(rOD(1),rOD(2),NOD),...	% OD
+        	    tmp1,...				% ORtheta
+        	    linspace(rORr(1),rORr(2),NORr),stream);%,... % ORr
 		end
+        % For non-rectangular cortex shapes, create a suitable Pi here:
+        resol = 10;
+        if cortical_shape
+			assert(size(vfecc,1) == Ny);
+			assert(size(vfecc,2) == Nx);
+			assert(size(vfecc,1) == size(vfpolar,1));
+			assert(size(vfecc,2) == size(vfpolar,2));
+			assert(size(vfecc,1) == size(VFweights,1));
+			assert(size(vfecc,2) == size(VFweights,2));
+			manual_LR = ~non_cortical_LR && ~uniform_LR;
+            [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, rx, vfecc, ry, vfpolar, VFweights, ecc, a, b, k, resol, nod, rOD*ODabsol, ODnoise, manual_LR, fign, ENfilename0, scale_VFy);
+        else
+            Pi = zeros(G);
+            Pi(1+test_dw*nG:G(1)-nG*test_dw, 1+test_dh*nG:G(2)-nG*test_dh) = 1;
+            %Pi = [];			% Don't disable any centroid
+            W = G(1)-nG*test_dw;			% Net width along 1st var. (arbitrary units)
+            LR = zeros(G(1),G(2));
+		end
+        if non_cortical_LR
+            LR = ones(G(1),G(2));
+            OD_width = 20; % in pixels
+            for i=1:round(G(1)/OD_width)
+                if mod(i,2) == 0
+                    is = (i-1)*OD_width+1;
+                    ie = min(is + OD_width-1, G(1));
+                    LR(is:ie, :) = -1;
+                end
+            end
+            LR = LR*l*ODabsol + ODnoise*randn(stream,G(1),G(2));
+            LR(LR < -l) = -l;
+            LR(LR > l) = l;
+        end
+		if saveLR
+			fID = fopen([ENfilename0,'/',ENfilename,'-LR_Pi.bin'],'w');
+			fwrite(fID, Pi, 'int');
+			fclose(fID);
+        end
 
-        T = ENtrset('grid',zeros(1,5),...
-            x_vec,...	% VFx
-            y_vec,...	% VFy
-            linspace(rOD(1),rOD(2),NOD),...	% OD
-            tmp1,...				% ORtheta
-            linspace(rORr(1),rORr(2),NORr),stream);%,... % ORr
         
         %T = ENtrset('grid',zeros(1,3),...
         %    linspace(rx(1),rx(2),Nx),...	% VFx
@@ -123,7 +263,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         max_cyc = 1;		% Number of cycles per annealing iteration
         min_K = eps;		% Smallest K before K is taken as 0
         tol = -1;			% Smallest centroid update
-        method = 'Cholesky';		% Training method
+        method = 'Cholesky'		% Training method
         %method = 'gradient';		% Training method
         annrate = (Kend/Kin)^(1/(max_it*iters-1));	% Annealing rate
         disp(['annealing rate: ', num2str(annrate)]);
@@ -134,44 +274,10 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         % Elastic net configuration: 2D
         %     G = [64 104]*nG;		% Number of centroids ***    
         %     G = [64 96]*nG;		% Number of centroids ***   3.4
-        bc = 'nonperiodic';		% One of 'nonperiodic', 'periodic' ***
+        bc = 'nonperiodic'		% One of 'nonperiodic', 'periodic' ***
         p = 1;			% Stencil order (of derivative) ***
         s = {[0 -1 1],[0;-1;1]};	% Stencil list ***
         L = length(G); M = prod(G);
-        % For non-rectangular cortex shapes, create a suitable Pi here:
-        
-        resol = 10;
-        disp(['estimated lambda OD =', num2str(8*l/(1/G(1)+1/G(2)))]); %
-        disp(['estimated lambda OR =', num2str(2*pi*r/(1/G(1)+1/G(2)))]); %
-        if cortical_shape
-			manual_LR = ~non_cortical_LR && ~uniform_LR;
-            [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, rx, recc0(1:Nx), ry, ypolar(1:Ny), VFweights, ecc, a, b, k, resol, nod, rOD*ODabsol, ODnoise, manual_LR, fign, ENfilename0, scale_VFy);
-        else
-            Pi = zeros(G);
-            Pi(1+test_dw*nG:G(1)-nG*test_dw, 1+test_dh*nG:G(2)-nG*test_dh) = 1;
-            %Pi = [];			% Don't disable any centroid
-            W = G(1)-nG*test_dw;			% Net width along 1st var. (arbitrary units)
-            LR = zeros(G(1),G(2));
-		end
-        if non_cortical_LR
-            LR = ones(G(1),G(2));
-            OD_width = 20; % in pixels
-            for i=1:round(G(1)/OD_width)
-                if mod(i,2) == 0
-                    is = (i-1)*OD_width+1;
-                    ie = min(is + OD_width-1, G(1));
-                    LR(is:ie, :) = -1;
-                end
-            end
-            LR = LR*l*ODabsol + ODnoise*randn(stream,G(1),G(2));
-            LR(LR < -l) = -l;
-            LR(LR > l) = l;
-        end
-		if saveLR
-			fID = fopen([ENfilename0,'/',ENfilename,'-LR_Pi.bin'],'w');
-			fwrite(fID, Pi, 'int');
-			fclose(fID);
-        end
         %%% parameters that does not matter
         % test_boundary = false;
         % prefix = '';
@@ -399,5 +505,13 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
 		fID = fopen([ENfilename0,'/',ENfilename,'-LR_Pi.bin'],'a');
 		fwrite(fID, ENlist(end).mu(:,id.OD), 'double');
 		fclose(fID);
+	end
+end
+function f = midpoints(v)
+	if size(v,1) == 1
+		f = (v(1:end-1) + v(2:end))/2;
+	else	
+		v = zeros(size(v,1), size(v,2)-1);
+		f = (v(:,1:end-1) + v(:,2:end))/2;
 	end
 end

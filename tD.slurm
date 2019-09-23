@@ -14,7 +14,7 @@ module load all
 module load matlab/R2017a
 ulimit -s unlimited
 
-fdr="NxNy"
+fdr="cortex"
 if [ -d "$fdr" ]
 then
 	echo deleting contents in $fdr
