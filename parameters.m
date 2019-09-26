@@ -10,29 +10,33 @@ format = '-dpng';
 
 separateData = true; % set to false for ease of comparison in one folder
 plots = true;
-new = true;
+new = false;
 ENproc = 'var';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
-var = 'test';
+var = 'NxNyRatio';
 ENfilename0 = ['cortex_nG3-',var];   % Simulation name ***
-plotting = 'last' % 'all', 'first', >0 frame, <0 frame:end
+plotting = 'all' % 'all', 'first', >0 frame, <0 frame:end
 %range = [6,8,10,12,14];
 %range = [1.2,1.3,1.4,1.5,1.6];
-range = [0.5,0.75,1.0,1.25,1.5];
+%range = [1.0,1.25,1.5,1.75,2.0];
+range = [12,16,20,25,30];
+%range = [0.5,0.75,1.0,1.25,1.5];
 %range = [1.0];
 %range = [1];
 cortical_VF = true;
 non_cortical_LR = false;
 % non_cortical_LR = true;
 uniform_LR = true;
-%equi = 'cortex';
-equi = 'VF';
+VFpath = [];
+equi = 'cortex';
+%equi = 'VF';
+weightType = 'min';
+%weightType = 'area';
 %uniform_LR = false;
 % SET both LR to false for manual_LR
 % cortical_shape = false;
 cortical_shape = true;
-scale_VFy = false*cortical_VF; % keep it false
-heteroAlpha = true; % if true specify in myV1driver.m
+heteroAlpha = 0; % -1 reciprocal, 0 identity, 1 area
 if exist(ENfilename0, 'dir') && new
     rmdir(ENfilename0,'s');
 end
@@ -40,7 +44,7 @@ if ~exist(ENfilename0, 'dir')
     mkdir(ENfilename0);
 end
 
-copyfile('parameters.m',[ENfilename0,'/',ENfilename0,'_p.m']);
+copyfile([mfilename,'.m'],[ENfilename0,'/',ENfilename0,'_p.m']);
 if length(range) > 1
 	poolobj = gcp('nocreate'); % If no pool, do not create new one.
 	if ~isempty(poolobj)
@@ -73,21 +77,27 @@ parfor i = 1:length(range)
     Kin = 0.15;			% Initial K ***
     Kend = 0.03;        % Final K ***    
     % - VFx: Nx points in [0,1], with interpoint separation dx.
-	Nx = 12;			% Number of points along VFx ***
+	%Nx = round(18*range(i))			% Number of points along VFx ***
+	Nx = 40;
+	%Nx = range(i)
 	%Nx = round(16*range(i)); %			% Number of points along VFx ***
-	%nvf = 10;
-    nvf = 10*range(i);
-    rx = [0 0.20]*nvf;			% Range of VFx
+	nvf = 15;
+    %nvf = 20;
+    rx = [0 0.25]*nvf;			% Range of VFx
     dx = diff(rx)/(Nx-1);		% Separation between points along VFx
     % - VFy: ditto for Ny, dy.
 	%
 	% even
-	Ny = 24; 
-	if cortical_VF
-		assert(Nx*2 == Ny);
-	end
+	%Ny = round(36/range(i)) 
+	Ny = 80;
+	%Ny = 60 - range(i);
+	if mod(Nx,2) == 1,Nx = Nx + 1; end
+	if mod(Ny,2) == 1,Ny = Ny - 1; end
+	%if cortical_VF
+	%	assert(Nx*2 == Ny);
+	%end
 	%Ny = round(25*range(i));			% Number of points along VFy ***
-    ry = [0 0.20]*nvf;			% Range of VFy
+    ry = [0 0.25]*nvf;			% Range of VFy
     dy = diff(ry)/(Ny-1);		% Separation between points along VFy    
     d = (dx + dy)/2;
     % - OD: NOD values in range rOD, with interpoint separation dOD.
@@ -105,7 +115,7 @@ parfor i = 1:length(range)
     ODabsol = 1.0;
     nG = 3;
     G = round([64 104]*nG);		% Number of centroids *** 
-    ecc = 2;
+    ecc = 15;
     nod = 25;
     a = 0.635; b = 96.7; k = sqrt(140)*0.873145;
     fign = 106;
@@ -115,7 +125,7 @@ parfor i = 1:length(range)
 	else
 		saveLR = false;
 	end
-    stats(i) = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,scale_VFy,plotting,heteroAlpha,equi);
+    stats(i) = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,VFpath,weightType);
 end
 nnpinw = [stats.npinw];
 nnpinw = nnpinw./mean(nnpinw);

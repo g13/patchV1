@@ -1,9 +1,8 @@
-function [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, xrange, tr_x, yrange, tr_y, VFweights, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch,savepath,scale_VFy)
+function [Pi, W, LR, VF] = myCortex(stream, G, xrange, tr_x, yrange, tr_y, VFweights, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch,savepath)
     nx = G(1);
     ny = G(2);
     Pi = ones(nx,ny);
     VF = zeros(nx,ny,2);
-    VFy_ratio = zeros(nx,ny);
     if manual_LR
         LR_noise = noise * randn(stream,nx,ny);
         LR = rOD(1) + (rOD(2)-rOD(1))*rand(stream,nx,ny);
@@ -95,24 +94,33 @@ function [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, xrange, tr_x, yrange, 
         end
 		subplot(2,2,3)
         hold on
-        pcolor(tr_x(1:end-1,1:end-1), tr_y(1:end-1,1:end-1),log(VFweights));
-		pcolor(tr_x(1:end-1,1:end-1),-tr_y(1:end-1,1:end-1),log(VFweights));
-        % plot outbounds
-        plot(tr_x(end,:),tr_y(end,:),'-r');
-        plot(tr_x(end,:),-tr_y(end,:),'-r');
-        plot(tr_x(end-1,:),tr_y(end-1,:),'-r');
-        plot(tr_x(end-1,:),-tr_y(end-1,:),'-r');
-        plot([tr_x(:,end), flipud(tr_x(:,end))],[tr_y(:,end),-flipud(tr_y(:,end))],'-r');
-        plot([tr_x(:,end-1), flipud(tr_x(:,end-1))],[tr_y(:,end-1),-flipud(tr_y(:,end-1))],'-r');
-        for i=1:size(tr_x,2)
-            plot(tr_x(end-1:end,:), tr_y(end-1:end,:),'-r');
-            plot(tr_x(end-1:end,:),-tr_y(end-1:end,:),'-r');
-        end
-        for i=1:size(tr_x,1)
-            plot(tr_x(:,end-1:end)', tr_y(:,end-1:end)','-r');
-            plot(tr_x(:,end-1:end)',-tr_y(:,end-1:end)','-r');
-        end
-            
+		if size(tr_x,2) > 1
+        	pcolor(tr_x(1:end-1,1:end-1), tr_y(1:end-1,1:end-1),log(VFweights));
+			pcolor(tr_x(1:end-1,1:end-1),-tr_y(1:end-1,1:end-1),log(VFweights));
+        	% plot outbounds
+        	plot(tr_x(end,:),tr_y(end,:),'-r');
+        	plot(tr_x(end,:),-tr_y(end,:),'-r');
+        	plot(tr_x(end-1,:),tr_y(end-1,:),'-r');
+        	plot(tr_x(end-1,:),-tr_y(end-1,:),'-r');
+        	plot([tr_x(:,end), flipud(tr_x(:,end))],[tr_y(:,end),-flipud(tr_y(:,end))],'-r');
+        	plot([tr_x(:,end-1), flipud(tr_x(:,end-1))],[tr_y(:,end-1),-flipud(tr_y(:,end-1))],'-r');
+        	for i=1:size(tr_x,2)
+        	    plot(tr_x(end-1:end,:), tr_y(end-1:end,:),'-r');
+        	    plot(tr_x(end-1:end,:),-tr_y(end-1:end,:),'-r');
+        	end
+        	for i=1:size(tr_x,1)
+        	    plot(tr_x(:,end-1:end)', tr_y(:,end-1:end)','-r');
+        	    plot(tr_x(:,end-1:end)',-tr_y(:,end-1:end)','-r');
+        	end
+		else
+			cm = viridis;
+			cscaled = 1 + (VFweights - min(VFweights))/(max(VFweights)-min(VFweights))*255;
+			for i = 1:length(tr_x)
+				j = floor(cscaled(i));
+				c = cm(j,:) + (cm(j+1,:)-cm(j,:)) * (cscaled(i)-j);
+				scatter(tr_x(i), tr_y(i), c, 'filled');
+			end
+		end
         plot(x0,ty,'-r');
         plot(x0,by,'-r');
         xlim([min([min(x0),min(tr_x(:))]),max([max(x0),max(tr_x(:))])]);
@@ -168,42 +176,19 @@ function [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, xrange, tr_x, yrange, 
             dp0 = sqrt((x(i)-vp_x0)^2 + (y(j)-vp_y0)^2);
             dp1 = sqrt((x(i)-vp_x1)^2 + (y(j)-vp_y1)^2);
             VF(i,j,2) = p(idp) + (p(idp+1) - p(idp)) * dp0/(dp0+dp1);
-            %w = dipole(exp(VF(i,j,1))-1,pi/2,a,b,k);
-            w = dipole(VF(i,j,1),pi/2,a,b,k);
-            vp_y = imag(w);
-            VFy_ratio(i,j) = vp_y/max_y;
-            assert(VFy_ratio(i,j) <= 1.0);
 		end
 	end
     if plot_patch > 0
-		if scale_VFy
-			subplot(3,2,2)
-		else
-			subplot(2,2,2)
-		end
+		subplot(4,2,2)
 		imagesc(VF(:,:,1));
 		colormap(viridis);
 		colorbar;
         daspect([1,1,1]);
-		if scale_VFy
-			subplot(3,2,4)
-		else
-			subplot(2,2,4)
-		end
+		subplot(4,2,4)
 		imagesc(VF(:,:,2));
 		colormap(viridis);
 		colorbar;
         daspect([1,1,1]);
-		if scale_VFy
-			subplot(3,2,6)
-			imagesc(VF(:,:,2).*VFy_ratio);
-			colormap(viridis);
-			colorbar;
-        	daspect([1,1,1]);
-		end
-		if manual_LR
-			subplot(1,2,1)
-		end
 	end
 	pPi = reshape(Pi > 0, prod(G),1);
 	VF = reshape(VF, prod(G), 2);
@@ -225,10 +210,25 @@ function [Pi, W, LR, VF, VFy_ratio] = myCortex(stream, G, xrange, tr_x, yrange, 
 	disp([minVFx, maxVFx]);
 	disp('y range:');
 	disp([minVFy, maxVFy]);
-	VF(pPi,1) = xrange(1) + (VF(pPi,1) - minVFx)/(maxVFx - minVFx)*(xrange(2)-xrange(1));
-	VF(pPi,2) = yrange(1) + (VF(pPi,2) - minVFy)/(maxVFy - minVFy)*(yrange(2)-yrange(1));
+	VF(pPi,1) = xrange(1) + (VF(pPi,1) - 0)/ecc*(xrange(2)-xrange(1));
+	VF(pPi,2) = yrange(1) + (VF(pPi,2) + ecc)/(2*ecc)*(yrange(2)-yrange(1));
 	VF(~pPi,:) = 0.0;
 	VF = reshape(VF, [G, 2]);
+    if plot_patch > 0
+		subplot(4,2,6)
+		imagesc(VF(:,:,1));
+		colormap(viridis);
+		colorbar;
+        daspect([1,1,1]);
+		subplot(4,2,8)
+		imagesc(VF(:,:,2));
+		colormap(viridis);
+		colorbar;
+        daspect([1,1,1]);
+		if manual_LR
+			subplot(1,2,1)
+		end
+	end
     if manual_LR
         i0 = randi(stream,[1,2]);
         lr = rOD(i0);

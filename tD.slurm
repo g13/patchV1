@@ -2,7 +2,7 @@
 #SBATCH -p serial 
 #SBATCH --nodes=1
 #SBATCH --mem=65GB
-#SBATCH --time=4:00:00
+#SBATCH --time=8:00:00
 #SBATCH --cpus-per-task=5
 #SBATCH --job-name=formMap
 #SBATCH -o log/fM_%J.out
@@ -14,7 +14,7 @@ module load all
 module load matlab/R2017a
 ulimit -s unlimited
 
-fdr="VF"
+fdr="Large_sheet"
 if [ -d "$fdr" ]
 then
 	echo deleting contents in $fdr
