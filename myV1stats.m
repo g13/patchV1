@@ -328,7 +328,10 @@ figName{1} = 'OD_map';
 figName{2} = 'OD-OR_contour';
 figName{3} = 'OR_angleMap';
 figName{4} = 'OR_polarMap';
+figName{5} = 'VFMap';
 figName{7} = 'ORpinw_map';
+figName{20} = 'hist_VFx';
+figName{21} = 'hist_VFy';
 figName{34} = 'crossing_angles';
 figName{40} = 'FFT-OD';
 figName{41} = 'FFT-OR';
@@ -354,7 +357,7 @@ if strcmp(bc,'periodic')
 else
     test_boundary = false;
     B_width = 5;
-    [B_ind, I_ind, B1_ind, I1_ind, B2_ind, I2_ind, B1_ang] = set_bc(reshape(logical(Pi),G(1),G(2)), B_width, right_open, test_boundary, prefix);
+    [B_ind, I_ind, B1_ind, I1_ind, B2_ind, I2_ind, B1_ang] = set_bc(reshape(logical(Pi),G(1),G(2)), B_width, right_open, test_boundary, prefix, ~right_open);
     
     %     [tmp1,tmp2] = ndgrid(B_width+1:G(1)-B_width,B_width+1:G(2)-B_width);
     %     I_ind = sub2ind(G,tmp1(:),tmp2(:));

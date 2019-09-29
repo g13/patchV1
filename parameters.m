@@ -14,7 +14,7 @@ new = false;
 ENproc = 'var';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
 var = 'NxNyRatio';
-ENfilename0 = ['cortex_nG3-',var];   % Simulation name ***
+ENfilename0 = ['cortex_nG3-',var]   % Simulation name ***
 plotting = 'all' % 'all', 'first', >0 frame, <0 frame:end
 %range = [6,8,10,12,14];
 %range = [1.2,1.3,1.4,1.5,1.6];

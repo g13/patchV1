@@ -234,7 +234,7 @@ ODplotv = struct('type','contour',...             % Plot type
     'cmap',zeros(256,3),...          % Colormap for 'img*'
     'line',struct('lsty','-',...     % LineStyle
     'lcol','k',...     % LineColor
-    'lwid',2.5,...       % LineWidth
+    'lwid',1.5,...       % LineWidth
     'msty','none',...  % MarkerStyle
     'msiz',1,...       % MarkerSize
     'mecol','none',... % MarkerEdgeColor

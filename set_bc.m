@@ -1,8 +1,13 @@
-function [B_ind, I_ind, B1_ind, I1_ind, B2_ind, I2_ind, B1_ang] = set_bc(Pi, bw, right_open, check_boundary, prefix)
+function [B_ind, I_ind, B1_ind, I1_ind, B2_ind, I2_ind, B1_ang] = set_bc(Pi, bw, right_open, check_boundary, prefix, non_oblique)
 	% assuming horizontal symmetry
-	right_most = 0;
 	% the open boundary is to the right
     [nx, ny] = size(Pi);
+	if non_oblique
+		right_most = nx;
+	else
+		right_most = 0;
+	end
+
     B_ind = zeros(nx*ny,1);
     B1_ind = zeros(nx*ny,1);
 	if right_open
@@ -40,7 +45,7 @@ function [B_ind, I_ind, B1_ind, I1_ind, B2_ind, I2_ind, B1_ang] = set_bc(Pi, bw,
     for ix = 1:right_most
         head = find(Pi(ix,:),bw,'first');
         tail = find(Pi(ix,:),bw,'last');
-        if ~isempty(head)    
+        if ~isempty(head)
             B_ind(i+1:i+length(head)+length(tail)) = ([head tail]-1)'*nx + ix;
             B1_ind(j+1:j+2) = ([head(1) tail(end)]-1)'*nx + ix;
             i = i + length(head)+length(tail);
