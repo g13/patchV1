@@ -234,7 +234,7 @@
 % Copyright (c) 2002 by Miguel A. Carreira-Perpinan
 
 function stats = ...
-    myV1stats(stream,G,bc,ENlist,v,whichones,T,Pi,murange,id,tens,opt,figlist,statsOnly,right_open,separateData)
+    myV1stats(stream,G,bc,ENlist,v,whichones,T,T_vec,Pi,murange,id,tens,opt,figlist,statsOnly,right_open,separateData)
 if nargin < 13
     statsOnly = false;
 end
@@ -316,7 +316,7 @@ end
 
 if ~exist('figlist','var')
     if isempty(figlist) && ~statsOnly
-        figlist = [1:4 7 100:102 120:124 130:133 140:142 150:160 170:171 176 180:189];
+        figlist = [1:5 7 13 14 20 21 100:102 120:124 130:133 140:142 150:160 170:171 176 180:189];
     else
         figlist = [];
     end
@@ -330,6 +330,8 @@ figName{3} = 'OR_angleMap';
 figName{4} = 'OR_polarMap';
 figName{5} = 'VFMap';
 figName{7} = 'ORpinw_map';
+figName{13} = 'OD-VFx_contour';
+figName{14} = 'OD-VFy_contour';
 figName{20} = 'hist_VFx';
 figName{21} = 'hist_VFy';
 figName{34} = 'crossing_angles';
@@ -469,12 +471,12 @@ for ENcounter = whichones
     % [gx,gy,gt,gr] = ENgrad(G,mu,v(id.OR,:));
 	figure;
 	subplot(2,1,1)
-	imagesc(reshape(mu(:,1),G));
+	imagesc(rot90(fliplr(reshape(mu(:,1),G))));
 	colormap(viridis);
 	colorbar;
     daspect([1,1,1]);
 	subplot(2,1,2)
-	imagesc(reshape(mu(:,2),G));
+	imagesc(rot90(fliplr(reshape(mu(:,2),G))));
 	colormap(viridis);
 	colorbar;
     daspect([1,1,1]);
@@ -517,14 +519,14 @@ for ENcounter = whichones
     
     
     % --- Figures 1-12,100-101: plot current net
-    myV1replay(G,bc,ENlist,v,ENcounter,T(:,1:5),Pi,murange,id,tens,[],figlist);
+    myV1replay(G,bc,ENlist,v,ENcounter,T(:,1:5),T_vec,Pi,murange,id,tens,[],figlist);
 
 	fID = fopen([prefix,'ORcolor-',frame,'.bin'],'w');
 	fwrite(fID, mu(:,id.OR), 'double');
 	fclose(fID);
 
     if ~isempty(ENdir)
-        Figs = [1:12]; % Energy and cpu time get printed at end only
+        Figs = [1:14]; % Energy and cpu time get printed at end only
         for i=find(plotfig(Figs))
             print(i,'-loose','-r900',['-d' EXT], [prefix,figName{i},'-',frame,'.',EXT]);
         end
@@ -565,7 +567,7 @@ for ENcounter = whichones
     for i=1:Varsn
         % Compute histogram and statistics if required here or elsewhere
         if any(plotfig([Figs(i) Figs(i)+100]))
-            [h,KLu,L2u,m,s,g1] = ENhist(Vars(:,i),[],50);
+            [h,KLu,L2u,m,s,g1] = ENhist(Vars(:,i),[], v(Varsi(i),4)*10, v(Varsi(i),2:3),'absfreq');
             stats.fig(Figs(i)+100).KLu{ENcounter} = KLu;
             stats.fig(Figs(i)+100).L2u{ENcounter} = L2u;
             stats.fig(Figs(i)+100).m{ENcounter} = m;
@@ -588,6 +590,7 @@ for ENcounter = whichones
             hold on;					% Nominal domain
             plot([1 1]*v(Varsi(i),2),tmp,'r--');
             plot([1 1]*v(Varsi(i),3),tmp,'r--');
+            plot(repmat(T_vec{Varsi(i)},2,1),tmp,'k--');
             hold off;
             set(gca,'XLim',[min(h(1,3),v(Varsi(i),2)) max(h(end,4),v(Varsi(i),3))]);
             xlabel(VarsL{i});

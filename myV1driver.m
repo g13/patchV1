@@ -189,8 +189,10 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         	        yy_cortex = imag(w);
 				end
 			else
-				x_vec = linspace(rx(1),rx(2),Nx);
-				y_vec = linspace(ry(1),ry(2),Ny);
+				x_vec = midpoints(linspace(rx(1),rx(2),Nx+1));
+				%x_vec = cumsum([0.25, 0.5*ones(1,Nx/2-1), ones(1,Nx/2)]);
+				%x_vec = rx(1) + x_vec/(max(x_vec)+0.5) * (rx(2) - rx(1));
+				y_vec = midpoints(linspace(ry(1),ry(2),Ny+1));
 			end
         	T = ENtrset('grid',zeros(1,5),...
         	    x_vec,...	% VFx
@@ -277,11 +279,19 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         
         % match feature with id
         id = struct('VFx',1,'VFy',2,'OD',3,'ORx',4,'ORy',5,'OR',6,'ORr',7);
+		T_vec = cell(D,1);
+		T_vec{1} = x_vec;
+		T_vec{2} = y_vec;
+		T_vec{3} = [-l, l];
+        tmp1 = linspace(rORt(1),rORt(2),NOR+1); tmp1 = tmp1(1:NOR);
+		T_vec{6} = tmp1
+		T_vec{7} = [r];
+		[T_vec{4}, T_vec{5}] = pol2cart(2*tmp1, r);
         %id = struct('VFx',1,'VFy',2,'OD',3,'ORx',4,'ORy',5,'OR',6,'ORr',7);
         %id = struct('VFx',1,'VFy',2,'OD',3);
         % Ranges of stimuli variables (for greyscales, etc.)
         % v = [1 rx;2 ry;3 rOD];
-        v = [1 rx;2 ry;3 rOD;4 -r r;5 -r r;6 -pi/2 pi/2;7 0 r];
+        v = [1 rx Nx;2 ry Ny;3 rOD NOD;4 -r r 2;5 -r r 2;6 -pi/2 pi/2 NOR;7 0 r NORr];
         %v = [1 NaN NaN;2 NaN NaN;3 -l l;4 NaN NaN;5 NaN NaN;6 -pi/2 pi/2;7 0 r];
         %v = [1 rOD; 2 -r r; 3 -r r; 4 -pi/2 pi/2; 5 0 r]; % -- last 2 rows: OR augmented by polar
         disp([num2str(size(T,1)),' references(cities) x ',num2str(size(T,2)),' features']);
@@ -398,7 +408,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
                 % I would prefer to have the initial value of mu in ENlist(0),
                 % but crap Matlab does not allow negative or zero indices.
                 if strcmp(ENproc,'varplot')
-                    myV1replay(G,bc,ENlist,v,1,T,Pi,murange,id);
+                    myV1replay(G,bc,ENlist,v,1,T,T_vec,Pi,murange,id);
                 end
             case {'save','saveplot'}
                 % Save parameters in separate files with names xxx0001, xxx0002, etc.
@@ -411,14 +421,14 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
                 % crash.
                 eval(['save ' ENfilename0 '-' ENfilename '0000.mat ENfilename '...
                     'Nx rx dx Ny ry dy NOD rOD dOD l NOR rORt rORr r seed v ' ...
-                    'N D L M G bc p s T Pi S DD knot A LL mu Kin Kend iters Ksched '...
+                    'N D L M G bc p s T T_vec Pi S DD knot A LL mu Kin Kend iters Ksched '...
                     'alpha beta annrate max_it max_cyc min_K tol method '...
                     'W normcte betanorm']);
                 if strcmp(ENproc,'saveplot')
                     ENlist = struct('mu',mu,'stats',struct(...
                         'K',NaN,'E',[NaN NaN NaN],'time',[NaN NaN NaN],...
                         'cpu','','code',1,'it',0));
-                    myV1replay(G,bc,ENlist,v,1,T,Pi,murange,id);
+                    myV1replay(G,bc,ENlist,v,1,T,T_vec,Pi,murange,id);
                 end
             otherwise
                 % Do nothing.
@@ -464,12 +474,12 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
                     ENlist(ENcounter+1).mu = mu;
                     ENlist(ENcounter+1).stats = stats;
                     if strcmp(ENproc,'varplot')
-                        myV1replay(G,bc,ENlist,v,ENcounter+1,T,Pi,murange,id);
+                        myV1replay(G,bc,ENlist,v,ENcounter+1,T,T_vec,Pi,murange,id);
                     end
                 case {'save','saveplot'}
                     save(sprintf('%s%04d.mat',ENfilename,ENcounter),'mu','stats','murange');
                     if strcmp(ENproc,'saveplot')
-                        myV1replay(G,bc,struct('mu',mu,'stats',stats),v,1,T,Pi,murange,id);
+                        myV1replay(G,bc,struct('mu',mu,'stats',stats),v,1,T,T_vec,Pi,murange,id);
                     end
                 otherwise
                     % Do nothing.
@@ -483,7 +493,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
                 eval(['save ' ENfilename0 '-' ENfilename '.mat ENfilename '...
                     'Nx rx dx Ny ry dy NOD rOD dOD l NOR rORt rORr r seed v ' ...
                     'ENlist murange id ' ...
-                    'N D L M G bc p s T Pi S DD knot A LL Kin Kend iters Ksched '...
+                    'N D L M G bc p s T T_vec Pi S DD knot A LL Kin Kend iters Ksched '...
                 	'alpha beta annrate max_it max_cyc min_K tol method '...
                     'W normcte betanorm']);
             case {'save','saveplot'}
@@ -500,7 +510,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
                 eval(['save ' ENfilename0 '-' ENfilename '.mat ENfilename '...
                     'Nx rx dx Ny ry dy NOD rOD dOD l NOR rORt rORr r seed v ' ...
                     'ENlist murange id ' ...
-                    'N D L M G bc p s T Pi S DD knot A LL Kin Kend iters Ksched '...
+                    'N D L M G bc p s T T_vec Pi S DD knot A LL Kin Kend iters Ksched '...
                     'alpha beta annrate max_it max_cyc min_K tol method '...
                     'W normcte betanorm']);
                 unix(['rm ' ENfilename '????.mat']);
@@ -511,7 +521,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         % Plot some statistics for the objective function value and computation time
         switch ENproc
             case {'varplot','saveplot'}
-                myV1replay(G,bc,ENlist,v,1,T,Pi,murange,id,[],[],[100, 102]);
+                myV1replay(G,bc,ENlist,v,1,T,T_vec,Pi,murange,id,[],[],[100, 102]);
             otherwise
                 % Do nothing.
         end
@@ -521,13 +531,13 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         load([ENfilename0,'-',ENfilename,'.mat']);
     end
     if plots
-        figlist = [1,2,3,4,5,7,20,21,100,102,34, 40, 41, 50, 54, 60];
+        figlist = [1,2,3,4,5,7,13,14,20,21,100,102,34, 40, 41, 50, 54, 60];
     else
         figlist = [];
     end
 	statsOnly = true;
 	right_open = cortical_shape;
-    stats = myV1stats(stream,G,bc,ENlist,v,plotting,T,Pi,murange,id,[],[ENfilename0,'/',ENfilename,'.png'],figlist,statsOnly,right_open,separateData);
+    stats = myV1stats(stream,G,bc,ENlist,v,plotting,T,T_vec,Pi,murange,id,[],[ENfilename0,'/',ENfilename,'.png'],figlist,statsOnly,right_open,separateData);
 	if saveLR
 		fID = fopen([ENfilename0,'/',ENfilename,'-LR_Pi.bin'],'a');
 		fwrite(fID, ENlist(end).mu(:,id.OD), 'double');

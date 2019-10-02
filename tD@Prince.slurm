@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=formMap
 #SBATCH --nodes=1
-#SBATCH --mem-per-cpu=13GB
-#SBATCH --time=12:00:00
+#SBATCH --mem-per-cpu=10GB
+#SBATCH --time=8:00:00
 #SBATCH --cpus-per-task=5
 #SBATCH -o log/fM_%J.out
 #SBATCH --mail-user=wd554@nyu.edu
@@ -12,7 +12,7 @@ module purge
 module load matlab/2017a
 ulimit -s unlimited
 
-fdr="qc"
+fdr="finetune"
 if [ -d "$fdr" ]
 then
 	echo deleting contents in $fdr
@@ -28,3 +28,4 @@ mkdir log
 date
     matlab -nosplash -nodesktop -r "parameters;exit"
 date
+cd ..

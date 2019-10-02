@@ -10,16 +10,16 @@ format = '-dpng';
 
 separateData = true; % set to false for ease of comparison in one folder
 plots = true;
-new = false;
+new = true;
 ENproc = 'var';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
-var = 'NxNyRatio';
-ENfilename0 = ['cortex_nG3-',var]   % Simulation name ***
-plotting = 'all' % 'all', 'first', >0 frame, <0 frame:end
+var = 'nvfRatio';
+ENfilename0 = ['cortex-nG3',var]   % Simulation name ***
+plotting = 'last' % 'all', 'first', >0 frame, <0 frame:end
 %range = [6,8,10,12,14];
 %range = [1.2,1.3,1.4,1.5,1.6];
 %range = [1.0,1.25,1.5,1.75,2.0];
-range = [12,16,20,25,30];
+range = [0.5,1,2,3,4];
 %range = [0.5,0.75,1.0,1.25,1.5];
 %range = [1.0];
 %range = [1];
@@ -60,36 +60,36 @@ else
     scurr = rng('shuffle')
     seed = scurr.Seed;
 end
-parfor i = 1:length(range)
-%for i = 1:length(range)
+%parfor i = 1:length(range)
+for i = 1:length(range)
     % for non_cortical_shape edge boundaries
-    test_dw = 5;
-    test_dh = 7;
+    test_dw = 0;
+    test_dh = 0;
     % Objective function weights
 
     alpha = 1.0;		% Fitness term weight
 	%beta = 50*range(i);
-	beta = 500;
+	beta = 10;
     % Training parameters
 	iters = 10; %21;			% No. of annealing rates (saved)
-    max_it = 10;		        % No. of iterations per annealing rate (not saved) ***
+    max_it = 5;		        % No. of iterations per annealing rate (not saved) ***
 	%max_it = round(20 *range(i)/range(end)); 
     Kin = 0.15;			% Initial K ***
     Kend = 0.03;        % Final K ***    
     % - VFx: Nx points in [0,1], with interpoint separation dx.
 	%Nx = round(18*range(i))			% Number of points along VFx ***
-	Nx = 40;
+	Nx = 20;
 	%Nx = range(i)
 	%Nx = round(16*range(i)); %			% Number of points along VFx ***
-	nvf = 15;
+	nvf = 0.25;
     %nvf = 20;
-    rx = [0 0.25]*nvf;			% Range of VFx
+    rx = [0 1.0]*nvf*range(i);			% Range of VFx
     dx = diff(rx)/(Nx-1);		% Separation between points along VFx
     % - VFy: ditto for Ny, dy.
 	%
 	% even
 	%Ny = round(36/range(i)) 
-	Ny = 80;
+	Ny = 40;
 	%Ny = 60 - range(i);
 	if mod(Nx,2) == 1,Nx = Nx + 1; end
 	if mod(Ny,2) == 1,Ny = Ny - 1; end
@@ -97,25 +97,25 @@ parfor i = 1:length(range)
 	%	assert(Nx*2 == Ny);
 	%end
 	%Ny = round(25*range(i));			% Number of points along VFy ***
-    ry = [0 0.25]*nvf;			% Range of VFy
+    ry = [0 1.0]*nvf;			% Range of VFy
     dy = diff(ry)/(Ny-1);		% Separation between points along VFy    
     d = (dx + dy)/2;
     % - OD: NOD values in range rOD, with interpoint separation dOD.
-	l = 0.11;
+	l = 0.1;
     NOD = 2;			% Number of points along OD
     rOD = [-l l];			% Range of OD
     dOD = diff(rOD)/(NOD-1);	% Separation between points along OD
     %  coded as NOR Cartesian-coordinate pairs (ORx,ORy). -- later by pol2cart
     %  r = 6*l/pi
 	%r = range(i)*l;			% OR modulus -- the radius of pinwheel
-	r = 1.4*l;
-    NOR = 8;	 %8;		% Number of points along OR    
+	r = l*8/6;
+    NOR = 6;	 %8;		% Number of points along OR    
     % for myCortex patch
     ODnoise = l*0.0;
     ODabsol = 1.0;
     nG = 3;
     G = round([64 104]*nG);		% Number of centroids *** 
-    ecc = 15;
+    ecc = 2;
     nod = 25;
     a = 0.635; b = 96.7; k = sqrt(140)*0.873145;
     fign = 106;

@@ -16,6 +16,8 @@
 % - Figure 10: retinotopy + ORr (VFx,VFy,ORr) in Cartesian coordinates. [SLOW]
 % - Figure 11: tension (not including the beta/2 factor).
 % - Figure 12: colorbar for fig. 11.
+% --Figure 13: OD-VFx countour 
+% --Figure 14: OD-VFy countour 
 % - Figure 100: objective function value.
 % - Figure 101: computation time.
 % Other combinations of variables are not so interesting.
@@ -101,7 +103,7 @@
 
 % Copyright (c) 2002 by Miguel A. Carreira-Perpinan
 
-function myV1replay(G,bc,ENlist,v,whichones,T,Pi,murange,id,tens,opt,figlist)
+function myV1replay(G,bc,ENlist,v,whichones,T,T_vec,Pi,murange,id,tens,opt,figlist)
 
 L = length(G);                  % Net dimensionality
 if L == 1, G = [G 1]; end        % So that both L=1 and L=2 work
@@ -247,13 +249,17 @@ ODplotv = struct('type','contour',...             % Plot type
 % stencil) and the contours are then wrong.
 %                               'num',1));         % No. lines for 'contour*'
 % Ditto OR
+tmp1 = T_vec{id.OR};
+tmp1 = v(id.OR,2)+(tmp1(2:2:v(id.OR,4))-v(id.OR,2))/2;
 if isfield(id, 'OR')
     ORplotv = ODplotv;
     ORplotv.type = 'contour_per';
     ORplotv.line.lwid = 1;
-    ORplotv.line.num = linspace(v(id.OR,2),v(id.OR,3),17);
+    %ORplotv.line.num = tmp1(1:v(id.OR,4)/2);
+	ORplotv.line.num = tmp1;
     ORplotv.line.lcol = 'b';
 end
+ORplotv.line.num
 % Figure 3: 'img_per' for OR (angle map).
 fg3p = fg1p;                                            % Position (fig. 3)
 % Shift it right to avoid overlapping with fig. 1
@@ -457,6 +463,49 @@ if plotfig(11) && exist('tens','var')
     ENcolorbar(DDmu2ticks,12,11,DDplotv.cmap);
     set(12,'Name','Scale for fig. 11'); drawnow;
 end
+% Figure 13
+fg13 = fg2;
+ax13 = gridLim;
+if ~ishandle(13)
+    if plotfig(13)
+        set(figure(13),'Position',fg2,'PaperPositionMode','auto','Color','w',...
+            'Name','Contours of OD and VFx',...
+            'DoubleBuffer','on','Renderer','painters');
+            %'DoubleBuffer','on','Renderer','painters','MenuBar','none');
+    end
+end
+VFxplotv = struct('type','contour',...             % Plot type
+    'cmap',zeros(256,3),...          % Colormap for 'img*'
+    'line',struct('lsty','-',...     % LineStyle
+    'lcol','b',...     % LineColor
+    'lwid',1.5,...       % LineWidth
+    'msty','none',...  % MarkerStyle
+    'msiz',1,...       % MarkerSize
+    'mecol','none',... % MarkerEdgeColor
+    'mfcol','none',... % MarkerFaceColor
+    'num',T_vec{id.VFx}));
+
+% Figure 14
+fg14 = fg2;
+ax14 = gridLim;
+if ~ishandle(14)
+    if plotfig(14)
+        set(figure(14),'Position',fg2,'PaperPositionMode','auto','Color','w',...
+            'Name','Contours of OD and VFy',...
+            'DoubleBuffer','on','Renderer','painters');
+            %'DoubleBuffer','on','Renderer','painters','MenuBar','none');
+    end
+end
+VFyplotv = struct('type','contour',...             % Plot type
+    'cmap',zeros(256,3),...          % Colormap for 'img*'
+    'line',struct('lsty','-',...     % LineStyle
+    'lcol','b',...     % LineColor
+    'lwid',1.5,...       % LineWidth
+    'msty','none',...  % MarkerStyle
+    'msiz',1,...       % MarkerSize
+    'mecol','none',... % MarkerEdgeColor
+    'mfcol','none',... % MarkerFaceColor
+    'num', T_vec{id.VFy}));
 
 % Figure 100: objective function value.
 % Figure 101: computation time.
@@ -600,6 +649,20 @@ for ENcounter = whichones
         set(0,'CurrentFigure',11); cla;
         tmp = get(11,'Position'); fg11(1:2) = tmp(1:2);
         myplot(G,bc,DDmu2(:,ENcounter),DDplotv,DDmu2v,T,Pi,fg11,ax11);
+        title(Kstr,'Visible','on'); drawnow;
+    end
+    if plotfig(13) && isfield(id, 'OD') && isfield(id, 'VFx')
+        set(0,'CurrentFigure',13); cla;
+        tmp = get(13,'Position'); fg2(1:2) = tmp(1:2);
+        myplot(G,bc,mu,ODplotv,v(id.OD,:),T,Pi,fg13,ax13);
+        myplot(G,bc,mu,VFxplotv,v(id.VFx,:),T,Pi,fg13,ax13);
+        title(Kstr,'Visible','on'); drawnow;
+    end
+    if plotfig(14) && isfield(id, 'OD') && isfield(id, 'VFy')
+        set(0,'CurrentFigure',14); cla;
+        tmp = get(14,'Position'); fg2(1:2) = tmp(1:2);
+        myplot(G,bc,mu,ODplotv,v(id.OD,:),T,Pi,fg14,ax14);
+        myplot(G,bc,mu,VFyplotv,v(id.VFy,:),T,Pi,fg14,ax14);
         title(Kstr,'Visible','on'); drawnow;
     end
     if plotfig(100) && domovie
