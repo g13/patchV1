@@ -436,7 +436,6 @@ switch plotv.type
         for i = 1:size(v,1)
             if strcmp(plotv.type,'contour_per')
                 tmp1 = ENsplice(mu(:,v(i,1)),v(i,2:3));
-				[min(tmp1), max(tmp1)]
             else
                 tmp1 = mu(:,v(i,1));
             end

@@ -26,7 +26,7 @@
 % scaffolding for the underlying continuous set of training vectors.
 % 'noisy' and 'uniform*' approximate online training over the continuous
 % domain of (VFx,VFy,OD,ORt).
-function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,VFpath,weightType)
+function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,VFpath,weightType,irange)
     datafileabsolpath = [pwd,'/',ENfilename0,'-',ENfilename,'.mat'];
 	stream = RandStream('mt19937ar','Seed',seed);
 	[tmp, tmp] = mkdir([ENfilename0,'/',ENfilename]);
@@ -57,7 +57,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         NSF = 2;
         rSF = [-lSF lSF];
         dSF = diff(rSF)/(NSF-1);
-       
+
 		if isempty(VFpath)
 			if cortical_shape
 				%assert(2*Nx == Ny);
@@ -226,6 +226,10 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
 				T(thisRange,1:2) = scalePoints;
 			end
 		end
+		dOD = 2*l;
+		dx = mean(diff(x_vec));
+		dy = mean(diff(y_vec));
+		disp(['#',num2str(irange),': dx = ',num2str(dx), ', dy = ', num2str(dy), ', dOD = ', num2str(dOD)]);
         % For non-rectangular cortex shapes, create a suitable Pi here:
         resol = 10;
         if cortical_shape
@@ -267,7 +271,6 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
 			fwrite(fID, Pi, 'int');
 			fclose(fID);
         end
-
         
         %T = ENtrset('grid',zeros(1,3),...
         %    linspace(rx(1),rx(2),Nx),...	% VFx

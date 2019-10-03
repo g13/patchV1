@@ -4,7 +4,7 @@ addpath(genpath('/home/wd554/MATLAB/'))
  
 gen = 'twister';
 clear seed
-seed = 1435269651;
+seed = 1435269650;
 %seed = 1422230161;
 format = '-dpng';
 
@@ -13,13 +13,14 @@ plots = true;
 new = true;
 ENproc = 'var';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
-var = 'nvfRatio';
-ENfilename0 = ['cortex-nG3',var]   % Simulation name ***
+var = 'lconst_dx';
+ENfilename0 = ['Carreira-',var]   % Simulation name ***
 plotting = 'last' % 'all', 'first', >0 frame, <0 frame:end
 %range = [6,8,10,12,14];
 %range = [1.2,1.3,1.4,1.5,1.6];
 %range = [1.0,1.25,1.5,1.75,2.0];
-range = [0.5,1,2,3,4];
+range = [10,15,20,25,30];
+%range = [15];
 %range = [0.5,0.75,1.0,1.25,1.5];
 %range = [1.0];
 %range = [1];
@@ -35,7 +36,7 @@ weightType = 'min';
 %uniform_LR = false;
 % SET both LR to false for manual_LR
 % cortical_shape = false;
-cortical_shape = true;
+cortical_shape = false;
 heteroAlpha = 0; % -1 reciprocal, 0 identity, 1 area
 if exist(ENfilename0, 'dir') && new
     rmdir(ENfilename0,'s');
@@ -46,6 +47,7 @@ end
 
 copyfile([mfilename,'.m'],[ENfilename0,'/',ENfilename0,'_p.m']);
 if length(range) > 1
+%if false
 	poolobj = gcp('nocreate'); % If no pool, do not create new one.
 	if ~isempty(poolobj)
 	    if ~ (poolobj.NumWorkers == length(range))
@@ -60,8 +62,8 @@ else
     scurr = rng('shuffle')
     seed = scurr.Seed;
 end
-%parfor i = 1:length(range)
-for i = 1:length(range)
+parfor i = 1:length(range)
+%for i = 1:length(range)
     % for non_cortical_shape edge boundaries
     test_dw = 0;
     test_dh = 0;
@@ -71,28 +73,28 @@ for i = 1:length(range)
 	%beta = 50*range(i);
 	beta = 10;
     % Training parameters
-	iters = 10; %21;			% No. of annealing rates (saved)
-    max_it = 5;		        % No. of iterations per annealing rate (not saved) ***
+	iters = 20; %21;			% No. of annealing rates (saved)
+    max_it = 15;		        % No. of iterations per annealing rate (not saved) ***
 	%max_it = round(20 *range(i)/range(end)); 
     Kin = 0.15;			% Initial K ***
     Kend = 0.03;        % Final K ***    
     % - VFx: Nx points in [0,1], with interpoint separation dx.
 	%Nx = round(18*range(i))			% Number of points along VFx ***
-	Nx = 20;
+	%Nx = 20;
 	%Nx = range(i)
-	%Nx = round(16*range(i)); %			% Number of points along VFx ***
-	nvf = 0.25;
+	Nx = range(i); %			% Number of points along VFx ***
+	nvf = 1.0;
     %nvf = 20;
-    rx = [0 1.0]*nvf*range(i);			% Range of VFx
+    rx = [0 1.0]*nvf*Nx/19;			% Range of VFx
     dx = diff(rx)/(Nx-1);		% Separation between points along VFx
     % - VFy: ditto for Ny, dy.
 	%
 	% even
 	%Ny = round(36/range(i)) 
-	Ny = 40;
+	Ny = 20;
 	%Ny = 60 - range(i);
-	if mod(Nx,2) == 1,Nx = Nx + 1; end
-	if mod(Ny,2) == 1,Ny = Ny - 1; end
+	%if mod(Nx,2) == 1,Nx = Nx + 1; end
+	%if mod(Ny,2) == 1,Ny = Ny - 1; end
 	%if cortical_VF
 	%	assert(Nx*2 == Ny);
 	%end
@@ -113,8 +115,8 @@ for i = 1:length(range)
     % for myCortex patch
     ODnoise = l*0.0;
     ODabsol = 1.0;
-    nG = 3;
-    G = round([64 104]*nG);		% Number of centroids *** 
+    nG = 1;
+    G = round([128 128]*nG);		% Number of centroids *** 
     ecc = 2;
     nod = 25;
     a = 0.635; b = 96.7; k = sqrt(140)*0.873145;
@@ -125,7 +127,7 @@ for i = 1:length(range)
 	else
 		saveLR = false;
 	end
-    stats(i) = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,dx,Ny,ry,dy,l,NOD,rOD,dOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,VFpath,weightType);
+    stats(i) = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,VFpath,weightType,i);
 end
 nnpinw = [stats.npinw];
 nnpinw = nnpinw./mean(nnpinw);
@@ -165,4 +167,4 @@ set(gcf,'PaperPositionMode','auto')
 print(gcf, figname, format, '-r150');
 saveas(gcf,[figname,'.fig']);
 
-eval(['save ', ENfilename0 '/' ENfilename0 '-stats.mat stats']); 
+eval(['save ', ENfilename0 '/' ENfilename0 '-stats.mat stats']);
