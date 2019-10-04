@@ -412,7 +412,9 @@ switch plotv.type
             eval([plotcmdMy plotattrMy]);
         end
         % ----------------------------------------------------------------------
-        
+        if strcmp(plotv.type,'proj_cart')
+			daspect([1,1,1]);
+		end
         % ----------------------------------------------------------------------
     case {'img','img_per'}
         cmap = plotv.cmap; colormap(cmap);
