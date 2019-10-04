@@ -259,7 +259,6 @@ if isfield(id, 'OR')
 	ORplotv.line.num = tmp1;
     ORplotv.line.lcol = 'b';
 end
-ORplotv.line.num
 % Figure 3: 'img_per' for OR (angle map).
 fg3p = fg1p;                                            % Position (fig. 3)
 % Shift it right to avoid overlapping with fig. 1

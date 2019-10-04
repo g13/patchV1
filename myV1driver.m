@@ -34,7 +34,6 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
     if ~exist(datafileabsolpath,'file') || new
         ENtraining = 'canonical';
 
-        if exist('ENsetupdone') ~= 1, ENsetupdone = 'no'; end;
         % ----------------------------- USER VALUES -----------------------------
         % Processing of intermediate (historical) parameters:
         %ENproc = 'varplot';		% One of 'var', 'save', 'varplot', 'saveplot'
@@ -103,17 +102,18 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
 							assert(heteroAlpha == -1);
         	            	VFweights_hlf = 1./VFweights;
 						end
-						VFweights_hlf(vfecc(1:halfNy,1:Nx)>ecc) = 0.0;
-						VFweights = [flipud(VFweights_hlf); VFweights_hlf];
-						darea = @(e, p) dblock(e,p,k,a,b);
-        	            disp(['integral sum: ', num2str(integral2(darea,0,ecc,-pi/2,pi/2))]);
-        	            disp(['estimated sum: ', num2str(sum(sum(VFweights)))]);
-
-						alpha_v = repmat(VFweights(:), NOD*NOR*NORr,1);
-						alpha = alpha_v/sum(alpha_v)*length(alpha_v) * alpha;
 					else
         	            VFweights_hlf = VFweights;
 					end
+					VFweights_hlf(vfecc(1:halfNy,1:Nx)>ecc) = 0.0;
+					VFweights = [flipud(VFweights_hlf); VFweights_hlf];
+					%darea = @(e, p) dblock(e,p,k,a,b);
+        	        %disp(['integral sum: ', num2str(integral2(darea,0,ecc,-pi/2,pi/2))]);
+        	        %disp(['estimated sum: ', num2str(sum(sum(VFweights)))]);
+
+					alpha_v = repmat(VFweights(:), NOD*NOR*NORr,1);
+					alpha = alpha_v/sum(alpha_v)*length(alpha_v) * alpha;
+
 					[vfx, vfy] = meshgrid(midpoints(linspace(0,ecc,Nx+1)), midpoints(linspace(0,ecc,halfNy+1)));
 					[vfpolar, vfecc] = cart2pol(vfx, vfy);
         	        w = dipole_ext(vfecc,vfpolar,a,b,k) - k*log(a/b);
@@ -171,17 +171,17 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
 							assert(heteroAlpha == -1);
         	            	VFweights_hlf = 1./VFweights;
 						end
-						VFweights_hlf(vfecc(1:halfNy,1:Nx)>ecc) = 0.0;
-						VFweights = [flipud(VFweights_hlf); VFweights_hlf];
-						darea = @(e, p) dblock(e,p,k,a,b);
-        	            disp(['integral sum: ', num2str(integral2(darea,0,ecc,-pi/2,pi/2))]);
-        	            disp(['estimated sum: ', num2str(sum(sum(VFweights)))]);
-
-						alpha_v = repmat(VFweights(:), NOD*NOR*NORr,1);
-						alpha = alpha_v/sum(alpha_v)*length(alpha_v) * alpha;
 					else
         	            VFweights_hlf = VFweights;
 					end
+					VFweights_hlf(vfecc(1:halfNy,1:Nx)>ecc) = 0.0;
+					VFweights = [flipud(VFweights_hlf); VFweights_hlf];
+					%darea = @(e, p) dblock(e,p,k,a,b);
+        	        %disp(['integral sum: ', num2str(integral2(darea,0,ecc,-pi/2,pi/2))]);
+        	        %disp(['estimated sum: ', num2str(sum(sum(VFweights)))]);
+
+					alpha_v = repmat(VFweights(:), NOD*NOR*NORr,1);
+					alpha = alpha_v/sum(alpha_v)*length(alpha_v) * alpha;
 					[vfx, vfy] = meshgrid(ecc_x, ecc_y);
 					[vfpolar, vfecc] = cart2pol(vfx, vfy);
         	        w = dipole_ext(vfecc,vfpolar,a,b,k) - k*log(a/b);
@@ -480,7 +480,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
                         myV1replay(G,bc,ENlist,v,ENcounter+1,T,T_vec,Pi,murange,id);
                     end
                 case {'save','saveplot'}
-                    save(sprintf('%s%04d.mat',ENfilename,ENcounter),'mu','stats','murange');
+                    save(sprintf('%s-%s%04d.mat',ENfilename0,ENfilename,ENcounter),'mu','stats','murange');
                     if strcmp(ENproc,'saveplot')
                         myV1replay(G,bc,struct('mu',mu,'stats',stats),v,1,T,T_vec,Pi,murange,id);
                     end
@@ -501,7 +501,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
                     'W normcte betanorm']);
             case {'save','saveplot'}
                 % Collect all files into a single one:
-                load(sprintf([ENfilename0,'/%s%04d.mat'],ENfilename,0));
+                load(sprintf([ENfilename0,'-%s%04d.mat'],ENfilename,0));
                 ENlist = struct('mu',mu,'stats',struct(...
                     'K',NaN,'E',[NaN NaN NaN],'time',[NaN NaN NaN],...
                     'cpu','','code',1,'it',0));
@@ -516,7 +516,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
                     'N D L M G bc p s T T_vec Pi S DD knot A LL Kin Kend iters Ksched '...
                     'alpha beta annrate max_it max_cyc min_K tol method '...
                     'W normcte betanorm']);
-                unix(['rm ' ENfilename '????.mat']);
+                unix(['rm ' ENfilename0 '-' ENfilename '????.mat']);
             otherwise
                 % Do nothing.
         end
