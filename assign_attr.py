@@ -9,7 +9,7 @@ import py_compile
 py_compile.compile('assign_attr.py')
 
 class macroMap:
-    def __init__(self, nx, ny, x, y, nblock, blockSize, LR_Pi_file, pos_file, a, b, k, ecc, p0, p1):
+    def __init__(self, nx, ny, x, y, nblock, blockSize, LR_Pi_file, pos_file, OP_file, a, b, k, ecc, p0, p1, posUniform = False):
         self.nblock = nblock
         self.blockSize = blockSize
         self.networkSize = nblock * blockSize
@@ -51,51 +51,48 @@ class macroMap:
         for ip in range(self.npolar):
             self.vx[:,ip] = [x_ep(e,self.p_range[ip],self.k,self.a,self.b) for e in self.e_range]
             self.vy[:,ip] = [y_ep(e,self.p_range[ip],self.k,self.a,self.b) for e in self.e_range]
+        
+        # read preset orientation preferences
+        with open(OP_file,'r') as f:
+            self.OPgrid = np.reshape(np.fromfile(f, 'f8', count = nx*ny),(ny,nx))
+            assert(max(self.OPgrid) <= np.pi/2 and min(self.ORgrid >= -np.pi/2))
+        
         self.layer = None
         self.pODready = False
         self.pVFready = False
+        self.pOPready = False
         self.LR_boundary_defined = False 
         self.vposLready = False
         self.vposRready = False
+        self.posUniform = posUniform
         # not used
         self.OD_VF_reconciled = False 
-            
+
+    # interpolate orientation preference for each neuron in from the OP grid
+    def assign_pos_OP(self, i = None, j = None, d2 = None):
+        if not self.posUniform:
+            print('positions are not yet adjusted')
+            return None
+        if d2 == None:
+            i, j, d2 =  self.get_d2grid()
+
+        self.op = np.empty((self.networkSize))
+        ratio = 1 - d2/np.sum(d2,axis = -1)
+        assert(ratio.shape[0] == self.networkSize)
+        assert(ratio.shape[1] == 4)
+        opgrid = np.stack((self.OPgrid[i,j], self.OPgrid[i+1,j], self.OPgrid[i,j+1], self.OPgrid[i+1,j+1]), axis = -1)
+        assert(opgrid.shape[0] == self.networkSize)
+        assert(opgrid.shape[1] == 4)
+        self.op = opgrid * ratio
+        self.pOPready = True
+
+        return self.op
+
     # memory requirement high, faster 
-    def assign_pos_OD1(self):
-        x0 = self.x[:-1]
-        x1 = self.x[1:]
-        y0 = self.y[:-1]
-        y1 = self.y[1:]
-
-        outSideRaggedBound = np.zeros(self.networkSize, dtype = bool)
-        self.ODlabel = np.zeros((self.networkSize))
-        i = np.nonzero(np.logical_and(np.tile(self.pos[1,:],(self.ny-1,1))-y0.reshape(self.ny-1,1) > 0, np.tile(self.pos[1,:],(self.ny-1,1))-y1.reshape(self.ny-1,1) < 0).T)[1]
-        j = np.nonzero(np.logical_and(np.tile(self.pos[0,:],(self.nx-1,1))-x0.reshape(self.nx-1,1) > 0, np.tile(self.pos[0,:],(self.nx-1,1))-x1.reshape(self.nx-1,1) < 0).T)[1]
-
-        corner_x = np.zeros((self.ny-1,self.nx-1,4))
-        corner_x[:,:,0] = self.xx[:-1,:-1]
-        corner_x[:,:,1] = self.xx[1:,:-1]
-        corner_x[:,:,2] = self.xx[:-1,1:]
-        corner_x[:,:,3] = self.xx[1:,1:]
-        corner_y = np.zeros((self.ny-1,self.nx-1,4))
-        corner_y[:,:,0] = self.yy[:-1,:-1]
-        corner_y[:,:,1] = self.yy[1:,:-1]
-        corner_y[:,:,2] = self.yy[:-1,1:]
-        corner_y[:,:,3] = self.yy[1:,1:]
-        def get_d(ic):
-            dx = self.pos[0,:] - corner_x[i,j,ic]
-            dy = self.pos[1,:] - corner_y[i,j,ic]
-            d2 = np.power(dx,2) + np.power(dy,2)
-            return d2
-        d2 = np.zeros((self.networkSize,4))
-        for ic in range(4):
-            d2[:,ic] = get_d(ic)
-        # pick neurons that is outside the discrete ragged boundary
-        jpick = np.argmin(d2,1)
-        outSideRaggedBound[np.logical_and(self.Pi[i,    j] <= 0, jpick == 0)] = True
-        outSideRaggedBound[np.logical_and(self.Pi[i+1,  j] <= 0, jpick == 1)] = True
-        outSideRaggedBound[np.logical_and(self.Pi[i,  j+1] <= 0, jpick == 2)] = True
-        outSideRaggedBound[np.logical_and(self.Pi[i+1,j+1] <= 0, jpick == 3)] = True
+    def assign_pos_OD1(self, i = None, j = None, d2 = None):
+        print('assign ocular dominance preference to neuron according to their position in the cortex')
+        if d2 == None
+            i, j, d2 = self.get_d2grid()
 
         d2[self.Pi[i,j]<=0,    0] = np.float('inf')
         d2[self.Pi[i+1,j]<=0,  1] = np.float('inf')
@@ -103,10 +100,20 @@ class macroMap:
         d2[self.Pi[i+1,j+1]<=0,3] = np.float('inf')
         ipick = np.argmin(d2,1)
         #print(ipick.shape)
+        self.ODlabel = np.zeros((self.networkSize))
         self.ODlabel[ipick == 0] = self.LR[i,    j][ipick == 0]
         self.ODlabel[ipick == 1] = self.LR[i+1,  j][ipick == 1]
         self.ODlabel[ipick == 2] = self.LR[i,  j+1][ipick == 2]
         self.ODlabel[ipick == 3] = self.LR[i+1,j+1][ipick == 3]
+        
+        print('adjust neuron positions near the boundary')
+        # pick neurons that is outside the discrete ragged boundary
+        jpick = np.argmin(d2,1)
+        outSideRaggedBound = np.zeros(self.networkSize, dtype = bool)
+        outSideRaggedBound[np.logical_and(self.Pi[i,    j] <= 0, jpick == 0)] = True
+        outSideRaggedBound[np.logical_and(self.Pi[i+1,  j] <= 0, jpick == 1)] = True
+        outSideRaggedBound[np.logical_and(self.Pi[i,  j+1] <= 0, jpick == 2)] = True
+        outSideRaggedBound[np.logical_and(self.Pi[i+1,j+1] <= 0, jpick == 3)] = True
         
         # retain neurons inside the discrete ragged boundary
         x = np.mod(ipick[outSideRaggedBound],2)
@@ -116,6 +123,7 @@ class macroMap:
         self.pos[0,outSideRaggedBound] = bx + (self.pos[0,outSideRaggedBound] - bx)/2
         self.pos[1,outSideRaggedBound] = by + (self.pos[1,outSideRaggedBound] - by)/2
 
+        print('retract neurons from the OD-boundary to avoid extreme repelling force later')
         # move neuron away from LR boundary to avoid extreme repelling force.
         LRgridType = np.stack((self.LR[i, j], self.LR[i+1, j], self.LR[i, j+1], self.LR[i+1, j+1]), axis=-1)
         bpick = np.logical_and(np.sum(LRgridType, axis=-1) != -4, np.sum(LRgridType, axis=-1) != 4)
@@ -331,6 +339,8 @@ class macroMap:
         return LR, spreaded
          
     def make_pos_uniform(self, dt, seed = None, particle_param = None, boundary_param = None, ax1 = None, ax2 = None):
+        if not self.pODready:
+            self.assign_pos_OD1()
         pR = self.ODlabel > 0
         pL = self.ODlabel < 0
         nR = np.sum(pR)
@@ -348,6 +358,8 @@ class macroMap:
         oldpos = self.pos.copy()
         self.pos[:,pL], convergenceL, nlimitedL = simulate_repel(areaL, self.subgrid, self.pos[:,pL], dt, self.OD_boundL, self.btypeL, boundary_param, particle_param, ax = ax1, seed = seed, ns = 0)
         self.pos[:,pR], convergenceR, nlimitedR = simulate_repel(areaR, self.subgrid, self.pos[:,pR], dt, self.OD_boundR, self.btypeR, boundary_param, particle_param, ax = ax2, seed = seed, ns = 0)
+        if not self.posUniform:
+            self.posUniform = True
         return oldpos, convergenceL, convergenceR, nlimitedL, nlimitedR
 
     def spread_pos_VF(self, dt, vpfile, lrfile, lrpick, seed = None, firstTime = True, particle_param = None, boundary_param = None, ax = None):
@@ -409,13 +421,51 @@ class macroMap:
 
         return pos, LR, spreaded
 
-    def plot_map(self,ax1,ax2,pltOD=True,pltVF=True,ngridLine=4):
+    def get_d2grid(self):
+        print('calculate neurons\' cortical distance to the nearest vertex in the grid')
+        d2 = np.zeros((self.networkSize,4))
+
+        x0 = self.x[:-1]
+        x1 = self.x[1:]
+        y0 = self.y[:-1]
+        y1 = self.y[1:]
+
+        i = np.nonzero(np.logical_and(np.tile(self.pos[1,:],(self.ny-1,1))-y0.reshape(self.ny-1,1) > 0, np.tile(self.pos[1,:],(self.ny-1,1))-y1.reshape(self.ny-1,1) < 0).T)[1]
+        j = np.nonzero(np.logical_and(np.tile(self.pos[0,:],(self.nx-1,1))-x0.reshape(self.nx-1,1) > 0, np.tile(self.pos[0,:],(self.nx-1,1))-x1.reshape(self.nx-1,1) < 0).T)[1]
+
+        corner_x = np.zeros((self.ny-1,self.nx-1,4))
+        corner_x[:,:,0] = self.xx[:-1,:-1]
+        corner_x[:,:,1] = self.xx[1:,:-1]
+        corner_x[:,:,2] = self.xx[:-1,1:]
+        corner_x[:,:,3] = self.xx[1:,1:]
+        corner_y = np.zeros((self.ny-1,self.nx-1,4))
+        corner_y[:,:,0] = self.yy[:-1,:-1]
+        corner_y[:,:,1] = self.yy[1:,:-1]
+        corner_y[:,:,2] = self.yy[:-1,1:]
+        corner_y[:,:,3] = self.yy[1:,1:]
+        def get_d(ic):
+            dx = self.pos[0,:] - corner_x[i,j,ic]
+            dy = self.pos[1,:] - corner_y[i,j,ic]
+            d2 = np.power(dx,2) + np.power(dy,2)
+            return d2
+        for ic in range(4):
+            d2[:,ic] = get_d(ic)
+        return i, j, d2
+
+    def plot_map(self,ax1,ax2,dpi,pltOD=True,pltVF=True,pltOP=True,ngridLine=4):
         if pltOD == True:
             if self.pODready == False:
                 #self.assign_pos_OD0()
                 self.assign_pos_OD1()
-            ax2.plot(self.pos[0,self.ODlabel>0], self.pos[1,self.ODlabel>0],',m')
-            ax2.plot(self.pos[0,self.ODlabel<0], self.pos[1,self.ODlabel<0],',c')
+                
+            if pltOP:
+                bMS = 100 * np.power(72,2)/self.networkSize
+                sMS = 25 * np.power(72/dpi,2)
+                ax2.scatter(self.pos[0,self.ODlabel>0], self.pos[1,self.ODlabel>0], s = max(bMS, sMS) , marker = 'o', c = self.op[self.ODlabel > 0], cmap = 'hsv')
+            else:
+                ax2.plot(self.pos[0,self.ODlabel>0], self.pos[1,self.ODlabel>0],',m')
+                ax2.plot(self.pos[0,self.ODlabel<0], self.pos[1,self.ODlabel<0],',c')
+
             if ngridLine > 0:
                 for ip in range(self.npolar):
                     if ip % (self.npolar//ngridLine)== 0:
