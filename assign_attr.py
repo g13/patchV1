@@ -98,12 +98,23 @@ class macroMap:
 
         print('adjust neuron positions near the boundary')
         # pick neurons that is outside the discrete ragged boundary
-        jpick = np.argmin(d2,1)
-        outsideRaggedBound = np.zeros(self.networkSize, dtype = bool)
-        outsideRaggedBound[np.logical_and(self.Pi[i,    j] <= 0, jpick == 0)] = True
-        outsideRaggedBound[np.logical_and(self.Pi[i+1,  j] <= 0, jpick == 1)] = True
-        outsideRaggedBound[np.logical_and(self.Pi[i,  j+1] <= 0, jpick == 2)] = True
-        outsideRaggedBound[np.logical_and(self.Pi[i+1,j+1] <= 0, jpick == 3)] = True
+        #jpick = np.argmin(d2,1)
+        #outsideRaggedBound = np.zeros(self.networkSize, dtype = bool)
+        #outsideRaggedBound[np.logical_and(self.Pi[i,    j] <= 0, jpick == 0)] = True
+        #outsideRaggedBound[np.logical_and(self.Pi[i+1,  j] <= 0, jpick == 1)] = True
+        #outsideRaggedBound[np.logical_and(self.Pi[i,  j+1] <= 0, jpick == 2)] = True
+        #outsideRaggedBound[np.logical_and(self.Pi[i+1,j+1] <= 0, jpick == 3)] = True
+        outsideRaggedBound = np.zeros(self.networkSize)-1
+        # lower-left is outside
+        outsideRaggedBound[self.Pi[i,j] <= 0] = 0 
+        jpick = self.Pi[i+1,   j] <= 0 # upper-left is outside
+        outsideRaggedBound[jpick] = outsideRaggedBound[jpick] + 1
+        jpick = self.Pi[i,   j+1] <= 0 # lower-right is outside
+        outsideRaggedBound[jpick] = outsideRaggedBound[jpick] + 2
+        jpick = self.Pi[i+1, j+1] <= 0 # upper-right is outside
+        outsideRaggedBound[jpick] = outsideRaggedBound[jpick] + 3
+        bx = 
+        outsideRaggedBound[jpick]
         
         # retain neurons inside the discrete ragged boundary
         #x = np.mod(jpick[outsideRaggedBound],2)
