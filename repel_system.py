@@ -7,15 +7,16 @@ class repel_system:
     def __init__(self, area, subgrid, initial_x, bp, btype, boundary_param = None, particle_param = None, initial_v = None, nlayer = 1, layer = None, soft_boundary = None, soft_btype = None,  enough_memory = False):
         self.nn = initial_x.shape[1]
         self.nb = bp.shape[0]
-        unit_hexagon_area = 6*np.sqrt(3)/4
-        self.cl = np.sqrt(3*(area/self.nn)/unit_hexagon_area)
-        print(f'characteristic length (inter-particle-distance) as twice the raidus of an hexagon {self.cl:.3f}')
-        p_scale = 1.2 # potential extension
-        b_scale = 0.6 # potential extension
-        self.damp = 0.15
+        per_unit_area = np.sqrt(3)/2 # in cl^2
+        self.cl = np.sqrt((area/self.nn)/per_unit_area)
+        print(f'characteristic length (inter-particle-distance)')
+        p_scale = 5.0 # potential extension
+        b_scale = 2.5 # potential extension
+        self.damp = 0.1
         a_particle = self.cl*p_scale
         a_boundary = self.cl*b_scale
-        self.default_limiting = self.cl/2*p_scale
+        # will be used to limit displacement and velocity
+        self.default_limiting = self.cl/2
         self.limiting = np.zeros(self.nn) + self.default_limiting
         if nlayer == -1:
             self.layerSupplied = True
@@ -32,7 +33,7 @@ class repel_system:
             self.particle = point_particle(initial_x, particle_param, initial_v)
         print('boundary:')
         if boundary_param is None:
-            self.boundary = rec_boundary(subgrid, bp, btype, L_J_potiential(a_boundary,a_boundary,2,1,self.cl/2), enough_memory)
+            self.boundary = rec_boundary(subgrid, bp, btype, L_J_potiential(a_boundary,a_boundary,2,1,self.cl), enough_memory)
         else:
             self.boundary = rec_boundary(subgrid, bp, btype, boundary_param, enough_memory)
 
@@ -410,32 +411,35 @@ class rec_boundary:
         else:
             r = np.linalg.norm(pos - self.pos[i,:,1])
         return r, 0
+
     def get_turn(self, i, pos, turntype):
         acc = np.zeros(2)
         r = 0
-        if (np.abs(pos - self.pos[i,:,1]) < self.subgrid).all():
-            # use rec in pick for complete coverage of points
-            if np.sign(pos[0] - self.pos[i,0,1]) != np.sign(pos[0] - self.pos[i,0,1] - np.copysign(self.rec, self.pos[i,0,1] - self.pos[i,0,turntype])) and \
-            np.sign(pos[1] - self.pos[i,1,1]) != np.sign(pos[1] - self.pos[i,1,1] - np.copysign(self.rec, self.pos[i,1,1] - self.pos[i,1,2-turntype])):
-                d = (pos - self.pos[i,:,1])
-                r = np.linalg.norm(d, axis=0)
-                if r < self.r0:
-                    acc = self.f(r)*d/r
-            else:
-                if np.sign(pos[0] - self.pos[i,0,1]) != np.sign(pos[0] - self.pos[i,0,turntype]):
-                    d = pos[1] - self.pos[i,1,1]
-                    r = np.abs(d)
-                    if r < self.r0:
-                        acc[1] = np.copysign(self.f(r), d)
+        vv = False
+        hh = False
+        # vertical
+        if np.sign(pos[0] - self.pos[i,0,1]) != np.sign(pos[0] - self.pos[i,0,turntype]):
+            vv = True
+            d = pos[1] - self.pos[i,1,1]
+            r = np.abs(d)
+            if r < self.r0:
+                acc[1] = np.copysign(self.f(r), d)
+        # horizontal 
+        if np.sign(pos[1] - self.pos[i,1,1]) != np.sign(pos[1] - self.pos[i,1,2-turntype]):
+            hh = True
+            d = pos[0] - self.pos[i,0,1]
+            r = np.abs(d)
+            if r < self.r0:
+                acc[0] = np.copysign(self.f(r), d)
+        # turning section 
+        if not vv and not hh:
+            d = (pos - self.pos[i,:,1])
+            r = np.linalg.norm(d, axis=0)
+            #if np.sign(pos[0] - self.pos[i,0,1]) != np.sign(pos[0] - self.pos[i,0,1] - np.copysign(self.rec, self.pos[i,0,1] - self.pos[i,0,turntype])) and \
+            #np.sign(pos[1] - self.pos[i,1,1]) != np.sign(pos[1] - self.pos[i,1,1] - np.copysign(self.rec, self.pos[i,1,1] - self.pos[i,1,2-turntype])):
+            if r < self.r0:
+                acc = self.f(r)*d/r
 
-                if np.sign(pos[1] - self.pos[i,1,1]) != np.sign(pos[1] - self.pos[i,1,2-turntype]):
-                    d = pos[0] - self.pos[i,0,1]
-                    r = np.abs(d)
-                    if r < self.r0:
-                        acc[0] = np.copysign(self.f(r), d)
-        else:
-            r = np.max(np.abs(pos - self.pos[i,:,1]))
-            assert(r > self.r0)
         assert(r > 0)
         return acc, r
 

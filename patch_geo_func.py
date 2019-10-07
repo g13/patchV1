@@ -10,6 +10,7 @@ os.environ['NUMBAPRO_CUDALIB']='C:/Users/gueux/Miniconda3/envs/py36_7/Library/bi
 np.seterr(all='raise')
 special.seterr(all='raise')
 sobol_set = True
+#sobol_set = False 
 
 # f-function related
 def fp(e,p,ab,s1=0.76,s2=0.1821):
@@ -198,7 +199,7 @@ def get_pos_3d(x,y,area,n,skip=602):
         if sobol_set:
             rands = ss.i4_sobol_generate(3, ntmp, skip=skip) 
             # add noise to avoid complete overlap
-            rands = rands * (1 + np.random.normal(0, 0.05, (ntmp,3)))
+            rands = rands * (1 + np.random.normal(0, 0.03, (ntmp,3)))
         else:
             rands = np.random.rand(ntmp, 3) # transformed compared with sobol
 
@@ -206,8 +207,20 @@ def get_pos_3d(x,y,area,n,skip=602):
         py = ymin + (ymax-ymin) * rands[:,1]
         pz = 0.01 * rands[:,2]
         #print(f'selecting {count}: ({i}+{ntmp})/{n}')
+        r = np.arange(ntmp)
         select = is_point_inside(px, py, x, y, ntmp)
+        ptmp = np.vstack((px, py))
+        for j in r[select]:
+            if j > 0:
+                if ((ptmp[:,:j-1] - ptmp[:,j].reshape((2,1)) == 0).all(0)).any():
+                    select[j] = False
+            if i > 0:
+                if ((pos[:2,:i] - ptmp[:,j].reshape((2,1)) == 0).all(0)).any():
+                    select[j] = False
         nselected = sum(select)
+        if nselected == 0:
+            raise Exception(f'no points selected from {ntmp} random points')
+
         if i+nselected > n:
             nselected = n-i
         pos[0,i:i+nselected] = (px[select])[:nselected]
