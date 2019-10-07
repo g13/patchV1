@@ -107,7 +107,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         	            VFweights_hlf = VFweights;
 					end
 					VFweights_hlf(vfecc(1:halfNy,1:Nx)>ecc) = 0.0;
-					VFweights = [flipud(VFweights_hlf); VFweights_hlf];
+					VFweights = [flipud(VFweights_hlf); VFweights_hlf]';
 					%darea = @(e, p) dblock(e,p,k,a,b);
         	        %disp(['integral sum: ', num2str(integral2(darea,0,ecc,-pi/2,pi/2))]);
         	        %disp(['estimated sum: ', num2str(sum(sum(VFweights)))]);
@@ -176,7 +176,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         	            VFweights_hlf = VFweights;
 					end
 					VFweights_hlf(vfecc(1:halfNy,1:Nx)>ecc) = 0.0;
-					VFweights = [flipud(VFweights_hlf); VFweights_hlf];
+					VFweights = [flipud(VFweights_hlf); VFweights_hlf]';
 					%darea = @(e, p) dblock(e,p,k,a,b);
         	        %disp(['integral sum: ', num2str(integral2(darea,0,ecc,-pi/2,pi/2))]);
         	        %disp(['estimated sum: ', num2str(sum(sum(VFweights)))]);
@@ -507,7 +507,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
                     'K',NaN,'E',[NaN NaN NaN],'time',[NaN NaN NaN],...
                     'cpu','','code',1,'it',0));
                 for ENcounter = 1:length(Ksched)
-                    load(sprintf('%s%04d.mat',ENfilename,ENcounter));
+                    load(sprintf('%s-%s%04d.mat',ENfilename0,ENfilename,ENcounter));
                     ENlist(ENcounter+1).mu = mu;
                     ENlist(ENcounter+1).stats = stats;
                 end
