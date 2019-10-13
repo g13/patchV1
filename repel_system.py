@@ -7,16 +7,16 @@ class repel_system:
     def __init__(self, area, subgrid, initial_x, bp, btype, boundary_param = None, particle_param = None, initial_v = None, nlayer = 1, layer = None, soft_boundary = None, soft_btype = None,  enough_memory = False):
         self.nn = initial_x.shape[1]
         self.nb = bp.shape[0]
-        per_unit_area = np.sqrt(3)/2 # in cl^2
+        per_unit_area = 2*np.sqrt(3) # in cl^2
         self.cl = np.sqrt((area/self.nn)/per_unit_area)
         print(f'characteristic length (inter-particle-distance)')
-        p_scale = 5.0 # potential extension
-        b_scale = 2.5 # potential extension
+        p_scale = 2.0 # potential extension
+        b_scale = 1.0 # potential extension
         self.damp = 0.1
         a_particle = self.cl*p_scale
         a_boundary = self.cl*b_scale
         # will be used to limit displacement and velocity
-        self.default_limiting = self.cl/2
+        self.default_limiting = self.cl
         self.limiting = np.zeros(self.nn) + self.default_limiting
         if nlayer == -1:
             self.layerSupplied = True
@@ -28,12 +28,12 @@ class repel_system:
 
         print('particle:')
         if particle_param is None:
-            self.particle = point_particle(initial_x, L_J_potiential(a_particle,a_particle,2,1,self.cl), initial_v)
+            self.particle = point_particle(initial_x, L_J_potiential(a_particle,a_particle,2,1,a_particle), initial_v)
         else:
             self.particle = point_particle(initial_x, particle_param, initial_v)
         print('boundary:')
         if boundary_param is None:
-            self.boundary = rec_boundary(subgrid, bp, btype, L_J_potiential(a_boundary,a_boundary,2,1,self.cl), enough_memory)
+            self.boundary = rec_boundary(subgrid, bp, btype, L_J_potiential(a_boundary,a_boundary,2,1,a_boundary), enough_memory)
         else:
             self.boundary = rec_boundary(subgrid, bp, btype, boundary_param, enough_memory)
 
@@ -43,9 +43,9 @@ class repel_system:
 
         print(f'{self.nb} boundary points and {self.nn} particles initialized')
         print(f'in units of grids ({subgrid[0]:.3f},{subgrid[1]:.3f}):')
-        print(f'    radius of the hexagon ({self.cl/subgrid[0]:.3f},{self.cl/subgrid[1]:.3f})')
-        print(f'    radius of influence of particle ({self.particle.r0/subgrid[0]:.3f},{self.particle.r0/subgrid[1]:.3f})')
-        print(f'    radius of influence of boundary ({self.boundary.r0/subgrid[0]:.3f},{self.boundary.r0/subgrid[1]:.3f})')
+        print(f'    interparticle distance ({self.cl/subgrid[0]:.3f},{self.cl/subgrid[1]:.3f})')
+        print(f'    radius of influence for particles ({self.particle.r0/subgrid[0]:.3f},{self.particle.r0/subgrid[1]:.3f})')
+        print(f'    radius of influence for boundaries ({self.boundary.r0/subgrid[0]:.3f},{self.boundary.r0/subgrid[1]:.3f})')
         print(f'    default limiting of displacement in one dt: ({self.default_limiting/subgrid[0]:.3f}, {self.default_limiting/subgrid[1]:.3f})')
         
         self.nlayer = nlayer
@@ -556,19 +556,23 @@ def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = Non
     print(boundary.size * pos.size/1024/1024/1024)
     if ax is not None:
         if soft_boundary is not None:
-            ax.plot(soft_boundary[:,0,:].squeeze(), soft_boundary[:,1,:].squeeze(), ',g')
-        ax.plot(boundary[:,0,:].squeeze(), boundary[:,1,:].squeeze(), ',r')
+            ax.plot(soft_boundary[:,0,[0,2]].squeeze(), soft_boundary[:,1,[0,2]].squeeze(), ',b')
+            ax.plot(soft_boundary[:,0,1].squeeze(), soft_boundary[:,1,1].squeeze(), ',g')
+        # connecting points on grid sides
+        ax.plot(boundary[:,0,[0,2]].squeeze(), boundary[:,1,[0,2]].squeeze(), ',r')
+        # grid centers
+        ax.plot(boundary[:,0,1].squeeze(), boundary[:,1,1].squeeze(), ',g')
     if ax is not None and ns == 0:
         print('no sample points selected')
     if ax is not None:
         if ns > 0: 
-            if seed is None:
-                seed = time.time()
-                print(f'seed = {seed}')
-            np.random.seed(seed)
             if ns ==  pos.shape[1]:
                 spick = np.arange(ns)
             else:
+                if seed is None:
+                    seed = time.time()
+                    print(f'seed = {seed}')
+                np.random.seed(seed)
                 spick = np.random.choice(pos.shape[1], ns, replace = False)
             spos = np.empty((2,2,ns))
             spos[0,:,:] =  pos[:,spick]

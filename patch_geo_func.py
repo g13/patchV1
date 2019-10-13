@@ -199,7 +199,7 @@ def get_pos_3d(x,y,area,n,skip=602):
         if sobol_set:
             rands = ss.i4_sobol_generate(3, ntmp, skip=skip) 
             # add noise to avoid complete overlap
-            rands = rands * (1 + np.random.normal(0, 0.03, (ntmp,3)))
+            rands = rands * (1 + np.random.normal(0, 0.001, (ntmp,3)))
         else:
             rands = np.random.rand(ntmp, 3) # transformed compared with sobol
 
