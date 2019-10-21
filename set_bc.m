@@ -32,7 +32,7 @@ function [B_ind, I_ind, B1_ind, I1_ind, B2_ind, I2_ind, B1_ang] = set_bc(Pi, bw,
 			else
             	B_ind(i+1:i+length(head)) = (iy-1)*nx + head;
             	i = i + length(head);
-            	B1_ind(j+1) = (iy-1)*nx + head(1);
+            	B1_ind(j+1) = (iy-1)*nx + head(1); %not including the open boundary
             	j = j + 1;
             	B2_ind(k+1:k+2) = (iy-1)*nx + [head(1); tail(end)];
             	k = k + 2;

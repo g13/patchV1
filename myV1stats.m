@@ -234,7 +234,7 @@
 % Copyright (c) 2002 by Miguel A. Carreira-Perpinan
 
 function stats = ...
-    myV1stats(stream,G,bc,ENlist,v,whichones,T,T_vec,Pi,murange,id,tens,opt,figlist,statsOnly,right_open,separateData)
+    myV1stats(stream,G,bc,ENlist,v,whichones,T,T_vec,Pi,murange,id,tens,opt,figlist,statsOnly,right_open,separateData,xx,yy)
 if nargin < 13
     statsOnly = false;
 end
@@ -526,6 +526,15 @@ for ENcounter = whichones
 	fclose(fID);
 
     if ~isempty(ENdir)
+		if plotfig(2)
+			set (0,'currentfigure',2);
+			hold on
+			plot(1,1,'sb');
+			plot(1,G(2),'ob');
+			plot(G(1),1,'sg');
+			plot(G(1),G(2),'og');
+			plot(xx, yy, '*r');
+		end
         Figs = [1:14]; % Energy and cpu time get printed at end only
         for i=find(plotfig(Figs))
             print(i,'-loose','-r900',['-d' EXT], [prefix,figName{i},'-',frame,'.',EXT]);

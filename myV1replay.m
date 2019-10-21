@@ -104,7 +104,6 @@
 % Copyright (c) 2002 by Miguel A. Carreira-Perpinan
 
 function myV1replay(G,bc,ENlist,v,whichones,T,T_vec,Pi,murange,id,tens,opt,figlist)
-
 L = length(G);                  % Net dimensionality
 if L == 1, G = [G 1]; end        % So that both L=1 and L=2 work
 [M,D] = size(ENlist(1).mu);
