@@ -316,7 +316,7 @@ end
 
 if ~exist('figlist','var')
     if isempty(figlist) && ~statsOnly
-        figlist = [1:5 7 13 14 20 21 100:102 120:124 130:133 140:142 150:160 170:171 176 180:189];
+        figlist = [1:5 7 15 16 20 21 100:102 120:124 130:133 140:142 150:160 170:171 176 180:189];
     else
         figlist = [];
     end
@@ -332,6 +332,8 @@ figName{5} = 'VFMap';
 figName{7} = 'ORpinw_map';
 figName{13} = 'OD-VFx_contour';
 figName{14} = 'OD-VFy_contour';
+figName{15} = 'OD-VF_contour';
+figName{16} = 'OR-VF_contour';
 figName{20} = 'hist_VFx';
 figName{21} = 'hist_VFy';
 figName{34} = 'crossing_angles';
@@ -526,17 +528,13 @@ for ENcounter = whichones
 	fclose(fID);
 
     if ~isempty(ENdir)
-		if plotfig(2)
-			set (0,'currentfigure',2);
-			hold on
-			plot(1,1,'sb');
-			plot(1,G(2),'ob');
-			plot(G(1),1,'sg');
-			plot(G(1),G(2),'og');
-			plot(xx, yy, '*r');
-		end
-        Figs = [1:14]; % Energy and cpu time get printed at end only
+        Figs = [1:16]; % Energy and cpu time get printed at end only
         for i=find(plotfig(Figs))
+			%if i == 2 || i == 13 || i == 14 || i == 15 || i == 16
+			%	set (0,'currentfigure',i);
+			%	hold on
+			%	plot(xx, yy, '*r', 'MarkerSize', 1.0);
+			%end
             print(i,'-loose','-r900',['-d' EXT], [prefix,figName{i},'-',frame,'.',EXT]);
         end
 		if ENcounter == whichones(1)
