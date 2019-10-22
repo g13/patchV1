@@ -18,6 +18,8 @@
 % - Figure 12: colorbar for fig. 11.
 % --Figure 13: OD-VFx countour 
 % --Figure 14: OD-VFy countour 
+% --Figure 15: OD-VF countour 
+% --Figure 16: OR-VF countour 
 % - Figure 100: objective function value.
 % - Figure 101: computation time.
 % Other combinations of variables are not so interesting.
@@ -249,12 +251,13 @@ ODplotv = struct('type','contour',...             % Plot type
 %                               'num',1));         % No. lines for 'contour*'
 % Ditto OR
 tmp1 = T_vec{id.OR};
-tmp1 = v(id.OR,2)+(tmp1(2:2:v(id.OR,4))-v(id.OR,2))/2;
+%tmp1 = v(id.OR,2)+(tmp1(2:2:v(id.OR,4))-v(id.OR,2))/2;
+%tmp1 = v(id.OR,2)+(tmp1(2:2:v(id.OR,4))-v(id.OR,2))/2;
+tmp1 = tmp1(1:(v(id.OR,4)+mod(v(id.OR,4),2))/2);
 if isfield(id, 'OR')
     ORplotv = ODplotv;
     ORplotv.type = 'contour_per';
     ORplotv.line.lwid = 1;
-    %ORplotv.line.num = tmp1(1:v(id.OR,4)/2);
 	ORplotv.line.num = tmp1;
     ORplotv.line.lcol = 'b';
 end
@@ -475,8 +478,8 @@ end
 VFxplotv = struct('type','contour',...             % Plot type
     'cmap',zeros(256,3),...          % Colormap for 'img*'
     'line',struct('lsty','-',...     % LineStyle
-    'lcol','b',...     % LineColor
-    'lwid',1.5,...       % LineWidth
+    'lcol','g',...     % LineColor
+    'lwid',0.5,...       % LineWidth
     'msty','none',...  % MarkerStyle
     'msiz',1,...       % MarkerSize
     'mecol','none',... % MarkerEdgeColor
@@ -497,14 +500,35 @@ end
 VFyplotv = struct('type','contour',...             % Plot type
     'cmap',zeros(256,3),...          % Colormap for 'img*'
     'line',struct('lsty','-',...     % LineStyle
-    'lcol','b',...     % LineColor
-    'lwid',1.5,...       % LineWidth
+    'lcol','m',...     % LineColor
+    'lwid',0.5,...       % LineWidth
     'msty','none',...  % MarkerStyle
     'msiz',1,...       % MarkerSize
     'mecol','none',... % MarkerEdgeColor
     'mfcol','none',... % MarkerFaceColor
     'num', T_vec{id.VFy}));
 
+fg15 = fg2;
+ax15 = gridLim;
+if ~ishandle(15)
+    if plotfig(15)
+        set(figure(15),'Position',fg2,'PaperPositionMode','auto','Color','w',...
+            'Name','Contours of OD and VFx',...
+            'DoubleBuffer','on','Renderer','painters');
+            %'DoubleBuffer','on','Renderer','painters','MenuBar','none');
+    end
+end
+
+fg16 = fg2;
+ax16 = gridLim;
+if ~ishandle(16)
+    if plotfig(16)
+        set(figure(16),'Position',fg2,'PaperPositionMode','auto','Color','w',...
+            'Name','Contours of OD and VFx',...
+            'DoubleBuffer','on','Renderer','painters');
+            %'DoubleBuffer','on','Renderer','painters','MenuBar','none');
+    end
+end
 % Figure 100: objective function value.
 % Figure 101: computation time.
 if any(plotfig(100:102))
@@ -663,6 +687,24 @@ for ENcounter = whichones
         myplot(G,bc,mu,VFyplotv,v(id.VFy,:),T,Pi,fg14,ax14);
         title(Kstr,'Visible','on'); drawnow;
     end
+    if plotfig(15) && isfield(id, 'OD') && isfield(id, 'VFx') && isfield(id, 'VFy')
+
+        set(0,'CurrentFigure',15); cla;
+        tmp = get(15,'Position'); fg2(1:2) = tmp(1:2);
+        myplot(G,bc,mu,ODplotv,v(id.OD,:),T,Pi,fg15,ax15);
+        myplot(G,bc,mu,VFxplotv,v(id.VFx,:),T,Pi,fg15,ax15);
+        myplot(G,bc,mu,VFyplotv,v(id.VFy,:),T,Pi,fg15,ax15);
+        title(Kstr,'Visible','on'); drawnow;
+    end
+    if plotfig(16) && isfield(id, 'OR') && isfield(id, 'VFx') && isfield(id, 'VFy')
+
+        set(0,'CurrentFigure',16); cla;
+        tmp = get(16,'Position'); fg2(1:2) = tmp(1:2);
+        myplot(G,bc,mu,ORplotv,v(id.OR,:),T,Pi,fg16,ax16);
+        myplot(G,bc,mu,VFxplotv,v(id.VFx,:),T,Pi,fg16,ax16);
+        myplot(G,bc,mu,VFyplotv,v(id.VFy,:),T,Pi,fg16,ax16);
+        title(Kstr,'Visible','on'); drawnow;
+	end
     if plotfig(100) && domovie
         set(0,'CurrentFigure',100);
         hold on; plot(its(ENcounter),thisE,'ro'); hold off; drawnow;

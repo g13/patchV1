@@ -13,7 +13,7 @@ plots = true;
 new = false;
 ENproc = 'save';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
-name = 'nG2nvf10Ny25';
+name = 'steadyp';
 var = 'OD'
 equi = 'VF';
 heteroAlpha = -1; % -1 reciprocal, 0 identity, 1 area
@@ -26,13 +26,13 @@ case 1
 	wtString = 'a';
 end
 ENfilename0 = [name,'-',equi,'-',wtString,'-',var]   % Simulation name ***
-plotting = 'all' % 'all', 'first', >0 frame, <0 frame:end
+plotting = 'last' % 'all', 'first', >0 frame, <0 frame:end
 %range = [6,8,10,12,14];
 %range = [1.2,1.3,1.4,1.5,1.6];
 %range = [10,15,20,25,30];
 %range = [1.0,1.25,1.5,1.75,2.0];
 %range = [5,7.5,10,12.5,15];
-range = [0.7,0.85,1.0,1.15,1.3];
+range = [0.8,0.9,1.0,1.1,1.2];
 %range = [1.0];
 %range = [1];
 cortical_VF = true;
@@ -55,7 +55,8 @@ if ~exist(ENfilename0, 'dir')
 end
 
 copyfile([mfilename,'.m'],[ENfilename0,'/',ENfilename0,'_p.m']);
-if length(range) > 1
+%if length(range) > 1
+if false
 	poolobj = gcp('nocreate'); % If no pool, do not create new one.
 	if ~isempty(poolobj)
 	    if ~ (poolobj.NumWorkers == length(range))
@@ -70,8 +71,8 @@ else
     scurr = rng('shuffle')
     seed = scurr.Seed;
 end
-parfor i = 1:length(range)
-%for i = 1:length(range)
+%parfor i = 1:length(range)
+for i = 1:length(range)
     % for non_cortical_shape edge boundaries
     test_dw = 5;
     test_dh = 7;
@@ -82,13 +83,13 @@ parfor i = 1:length(range)
 	beta = 500;
     % Training parameters
 	iters = 10; %21;			% No. of annealing rates (saved)
-    max_it = 10;		        % No. of iterations per annealing rate (not saved) ***
+    max_it = 5;		        % No. of iterations per annealing rate (not saved) ***
 	%max_it = round(20 *range(i)/range(end)); 
     Kin = 0.15;			% Initial K ***
     Kend = 0.03;        % Final K ***    
     % - VFx: Nx points in [0,1], with interpoint separation dx.
 	%Nx = round(18*range(i))			% Number of points along VFx ***
-	Nx = 25;
+	Nx = 17;
 	%Nx = range(i)
 	%Nx = round(16*range(i)); %			% Number of points along VFx ***
 	%nvf = range(i);
@@ -98,7 +99,7 @@ parfor i = 1:length(range)
 	%
 	% even
 	%Ny = round(36/range(i)) 
-	Ny = 25;
+	Ny = 34;
 	%Ny = 60 - range(i);
 	if mod(Nx,2) == 1,Nx = Nx + 1; end
 	if mod(Ny,2) == 1,Ny = Ny - 1; end

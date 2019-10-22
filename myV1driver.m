@@ -26,7 +26,7 @@
 % scaffolding for the underlying continuous set of training vectors.
 % 'noisy' and 'uniform*' approximate online training over the continuous
 % domain of (VFx,VFy,OD,ORt).
-function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,weightType)
+function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,weightType)
 	irange = fign;
     datafileabsolpath = [pwd,'/',ENfilename0,'-',ENfilename,'.mat'];
 	stream = RandStream('mt19937ar','Seed',seed);
@@ -49,7 +49,10 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         % - OR: NOR values in a periodic interval [-pi/2,pi/2] with modulus r,
         rORt = [-pi/2 pi/2];		% Range of ORtheta
         rORr = [0 r];			% Range of ORr
-        tmp1 = linspace(rORt(1),rORt(2),NOR+1); tmp1 = tmp1(1:NOR);
+		dOR = (rORt(2)-rORt(1))/NOR;
+		tmp0 = linspace(rORt(1),rORt(2),NOR+1)-dOR/2;
+        %tmp0 = linspace(rORt(1),rORt(2),NOR+1); 
+		tmp1 = midpoints(tmp0);
 		NORr = 1;
         %dOR = diff(rORt)/(NOR-1)*r;
         % - SF: spatial frequency, same as OD, to be tested with larger NSF
@@ -142,6 +145,8 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
 					% use transformed midpoints for training points
 					x_vec = rx(1) + ecc_x*(rx(2)-rx(1))/ecc;
 					y_vec = ry(1) + ([-fliplr(ecc_y), ecc_y]+ecc)*(ry(2)-ry(1))/(2*ecc);
+					x_vec0 = rx(1) + ecc_x0*(rx(2)-rx(1))/ecc;
+					y_vec0 = ry(1) + ([-fliplr(ecc_y0), ecc_y0(2:halfNy+1)]+ecc)*(ry(2)-ry(1))/(2*ecc);
 
 					[vfx, vfy] = meshgrid(ecc_x0, ecc_y0);
 					[vfpolar, vfecc] = cart2pol(vfx, vfy);
@@ -254,18 +259,17 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         % match feature with id
         id = struct('VFx',1,'VFy',2,'OD',3,'ORx',4,'ORy',5,'OR',6,'ORr',7);
 		T_vec = cell(D,1);
-		T_vec{1} = x_vec;
-		T_vec{2} = y_vec;
+		T_vec{1} = x_vec0;
+		T_vec{2} = y_vec0;
 		T_vec{3} = [-l, l];
-        tmp1 = linspace(rORt(1),rORt(2),NOR+1); tmp1 = tmp1(1:NOR);
-		T_vec{6} = tmp1
+		T_vec{6} = tmp0;
 		T_vec{7} = [r];
-		[T_vec{4}, T_vec{5}] = pol2cart(2*tmp1, r);
+		[T_vec{4}, T_vec{5}] = pol2cart(2*tmp0, r);
         %id = struct('VFx',1,'VFy',2,'OD',3,'ORx',4,'ORy',5,'OR',6,'ORr',7);
         %id = struct('VFx',1,'VFy',2,'OD',3);
         % Ranges of stimuli variables (for greyscales, etc.)
         % v = [1 rx;2 ry;3 rOD];
-        v = [1 rx Nx;2 ry Ny;3 rOD NOD;4 -r r 2;5 -r r 2;6 -pi/2 pi/2 NOR;7 0 r NORr];
+        v = [1 rx Nx+1;2 ry Ny+1;3 rOD NOD;4 -r r 2;5 -r r 2;6 -pi/2 pi/2 NOR+1;7 0 r NORr];
         %v = [1 NaN NaN;2 NaN NaN;3 -l l;4 NaN NaN;5 NaN NaN;6 -pi/2 pi/2;7 0 r];
         %v = [1 rOD; 2 -r r; 3 -r r; 4 -pi/2 pi/2; 5 0 r]; % -- last 2 rows: OR augmented by polar
         disp([num2str(size(T,1)),' references(cities) x ',num2str(size(T,2)),' features']);
@@ -523,7 +527,7 @@ function stats=myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cor
         load([ENfilename0,'-',ENfilename,'.mat']);
     end
     if plots
-        figlist = [1,2,3,4,5,7,13,14,20,21,100,102,34, 40, 41, 50, 54, 60];
+        figlist = [1,2,3,4,5,7,15,16,20,21,100,102,34, 40, 41, 50, 54, 60];
 		% less figures
         %figlist = [1,4,100,102,34,60];
     else
