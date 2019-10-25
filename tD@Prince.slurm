@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=formMap
 #SBATCH --nodes=1
-#SBATCH --mem-per-cpu=10GB
+#SBATCH --mem-per-cpu=12GB
 #SBATCH --time=8:00:00
-#SBATCH --cpus-per-task=5
+#SBATCH --cpus-per-task=1
 #SBATCH -o log/fM_%J.out
 #SBATCH --mail-user=wd554@nyu.edu
 #SBATCH --mail-type=END

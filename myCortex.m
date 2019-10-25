@@ -128,7 +128,7 @@ function [Pi, W, LR, VF] = myCortex(stream, G, xrange, tr_x, yrange, tr_y, VFwei
         daspect([1,1,1]);
 		colormap(viridis);
 		colorbar;
-		xlabel('Training Points weights in log(area)');
+		xlabel('Training Points weights in area (or 1/area)');
     end
 	ix0 = zeros(mp-1, 1);
 	d0 = zeros(mp-1, 1);
