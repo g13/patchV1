@@ -10,7 +10,7 @@ import py_compile
 py_compile.compile('assign_attr.py')
 
 class macroMap:
-    def __init__(self, nx, ny, x, y, nblock, blockSize, LR_Pi_file, pos_file, OP_file, a, b, k, ecc, p0, p1, posUniform = False, OD_file = None, VF_file = None, ):
+    def __init__(self, nx, ny, x, y, nblock, blockSize, LR_Pi_file, pos_file, OP_file, a, b, k, ecc, p0, p1, posUniform = False, OD_file = None, VF_file = None):
         self.nblock = nblock
         self.blockSize = blockSize
         self.networkSize = nblock * blockSize
@@ -272,11 +272,12 @@ class macroMap:
         d0 = np.zeros(self.npolar-1)
         d1 = np.zeros(self.npolar-1)
         ix0 = np.zeros(self.npolar-1,dtype='int')
+        vpos = self.vpos.copy()
         # top polar line excluded such that the coord of the nearest vertex will always be left and lower to the neuron's position, ready for interpolation
         for i in range(self.networkSize):
             pos = np.empty(2)
-            pos[0] = self.vpos[0,i]
-            pos[1] = self.vpos[1,i]
+            pos[0] = vpos[0,i]
+            pos[1] = vpos[1,i]
             # vx/vy(ecc,polar)
             mask = np.logical_and(pos[0] - self.vx[:-1,:-1] > 0, pos[0] - self.vx[1:,:-1] < 0)
             # find iso-polar lines whose xrange include x-coord of the neuron 
@@ -298,20 +299,20 @@ class macroMap:
             idp = np.argmin(dis) # polar index
             idx = ix0[idp] # ecc index
             ## interpolate VF-ecc to pos
-            self.vpos[0,i] = np.exp(np.log(self.e_range[idx]+1) + (np.log(self.e_range[idx+1]+1) - np.log(self.e_range[idx]+1)) * np.sqrt(dis[idp])/(np.sqrt(d0[idp])+np.sqrt(d1[idp])))-1
+            vpos[0,i] = np.exp(np.log(self.e_range[idx]+1) + (np.log(self.e_range[idx+1]+1) - np.log(self.e_range[idx]+1)) * np.sqrt(dis[idp])/(np.sqrt(d0[idp])+np.sqrt(d1[idp])))-1
             ## interpolate VF-polar to pos
-            vp_y0 = y_ep(self.vpos[0,i],self.p_range[idp],self.k,self.a,self.b)
-            vp_x0 = x_ep(self.vpos[0,i],self.p_range[idp],self.k,self.a,self.b)
-            vp_y1 = y_ep(self.vpos[0,i],self.p_range[idp+1],self.k,self.a,self.b)
-            vp_x1 = x_ep(self.vpos[0,i],self.p_range[idp+1],self.k,self.a,self.b)
+            vp_y0 = y_ep(vpos[0,i],self.p_range[idp],self.k,self.a,self.b)
+            vp_x0 = x_ep(vpos[0,i],self.p_range[idp],self.k,self.a,self.b)
+            vp_y1 = y_ep(vpos[0,i],self.p_range[idp+1],self.k,self.a,self.b)
+            vp_x1 = x_ep(vpos[0,i],self.p_range[idp+1],self.k,self.a,self.b)
             dp0 = np.sqrt(np.power(pos[0]-vp_x0,2) + np.power(pos[1]-vp_y0,2))
             dp1 = np.sqrt(np.power(pos[0]-vp_x1,2) + np.power(pos[1]-vp_y1,2))
-            self.vpos[1,i] = self.p_range[idp] + (self.p_range[idp+1] - self.p_range[idp]) * dp0/(dp0+dp1)
-            #assert(self.vpos[1,i] >= self.p_range[0] and self.vpos[1,i] <= self.p_range[-1])
+            vpos[1,i] = self.p_range[idp] + (self.p_range[idp+1] - self.p_range[idp]) * dp0/(dp0+dp1)
+            #assert(vpos[1,i] >= self.p_range[0] and vpos[1,i] <= self.p_range[-1])
             stdout.write(f'\rassgining visual field: {(i+1)/self.networkSize*100:.3f}%')
         stdout.write('\n')
         self.pVFready = True
-        return self.vpos
+        return vpos
 
     def define_bound_LR(self):
         # right OD boundary 
@@ -368,6 +369,29 @@ class macroMap:
             assert(nLR < np.sum(LR > 0))
         return LR, spreaded
          
+    def check_pos(self):
+        # check in boundary
+        i, j, d2 = self.get_ij_grid(get_d2 = True, get_coord = False)
+        ipick = np.argmin(d2,1)
+        # in the shell
+        assert((self.Pi[i,    j][ipick == 0] > 0).all())
+        assert((self.Pi[i+1,  j][ipick == 1] > 0).all())
+        assert((self.Pi[i,  j+1][ipick == 2] > 0).all())
+        assert((self.Pi[i+1,j+1][ipick == 3] > 0).all())
+        # in the R stripe
+        pR = self.ODlabel > 0
+        assert((self.LR[i,    j][np.logical_and(ipick == 0, pR)] == 1).all())
+        assert((self.LR[i+1,  j][np.logical_and(ipick == 1, pR)] == 1).all())
+        assert((self.LR[i,  j+1][np.logical_and(ipick == 2, pR)] == 1).all())
+        assert((self.LR[i+1,j+1][np.logical_and(ipick == 3, pR)] == 1).all())
+        # in the L stripe
+        pL = self.ODlabel < 0
+        assert((self.LR[i,    j][np.logical_and(ipick == 0, pL)] == -1).all())
+        assert((self.LR[i+1,  j][np.logical_and(ipick == 1, pL)] == -1).all())
+        assert((self.LR[i,  j+1][np.logical_and(ipick == 2, pL)] == -1).all())
+        assert((self.LR[i+1,j+1][np.logical_and(ipick == 3, pL)] == -1).all())
+        print('boundary and LR checked')
+
     def make_pos_uniform(self, dt, seed = None, particle_param = None, boundary_param = None, ax1 = None, ax2 = None, check = True):
         if not self.pODready:
             self.assign_pos_OD1()
@@ -387,33 +411,17 @@ class macroMap:
 
         oldpos = self.pos.copy()
         self.pos[:,pL], convergenceL, nlimitedL, _ = simulate_repel(areaL, self.subgrid, self.pos[:,pL], dt, self.OD_boundL, self.btypeL, boundary_param, particle_param, ax = ax1, seed = seed)
+        if check:
+            self.check_pos()
         self.pos[:,pR], convergenceR, nlimitedR, _ = simulate_repel(areaR, self.subgrid, self.pos[:,pR], dt, self.OD_boundR, self.btypeR, boundary_param, particle_param, ax = ax2, seed = seed)
         if check:
-            # check in boundary
-            i, j, d2 = self.get_ij_grid(get_d2 = True, get_coord = False)
-            ipick = np.argmin(d2,1)
-            # in the shell
-            assert((self.Pi[i,    j][ipick == 0] > 0).all())
-            assert((self.Pi[i+1,  j][ipick == 1] > 0).all())
-            assert((self.Pi[i,  j+1][ipick == 2] > 0).all())
-            assert((self.Pi[i+1,j+1][ipick == 3] > 0).all())
-            # in the R stripe
-            assert((self.LR[i,    j][np.logical_and(ipick == 0, pR)] == 1).all())
-            assert((self.LR[i+1,  j][np.logical_and(ipick == 1, pR)] == 1).all())
-            assert((self.LR[i,  j+1][np.logical_and(ipick == 2, pR)] == 1).all())
-            assert((self.LR[i+1,j+1][np.logical_and(ipick == 3, pR)] == 1).all())
-            # in the L stripe
-            assert((self.LR[i,    j][np.logical_and(ipick == 0, pL)] == -1).all())
-            assert((self.LR[i+1,  j][np.logical_and(ipick == 1, pL)] == -1).all())
-            assert((self.LR[i,  j+1][np.logical_and(ipick == 2, pL)] == -1).all())
-            assert((self.LR[i+1,j+1][np.logical_and(ipick == 3, pL)] == -1).all())
-            #convergenceR = 0  
-            #nlimitedR = 0
+            self.check_pos()
+
         if not self.posUniform:
             self.posUniform = True
         return oldpos, convergenceL, convergenceR, nlimitedL, nlimitedR
 
-    def spread_pos_VF(self, dt, vpfile, lrfile, LRlabel, seed = None, firstTime = True, particle_param = None, boundary_param = None, ax = None):
+    def spread_pos_VF(self, dt, vpfile, lrfile, LRlabel, seed = None, firstTime = True, particle_param = None, boundary_param = None, ax = None, p_scale = 2.0, b_scale = 1.0):
         ngrid = np.sum(self.Pi).astype(int)
         if LRlabel == 'L':
             LRpick = self.ODlabel < 0
@@ -421,10 +429,11 @@ class macroMap:
             assert(LRlabel == 'R')
             LRpick = self.ODlabel > 0
 
+        if not hasattr(self, 'vpos'):
+            # dont reinit for the other stripe
+            self.vpos = self.pos.copy() # always init with pos
         if firstTime is True:
             LR = self.LR.copy()
-            if not hasattr(self, 'vpos'):
-                self.vpos = self.pos.copy()
             if LRlabel == 'L':
                 LR[LR > 0] = 0
                 LR[LR < 0] = 1
@@ -437,22 +446,46 @@ class macroMap:
             with open(lrfile,'rb') as f:
                 LR = np.fromfile(f).reshape(self.Pi.shape)
 
-        test = True
-        if not test:
+        if ax is not None:
+            if seed is None:
+                seed = np.int64(time.time())
+            np.random.seed(seed)
+            nLR = np.sum(LRpick)
+            nsLR = np.int(nLR*0.1)
+            print(f'sample size: {nsLR}')
+            pick = np.random.choice(nLR, nsLR, replace = False)
+            #pick = np.arange(nLR)
+
+        final = True 
+        if not final:
             spreaded = False # at least one time
+            ip = 0
+            ppos = None
+            starting = True
             while spreaded is False:
-                self.vpos[:, LRpick], LR, spreaded = self.spread(dt, self.vpos[:, LRpick], LR, seed, particle_param, boundary_param, ax)
+                self.vpos[:, LRpick], LR, spreaded, ppos, ip, OD_bound = self.spread(dt, self.vpos[:, LRpick], LR, particle_param, boundary_param, ax, pick, ppos, ip, starting, p_scale = p_scale, b_scale = b_scale)
+                starting = False
                 print(f'{np.sum(LR).astype(int)}/{ngrid}')
                 with open(vpfile,'wb') as f:
                     self.vpos[:, LRpick].tofile(f)
                 with open(lrfile,'wb') as f:
                     LR.tofile(f)
         else:
-            self.vpos[:, LRpick], _, _ = self.spread(dt, self.vpos[:, LRpick], LR, seed, particle_param, boundary_param, ax)
+            self.vpos[:, LRpick], _, _, OD_bound = self.spread(dt, self.vpos[:, LRpick], LR, particle_param, boundary_param, ax = None, pick = None, p_scale = p_scale, b_scale = b_scale)
             with open(vpfile,'wb') as f:
                 self.vpos[:, LRpick].tofile(f)
             with open(lrfile,'wb') as f:
                 LR.tofile(f)
+        if ax is not None:
+            # connecting points on grid sides
+            ax.plot(OD_bound[:,0,[0,2]].squeeze(), OD_bound[:,1,[0,2]].squeeze(), ',r')
+            # grid centers
+            ax.plot(OD_bound[:,0,1].squeeze(), OD_bound[:,1,1].squeeze(), ',g')
+            if final:
+                # plot all displacement
+                ax.plot(np.vstack((self.pos[0,LRpick], self.vpos[0,LRpick])), np.vstack((self.pos[1,LRpick], self.vpos[1,LRpick])),'-,c', lw =0.01)
+            # final positions
+            ax.plot(self.vpos[0,LRpick], self.vpos[1,LRpick], ',k')
         # check in boundary
         i, j, d2 = self.get_ij_grid(get_d2 = True, get_coord = False)
         ipick = np.argmin(d2,1)
@@ -467,18 +500,38 @@ class macroMap:
         else:
             self.vposRready = True
 
-    def spread(self, dt, pos, LR, seed = None, particle_param = None, boundary_param = None, ax = None):
+    def spread(self, dt, pos, LR, particle_param = None, boundary_param = None, ax = None, pick = None, ppos = None, ip = 0, starting = True, p_scale = 2.0, b_scale = 1.0):
+        if starting and ax is not None:
+            OD_bound, btype = self.define_bound(LR)
+            # connecting points on grid sides
+            ax.plot(OD_bound[:,0,[0,2]].squeeze(), OD_bound[:,1,[0,2]].squeeze(), ',r')
+            # grid centers
+            ax.plot(OD_bound[:,0,1].squeeze(), OD_bound[:,1,1].squeeze(), ',g')
+        subarea = self.subgrid[0] * self.subgrid[1]
+
+        old_area = subarea * np.sum(LR == 1)
         n = pos.shape[1]
         LR, spreaded = self.diffuse_bound(LR)
-
-        subarea = self.subgrid[0] * self.subgrid[1]
         area = subarea * np.sum(LR == 1)
+        print(f'area increases {area/old_area}%')
         
         OD_bound, btype = self.define_bound(LR)
 
-        pos, _, _, _ = simulate_repel(area, self.subgrid, pos, dt, OD_bound, btype, boundary_param, particle_param, ax = ax, seed = seed, ns = n)
+        if ax is not None:
+            assert(pick is not None)
+            if ppos is None:
+                ppos = np.empty((2,2,pick.size)) # start/ending, x/y, selected id
+                ppos[0,:,:] = pos[:,pick].copy()
 
-        return pos, LR, spreaded
+        pos, _, _, _ = simulate_repel(area, self.subgrid, pos, dt, OD_bound, btype, boundary_param, particle_param, p_scale = p_scale, b_scale = b_scale)
+        if ax is not None:
+            ip = ip + 1
+            ppos[ip%2,:,:] = pos[:,pick].copy()
+            ax.plot(ppos[:,0,:].squeeze(), ppos[:,1,:].squeeze(), '-,c', lw = 0.01)
+
+            return pos, LR, spreaded, ppos, ip, OD_bound
+        else:
+            return pos, LR, spreaded, OD_bound
 
     def get_ij_grid(self, get_d2 = True, get_coord = True):
         print('get the index of the nearest vertex for each neuron in its own grid')
@@ -532,7 +585,7 @@ class macroMap:
             else:
                 return i, j, d2.T
 
-    def plot_map(self,ax1,ax2,dpi,pltOD=True,pltVF=True,pltOP=True,ngridLine=4):
+    def plot_map(self,ax1,ax2,ax3,dpi,pltOD=True,pltVF=True,pltOP=True,ngridLine=4):
         if pltOD:
             if not self.pODready:
                 #self.assign_pos_OD0()
@@ -550,29 +603,28 @@ class macroMap:
                 print('matplotlib \'plot\' is inefficient so will take a long time (\'scatter\' is buggy)')
                 pick = self.ODlabel>0 
                 for i in np.arange(sum(pick)):
-                    ax2.plot(self.pos[0,pick][i], self.pos[1,pick][i], markersize = 1/dpi, marker = ',', c = hsv(self.op[pick][i]))
+                    ax1.plot(self.pos[0,pick][i], self.pos[1,pick][i], markersize = 1/dpi, marker = ',', c = hsv(self.op[pick][i]))
                 print('50% done')
                 pick = self.ODlabel<0 
                 for i in np.arange(sum(pick)):
-                    ax2.plot(self.pos[0,pick][i], self.pos[1,pick][i], markersize = 1/dpi, marker = ',', c = hsv(self.op[pick][i])*0.75)
+                    ax1.plot(self.pos[0,pick][i], self.pos[1,pick][i], markersize = 1/dpi, marker = ',', c = hsv(self.op[pick][i])*0.75)
             else:
-                ax2.plot(self.pos[0,self.ODlabel>0], self.pos[1,self.ODlabel>0],',m')
-                ax2.plot(self.pos[0,self.ODlabel<0], self.pos[1,self.ODlabel<0],',c')
+                ax1.plot(self.pos[0,self.ODlabel>0], self.pos[1,self.ODlabel>0],',m')
+                ax1.plot(self.pos[0,self.ODlabel<0], self.pos[1,self.ODlabel<0],',c')
 
             if ngridLine > 0:
                 for ip in range(self.npolar):
                     if ip % (self.npolar//ngridLine)== 0:
-                        ax2.plot(self.vx[:,ip], self.vy[:,ip],':',c='0.5', lw = 0.1)
+                        ax1.plot(self.vx[:,ip], self.vy[:,ip],':',c='0.5', lw = 0.1)
                 for ie in range(self.necc):
                     if ie % (self.necc//ngridLine)== 0:
-                        ax2.plot(self.vx[ie,:], self.vy[ie,:],':',c='0.5', lw = 0.1)
+                        ax1.plot(self.vx[ie,:], self.vy[ie,:],':',c='0.5', lw = 0.1)
 
         if pltVF == True:
             if self.pVFready == False:
                 raise Exception('get VF ready first: 1) make_pos_uniform for L and R. 2) spread_pos_VF for L and R. 3) assign_pos_VF')
-            plt.sca(ax1)
+            plt.sca(ax2)
             plt.polar(self.vpos[1,self.ODlabel>0], self.vpos[0,self.ODlabel>0],',m')
-            plt.polar(self.vpos[1,self.ODlabel<0], self.vpos[0,self.ODlabel<0],',c')
             if ngridLine > 0:
                 for ip in range(self.npolar):
                     if ip % (self.npolar//ngridLine)== 0:
@@ -580,6 +632,17 @@ class macroMap:
                 for ie in range(self.necc):
                     if ie % (self.necc//ngridLine)== 0:
                         plt.polar(self.p_range, self.e_range[ie]+np.zeros(self.npolar),':',c='0.5', lw = 0.1)
+
+            plt.sca(ax3)
+            plt.polar(self.vpos[1,self.ODlabel<0], self.vpos[0,self.ODlabel<0],',m')
+            if ngridLine > 0:
+                for ip in range(self.npolar):
+                    if ip % (self.npolar//ngridLine)== 0:
+                        plt.polar(self.p_range[ip]+np.zeros(self.necc), self.e_range,':',c='0.5', lw = 0.1)
+                for ie in range(self.necc):
+                    if ie % (self.necc//ngridLine)== 0:
+                        plt.polar(self.p_range, self.e_range[ie]+np.zeros(self.npolar),':',c='0.5', lw = 0.1)
+
 
     def save(self, pos_file = None, OD_file = None, VF_file = None):
         if pos_file is not None:

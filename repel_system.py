@@ -1,17 +1,16 @@
 import numpy as np
 from sys import stdout
 import py_compile
+import time
 py_compile.compile('repel_system.py')
 
 class repel_system:
-    def __init__(self, area, subgrid, initial_x, bp, btype, boundary_param = None, particle_param = None, initial_v = None, nlayer = 1, layer = None, soft_boundary = None, soft_btype = None,  enough_memory = False):
+    def __init__(self, area, subgrid, initial_x, bp, btype, boundary_param = None, particle_param = None, initial_v = None, nlayer = 1, layer = None, soft_boundary = None, soft_btype = None,  enough_memory = False, p_scale = 2.0, b_scale = 1.0):
         self.nn = initial_x.shape[1]
         self.nb = bp.shape[0]
         per_unit_area = 2*np.sqrt(3) # in cl^2
         self.cl = np.sqrt((area/self.nn)/per_unit_area)
         print(f'characteristic length (inter-particle-distance)')
-        p_scale = 2.0 # potential extension
-        b_scale = 1.0 # potential extension
         self.damp = 0.1
         a_particle = self.cl*p_scale
         a_boundary = self.cl*b_scale
@@ -421,14 +420,16 @@ class rec_boundary:
         if np.sign(pos[0] - self.pos[i,0,1]) != np.sign(pos[0] - self.pos[i,0,turntype]):
             vv = True
             d = pos[1] - self.pos[i,1,1]
-            r = np.abs(d)
+            ry = np.abs(d)
+            r = ry
             if r < self.r0:
                 acc[1] = np.copysign(self.f(r), d)
         # horizontal 
         if np.sign(pos[1] - self.pos[i,1,1]) != np.sign(pos[1] - self.pos[i,1,2-turntype]):
             hh = True
             d = pos[0] - self.pos[i,0,1]
-            r = np.abs(d)
+            rx = np.abs(d)
+            r = rx
             if r < self.r0:
                 acc[0] = np.copysign(self.f(r), d)
         # turning section 
@@ -439,7 +440,9 @@ class rec_boundary:
             #np.sign(pos[1] - self.pos[i,1,1]) != np.sign(pos[1] - self.pos[i,1,1] - np.copysign(self.rec, self.pos[i,1,1] - self.pos[i,1,2-turntype])):
             if r < self.r0:
                 acc = self.f(r)*d/r
-
+        elif vv and hh:
+            r = np.min([rx, ry])
+            
         assert(r > 0)
         return acc, r
 
@@ -551,7 +554,7 @@ class rec_boundary:
     def get_avh(self, i, pos):
         return self.get_turn(i, pos, 2)
 
-def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = None, particle_param = None, initial_v = None, nlayer = 1, layer = None, layer_seq = None, soft_boundary = None, soft_btype = None, ax = None, seed = None, ns = 1000, ret_vel = False):
+def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = None, particle_param = None, initial_v = None, nlayer = 1, layer = None, layer_seq = None, soft_boundary = None, soft_btype = None, ax = None, seed = None, ns = 1000, ret_vel = False, p_scale = 2.0, b_scale = 1.0):
     # sample points to follow:
     print(boundary.size * pos.size/1024/1024/1024)
     if ax is not None:
@@ -570,7 +573,7 @@ def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = Non
                 spick = np.arange(ns)
             else:
                 if seed is None:
-                    seed = time.time()
+                    seed = np.int64(time.time())
                     print(f'seed = {seed}')
                 np.random.seed(seed)
                 spick = np.random.choice(pos.shape[1], ns, replace = False)
@@ -578,7 +581,7 @@ def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = Non
             spos[0,:,:] =  pos[:,spick]
             starting_pos = pos[:,spick].copy()
     # test with default bound potential param
-    system = repel_system(area, subgrid, pos, boundary, btype, boundary_param, particle_param, initial_v, nlayer = nlayer, layer = layer, soft_boundary = soft_boundary, soft_btype = soft_btype)
+    system = repel_system(area, subgrid, pos, boundary, btype, boundary_param, particle_param, initial_v, nlayer = nlayer, layer = layer, soft_boundary = soft_boundary, soft_btype = soft_btype, p_scale = p_scale, b_scale = b_scale)
     system.initialize()
     if dt is not None:
         convergence = np.empty((dt.size,2))
