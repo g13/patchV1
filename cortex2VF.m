@@ -16,17 +16,31 @@ function VF = cortex2VF(xy, ecc, resol, a, b, k)
     n = size(xy,1);
     VF = zeros(n,2);
 	me = min(max(n*resol,100),10000);
-	mp = min(max(n*resol,100),10000);
+
 	log_e = linspace(log(1), log(ecc+1), me);
     e = exp(log_e)-1;
-    p = linspace(-pi/2, pi/2, mp);
-	vx = zeros(me, mp);
-	vy = zeros(me, mp);
+
+	w = dipole(e,pi/2,a,b,k);
+	ymax = max(imag(w));
+	w = dipole(ecc,0,a,b,k)-k*log(a/b);
+	xmax = real(w);
+	mp = round(me/xmax*ymax);
+
+    p = linspace(0, pi/2, mp+1);
+	vx = zeros(me, 2*mp+1);
+	vy = zeros(me, 2*mp+1);
+	w = dipole(e,0,a,b,k)-k*log(a/b);
+	vx(:,mp+1) = real(w);
+	vy(:,mp+1) = 0;
 	for ip = 1:mp
-		w = dipole(e,p(ip),a,b,k)-k*log(a/b);
-		vx(:,ip) = real(w);
-		vy(:,ip) = imag(w);
+		w = dipole(e,p(ip+1),a,b,k)-k*log(a/b);
+		vx(:,mp+1+ip) = real(w);
+		vx(:,mp+1-ip) = vx(:,mp+1+ip);
+		vy(:,mp+1+ip) = imag(w);
+		vy(:,mp+1-ip) = vy(:,mp+1+ip);
 	end
+    p = [-fliplr(p(2:mp+1)), p];
+	mp = 2*mp+1;
 	ix0 = zeros(mp-1, 1);
 	d0 = zeros(mp-1, 1);
 	d1 = zeros(mp-1, 1);
@@ -35,7 +49,7 @@ function VF = cortex2VF(xy, ecc, resol, a, b, k)
 		mask = (xy(i,1) - vx(1:me-1,1:mp-1) >= 0 & xy(i,1) - vx(2:me,1:mp-1) <= 0);
 		pmask = any(mask,1);
 		if ~any(pmask)
-			print('point not in bound');
+			disp('point not in bound');
             assert(0);
 		end
 		assert(length(pmask) == mp-1);
@@ -55,18 +69,22 @@ function VF = cortex2VF(xy, ecc, resol, a, b, k)
 	    [~, idp] = min(dis);
 	    idx = ix0(idp);
 	    %VF(i,j,1) =  log_e(idx) + (log_e(idx+1) - log_e(idx)) * sqrt(dis(idp))/(sqrt(d0(idp))+sqrt(d1(idp)));
-	    VF(i,1) =  exp(log_e(idx) + (log_e(idx+1) - log_e(idx)) * sqrt(dis(idp))/(sqrt(d0(idp))+sqrt(d1(idp))))-1;
+	    VF(i,2) =  exp(log_e(idx) + (log_e(idx+1) - log_e(idx)) * sqrt(dis(idp))/(sqrt(d0(idp))+sqrt(d1(idp))))-1;
 	    %w = dipole(exp(VF(i,j,1))-1,p(idp),a,b,k) - k*log(a/b);
-	    w = dipole(VF(i,1),p(idp),a,b,k) - k*log(a/b);
+	    w = dipole(VF(i,2),p(idp),a,b,k) - k*log(a/b);
         vp_x0 = real(w);
         vp_y0 = imag(w);
 	    %w = dipole(exp(VF(i,j,1))-1,p(idp+1),a,b,k) - k*log(a/b);
-	    w = dipole(VF(i,1),p(idp+1),a,b,k) - k*log(a/b);
+	    w = dipole(VF(i,2),p(idp+1),a,b,k) - k*log(a/b);
         vp_x1 = real(w);
         vp_y1 = imag(w);
         dp0 = sqrt((xy(i,1)-vp_x0)^2 + (xy(i,2)-vp_y0)^2);
         dp1 = sqrt((xy(i,1)-vp_x1)^2 + (xy(i,2)-vp_y1)^2);
-        VF(i,2) = p(idp) + (p(idp+1) - p(idp)) * dp0/(dp0+dp1);
+		if dp0 + dp1 == 0
+        	VF(i,1) = 0;
+		else
+        	VF(i,1) = p(idp) + (p(idp+1) - p(idp)) * dp0/(dp0+dp1);
+		end
 	end
 end
 

@@ -1,4 +1,4 @@
-% VF is in the form of (n,2) each entry is (eccentricity, polar)
+% VF is in the form of (n,2) each entry is (polar, eccentricity)
 function xy = VF2cortex(VF, a, b, k)
     if nargin < 4
         k = sqrt(140)*0.873145;
@@ -9,7 +9,9 @@ function xy = VF2cortex(VF, a, b, k)
             end
         end
     end
-	w = dipole(VF(:,1),VF(:,2),a,b,k)-k*log(a/b);
+	n = size(VF,1);
+	xy = zeros(n,2);
+	w = dipole(VF(:,2),VF(:,1),a,b,k)-k*log(a/b);
 	xy(:,1) = real(w);
 	xy(:,2) = imag(w);
 end
