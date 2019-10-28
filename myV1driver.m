@@ -26,7 +26,7 @@
 % scaffolding for the underlying continuous set of training vectors.
 % 'noisy' and 'uniform*' approximate online training over the continuous
 % domain of (VFx,VFy,OD,ORt).
-function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,weightType)
+function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,weightType,VFpath)
 	irange = fign;
     datafileabsolpath = [pwd,'/',ENfilename0,'-',ENfilename,'.mat'];
 	stream = RandStream('mt19937ar','Seed',seed);
@@ -61,156 +61,185 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
         rSF = [-lSF lSF];
         dSF = diff(rSF)/(NSF-1);
 
-		if cortical_shape
-			%assert(2*Nx == Ny);
-			switch equi
-				case 'VF'
-					x_vec0 = linspace(rx(1),rx(2),Nx+1);
-					y_vec0 = linspace(ry(1),ry(2),Ny+1);
-					% use midpoints for training
-					x_vec = midpoints(x_vec0);
-					y_vec = midpoints(y_vec0);
+        if isempty(VFpath)
+		    if cortical_shape
+		    	%assert(2*Nx == Ny);
+		    	switch equi
+		    		case 'VF'
+		    			x_vec0 = linspace(rx(1),rx(2),Nx+1);
+		    			y_vec0 = linspace(ry(1),ry(2),Ny+1);
+		    			% use midpoints for training
+		    			x_vec = midpoints(x_vec0);
+		    			y_vec = midpoints(y_vec0);
 
-					halfNy = Ny/2;
-					vfx = linspace(0,ecc,Nx+1);
-					vfy = linspace(0,ecc,halfNy+1);
-					mvfx = midpoints(vfx);
-					mvfy = midpoints(vfy);
-					[vfx, vfy] = meshgrid(vfx, vfy);
-					[vfpolar, vfecc] = cart2pol(vfx, vfy);
-                	w = dipole_ext(vfecc,vfpolar,a,b,k) - k*log(a/b);
-                	x_cortex = real(w);
-                	y_cortex = imag(w);
-					VFweights = ones(halfNy,Nx);
-					if heteroAlpha ~= 0
-                	    p = zeros(2,4);
-					    % shape is (y,x)
-						for i = 1:halfNy
-							for j = 1:Nx
-                	            p(:,1) = [x_cortex(i,j),     y_cortex(i,j)]';
-                	            p(:,2) = [x_cortex(i,j+1),   y_cortex(i,j+1)]';
-                	            p(:,3) = [x_cortex(i+1,j+1), y_cortex(i+1,j+1)]';
-                	            p(:,4) = [x_cortex(i+1,j),   y_cortex(i+1,j)]';
-								switch weightType
-									case 'area'
-                	            		VFweights(i,j) = find_area(p);
-									case 'min'
-                	            		VFweights(i,j) = min([norm(p(:,1) - p(:,2)), norm(p(:,2) - p(:,3)), norm(p(:,3) - p(:,4)), norm(p(:,4) - p(:,1))]);
-									otherwise
-								end
-							end
-						end
-						if heteroAlpha == 1
-                	    	VFweights_hlf = VFweights;
-						else
-							assert(heteroAlpha == -1);
-                	    	VFweights_hlf = 1./VFweights;
-						end
-					else
-                	    VFweights_hlf = VFweights;
-					end
-					VFweights_hlf(vfecc(1:halfNy,1:Nx)>ecc) = 0.0;
-					VFweights = [flipud(VFweights_hlf); VFweights_hlf]';
-					%darea = @(e, p) dblock(e,p,k,a,b);
-                	%disp(['integral sum: ', num2str(integral2(darea,0,ecc,-pi/2,pi/2))]);
-                	%disp(['estimated sum: ', num2str(sum(sum(VFweights)))]);
+		    			halfNy = Ny/2;
+		    			vfx = linspace(0,ecc,Nx+1);
+		    			vfy = linspace(0,ecc,halfNy+1);
+		    			mvfx = midpoints(vfx);
+		    			mvfy = midpoints(vfy);
+		    			[vfx, vfy] = meshgrid(vfx, vfy);
+		    			[vfpolar, vfecc] = cart2pol(vfx, vfy);
+                    	w = dipole_ext(vfecc,vfpolar,a,b,k) - k*log(a/b);
+                    	x_cortex = real(w);
+                    	y_cortex = imag(w);
+		    			VFweights = ones(halfNy,Nx);
+		    			if heteroAlpha ~= 0
+                    	    p = zeros(2,4);
+		    			    % shape is (y,x)
+		    				for i = 1:halfNy
+		    					for j = 1:Nx
+                    	            p(:,1) = [x_cortex(i,j),     y_cortex(i,j)]';
+                    	            p(:,2) = [x_cortex(i,j+1),   y_cortex(i,j+1)]';
+                    	            p(:,3) = [x_cortex(i+1,j+1), y_cortex(i+1,j+1)]';
+                    	            p(:,4) = [x_cortex(i+1,j),   y_cortex(i+1,j)]';
+		    						switch weightType
+		    							case 'area'
+                    	            		VFweights(i,j) = find_area(p);
+		    							case 'min'
+                    	            		VFweights(i,j) = min([norm(p(:,1) - p(:,2)), norm(p(:,2) - p(:,3)), norm(p(:,3) - p(:,4)), norm(p(:,4) - p(:,1))]);
+		    							otherwise
+		    						end
+		    					end
+		    				end
+		    				if heteroAlpha == 1
+                    	    	VFweights_hlf = VFweights;
+		    				else
+		    					assert(heteroAlpha == -1);
+                    	    	VFweights_hlf = 1./VFweights;
+		    				end
+		    			else
+                    	    VFweights_hlf = VFweights;
+		    			end
+		    			VFweights_hlf(vfecc(1:halfNy,1:Nx)>ecc) = 0.0;
+		    			VFweights = [flipud(VFweights_hlf); VFweights_hlf]';
+		    			%darea = @(e, p) dblock(e,p,k,a,b);
+                    	%disp(['integral sum: ', num2str(integral2(darea,0,ecc,-pi/2,pi/2))]);
+                    	%disp(['estimated sum: ', num2str(sum(sum(VFweights)))]);
 
-					alpha_v = repmat(VFweights(:), NOD*NOR*NORr,1);
-					alpha = alpha_v/sum(alpha_v)*length(alpha_v) * alpha;
+		    			alpha_v = repmat(VFweights(:), NOD*NOR*NORr,1);
+		    			alpha = alpha_v/sum(alpha_v)*length(alpha_v) * alpha;
 
-					[vfx, vfy] = meshgrid(midpoints(linspace(0,ecc,Nx+1)), midpoints(linspace(0,ecc,halfNy+1)));
-					[vfpolar, vfecc] = cart2pol(vfx, vfy);
-                	w = dipole_ext(vfecc,vfpolar,a,b,k) - k*log(a/b);
-                	xx_cortex = real(w);
-                	yy_cortex = imag(w);
-			
-				case 'cortex'
-					halfNy = Ny/2;
-					x2ecc = @(x) (a-b*exp(x/k))./(exp(x/k)-1);
+		    			[vfx, vfy] = meshgrid(midpoints(linspace(0,ecc,Nx+1)), midpoints(linspace(0,ecc,halfNy+1)));
+		    			[vfpolar, vfecc] = cart2pol(vfx, vfy);
+                    	w = dipole_ext(vfecc,vfpolar,a,b,k) - k*log(a/b);
+                    	xx_cortex = real(w);
+                    	yy_cortex = imag(w);
+		    	
+		    		case 'cortex'
+		    			halfNy = Ny/2;
+		    			x2ecc = @(x) (a-b*exp(x/k))./(exp(x/k)-1);
 
-					v_max = dipole_ext(ecc,0,a,b,k)-k*log(a/b);
-					xv_cortex0 = linspace(0,v_max,Nx+1);
-					xv_cortex = midpoints(xv_cortex0);
-					yv_cortex0 = linspace(0,v_max,halfNy+1);
-					yv_cortex = midpoints(yv_cortex0);
-					% equi-distance cortex ecc
-					ecc_x0 = x2ecc(xv_cortex0+k*log(a/b));
-					ecc_x0(1) = 0;
-					ecc_x = x2ecc(xv_cortex+k*log(a/b));
+		    			v_max = dipole_ext(ecc,0,a,b,k)-k*log(a/b);
+		    			xv_cortex0 = linspace(0,v_max,Nx+1);
+		    			xv_cortex = midpoints(xv_cortex0);
+		    			yv_cortex0 = linspace(0,v_max,halfNy+1);
+		    			yv_cortex = midpoints(yv_cortex0);
+		    			% equi-distance cortex ecc
+		    			ecc_x0 = x2ecc(xv_cortex0+k*log(a/b));
+		    			ecc_x0(1) = 0;
+		    			ecc_x = x2ecc(xv_cortex+k*log(a/b));
 
-					ecc_y0 = x2ecc(yv_cortex0+k*log(a/b));
-					ecc_y0(1) = 0;
-					ecc_y = x2ecc(yv_cortex+k*log(a/b));
+		    			ecc_y0 = x2ecc(yv_cortex0+k*log(a/b));
+		    			ecc_y0(1) = 0;
+		    			ecc_y = x2ecc(yv_cortex+k*log(a/b));
 
-					% use transformed midpoints for training points
-					x_vec = rx(1) + ecc_x*(rx(2)-rx(1))/ecc;
-					y_vec = ry(1) + ([-fliplr(ecc_y), ecc_y]+ecc)*(ry(2)-ry(1))/(2*ecc);
-					x_vec0 = rx(1) + ecc_x0*(rx(2)-rx(1))/ecc;
-					y_vec0 = ry(1) + ([-fliplr(ecc_y0), ecc_y0(2:halfNy+1)]+ecc)*(ry(2)-ry(1))/(2*ecc);
+		    			% use transformed midpoints for training points
+		    			x_vec = rx(1) + ecc_x*(rx(2)-rx(1))/ecc;
+		    			y_vec = ry(1) + ([-fliplr(ecc_y), ecc_y]+ecc)*(ry(2)-ry(1))/(2*ecc);
+		    			x_vec0 = rx(1) + ecc_x0*(rx(2)-rx(1))/ecc;
+		    			y_vec0 = ry(1) + ([-fliplr(ecc_y0), ecc_y0(2:halfNy+1)]+ecc)*(ry(2)-ry(1))/(2*ecc);
 
-					[vfx, vfy] = meshgrid(ecc_x0, ecc_y0);
-					[vfpolar, vfecc] = cart2pol(vfx, vfy);
-                	w = dipole_ext(vfecc,vfpolar,a,b,k) - k*log(a/b);
-                	x_cortex = real(w);
-                	y_cortex = imag(w);
-					VFweights = ones(halfNy,Nx);
-					if heteroAlpha ~= 0
-                	    p = zeros(2,4);
-						for i = 1:halfNy
-							for j = 1:Nx
-                	            p(:,1) = [x_cortex(i,j),     y_cortex(i,j)]';
-                	            p(:,2) = [x_cortex(i,j+1),   y_cortex(i,j+1)]';
-                	            p(:,3) = [x_cortex(i+1,j+1), y_cortex(i+1,j+1)]';
-                	            p(:,4) = [x_cortex(i+1,j),   y_cortex(i+1,j)]';
-								switch weightType
-									case 'area'
-                	            		VFweights(i,j) = find_area(p);
-									case 'min'
-                	            		VFweights(i,j) = min([norm(p(:,1) - p(:,2)), norm(p(:,2) - p(:,3)), norm(p(:,3) - p(:,4)), norm(p(:,4) - p(:,1))]);
-									otherwise
-								end
-							end
-						end
-						if heteroAlpha == 1
-                	    	VFweights_hlf = VFweights;
-						else
-							assert(heteroAlpha == -1);
-                	    	VFweights_hlf = 1./VFweights;
-						end
-					else
-                	    VFweights_hlf = VFweights;
-					end
-					VFweights_hlf(vfecc(1:halfNy,1:Nx)>ecc) = 0.0;
-					VFweights = [flipud(VFweights_hlf); VFweights_hlf]';
-					%darea = @(e, p) dblock(e,p,k,a,b);
-                	%disp(['integral sum: ', num2str(integral2(darea,0,ecc,-pi/2,pi/2))]);
-                	%disp(['estimated sum: ', num2str(sum(sum(VFweights)))]);
+		    			[vfx, vfy] = meshgrid(ecc_x0, ecc_y0);
+		    			[vfpolar, vfecc] = cart2pol(vfx, vfy);
+                    	w = dipole_ext(vfecc,vfpolar,a,b,k) - k*log(a/b);
+                    	x_cortex = real(w);
+                    	y_cortex = imag(w);
+		    			VFweights = ones(halfNy,Nx);
+		    			if heteroAlpha ~= 0
+                    	    p = zeros(2,4);
+		    				for i = 1:halfNy
+		    					for j = 1:Nx
+                    	            p(:,1) = [x_cortex(i,j),     y_cortex(i,j)]';
+                    	            p(:,2) = [x_cortex(i,j+1),   y_cortex(i,j+1)]';
+                    	            p(:,3) = [x_cortex(i+1,j+1), y_cortex(i+1,j+1)]';
+                    	            p(:,4) = [x_cortex(i+1,j),   y_cortex(i+1,j)]';
+		    						switch weightType
+		    							case 'area'
+                    	            		VFweights(i,j) = find_area(p);
+		    							case 'min'
+                    	            		VFweights(i,j) = min([norm(p(:,1) - p(:,2)), norm(p(:,2) - p(:,3)), norm(p(:,3) - p(:,4)), norm(p(:,4) - p(:,1))]);
+		    							otherwise
+		    						end
+		    					end
+		    				end
+		    				if heteroAlpha == 1
+                    	    	VFweights_hlf = VFweights;
+		    				else
+		    					assert(heteroAlpha == -1);
+                    	    	VFweights_hlf = 1./VFweights;
+		    				end
+		    			else
+                    	    VFweights_hlf = VFweights;
+		    			end
+		    			VFweights_hlf(vfecc(1:halfNy,1:Nx)>ecc) = 0.0;
+		    			VFweights = [flipud(VFweights_hlf); VFweights_hlf]';
+		    			%darea = @(e, p) dblock(e,p,k,a,b);
+                    	%disp(['integral sum: ', num2str(integral2(darea,0,ecc,-pi/2,pi/2))]);
+                    	%disp(['estimated sum: ', num2str(sum(sum(VFweights)))]);
 
-					alpha_v = repmat(VFweights(:), NOD*NOR*NORr,1);
-					alpha = alpha_v/sum(alpha_v)*length(alpha_v) * alpha;
-					[vfx, vfy] = meshgrid(ecc_x, ecc_y);
-					[vfpolar, vfecc] = cart2pol(vfx, vfy);
-                	w = dipole_ext(vfecc,vfpolar,a,b,k) - k*log(a/b);
-                	xx_cortex = real(w);
-                	yy_cortex = imag(w);
-			end
-		else
-			x_vec = midpoints(linspace(rx(1),rx(2),Nx+1));
-			%x_vec = cumsum([0.25, 0.5*ones(1,Nx/2-1), ones(1,Nx/2)]);
-			%x_vec = rx(1) + x_vec/(max(x_vec)+0.5) * (rx(2) - rx(1));
-			y_vec = midpoints(linspace(ry(1),ry(2),Ny+1));
-		end
-        T = ENtrset('grid',zeros(1,5),...
-            x_vec,...	% VFx
-            y_vec,...	% VFy
-            linspace(rOD(1),rOD(2),NOD),...	% OD
-            tmp1,...				% ORtheta
-            linspace(rORr(1),rORr(2),NORr),stream);%,... % ORr
+		    			alpha_v = repmat(VFweights(:), NOD*NOR*NORr,1);
+		    			alpha = alpha_v/sum(alpha_v)*length(alpha_v) * alpha;
+		    			[vfx, vfy] = meshgrid(ecc_x, ecc_y);
+		    			[vfpolar, vfecc] = cart2pol(vfx, vfy);
+                    	w = dipole_ext(vfecc,vfpolar,a,b,k) - k*log(a/b);
+                    	xx_cortex = real(w);
+                    	yy_cortex = imag(w);
+		    	end
+		    else
+		    	x_vec = midpoints(linspace(rx(1),rx(2),Nx+1));
+		    	%x_vec = cumsum([0.25, 0.5*ones(1,Nx/2-1), ones(1,Nx/2)]);
+		    	%x_vec = rx(1) + x_vec/(max(x_vec)+0.5) * (rx(2) - rx(1));
+		    	y_vec = midpoints(linspace(ry(1),ry(2),Ny+1));
+		    end
+            T = ENtrset('grid',zeros(1,5),...
+                x_vec,...	% VFx
+                y_vec,...	% VFy
+                linspace(rOD(1),rOD(2),NOD),...	% OD
+                tmp1,...				% ORtheta
+                linspace(rORr(1),rORr(2),NORr),stream);%,... % ORr
 
-		dOD = 2*l;
-		dx = mean(diff(x_vec));
-		dy = mean(diff(y_vec));
-		disp(['#',num2str(irange),': dx = ',num2str(dx), ', dy = ', num2str(dy), ', dOD = ', num2str(dOD)]);
+		    dOD = 2*l;
+		    dx = mean(diff(x_vec));
+		    dy = mean(diff(y_vec));
+		    disp(['#',num2str(irange),': dx = ',num2str(dx), ', dy = ', num2str(dy), ', dOD = ', num2str(dOD)]);
+        else
+            fID = fopen(VFpath, 'rb');
+            nxny = fread(fID, 1, 'int');
+            data = fread(fID, [nxny,2] 'double');
+            x_cortex = data(:,1); 
+            y_cortex = data(:,2);
+            rx = fread(fID, 2, 'double');
+            ry = fread(fID, 2, 'double');
+            vf = fread(fID, [nxny,2] 'double');
+            facs = factor(nxny);
+            assert(facs > 1);
+            nfac = length(facs);
+            fac1 = prod(facs(1:nfac-1));
+            placeholder1 = linspace(1,fac1,fac1); 
+            placeholder2 = linspace(1,facs(end),facs(end)); 
+            T = Entrset('grid', zeros(1,5), ...
+                placeholder1,...
+                placeholder2,...
+                linspace(rOD(1),rOD(2),NOD),...	% OD
+                tmp1,...				        % ORtheta
+                linspace(rORr(1),rORr(2),NORr),stream);% ORr
+            for i=1:NOD*NORr*NOR
+                start = (i-1)*nxny + 1;
+                stop = i*nxny;
+                T(start:stop,1:2) = vf;
+            end
+		    VFweights_hlf = ones(nxny,1);
+        end
         % For non-rectangular cortex shapes, create a suitable Pi here:
         resol = 10;
         if cortical_shape

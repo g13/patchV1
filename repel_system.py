@@ -5,9 +5,13 @@ import time
 py_compile.compile('repel_system.py')
 
 class repel_system:
-    def __init__(self, area, subgrid, initial_x, bp, btype, boundary_param = None, particle_param = None, initial_v = None, nlayer = 1, layer = None, soft_boundary = None, soft_btype = None,  enough_memory = False, p_scale = 2.0, b_scale = 1.0):
+    def __init__(self, area, subgrid, initial_x, bp, btype, boundary_param = None, particle_param = None, initial_v = None, nlayer = 1, layer = None, soft_boundary = None, soft_btype = None,  enough_memory = False, p_scale = 2.0, b_scale = 1.0, fixed = None):
         self.nn = initial_x.shape[1]
         self.nb = bp.shape[0]
+        if fixed is None:
+            self.fixList = np.array([])
+        else:
+            self.fixList = fixed
         per_unit_area = 2*np.sqrt(3) # in cl^2
         self.cl = np.sqrt((area/self.nn)/per_unit_area)
         print(f'characteristic length (inter-particle-distance)')
@@ -166,6 +170,7 @@ class repel_system:
             dr = np.linalg.norm(dpos, axis = 0)
             large_dpos = dr > self.limiting
             dpos[:,large_dpos] = self.limiting[large_dpos] * dpos[:,large_dpos]/dr[large_dpos]
+            dpos[:,self.fixList] = 0
             self.particle.pos = self.particle.pos + dpos
             dr[large_dpos] = self.limiting[large_dpos]
             nlimited = np.sum(large_dpos)
@@ -554,7 +559,7 @@ class rec_boundary:
     def get_avh(self, i, pos):
         return self.get_turn(i, pos, 2)
 
-def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = None, particle_param = None, initial_v = None, nlayer = 1, layer = None, layer_seq = None, soft_boundary = None, soft_btype = None, ax = None, seed = None, ns = 1000, ret_vel = False, p_scale = 2.0, b_scale = 1.0):
+def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = None, particle_param = None, initial_v = None, nlayer = 1, layer = None, layer_seq = None, soft_boundary = None, soft_btype = None, ax = None, seed = None, ns = 1000, ret_vel = False, p_scale = 2.0, b_scale = 1.0, fixed = None):
     # sample points to follow:
     print(boundary.size * pos.size/1024/1024/1024)
     if ax is not None:
@@ -576,12 +581,14 @@ def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = Non
                     seed = np.int64(time.time())
                     print(f'seed = {seed}')
                 np.random.seed(seed)
+                if ns > pos.shape[1]:
+                    ns = pos.shape[1]
                 spick = np.random.choice(pos.shape[1], ns, replace = False)
             spos = np.empty((2,2,ns))
             spos[0,:,:] =  pos[:,spick]
             starting_pos = pos[:,spick].copy()
     # test with default bound potential param
-    system = repel_system(area, subgrid, pos, boundary, btype, boundary_param, particle_param, initial_v, nlayer = nlayer, layer = layer, soft_boundary = soft_boundary, soft_btype = soft_btype, p_scale = p_scale, b_scale = b_scale)
+    system = repel_system(area, subgrid, pos, boundary, btype, boundary_param, particle_param, initial_v, nlayer = nlayer, layer = layer, soft_boundary = soft_boundary, soft_btype = soft_btype, p_scale = p_scale, b_scale = b_scale, fixed = fixed)
     system.initialize()
     if dt is not None:
         convergence = np.empty((dt.size,2))

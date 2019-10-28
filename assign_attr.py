@@ -54,9 +54,10 @@ class macroMap:
             self.vy[:,ip] = [y_ep(e,self.p_range[ip],self.k,self.a,self.b) for e in self.e_range]
         
         # read preset orientation preferences
-        with open(OP_file,'r') as f:
-            self.OPgrid = np.reshape(np.fromfile(f, 'f8', count = nx*ny),(ny,nx))
-            assert(np.max(self.OPgrid) <= np.pi/2 and np.min(self.OPgrid >= -np.pi/2))
+        if OP_file is not None:
+            with open(OP_file,'r') as f:
+                self.OPgrid = np.reshape(np.fromfile(f, 'f8', count = nx*ny),(ny,nx))
+                assert(np.max(self.OPgrid) <= np.pi/2 and np.min(self.OPgrid >= -np.pi/2))
 
         if VF_file is not None:
             with open(VF_file,'r') as f:
@@ -108,8 +109,9 @@ class macroMap:
         d2[self.Pi[i+1,j]<=0,  1] = np.float('inf')
         d2[self.Pi[i,j+1]<=0,  2] = np.float('inf')
         d2[self.Pi[i+1,j+1]<=0,3] = np.float('inf')
-        print(np.sum((d2 == np.tile(np.array([np.float('inf'), np.float('inf'), np.float('inf'), np.float('inf')]), (32768,1))).any(-1)))
-        assert(np.sum((d2 == np.tile(np.array([np.float('inf'), np.float('inf'), np.float('inf'), np.float('inf')]), (32768,1))).all(-1)) == 0)
+        nbp = np.sum((d2 == np.tile(np.array([np.float('inf'), np.float('inf'), np.float('inf'), np.float('inf')]), (self.networkSize,1))).any(-1))
+        print(f'#boundary points: {nbp} ')
+        assert(np.sum((d2 == np.tile(np.array([np.float('inf'), np.float('inf'), np.float('inf'), np.float('inf')]), (self.networkSize,1))).all(-1)) == 0)
         ipick = np.argmin(d2,1)
         
         # retain neurons inside the discrete ragged boundary
@@ -154,7 +156,7 @@ class macroMap:
             assert((self.Pi[i,  j+1][ipick == 2] > 0).all())
             assert((self.Pi[i+1,j+1][ipick == 3] > 0).all())
             for i in np.arange(self.networkSize):
-                assert((self.pos[:,i] - self.pos[:,i+1:].T != 0).all())
+                assert(np.sum((self.pos[:,i] - self.pos[:,i+1:].T == 0).all(-1))==0)
         
         self.pODready = True
         return self.ODlabel
@@ -266,13 +268,16 @@ class macroMap:
         bp[(nhpick+nvpick):,:,:] = bpGrid[btype2pick,:,:]
         return bp, btype
     #awaits vectorization
-    def assign_pos_VF(self):
-        if not hasattr(self, 'vpos') and self.vposLready and self.vposRready:
+    def assign_pos_VF(self, straightFromPos = False):
+        if not (hasattr(self, 'vpos') and self.vposLready and self.vposRready) and not straightFromPos:
             raise Exception('vpos is not ready')
         d0 = np.zeros(self.npolar-1)
         d1 = np.zeros(self.npolar-1)
         ix0 = np.zeros(self.npolar-1,dtype='int')
-        vpos = self.vpos.copy()
+        if straightFromPos:
+            vpos = self.pos.copy()
+        else:
+            vpos = self.vpos.copy()
         # top polar line excluded such that the coord of the nearest vertex will always be left and lower to the neuron's position, ready for interpolation
         for i in range(self.networkSize):
             pos = np.empty(2)
@@ -391,6 +396,20 @@ class macroMap:
         assert((self.LR[i,  j+1][np.logical_and(ipick == 2, pL)] == -1).all())
         assert((self.LR[i+1,j+1][np.logical_and(ipick == 3, pL)] == -1).all())
         print('boundary and LR checked')
+
+    def make_pos_uniformT(self, dt, seed = None, particle_param = None, boundary_param = None, ax1 = None, ax2 = None, check = True, fixed = None):
+        subarea = self.subgrid[0] * self.subgrid[1]
+        area = subarea * np.sum(self.Pi > 0)
+        print(f'grid area: {area}, used in simulation')
+        A = self.Pi.copy()
+        A[self.Pi <= 0] = 0
+        A[self.Pi > 0] = 1
+        OD_bound, btype = self.define_bound(A)
+
+        oldpos = self.pos.copy()
+        self.pos, convergence, nlimited, _ = simulate_repel(area, self.subgrid, self.pos, dt, OD_bound, btype, boundary_param, particle_param, ax = ax1, seed = seed, fixed = fixed)
+        if check:
+            self.check_pos()
 
     def make_pos_uniform(self, dt, seed = None, particle_param = None, boundary_param = None, ax1 = None, ax2 = None, check = True):
         if not self.pODready:
