@@ -14,7 +14,7 @@ module load all
 module load matlab/R2017a
 ulimit -s unlimited
 
-fdr="rec"
+fdr="Orphan"
 if [ -d "$fdr" ]
 then
 	echo deleting contents in $fdr

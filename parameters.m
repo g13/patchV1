@@ -14,7 +14,7 @@ new = false;
 ENproc = 'save';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
 name = 'steadyp';
-var = 'OD'
+var = 'NxNy'
 equi = 'VF';
 heteroAlpha = -1; % -1 reciprocal, 0 identity, 1 area
 switch heteroAlpha
@@ -26,7 +26,7 @@ case 1
 	wtString = 'a';
 end
 ENfilename0 = [name,'-',equi,'-',wtString,'-',var]   % Simulation name ***
-plotting = 'last' % 'all', 'first', >0 frame, <0 frame:end
+plotting = 'all' % 'all', 'first', >0 frame, <0 frame:end
 %range = [6,8,10,12,14];
 %range = [1.2,1.3,1.4,1.5,1.6];
 %range = [10,15,20,25,30];
@@ -55,8 +55,8 @@ if ~exist(ENfilename0, 'dir')
 end
 
 copyfile([mfilename,'.m'],[ENfilename0,'/',ENfilename0,'_p.m']);
-%if length(range) > 1
-if false
+if length(range) > 1
+%if false
 	poolobj = gcp('nocreate'); % If no pool, do not create new one.
 	if ~isempty(poolobj)
 	    if ~ (poolobj.NumWorkers == length(range))
@@ -71,8 +71,8 @@ else
     scurr = rng('shuffle')
     seed = scurr.Seed;
 end
-%parfor i = 1:length(range)
-for i = 1:length(range)
+parfor i = 1:length(range)
+%for i = 1:length(range)
     % for non_cortical_shape edge boundaries
     test_dw = 5;
     test_dh = 7;
@@ -88,8 +88,8 @@ for i = 1:length(range)
     Kin = 0.15;			% Initial K ***
     Kend = 0.03;        % Final K ***    
     % - VFx: Nx points in [0,1], with interpoint separation dx.
-	%Nx = round(18*range(i))			% Number of points along VFx ***
-	Nx = 17;
+	Nx = round(17*range(i))			% Number of points along VFx ***
+	%Nx = 17;
 	%Nx = range(i)
 	%Nx = round(16*range(i)); %			% Number of points along VFx ***
 	%nvf = range(i);
@@ -98,8 +98,8 @@ for i = 1:length(range)
     % - VFy: ditto for Ny, dy.
 	%
 	% even
-	%Ny = round(36/range(i)) 
-	Ny = 34;
+	Ny = round(34*range(i)) 
+	%Ny = 34;
 	%Ny = 60 - range(i);
 	if mod(Nx,2) == 1,Nx = Nx + 1; end
 	if mod(Ny,2) == 1,Ny = Ny - 1; end
@@ -109,7 +109,7 @@ for i = 1:length(range)
 	%Ny = round(25*range(i));			% Number of points along VFy ***
     ry = [0 0.5]*nvf;			% Range of VFy
     % - OD: NOD values in range rOD, with interpoint separation dOD.
-	l = 0.11 * range(i);
+	l = 0.11;
     NOD = 2;			% Number of points along OD
     rOD = [-l l];			% Range of OD
     %  coded as NOR Cartesian-coordinate pairs (ORx,ORy). -- later by pol2cart
