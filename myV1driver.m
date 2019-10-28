@@ -556,7 +556,8 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
         load([ENfilename0,'-',ENfilename,'.mat']);
     end
     if plots
-        figlist = [1,2,3,4,5,7,15,16,20,21,100,102,34, 40, 41, 50, 54, 60];
+        %figlist = [1,2,3,4,5,7,15,16,20,21,100,102,34, 40, 41, 50, 54, 60];
+        figlist = [1,2,4,5,15,16,34,50,60,100,102];
 		% less figures
         %figlist = [1,4,100,102,34,60];
     else
