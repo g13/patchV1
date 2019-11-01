@@ -108,6 +108,7 @@ __device__ _float area(_float raxn, _float rden, _float d) {
          + (theta_den-sin_theta_den*cos_theta_den)*rden*rden;
 }
 
+// co-occupied area of the presynaptic axons / dendritic area
 __device__ _float connect(_float distance, _float raxn, _float rden) {
     _float weight = 0.0;
     if (raxn + rden > distance && distance > abs_value(raxn - rden)) {
@@ -247,12 +248,14 @@ __global__ void generate_connections(_float* __restrict__ pos,
         _float y = y1[i] - y0;
         _float ra = raxn[ipre];
         _float distance = square_root(x*x + y*y);
+		// weight from area
         _float p = connect(distance, ra, rd);
 
         if (p > 0) {
             unsigned long bid = ipre*blockSize + threadIdx.x;
             unsigned int ip = ipreType[i];
             sumType[ip] += 1;
+			// update weight with density of axon dendrites and preference over type
             p = p * daxn[ipre] * dden[id] * preTypeP[ip*networkSize + id];
             sumP[ip] += p;
             conMat[bid] = p;

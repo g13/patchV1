@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
     pTypeMat[1][0] = 0.5f;
     pTypeMat[1][1] = 0.5f;
 
-    // 
+    // fixed number of connections
     unsigned int nTypeMat[NTYPE][NTYPE];
     //nTypeMat[0][0] = 400+20*5; // mean + std*5
     //nTypeMat[0][1] = 100+10*5;
@@ -91,6 +91,7 @@ int main(int argc, char *argv[])
     neuron_type_acc_count[2] = 1024;
     assert(neuron_type_acc_count[NTYPE] == blockSize);
 
+	// density of axons and dendrites
     den_axn[0] = 1.0;
     den_axn[1] = 2.0;
 

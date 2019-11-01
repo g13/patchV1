@@ -213,11 +213,16 @@ int main(int argc, char *argv[])
     CUDA_CHECK();
     printf("logRand_init completed\n");
 
-    if (
-    preMatRandInit<<<init_b1,init_b2>>>(d_preMat, d_v, randState, sEE, sIE, sEI, sII, networkSize, nE, seed);
-    CUDA_CHECK();
-    CUDA_CALL(cudaMemcpy(preMat, d_preMat, networkSize*networkSize*sizeof(_float),cudaMemcpyDeviceToHost));
+    if (!conMatFile) {
+    	preMatRandInit<<<init_b1,init_b2>>>(d_preMat, d_v, randState, sEE, sIE, sEI, sII, networkSize, nE, seed);
+    	CUDA_CHECK();
+	else{
+        init<_float><<<init_b1,init_b2>>>(d_v, vL);
+		// read conMat
+		// initiate v
+	}
     CUDA_CALL(cudaMemcpy(v, d_v, networkSize*sizeof(_float),cudaMemcpyDeviceToHost));
+    CUDA_CALL(cudaMemcpy(preMat, d_preMat, networkSize*networkSize*sizeof(_float),cudaMemcpyDeviceToHost));
     printf("storage size of preMat %.1fMb\n", float(networkSize*networkSize*sizeof(_float))/1024.0/1024.0);
 
     unsigned int nbatch, batchEnd, batchStep;
@@ -246,8 +251,8 @@ int main(int argc, char *argv[])
     CUDA_CALL(cudaMallocHost((void**)&gI,          networkSize * ngTypeI *sizeof(_float)));
     CUDA_CALL(cudaMallocHost((void**)&spikeTrain,  networkSize * sizeof(_float)));
     CUDA_CALL(cudaMallocHost((void**)&nSpike,      networkSize * sizeof(unsigned int)));
-    CUDA_CALL(cudaMallocHost((void**)&eventRateE,   networkSize * sizeof(int)));
-    CUDA_CALL(cudaMallocHost((void**)&eventRateI,   networkSize * sizeof(int)));
+    CUDA_CALL(cudaMallocHost((void**)&eventRateE,  networkSize * sizeof(int)));
+    CUDA_CALL(cudaMallocHost((void**)&eventRateI,  networkSize * sizeof(int)));
 
     /* Allocate space for results on device */
     #if SCHEME == 2
