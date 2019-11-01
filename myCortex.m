@@ -1,4 +1,4 @@
-function [Pi, W, LR, VF] = myCortex(stream, G, xrange, tr_x, yrange, tr_y, VFweights, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch,savepath)
+function [Pi, W, LR, VF] = myCortex(stream, G, xrange, tr_x, yrange, tr_y, VFweights, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch,savepath,cortical_VF)
     nx = G(1);
     ny = G(2);
     Pi = ones(nx,ny);
@@ -72,163 +72,169 @@ function [Pi, W, LR, VF] = myCortex(stream, G, xrange, tr_x, yrange, tr_y, VFwei
 		xlabel('Initial mu interpolation points density x 0.01');
     end
 	% ecc-polar grid for VF see COMMENTs in function assign_pos_VF of assign_attr.py 
-	me = nx*resol;
-	mp = ny*resol;
-	vx = zeros(me, mp);
-	vy = zeros(me, mp);
-	for ip = 1:mp
-		w = dipole(e,p(ip),a,b,k)-k*log(a/b);
-		vx(:,ip) = real(w);
-		vy(:,ip) = imag(w);
-        if plot_patch >0 && mod(ip,resol*10) == 0
-			subplot(2,2,1)
-            plot(vx(:,ip), vy(:,ip),'k');
-        end
-	end
-    if plot_patch >0
-		subplot(2,2,1)
-	    for ie = 1:me
-            if mod(ie,resol*10) == 0
-                plot(vx(ie,:), vy(ie,:),'r');
+    if strcmp(cortical_VF, 'VF')
+	    me = nx*resol;
+	    mp = ny*resol;
+	    vx = zeros(me, mp);
+	    vy = zeros(me, mp);
+	    for ip = 1:mp
+	    	w = dipole(e,p(ip),a,b,k)-k*log(a/b);
+	    	vx(:,ip) = real(w);
+	    	vy(:,ip) = imag(w);
+            if plot_patch >0 && mod(ip,resol*10) == 0
+	    		subplot(2,2,1)
+                plot(vx(:,ip), vy(:,ip),'k');
             end
+	    end
+        if plot_patch >0
+	    	subplot(2,2,1)
+	        for ie = 1:me
+                if mod(ie,resol*10) == 0
+                    plot(vx(ie,:), vy(ie,:),'r');
+                end
+            end
+	    	subplot(2,2,3)
+            hold on
+	    	if size(tr_x,2) > 1
+            	pcolor(tr_x(1:end-1,1:end-1), tr_y(1:end-1,1:end-1),log(VFweights));
+	    		pcolor(tr_x(1:end-1,1:end-1),-tr_y(1:end-1,1:end-1),log(VFweights));
+            	% plot outbounds
+            	plot(tr_x(end,:),tr_y(end,:),'-r');
+            	plot(tr_x(end,:),-tr_y(end,:),'-r');
+            	plot(tr_x(end-1,:),tr_y(end-1,:),'-r');
+            	plot(tr_x(end-1,:),-tr_y(end-1,:),'-r');
+            	plot([tr_x(:,end), flipud(tr_x(:,end))],[tr_y(:,end),-flipud(tr_y(:,end))],'-r');
+            	plot([tr_x(:,end-1), flipud(tr_x(:,end-1))],[tr_y(:,end-1),-flipud(tr_y(:,end-1))],'-r');
+            	for i=1:size(tr_x,2)
+            	    plot(tr_x(end-1:end,:), tr_y(end-1:end,:),'-r');
+            	    plot(tr_x(end-1:end,:),-tr_y(end-1:end,:),'-r');
+            	end
+            	for i=1:size(tr_x,1)
+            	    plot(tr_x(:,end-1:end)', tr_y(:,end-1:end)','-r');
+            	    plot(tr_x(:,end-1:end)',-tr_y(:,end-1:end)','-r');
+            	end
+	    	else
+	    		cm = viridis;
+	    		if (min(VFweights) < max(VFweights))
+	    			cscaled = 1 + (VFweights - min(VFweights))/(max(VFweights)-min(VFweights))*255;
+	    			for i = 1:length(tr_x)
+	    				j = floor(cscaled(i));
+	    				c = cm(j,:) + (cm(j+1,:)-cm(j,:)) * (cscaled(i)-j);
+	    				scatter(tr_x(i), tr_y(i), 3, c, 'filled');
+	    			end
+	    		else
+	    			scatter(tr_x, tr_y, 3, cm(128,:), 'filled');
+	    		end
+	    	end
+            plot(x0,ty,'-r');
+            plot(x0,by,'-r');
+            xlim([min([min(x0),min(tr_x(:))]),max([max(x0),max(tr_x(:))])]);
+            ylim([min([min(by),min(tr_y(:))]),max([max(ty),max(tr_y(:))])]);
+            daspect([1,1,1]);
+	    	colormap(viridis);
+	    	colorbar;
+	    	xlabel('Training Points weights in area (or 1/area)');
         end
-		subplot(2,2,3)
-        hold on
-		if size(tr_x,2) > 1
-        	pcolor(tr_x(1:end-1,1:end-1), tr_y(1:end-1,1:end-1),log(VFweights));
-			pcolor(tr_x(1:end-1,1:end-1),-tr_y(1:end-1,1:end-1),log(VFweights));
-        	% plot outbounds
-        	plot(tr_x(end,:),tr_y(end,:),'-r');
-        	plot(tr_x(end,:),-tr_y(end,:),'-r');
-        	plot(tr_x(end-1,:),tr_y(end-1,:),'-r');
-        	plot(tr_x(end-1,:),-tr_y(end-1,:),'-r');
-        	plot([tr_x(:,end), flipud(tr_x(:,end))],[tr_y(:,end),-flipud(tr_y(:,end))],'-r');
-        	plot([tr_x(:,end-1), flipud(tr_x(:,end-1))],[tr_y(:,end-1),-flipud(tr_y(:,end-1))],'-r');
-        	for i=1:size(tr_x,2)
-        	    plot(tr_x(end-1:end,:), tr_y(end-1:end,:),'-r');
-        	    plot(tr_x(end-1:end,:),-tr_y(end-1:end,:),'-r');
-        	end
-        	for i=1:size(tr_x,1)
-        	    plot(tr_x(:,end-1:end)', tr_y(:,end-1:end)','-r');
-        	    plot(tr_x(:,end-1:end)',-tr_y(:,end-1:end)','-r');
-        	end
-		else
-			cm = viridis;
-			cscaled = 1 + (VFweights - min(VFweights))/(max(VFweights)-min(VFweights))*255;
-			for i = 1:length(tr_x)
-				j = floor(cscaled(i));
-				c = cm(j,:) + (cm(j+1,:)-cm(j,:)) * (cscaled(i)-j);
-				scatter(tr_x(i), tr_y(i), c, 'filled');
-			end
-		end
-        plot(x0,ty,'-r');
-        plot(x0,by,'-r');
-        xlim([min([min(x0),min(tr_x(:))]),max([max(x0),max(tr_x(:))])]);
-        ylim([min([min(by),min(tr_y(:))]),max([max(ty),max(tr_y(:))])]);
-        daspect([1,1,1]);
-		colormap(viridis);
-		colorbar;
-		xlabel('Training Points weights in area (or 1/area)');
-    end
-	ix0 = zeros(mp-1, 1);
-	d0 = zeros(mp-1, 1);
-	d1 = zeros(mp-1, 1);
-	prange = 1:mp-1;
-	f = 0;
-	for i = 1:nx
-		mask = (x(i) - vx(1:me-1,1:mp-1) > 0 & x(i) - vx(2:me,1:mp-1) < 0);
-		pmask = any(mask,1);
-		if ~any(pmask)
-			continue;
-		else
-			f = f + 1;
-		end
-		assert(length(pmask) == mp-1);
-		pnull = ~pmask;
-		[ix, ~] = find(mask);
-		assert(sum(pmask) == length(ix));
-		ix0(pmask) = ix;
-		ix0(pnull) = -1;
-		for j = 1:ny
-			if Pi(i,j) == 0
-				continue;
-			end
-			ind = sub2ind([me,mp],ix,prange(pmask)');
-			d0(pmask) = (vx(ind) - x(i)).^2 + (vy(ind) - y(j)).^2;
-			ind = sub2ind([me,mp],ix+1,prange(pmask)');
-			d1(pmask) = (vx(ind) - x(i)).^2 + (vy(ind) - y(j)).^2;
-			d0(pnull) = inf;
-			d1(pnull) = inf;
-			dis = min([d0, d1], [], 2);
-			assert(length(dis) == mp-1);
-			[~, idp] = min(dis);
-			idx = ix0(idp);
-			%VF(i,j,1) =  log_e(idx) + (log_e(idx+1) - log_e(idx)) * sqrt(dis(idp))/(sqrt(d0(idp))+sqrt(d1(idp)));
-			VF(i,j,1) =  exp(log_e(idx) + (log_e(idx+1) - log_e(idx)) * sqrt(dis(idp))/(sqrt(d0(idp))+sqrt(d1(idp))))-1;
-			%w = dipole(exp(VF(i,j,1))-1,p(idp),a,b,k) - k*log(a/b);
-			w = dipole(VF(i,j,1),p(idp),a,b,k) - k*log(a/b);
-            vp_x0 = real(w);
-            vp_y0 = imag(w);
-			%w = dipole(exp(VF(i,j,1))-1,p(idp+1),a,b,k) - k*log(a/b);
-			w = dipole(VF(i,j,1),p(idp+1),a,b,k) - k*log(a/b);
-            vp_x1 = real(w);
-            vp_y1 = imag(w);
-            dp0 = sqrt((x(i)-vp_x0)^2 + (y(j)-vp_y0)^2);
-            dp1 = sqrt((x(i)-vp_x1)^2 + (y(j)-vp_y1)^2);
-            VF(i,j,2) = p(idp) + (p(idp+1) - p(idp)) * dp0/(dp0+dp1);
-		end
-	end
-    if plot_patch > 0
-		subplot(4,2,2)
-		imagesc(VF(:,:,1));
-		colormap(viridis);
-		colorbar;
-        daspect([1,1,1]);
-		subplot(4,2,4)
-		imagesc(VF(:,:,2));
-		colormap(viridis);
-		colorbar;
-        daspect([1,1,1]);
-	end
-	pPi = reshape(Pi > 0, prod(G),1);
-	VF = reshape(VF, prod(G), 2);
-	maxVFx = max(max(VF(pPi,1)));
-	minVFx = min(min(VF(pPi,1)));
-	maxVFy = max(max(VF(pPi,2)));
-	minVFy = min(min(VF(pPi,2)));
-	disp('ecc range:');
-	disp([minVFx, maxVFx]);
-	disp('polar range:');
-	disp([minVFy, maxVFy]);
-	[VF(:,1), VF(:,2)] = pol2cart(VF(:,2), VF(:,1));
+	    ix0 = zeros(mp-1, 1);
+	    d0 = zeros(mp-1, 1);
+	    d1 = zeros(mp-1, 1);
+	    prange = 1:mp-1;
+	    f = 0;
+	    for i = 1:nx
+	    	mask = (x(i) - vx(1:me-1,1:mp-1) > 0 & x(i) - vx(2:me,1:mp-1) < 0);
+	    	pmask = any(mask,1);
+	    	if ~any(pmask)
+	    		continue;
+	    	else
+	    		f = f + 1;
+	    	end
+	    	assert(length(pmask) == mp-1);
+	    	pnull = ~pmask;
+	    	[ix, ~] = find(mask);
+	    	assert(sum(pmask) == length(ix));
+	    	ix0(pmask) = ix;
+	    	ix0(pnull) = -1;
+	    	for j = 1:ny
+	    		if Pi(i,j) == 0
+	    			continue;
+	    		end
+	    		ind = sub2ind([me,mp],ix,prange(pmask)');
+	    		d0(pmask) = (vx(ind) - x(i)).^2 + (vy(ind) - y(j)).^2;
+	    		ind = sub2ind([me,mp],ix+1,prange(pmask)');
+	    		d1(pmask) = (vx(ind) - x(i)).^2 + (vy(ind) - y(j)).^2;
+	    		d0(pnull) = inf;
+	    		d1(pnull) = inf;
+	    		dis = min([d0, d1], [], 2);
+	    		assert(length(dis) == mp-1);
+	    		[~, idp] = min(dis);
+	    		idx = ix0(idp);
+	    		%VF(i,j,1) =  log_e(idx) + (log_e(idx+1) - log_e(idx)) * sqrt(dis(idp))/(sqrt(d0(idp))+sqrt(d1(idp)));
+	    		VF(i,j,1) =  exp(log_e(idx) + (log_e(idx+1) - log_e(idx)) * sqrt(dis(idp))/(sqrt(d0(idp))+sqrt(d1(idp))))-1;
+	    		%w = dipole(exp(VF(i,j,1))-1,p(idp),a,b,k) - k*log(a/b);
+	    		w = dipole(VF(i,j,1),p(idp),a,b,k) - k*log(a/b);
+                vp_x0 = real(w);
+                vp_y0 = imag(w);
+	    		%w = dipole(exp(VF(i,j,1))-1,p(idp+1),a,b,k) - k*log(a/b);
+	    		w = dipole(VF(i,j,1),p(idp+1),a,b,k) - k*log(a/b);
+                vp_x1 = real(w);
+                vp_y1 = imag(w);
+                dp0 = sqrt((x(i)-vp_x0)^2 + (y(j)-vp_y0)^2);
+                dp1 = sqrt((x(i)-vp_x1)^2 + (y(j)-vp_y1)^2);
+                VF(i,j,2) = p(idp) + (p(idp+1) - p(idp)) * dp0/(dp0+dp1);
+	    	end
+	    end
+        if plot_patch > 0
+	    	subplot(4,2,2)
+	    	imagesc(VF(:,:,1));
+	    	colormap(viridis);
+	    	colorbar;
+            daspect([1,1,1]);
+	    	subplot(4,2,4)
+	    	imagesc(VF(:,:,2));
+	    	colormap(viridis);
+	    	colorbar;
+            daspect([1,1,1]);
+	    end
+	    pPi = reshape(Pi > 0, prod(G),1);
+	    VF = reshape(VF, prod(G), 2);
+	    maxVFx = max(max(VF(pPi,1)));
+	    minVFx = min(min(VF(pPi,1)));
+	    maxVFy = max(max(VF(pPi,2)));
+	    minVFy = min(min(VF(pPi,2)));
+	    disp('ecc range:');
+	    disp([minVFx, maxVFx]);
+	    disp('polar range:');
+	    disp([minVFy, maxVFy]);
+	    [VF(:,1), VF(:,2)] = pol2cart(VF(:,2), VF(:,1));
 
-	maxVFx = max(max(VF(pPi,1)));
-	minVFx = min(min(VF(pPi,1)));
-	maxVFy = max(max(VF(pPi,2)));
-	minVFy = min(min(VF(pPi,2)));
-	disp('x range:');
-	disp([minVFx, maxVFx]);
-	disp('y range:');
-	disp([minVFy, maxVFy]);
-	VF(pPi,1) = xrange(1) + (VF(pPi,1) - 0)/ecc*(xrange(2)-xrange(1));
-	VF(pPi,2) = yrange(1) + (VF(pPi,2) + ecc)/(2*ecc)*(yrange(2)-yrange(1));
-	VF(~pPi,:) = 0.0;
-	VF = reshape(VF, [G, 2]);
-    if plot_patch > 0
-		subplot(4,2,6)
-		imagesc(VF(:,:,1));
-		colormap(viridis);
-		colorbar;
-        daspect([1,1,1]);
-		subplot(4,2,8)
-		imagesc(VF(:,:,2));
-		colormap(viridis);
-		colorbar;
-        daspect([1,1,1]);
-		if manual_LR
-			subplot(1,2,1)
-		end
-	end
+	    maxVFx = max(max(VF(pPi,1)));
+	    minVFx = min(min(VF(pPi,1)));
+	    maxVFy = max(max(VF(pPi,2)));
+	    minVFy = min(min(VF(pPi,2)));
+	    disp('x range:');
+	    disp([minVFx, maxVFx]);
+	    disp('y range:');
+	    disp([minVFy, maxVFy]);
+	    VF(pPi,1) = xrange(1) + (VF(pPi,1) - 0)/ecc*(xrange(2)-xrange(1));
+	    VF(pPi,2) = yrange(1) + (VF(pPi,2) + ecc)/(2*ecc)*(yrange(2)-yrange(1));
+	    VF(~pPi,:) = 0.0;
+	    VF = reshape(VF, [G, 2]);
+        if plot_patch > 0
+	    	subplot(4,2,6)
+	    	imagesc(VF(:,:,1));
+	    	colormap(viridis);
+	    	colorbar;
+            daspect([1,1,1]);
+	    	subplot(4,2,8)
+	    	imagesc(VF(:,:,2));
+	    	colormap(viridis);
+	    	colorbar;
+            daspect([1,1,1]);
+	    	if manual_LR
+	    		subplot(1,2,1)
+	    	end
+	    end
+    end
     if manual_LR
         i0 = randi(stream,[1,2]);
         lr = rOD(i0);

@@ -1,4 +1,4 @@
-% Driver file for an EN simulation for cortical maps:
+
 % 2D cortex in stimulus space (VFx,VFy,OD,ORx,ORy) where VF = visual
 % field, OD = ocular dominance and OR = orientation.
 %
@@ -208,43 +208,69 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
                 tmp1,...				% ORtheta
                 linspace(rORr(1),rORr(2),NORr),stream);%,... % ORr
 
-		    dOD = 2*l;
 		    dx = mean(diff(x_vec));
 		    dy = mean(diff(y_vec));
-		    disp(['#',num2str(irange),': dx = ',num2str(dx), ', dy = ', num2str(dy), ', dOD = ', num2str(dOD)]);
         else
             fID = fopen(VFpath, 'rb');
             nxny = fread(fID, 1, 'int');
-            data = fread(fID, [nxny,2] 'double');
+            data = fread(fID, [nxny,2], 'double');
             x_cortex = data(:,1); 
             y_cortex = data(:,2);
-            rx = fread(fID, 2, 'double');
-            ry = fread(fID, 2, 'double');
-            vf = fread(fID, [nxny,2] 'double');
-            facs = factor(nxny);
-            assert(facs > 1);
+            xx_cortex = data(:,1); 
+            yy_cortex = data(:,2);
+            rx0 = fread(fID, 2, 'double');
+            ry0 = fread(fID, 2, 'double');
+			dx = (rx(2)-rx(1))/nxny;
+			dy = (ry(2)-ry(1))/nxny;
+            vf = fread(fID, [nxny,2], 'double');
+
+            facs = factor(nxny)
             nfac = length(facs);
-            fac1 = prod(facs(1:nfac-1));
+            assert(nfac > 1);
+			fac1 = 1;
+			for i=1:nfac
+				fac1 = fac1*facs(i);
+				if fac1 > nxny/fac1
+					fac1
+					fac2 = nxny/fac1
+					break;
+				end
+			end
             placeholder1 = linspace(1,fac1,fac1); 
-            placeholder2 = linspace(1,facs(end),facs(end)); 
-            T = Entrset('grid', zeros(1,5), ...
+            placeholder2 = linspace(1,fac2,fac2);
+            T = ENtrset('grid', zeros(1,5), ...
                 placeholder1,...
                 placeholder2,...
                 linspace(rOD(1),rOD(2),NOD),...	% OD
                 tmp1,...				        % ORtheta
                 linspace(rORr(1),rORr(2),NORr),stream);% ORr
+			x_vec0 = linspace(rx(1), rx(2), fac1);
+			y_vec0 = linspace(ry(1), ry(2), fac2);
+			xy = zeros(nxny,2);
+			switch cortical_VF
+		    	case 'VF'
+					[xy(:,1), xy(:,2)] = pol2cart(vf(:,2),vf(:,1));
+					xy(:,1) = rx(1) + (xy(:,1) - 0)*(rx(2)-rx(1))/ecc;
+					xy(:,2) = ry(1) + (xy(:,2) + ecc)*(ry(2)-ry(1))/(2*ecc);
+		    	case 'cortex'
+					xy(:,1) = rx(1) + (x_cortex - rx0(1))*(rx(2)-rx(1))/(rx0(2)-rx0(1));
+					xy(:,2) = ry(1) + (y_cortex - ry0(1))*(ry(2)-ry(1))/(ry0(2)-ry0(1));
+			end
+			
             for i=1:NOD*NORr*NOR
                 start = (i-1)*nxny + 1;
                 stop = i*nxny;
-                T(start:stop,1:2) = vf;
+                T(start:stop,1:2) = xy;
             end
 		    VFweights_hlf = ones(nxny,1);
         end
+		dOD = 2*l;
+		disp(['#',num2str(irange),': dx = ',num2str(dx), ', dy = ', num2str(dy), ', dOD = ', num2str(dOD)]);
         % For non-rectangular cortex shapes, create a suitable Pi here:
         resol = 10;
         if cortical_shape
 			manual_LR = ~non_cortical_LR && ~uniform_LR;
-            [Pi, W, LR, VF] = myCortex(stream, G, rx, x_cortex, ry, y_cortex, VFweights_hlf, ecc, a, b, k, resol, nod, rOD*ODabsol, ODnoise, manual_LR, fign, [ENfilename0,'/',ENfilename]);
+            [Pi, W, LR, VF] = myCortex(stream, G, rx, x_cortex, ry, y_cortex, VFweights_hlf, ecc, a, b, k, resol, nod, rOD*ODabsol, ODnoise, manual_LR, fign, [ENfilename0,'/',ENfilename], cortical_VF);
 			fID = fopen([ENfilename0,'/',ENfilename,'-RefVF.bin'],'w');
 			fwrite(fID, xx_cortex(:), 'double');
 			fwrite(fID, yy_cortex(:), 'double');
@@ -353,11 +379,13 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
         % $$$   normcte = 1;
 		
 		if cortical_shape
-			xx_cortex = [flipud(xx_cortex); xx_cortex];
-			yy_cortex = [-flipud(yy_cortex); yy_cortex];
 			d = W/(G(1)-1);
 			assert(mod(G(2)/2,2) == 0);
 			scale = (G(1)-1)/W;
+			if isempty(VFpath)
+				xx_cortex = [flipud(xx_cortex); xx_cortex];
+				yy_cortex = [-flipud(yy_cortex); yy_cortex];
+			end
 			xgrid = 1.5 + xx_cortex*scale;
 			ygrid = yy_cortex*scale;
 			ylim = max(ygrid);
@@ -368,13 +396,40 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
 			xgrid = 1 + xgrid/(v(3,id.VFx)-v(2,id.VFx))*(G(1)-1);
 			ygrid = 1 + ygrid/(v(3,id.VFy)-v(2,id.VFy))*(G(2)-1);
 		end
-        
 
         % Initial elastic net: retinotopic with some noise and random, uniform
         % OD and OR.
         
        	if cortical_VF && cortical_shape
-            mu = reshape(VF, M, 2);
+            switch cortical_VF
+            case 'VF'
+                mu = reshape(VF, M, 2);
+            case 'cortex'
+                tmp1 = linspace(rx(1),rx(2),G(1)-1);
+                dtmp = (tmp1(2)-tmp1(1))/2;
+                tmp1 = linspace(rx(1)-dtmp, rx(2) + dtmp, G(1));
+                w = dipole_ext(ecc,pi/2,a,b,k) - k*log(a/b);
+                xmax = real(w);
+                ymax = imag(w);
+                ylength = (xmax + xmax/(G(1)-2))/(G(1)-1)*(G(2)-1);
+                yratio_hlf = 2*ymax/ylength;
+                hy = (ry(2)-ry(1))/2/yratio_hlf;
+                if mod(G(2),2) == 0
+                    G2_hlf = G(2)/2
+                    tmp2 = linspace(0, hy, G2_hlf + 1);
+                    tmp2 = midpoints(tmp2);
+                    tmp2 = [-fliplr(tmp2), tmp2];
+                    tmp2 = tmp2 + hy;
+                else
+                    G2_hlf = (G(2)+1)/2
+                    tmp2 = linspace(0, hy, G2_hlf);
+                    tmp2 = [-fliplr(tmp2), tmp2(2:end)];
+                    tmp2 = tmp2 + hy;
+                end
+        	    mu = ENtrset('grid',zeros(1,2),...		% Small noise
+        	        tmp1,...	% VFx
+        	        tmp2,stream);	% VFy
+            end
 		else
         	mu = ENtrset('grid',zeros(1,2),...		% Small noise
         	    linspace(rx(1),rx(2),G(1)),...	% VFx
