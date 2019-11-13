@@ -8,6 +8,6 @@
 #include <fenv.h>
 #include <cuda.h>
 #include "MACRO.h"
-//#include "connect.h"
 #include "cuda_util.h"
+//#include "connect.h"
 #include "coredynamics.h"

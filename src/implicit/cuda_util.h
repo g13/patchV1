@@ -1,6 +1,6 @@
 #ifndef CUDA_UTIL_H
 #define CUDA_UTIL_H
-
+#include <cuda.h>
 #include "DIRECTIVE.h"
 #include "CUDA_MACRO.h"
 

@@ -71,7 +71,7 @@ int main(int argc, char *argv[])
 		sscanf(argv[argc-14], "%d", &nstep);
     #endif
 	} else {
-        if (argc = 3) {
+        if (argc == 3) {
             printf("read-in config")
             sscanf(argv[argc-1], "%100s", tmp);
             sscanf(argv[argc-2], "%100s", pgTheme);
