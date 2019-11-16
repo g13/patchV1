@@ -18,7 +18,7 @@ pair<Float, Float> transform_coord_to_unitRF(Float x, Float y, const Float mx, c
 }
 
 // probability distribution
-Float prob_dist(Float x, Float y, Float phase, Float sfreq, Float amp, Float baRatio, int on_off, Float sig = 1.1775) {
+Float prob_dist(Float x, Float y, Float phase, Float sfreq, Float amp, Float baRatio, Int on_off, Float sig = 1.1775) {
     // sfreq should be given as a percentage of the width
     // baRatio comes from Dow et al., 1981
     assert(abs(on_off) == 1);
@@ -37,7 +37,7 @@ void normalize_prob(vector<Float> &prob, Float percent) {
     const Float norm = accumulate(prob.begin(), prob.end(), 0.0) / (percent * prob.size());
 	cout << "norm = " << norm << "\n";
     Float sum = 0.0;
-    for (int i=0; i<prob.size(); i++) {
+    for (Size i=0; i<prob.size(); i++) {
         prob[i] = prob[i] / norm;
         sum += prob[i];
     }
@@ -219,9 +219,9 @@ vector<vector<Int>> retinotopic_vf_pool(
     if (use_cuda) {
         if (n > 0) {
             Float *d_cart;
-            checkCudaErrors(cudaMalloc((void **) &d_cart, 2*2*n*sizeof(float)));
-            checkCudaErrors(cudaMemcpy(d_cart, &(cart.first[0]), n*sizeof(float), cudaMemcpyHostToDevice));
-            checkCudaErrors(cudaMemcpy(d_cart+n, &(cart.second[0]), n*sizeof(float), cudaMemcpyHostToDevice));
+            checkCudaErrors(cudaMalloc((void **) &d_cart, 2*2*n*sizeof(Float)));
+            checkCudaErrors(cudaMemcpy(d_cart, &(cart.first[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
+            checkCudaErrors(cudaMemcpy(d_cart+n, &(cart.second[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
             checkCudaErrors(cudaFree(d_cart));
             cout << "cuda not implemented\n";
             assert(false);
@@ -289,24 +289,24 @@ int main(int argc, char *argv[]) {
 		cout << "Cannot open or find " << fname <<"\n";
 		return EXIT_FAILURE;
 	}
-	p_file.read(reinterpret_cast<char*>(&n), sizeof(int));
+	p_file.read(reinterpret_cast<char*>(&n), sizeof(Int));
     cout << n << " post-synaptic neurons\n";
 	vector<Float> x(n);
 	vector<Float> y(n);
-	p_file.read(reinterpret_cast<char*>(&x[0]), n * sizeof(float));
-	p_file.read(reinterpret_cast<char*>(&y[0]), n * sizeof(float));
+	p_file.read(reinterpret_cast<char*>(&x[0]), n * sizeof(Float));
+	p_file.read(reinterpret_cast<char*>(&y[0]), n * sizeof(Float));
 	auto cart = make_pair(x, y);
 	//print_pair(cart);
 	x.swap(vector<Float>());
 	y.swap(vector<Float>());
 
-	p_file.read(reinterpret_cast<char*>(&m), sizeof(int));
+	p_file.read(reinterpret_cast<char*>(&m), sizeof(Int));
 	vector<Float> x0(m);
 	vector<Float> y0(m);
-	p_file.read(reinterpret_cast<char*>(&x0[0]), m*sizeof(float));
-	p_file.read(reinterpret_cast<char*>(&y0[0]), m*sizeof(float));
+	p_file.read(reinterpret_cast<char*>(&x0[0]), m*sizeof(Float));
+	p_file.read(reinterpret_cast<char*>(&y0[0]), m*sizeof(Float));
 	vector<Int> on_off(m);
-	p_file.read(reinterpret_cast<char*>(&on_off[0]), m*sizeof(int));
+	p_file.read(reinterpret_cast<char*>(&on_off[0]), m*sizeof(Int));
 	auto cart0 = make_pair(x0, y0);
 	//print_pair(cart0);
 	x0.swap(vector<Float>());
@@ -332,10 +332,10 @@ int main(int argc, char *argv[]) {
 	vector<Float> phase(n);
 	vector<Float> amp(n);
 	vector<Float> sig(n);
-	prop_file.read(reinterpret_cast<char*>(&theta[0]), n * sizeof(float));
-	prop_file.read(reinterpret_cast<char*>(&phase[0]), n * sizeof(float));
-	prop_file.read(reinterpret_cast<char*>(&amp[0]), n * sizeof(float));
-	prop_file.read(reinterpret_cast<char*>(&sig[0]), n * sizeof(float));
+	prop_file.read(reinterpret_cast<char*>(&theta[0]), n * sizeof(Float));
+	prop_file.read(reinterpret_cast<char*>(&phase[0]), n * sizeof(Float));
+	prop_file.read(reinterpret_cast<char*>(&amp[0]), n * sizeof(Float));
+	prop_file.read(reinterpret_cast<char*>(&sig[0]), n * sizeof(Float));
     prop_file.close();
 	vector<Float> sfreq = generate_sfreq(n, rGen);
 	vector<Float> cx(n);
@@ -347,21 +347,16 @@ int main(int argc, char *argv[]) {
 		cout << "Cannot open or find " << pname <<"\n";
 		return EXIT_FAILURE;
 	}
-    prop_file.write((char*)&a[0], n * sizeof(float));
-    prop_file.write((char*)&baRatio[0], n * sizeof(float));
-	prop_file.write((char*)&sfreq[0], n * sizeof(float));
-    prop_file.write((char*)&cx[0], n * sizeof(float));
-	prop_file.write((char*)&cy[0], n * sizeof(float));
+    prop_file.write((char*)&a[0], n * sizeof(Float));
+    prop_file.write((char*)&baRatio[0], n * sizeof(Float));
+	prop_file.write((char*)&sfreq[0], n * sizeof(Float));
+    prop_file.write((char*)&cx[0], n * sizeof(Float));
+	prop_file.write((char*)&cy[0], n * sizeof(Float));
     prop_file.close();
 
     // write poolList to disk
 	print_listOfList<Int>(poolList);
-    ofstream r_file("LGNtoV1.bin", std::ios::out|std::ios::binary);
-    for (Size i=0; i<n; i++) {
-        Int listSize = poolList[i].size();
-        r_file.write((char*)&listSize, sizeof(int));
-        r_file.write((char*)&poolList[i][0], listSize * sizeof(int));
-        r_file.write((char*)&srList[i][0], listSize * sizeof(float));
-    }
+	write_listOfList<Int>("LGNtoV1_idList.bin", poolList);
+	write_listOfList<Float>("LGNtoV1_srList.bin", srList);
     return 0;
 }
