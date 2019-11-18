@@ -9,15 +9,21 @@
 // http://www.cs.ust.hk/mjg_lib/bibs/DPSu/DPSu.Files/Ga95.PDF
 // block processing file:///C:/Users/gueux/Desktop/FFTConvolution.pdf
 // direct form:
-__inline__ __device__ _float AexpTau(_float a, _float tau) {
+__inline__ 
+__device__ 
+_float AexpTau(_float a, _float tau) {
     return a * expp(-tau);
 }
 
-__inline__ __device__ _float spatialProduct(_float x, _float y, _float contrast, _float k, _float rx, _float ry) {
+__inline__ 
+__device__ 
+_float spatialProduct(_float x, _float y, _float contrast, _float k, _float rx, _float ry) {
     return k * expp(-x*x/(rx*rx) - y*y/(ry*ry)) * contrast;
 }
 
-__inline__ __device__ _float temporalKernel(_float tau, LGN_subregion subr) {
+__inline__ 
+__device__ 
+_float temporalKernel(_float tau, LGN_subregion subr) {
 	// address delay
     _float fac1 = 1.0f;
     for (unsigned int i=1; i<subr.nR; i++) fac1*=i;
@@ -33,20 +39,26 @@ __inline__ __device__ _float temporalKernel(_float tau, LGN_subregion subr) {
     return tp;
 }
 
-__device__ __inline__ _float get_contrast(unsigned int coneType, float x, float y, unsigned int iLayer) {
-    _float contrast;
+__device__ 
+__inline__
+Float get_intensity(unsigned int coneType, Float x0, Float y0, unsigned int iLayer) {
+    float x, y;
+    retina_to_plane(x0, y0, x, y);
+    Float contrast;
     switch (coneType) {
         case 0:
-            contrast = static_cast<_float>(tex2DLayered(L_retinaConSig, x, y, iLayer));
+            contrast = static_cast<Float>(tex2DLayered(L_retinaConSig, x, y, iLayer));
             break;
         case 1:
-            contrast = static_cast<_float>(tex2DLayered(M_retinaConSig, x, y, iLayer));
+            contrast = static_cast<Float>(tex2DLayered(M_retinaConSig, x, y, iLayer));
             break;
         case 2:
-            contrast = static_cast<_float>(tex2DLayered(S_retinaConSig, x, y, iLayer));
+            contrast = static_cast<Float>(tex2DLayered(S_retinaConSig, x, y, iLayer));
             break;
         case 3:
-            contrast = static_cast<_float>(tex2DLayered(L_retinaConSig, x, y, iLayer) + tex2DLayered(M_retinaConSig, x, y, iLayer) + tex2DLayered(S_retinaConSig, x, y, iLayer))/3.0;
+            contrast = static_cast<Float>(tex2DLayered(L_retinaConSig, x, y, iLayer) 
+                                        + tex2DLayered(M_retinaConSig, x, y, iLayer) 
+                                        + tex2DLayered(S_retinaConSig, x, y, iLayer))/3.0;
             break;
         default:
             printf("unrecognized cone type");
@@ -68,6 +80,8 @@ Per frame
     max spatial sample size: 32 x 32
     number of temporal kernel evaluation <= spatial sample size
 */
+// grid: nLGN blocks
+// block: spatialSample1D x spatialSample1D (npixel_1D)
 __global__ void LGN_convol(_float* __restrict__ LGNfr,
                            LGN_parameter pLGN, // consider pointer
                            unsigned int iSample0,
@@ -75,7 +89,7 @@ __global__ void LGN_convol(_float* __restrict__ LGNfr,
 
     __shared__ _float linearResponse[warpSize];
     extern __shared__ _float temporalWeight[];
-    _float convol;
+    Float convol;
 
     // consider store LGN_subregion, facRatio to __shared__
 
@@ -102,7 +116,7 @@ tau = 40*dt
           
         */
 
-    // load temporal weights
+    // load temporal weights using all the threads in the block
     unsigned int block_size = blockDim.x*blockDim.y;
     unsigned int nblock = nKernelSample/block_size;
 
@@ -139,25 +153,44 @@ tau = 40*dt
     _float sample_vol = dx * dy;
     _float spatialWeight = spatialProduct(x, y, 1.0f, center.k, center.rx, center.ry);
     
+    Float decay = expp(-samplePhase/tau_ave);
     unsigned int it = 0;
-    for (unsigned int iSample=iSample0+nKernelSample; iSample>iSample0; iSample--) {
+    Float old_qs = q[id]; // sum_i(F_i[exp(-t_i+1/tau) - exp(-t_i/tau)])*exp(-t/tau)
+    for (unsigned int iSample=iSample0; iSample<iSample0+nKernelSample; iSample++) {
         unsigned int jSample = iSample % nKernelSample;
-        _float filtered = spatialWeight * get_contrast(type, x0, y0, jSample);
 
-        block_reduce<_float>(linearResponse, filtered);
+        Float local_I = get_intensity(type, x0, y0, jSample);
+        block_reduce<Float>(linearResponse, local_I);
+        if (tid == 0) {
+            old_qs
+            Float this_q = linearResponse[0];
+            Float sum_I = linearResponse[0]*(1-decay);
+            sum_I += old_qs*decay + ;
+            if samplePhase
+            old_I = old_I + expp(
+        }
+        __device__
+        __inline__
+        Float next_I
+
+        Float filtered = spatialWeight * get_intensity(type, x0, y0, jSample);
+
+        block_reduce<Float>(linearResponse, filtered);
 
         if (tid == 0) {
             filtered = linearResponse[0];
             if (it == 0) {
-                filtered *= samplePhase;
+                filtered *= kernelSampleDt - samplePhase;
             } else {
                 if (it == nKernelSample-1) {
-                    filtered *= kernelSampleDt - samplePhase;
+                    filtered *= samplePhase;
+                } else {
+                    filtered *= kernelSampleDt;
                 }
             }
-            convol += filtered*temporalWeight[it]*sample_vol; 
+            convol += filtered*temporalWeight[nKernelSample-1-it]*sample_vol; 
+            it++;
         }
-        it++;
     }
 
         // surround
@@ -180,9 +213,9 @@ tau = 40*dt
     it = 0;
     for (unsigned int iSample=iSample0+nKernelSample; iSample>iSample0; iSample--) {
         unsigned int jSample = iSample % nKernelSample;
-        _float filtered = spatialWeight * get_contrast(type, x0, y0, jSample);
+        Float filtered = spatialWeight * get_intensity(type, x0, y0, jSample);
 
-        block_reduce<_float>(linearResponse, filtered);
+        block_reduce<Float>(linearResponse, filtered);
          
         if (tid == 0) { // acquire spatial filtered input
             filtered = linearResponse[0];
@@ -191,6 +224,8 @@ tau = 40*dt
             } else {
                 if (it == nKernelSample-1) {
                     filtered *= kernelSampleDt - samplePhase;
+                } else {
+                    filtered *= kernelSampleDt;
                 }
             }
             convol += filtered*temporalWeight[nKernelSample + it]*sample_vol; 
@@ -224,7 +259,7 @@ __global__ void LGN_maxResponse(_float* __restrict__ max_convol,
 
     __shared__ _float linearResponse[warpSize];
     extern __shared__ _float temporalWeight[];
-    _float convol;
+    Float convol;
 
     // consider store LGN_subregion, facRatio to __shared__
 
@@ -281,14 +316,14 @@ __global__ void LGN_maxResponse(_float* __restrict__ max_convol,
     _float spatialWeightS = spatialProduct(x_prime, y_prime, 1.0, surround.k, surround.rx, surround.ry);
     
     for (unsigned int it=0; it<nKernelSample; it++) {
-        _float filter = abs(spatialWeightC * temporalWeight[it]);
-        _float filter_prime = abs(spatialWeightS * temporalWeight[nKernelSample + it]);
+        Float filter = abs(spatialWeightC * temporalWeight[it]);
+        Float filter_prime = abs(spatialWeightS * temporalWeight[nKernelSample + it]);
 
         if (filter < filter_prime) {
             filter *= copy(covariant, signCS);
         } 
 
-        block_reduce<_float>(linearResponse, filter);
+        block_reduce<Float>(linearResponse, filter);
 
         if (tid == 0) { // acquire spatial filtered input
             convol += linearResponse[0]*sample_vol;
@@ -321,7 +356,7 @@ __global__ void LGN_maxResponse(_float* __restrict__ max_convol,
             filter *= copy(covariant, signCS);
         }
 
-        block_reduce<_float>(linearResponse, filter);
+        block_reduce<Float>(linearResponse, filter);
 
         if (tid == 0) { // acquire spatial filtered input
             convol += linearResponse[0]*sample_vol; 

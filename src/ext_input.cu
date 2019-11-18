@@ -1,9 +1,6 @@
-#include <cuda_runtime.h>
-#include <helper_functions.h>    // includes cuda.h and cuda_runtime_api.h
 #include <fstream>
 #define _USE_MATH_DEFINES
 #include <math.h>
-#include <helper_cuda.h>         // helper functions for CUDA error check
 #include "discrete_input_convol.h"
 #include "global.h"
 
@@ -12,11 +9,13 @@ texture<float, cudaTextureType2DLayered> LMS_frame;
 
 void init_layer(texture<float, cudaTextureType2DLayered> &layer) {
     layer.addressMode[0] = cudaAddressModeBorder;
-    layer.addressMode[1] = cudaAddressModeBorder; layer.filterMode = cudaFilterModeLinear;
-    layer.normalized = true;
+    layer.addressMode[1] = cudaAddressModeBorder; 
+    layer.filterMode = cudaFilterModeLinear;
+    layer.normalized = true; //accessing coordinates are normalized
 }
 
 void prep_sample(unsigned int iSample, unsigned int width, unsigned int height, float* L, float* M, float* S, cudaArray *dL, cudaArray *dM, cudaArray *dS, unsigned int nSample) {
+    // copy the three channels L, M, S of the #iSample frame to the cudaArrays dL, dM and dS
     cudaMemcpy3DParms params = {0};
     params.srcPos = make_cudaPos(0, 0, 0);
     params.dstPos = make_cudaPos(0, 0, iSample);
@@ -36,158 +35,39 @@ void prep_sample(unsigned int iSample, unsigned int width, unsigned int height, 
     checkCudaErrors(cudaMemcpy3D(&params));
 }
 
-// denorm is the min number of advance made in u1 such that u1 and u2 has no phase difference.
-unsigned int find_denorm(unsigned int u1, unsigned int u2, bool MorN, unsigned int &norm) { 
-    unsigned int m, n;
-    if (MorN) { //u2 > u1
-        m = u1;
-        if (u2%u1 == 0) { // only one zero phase
-            norm = 1;
-            return 1;
-        }
-        n = u2 - u1*(u2/u1);
-    } else {
-        m = u2;
-        if (u1%u2 == 0) { // only one zero phase
-            norm = 1;
-            return 1;
-        }
-        n = u1 - u2*(u1/u2);
-    }
-    printf("m = %u, n = %u\n", m, n);
-    assert (m>n);
-    for (int i=n; i>1; i--) {
-        if (n%i==0 && m%i==0) { 
-            norm = n/i;
-            return m/i;
-        } 
-    }
-    norm = 1;
-    return m;
-} 
 
-__global__ void plane_to_retina(float* __restrict__ LMS,
-                                unsigned int iFrame,
-                                unsigned int maxFrame,
-                                unsigned int nPixelPerFrame,
-                                unsigned int width, unsigned int height,
-                                float sup, float inf,
-                                float tem, float nas,
-                                float yb, float yt,
-                                float xr, float xl)
-{
-    // transform from normalized plane coord to retinal coord (tan)
-    
-    // all positives
-    //  retina(right-hand) FRAME(left-hand)
-    //         sup              yb 
-    //     tem     nas  ->  xr      xl
-    //         sup              yt 
-    //
-    unsigned int ix = blockIdx.x*blockDim.x + threadIdx.x;
-    unsigned int iy = blockIdx.y*blockDim.y + threadIdx.y;
-    if (ix < width && iy < height) {
-        float *outputChannel = LMS + blockIdx.z*maxFrame*nPixelPerFrame +iFrame*nPixelPerFrame + iy*width + ix;
-
-        float x = static_cast<float>(ix+0.5)/width;
-        float y = static_cast<float>(iy+0.5)/height;
-        float xmin = 1.0f/(2.0f*width);
-        float ymin = 1.0f/(2.0f*height);
-        float dx = xmin*2;
-        float dy = ymin*2;
-        
-        float xspan = (width-1.0f)/width;
-        float yspan = (height-1.0f)/height;
-        // xmin, ymin, dx, dy, xspan, yspan, are the same for retinal coordi because they are both normalized in texture memory
-        
-        float x0 = x - xmin;
-        float y0 = y - ymin;
-        
-        float tanx = tanf(x * (tem + nas)-nas);
-        float tany = tanf(y * (sup + inf)-sup);
-        
-        float tanx0 = tanf(x0 * (tem + nas)-nas);
-        float tany0 = tanf(y0 * (sup + inf)-sup);
-        
-        float tanx1 = tanf((x+xmin) * (tem + nas)-nas);
-        float tany1 = tanf((y+ymin) * (sup + inf)-sup);
-        
-        x0 = xmin + (xl + tanx0)/(xr+xl)*xspan;
-        y0 = ymin + (yb + tany0)/(yt+yb)*yspan;
-        
-        x = xmin + (xl + tanx)/(xr+xl)*xspan;
-        y = ymin + (yb + tany)/(yt+yb)*yspan;
-        
-        // distance in the frame between the two adjacent pixel in the retina
-        float xs = (tanx1-tanx0)/(xr+xl)*xspan;
-        float ys = (tany1-tany0)/(yt+yb)*yspan;
-        
-        unsigned int nx = static_cast<unsigned int>(ceil(xs/dx));
-        unsigned int ny = static_cast<unsigned int>(ceil(ys/dy));
-
-        float output = 0.0f;
-
-        if (nx == 1 && ny == 1) {
-            output = tex2DLayered(LMS_frame, x, y, blockIdx.z);
-        } else { // sum across
-            if (nx > 1 && ny == 1) {
-                for (unsigned int jx = 0; jx<nx; jx++) {
-                    float ax = x0 + jx*dx;
-                    output += tex2DLayered(LMS_frame, ax, y, blockIdx.z);
-                }
-            } else {
-                if (nx == 1 && ny > 1) {
-                    for (unsigned int jy = 0; jy<ny; jy++) {
-                        float ay = y0 + jy*dy;
-                        output += tex2DLayered(LMS_frame, x, ay, blockIdx.z);
-                    }
-                } else {
-                    for (unsigned int jx = 0; jx<nx; jx++) {
-                        float ax = x0 + jx*dx;
-                        for (unsigned int jy = 0; jy<ny; jy++) {
-                            float ay = y0 + jy*dy;
-                            output += tex2DLayered(LMS_frame, ax, ay, blockIdx.z);
-                        }
-                    }
-                }
-            }
-        }
-        __syncwarp();
-        // average 
-        *outputChannel = output/(nx*ny);
-    }
-}
-// to-do:
-// 1. use non-uniform temporal filtering to mimick cone behavior
-__global__ void intensity_to_contrast(float* __restrict__ LMS,
-									  unsigned int maxFrame,
-                                      unsigned int nPixelPerFrame,
-                                      unsigned int nKernelSample,
-                                      _float tPerFrame,
-                                      _float ave_tau,
-                                      unsigned int frame0,
-                                      unsigned int frame1,
-                                      _float framePhase0,
-                                      _float framePhase1,
-                                      bool simpleContrast)
+// what is contrast, when stimuli is natural, in general not drifiting grating
+// here defined as T-300 ms average of previous intensity
+__global__ 
+void intensity_to_contrast(float* __restrict__ LMS,
+						   unsigned int maxFrame,
+                           unsigned int nPixelPerFrame,
+                           unsigned int nKernelSample,
+                           Float tPerFrame,
+                           Float ave_tau,
+                           unsigned int frame0,
+                           unsigned int frame1,
+                           Float framePhase0,
+                           Float framePhase1,
+                           bool simpleContrast)
 {
     unsigned int id = blockIdx.x*blockDim.x + threadIdx.x;
     if (id < nPixelPerFrame) {
-        _float current;
-        _float average;
+        Float current;
+        Float average;
         unsigned int iChannel = blockIdx.y;
         // gridDim.y = 3 Channels
         // blockDim.x * gridDim.x = nPixelPerFrame
 
         float *inputChannel = LMS + iChannel*maxFrame*nPixelPerFrame;
-        float *outputChannel = LMS + gridDim.y*maxFrame*nPixelPerFrame + iChannel*nKernelSample*nPixelPerFrame + id;
+        Float *output = (Float*)(LMS + gridDim.y*maxFrame*nPixelPerFrame) + iChannel*nKernelSample*nPixelPerFrame + id;
         // 1                       latestframe   0
         // :    |->          |->          |->     :
         //  fP1              fP0              fP
         unsigned int iFrame = frame0 % maxFrame;
-        current = static_cast<_float>(inputChannel[iFrame*nPixelPerFrame + id]);
+        current = static_cast<Float>(inputChannel[iFrame*nPixelPerFrame + id]);
         if (!simpleContrast) {
-            if (ave_tau > framePhase0) { // then there is the ending frame, frame1 to be consider
+            if (ave_tau > framePhase0) { // then there is the ending frame, frame1, and frames inbetween to be considered
 
                 _float add_t;
                 iFrame = frame1 % maxFrame;
@@ -224,15 +104,16 @@ __global__ void intensity_to_contrast(float* __restrict__ LMS,
                 }
             }
             __syncwarp();
-            *outputChannel = c;
+            *output = c;
         } else {
-            *outputChannel = 2*current - 1;
+            *output = 2*current - 1;
         }
     }
 }
+// to-do:
+// 1. use non-uniform temporal filtering to mimick cone behavior, is it necessary?
 
 int main(int argc, char **argv) {
-   
     cudaDeviceProp deviceProps;
 
     checkCudaErrors(cudaGetDeviceProperties(&deviceProps, 0));
@@ -246,7 +127,6 @@ int main(int argc, char **argv) {
 #endif
     
 
-    // from the retina facing out
     std::ofstream fplane, fretina, fcontrast, fLGN_fr, fLGN_convol, fmax_convol;
     fplane.open("3xplane.bin", std::ios::out | std::ios::binary);
     fretina.open("3xretina.bin", std::ios::out | std::ios::binary);
@@ -255,38 +135,58 @@ int main(int argc, char **argv) {
     fLGN_convol.open("LGN_convol.bin", std::ios::out | std::ios::binary);
     fmax_convol.open("max_convol.bin", std::ios::out | std::ios::binary);
 
-    float init_luminance = 2.0/6.0; //1.0/6.0;
+    Float init_luminance = 2.0/6.0; //1.0/6.0;
 
-    float sup = 70*M_PI/180.0f; 
-    float inf = 30*M_PI/180.0f;
-    float tem = 45*M_PI/180.0f;
-    float nas = 85*M_PI/180.0f; // 100 see wiki, compromised for tan(pi/2)
+    // from the retina facing out
+    const Float toRad = M_PI/180.0f;
+    Float ecc; 
 
-    unsigned int width = 96;
-    unsigned int height = 64;
-    unsigned int local_width = width/8;
-    unsigned int local_height = height/8;
-	unsigned int nLGN_x;
-	unsigned int nLGN_y;
-    unsigned int nSpatialSample1D; // spatial kernel sample size = nSpatialSample1D x nSpatialSample1D
-    unsigned int nsig = 3;
-    float tau = 256.0f; 
-    float ave_tau = 300.0f; // in ms .. cone adaptation at 300ms https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1003289
-    _float dt = 0.1f; // in ms, better in fractions of binary 
-    unsigned int sampleRate = static_cast<unsigned int>(round(1000/dt));
+    Size width;
+    Size height;
+	Size nLGN_x;
+	Size nLGN_y;
+    Size nSpatialSample1D; // spatial kernel sample size = nSpatialSample1D x nSpatialSample1D
+    PosInt nsig = 3;
+    Float tau = 256.0f; // required length of memory for LGN temporal kernel
+    Float Itau = 300.0f; // in ms .. cone adaptation at 300ms https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1003289
+    PosInt frameRate; // Hz
+    Float dt; // in ms, better in fractions of binary 
     unsigned int nt;
-    unsigned int kernelRate;
-    sscanf(argv[argc-5], "%u", &nt);
-	sscanf(argv[argc-4], "%u", &nLGN_x);
-	sscanf(argv[argc-3], "%u", &nLGN_y);
-    sscanf(argv[argc-2], "%u", &kernelRate);
-    sscanf(argv[argc-1], "%u", &nSpatialSample1D);
-    bool simpleContrast = true;
+    PosInt nKernelSample; // kernel sampling
+    char tmpStr[101]
+        Itau
+        tau
+        frameRate
+        dt
+    sscanf(argv[argc-6], "%u", &nt);
+	sscanf(argv[argc-5], "%u", &nLGN_x);
+	sscanf(argv[argc-4], "%u", &nLGN_y);
+    sscanf(argv[argc-3], "%u", &nKernelSample);
+    sscanf(argv[argc-2], "%u", &nSpatialSample1D);
+    sscanf(argv[argc-1], "%100s", &tmpStr);
+    bool simpleContrast = true; // no cone adaptation if set to true
+    PosInt stepRate = round(1000/dt);
+    if (round(1000/dt) != 1000/dt) {
+        cout << "stepRate = 1000/dt has to be a integer.\n";
+        return EXIT_FAILURE;
+    }
+    if (frameRate > stepRate) {
+        cout << "stepRate cannot be smaller than frameRate, 1000/dt.\n";
+        return EXIT_FAILURE;
+    }
 
+    Size nPixelPerFrame = width*height;
+    Float dy = 2*tan(ecc)/height;
+    Float dx = 2*tan(ecc)/width;
+    
+    Size local_width = width/8;
+    Size local_height = height/8;
+
+    string LGN_prop_file = tmpStr;
     printf("simulating for %u steps, t = %f ms\n", nt, nt*dt);
-    unsigned int frameRate = 60; // Hz
-    unsigned int nLGN = nLGN_x * nLGN_y;
-    hLGN_parameter hLGN(nLGN);
+    Size nLGN = nLGN_x * nLGN_y;
+    // setup LGN here
+    LGN_parameter hLGN(nLGN);
 
     // set test param for LGN subregion RF kernel 
     /*
@@ -334,53 +234,57 @@ int main(int argc, char **argv) {
     }
 
     LGN_parameter dLGN(nLGN, hLGN);
+    // finish LGN setup
+    if (nSpatialSample1D > 32) {
+        cout << "nSpatialSample1D has to be smaller than 32 (1024 threads per block).\n"
+        return EXIT_FAILURE;
+    }
 
-    assert(nSpatialSample1D <= 32);
-
-    unsigned nPixelPerFrame = width*height;
-
-    float yb = tan(sup);
-    float yt = tan(inf);
-    float xr = tan(tem);
-    float xl = tan(nas);
-
-    // set params for layerd texture
+    // set params for layerd texture memory
     init_layer(L_retinaConSig);
     init_layer(M_retinaConSig);
     init_layer(S_retinaConSig);
 
     init_layer(LMS_frame);
 
-    unsigned int nRetrace = static_cast<unsigned int>(round(tau/dt));
-    unsigned int nKernelSample = static_cast<unsigned int>(tau/1000*kernelRate) + 1;
-
-    _float kernelSampleDt = static_cast<_float>(1000.0f/kernelRate);
-    printf("temporal kernel retraces %f ms, samples %u points (include the end nodes), sample rate = %u Hz\n", tau, nKernelSample, kernelRate);
-
-    unsigned int maxFrame;
-    _float maxFramef = ave_tau/1000 * frameRate;
-    if (round(maxFramef) == maxFramef) {
-       maxFrame = static_cast<unsigned int>(round(maxFramef) + 1);
-    } else {
-       maxFrame = static_cast<unsigned int>(ceil(maxFramef));
+    Size nRetrace = static_cast<Size>(round(tau/dt));
+    if (round(tau/dt) != tau/dt) {
+        cout << "tau should be divisible by dt.\n"; 
+        return EXIT_FAILURE;
     }
+    if (nRetrace % nKernelSample != 0) {
+        cout << "tau in #dt should be divisible by nKernelSample.\n"; 
+        return EXIT_FAILURE;
+    }
+    Float kernelSampleRate = static_cast<PosInt>(nKernelSample/tau*1000);
+
+    PosInt kernelSampleInterval = nRetrace/nKernelSample;
+    Float kernelSampleT0 = (kernelSampleInterval/2)*dt; 
+    Float kernelSampleDt = sampleInterval*dt;
+
+    printf("temporal kernel retraces %f ms, samples %u points, sample rate = %u Hz\n", tau, nKernelSample, kernelSampleRate);
+
+    PosInt maxFrame = static_cast<PosInt>(ceil(tau/1000 * frameRate) + 1; // max frame need to be stored in texture for temporal convolution with the LGN kernel.
+    //  |---|--------|--|
     
-    printf("temporal kernel retrace (tau) + contrast computation (ave_tau) = %f ms needs at most %u frames\n", tau+ave_tau, maxFrame);
+    printf("temporal kernel retrace (tau) = %f ms needs at most %u frames\n", tau, maxFrame);
 	_float tPerFrame = 1000.0f / frameRate; //ms
     printf("~ %f plusminus 1 kernel sample per frame\n", tPerFrame/kernelSampleDt);
 
+    // calculate phase difference between sampling point and next-frame point  
     bool moreDt = true;
-    if (sampleRate < frameRate) {
+    if (stepRate < frameRate) {
         moreDt = false;
         printf("frameRate > simulation rate!!");
     }
-
-    unsigned int norm;
-    unsigned int denorm = find_denorm(frameRate, sampleRate , moreDt, norm);
-    unsigned *exact_norm = new unsigned int[denorm];
-    unsigned int current_norm = 0;
+    // norm/denorm = the normalized advancing phase at each step, 
+    // denorm is the mininum number of frames such that total frame length is a multiple of dt.
+    PosInt norm;
+    PosInt denorm = find_denorm(frameRate, stepRate , moreDt, norm);
+    PosInt *exact_norm = new PosInt[denorm]; // to be normalized by denorm to form normalized phase
+    PosInt current_norm = 0;
     printf("%u exact phases in [0,1]: ", denorm);
-    for (unsigned int i=0; i<denorm; i++) {
+    for (PosInt i=0; i<denorm; i++) {
         if (current_norm>denorm) {
             current_norm -= denorm;
         } 
@@ -394,54 +298,26 @@ int main(int argc, char **argv) {
     }
     assert(current_norm == denorm);
 
-    unsigned int *exact_it = new unsigned int[denorm];
-    for (unsigned int i=0; i<denorm; i++) {
-        exact_it[i] = (i*sampleRate)/frameRate;
+    PosInt *exact_it = new PosInt[denorm];
+    for (PosInt i=0; i<denorm; i++) {
+        exact_it[i] = (i*stepRate)/frameRate; // => i*Tframe/Tdt
+        printf("i == %f", (exact_it[i] + (Float)exact_norm[i]/denorm)*dt*frameRate);
     }
-    assert((sampleRate*denorm) % frameRate == 0);
-    unsigned int co_product = (sampleRate*denorm)/frameRate;
-
-    
-    moreDt = true;
-    if (sampleRate < kernelRate) {
-        moreDt = false;
-        printf("kernelRate > simulation rate!!");
-    }
-
-    unsigned int kernel_norm;
-    unsigned int kernel_denorm = find_denorm(kernelRate, sampleRate, moreDt, kernel_norm);
-    unsigned *exact_kernel_norm = new unsigned int[kernel_denorm];
-    current_norm = 0;
-    printf("%u exact phases in [0,1]: ", kernel_denorm);
-    for (unsigned int i=0; i<kernel_denorm; i++) {
-        if (current_norm>kernel_denorm) {
-            current_norm -= kernel_denorm;
-        } 
-        exact_kernel_norm[i] = current_norm;
-        if (i<kernel_denorm - 1) {
-            printf("%u/%u, ", current_norm, kernel_denorm);
-        } else {
-            printf("%u/%u\n", current_norm, kernel_denorm);
-        }
-        current_norm += kernel_norm;
-    }
-    assert(current_norm == kernel_denorm);
-
-    unsigned int *exact_kernel_it = new unsigned int[kernel_denorm];
-    for (unsigned int i=0; i<kernel_denorm; i++) {
-        exact_kernel_it[i] = (i*sampleRate)/kernelRate;
-    }
-    assert((sampleRate*kernel_denorm) % kernelRate == 0);
-    unsigned int co_kernel_product = (sampleRate*kernel_denorm)/kernelRate;
+    // i frames' length in steps = exact_it[i] + exact_norm[i]/denorm
+    assert((stepRate*denorm) % frameRate == 0);
+    unsigned int co_product = (stepRate*denorm)/frameRate; 
+    // the number of minimum steps to meet frameLength * denorm with 0 phase
 
     unsigned int nChannel = 3; // L, M, S
+    // one cudaArray per channel
     cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 0, 0, 0, cudaChannelFormatKindFloat);
     cudaArray *cuArr_L;
     cudaArray *cuArr_M;
     cudaArray *cuArr_S;
-    checkCudaErrors(cudaMalloc3DArray(&cuArr_L, &channelDesc, make_cudaExtent(width, height, nKernelSample), cudaArrayLayered));
-    checkCudaErrors(cudaMalloc3DArray(&cuArr_M, &channelDesc, make_cudaExtent(width, height, nKernelSample), cudaArrayLayered));
-    checkCudaErrors(cudaMalloc3DArray(&cuArr_S, &channelDesc, make_cudaExtent(width, height, nKernelSample), cudaArrayLayered));
+    // allocate cudaArrays on the device
+    checkCudaErrors(cudaMalloc3DArray(&cuArr_L, &channelDesc, make_cudaExtent(width, height, maxFrame), cudaArrayLayered));
+    checkCudaErrors(cudaMalloc3DArray(&cuArr_M, &channelDesc, make_cudaExtent(width, height, maxFrame), cudaArrayLayered));
+    checkCudaErrors(cudaMalloc3DArray(&cuArr_S, &channelDesc, make_cudaExtent(width, height, maxFrame), cudaArrayLayered));
 
     cudaArray *cuArr_frame;
     checkCudaErrors(cudaMalloc3DArray(&cuArr_frame, &channelDesc, make_cudaExtent(width, height, nChannel), cudaArrayLayered));
@@ -452,32 +328,33 @@ int main(int argc, char **argv) {
     checkCudaErrors(cudaBindTextureToArray(S_retinaConSig,  cuArr_S, channelDesc));
     checkCudaErrors(cudaBindTextureToArray(LMS_frame,  cuArr_frame, channelDesc));
 
-    float* LMS;
+    float* LMS; // memory head
 
-    // LMS retina projection intensity array of [maxFrame] frames from t - (tau + ave_tau)
+    // LMS retina projection intensity array of [maxFrame] frames from t - (tau + ave_tau) on device
     float* __restrict__ dL;
     float* __restrict__ dM;
     float* __restrict__ dS;
-    // LMS contrast signal
-    float* __restrict__ cL;
-    float* __restrict__ cM;
-    float* __restrict__ cS;
+    // LMS contrast signal on device
+    Float* __restrict__ cL;
+    Float* __restrict__ cM;
+    Float* __restrict__ cS;
 
-    checkCudaErrors(cudaMalloc((void **) &LMS, nPixelPerFrame*sizeof(float)*3*maxFrame + nPixelPerFrame*sizeof(float)*3*nKernelSample));
+    // allocate the memory for a video of maxFrame with channels, and the memory for the contrast signal extracted from the video by sampling
+    checkCudaErrors(cudaMalloc((void **) &LMS, nPixelPerFrame*sizeof(float)*3*maxFrame + nPixelPerFrame*sizeof(Float)*3*nKernelSample));
 
     dL = LMS;
     dM = dL + nPixelPerFrame*maxFrame;
     dS = dM + nPixelPerFrame*maxFrame;
 
-    cL = dS + nPixelPerFrame*maxFrame;
+    cL = (Float*) (dS + nPixelPerFrame*maxFrame);
     cM = cL + nPixelPerFrame*nKernelSample;
     cS = cM + nPixelPerFrame*nKernelSample;
 
-    _float* LGN_fr = new _float[nLGN];
-    _float* __restrict__ d_LGN_fr;
-    _float* __restrict__ max_convol;
-    checkCudaErrors(cudaMalloc((void **) &d_LGN_fr, nLGN*sizeof(_float)));
-    checkCudaErrors(cudaMalloc((void **) &max_convol, nLGN*sizeof(_float)));
+    Float* LGN_fr = new _float[nLGN];
+    Float* __restrict__ d_LGN_fr;
+    Float* __restrict__ max_convol;
+    checkCudaErrors(cudaMalloc((void **) &d_LGN_fr, nLGN*sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void **) &max_convol, nLGN*sizeof(Float)));
 
     // initialize average to normalized mean luminnace
     cudaStream_t s0, s1, s2;
@@ -485,7 +362,7 @@ int main(int argc, char **argv) {
     checkCudaErrors(cudaStreamCreate(&s1));
     checkCudaErrors(cudaStreamCreate(&s2));
 
-    float init_contrast = init_luminance;
+    Float init_contrast = init_luminance;
     dim3 initBlock(blockSize, 1, 1);
     dim3 initGrid((nPixelPerFrame*nKernelSample + blockSize-1) / blockSize, 1, 1);
     init<<<initGrid, initBlock, 0, s0>>>(cL, init_contrast, nPixelPerFrame * nKernelSample);
@@ -526,37 +403,25 @@ int main(int argc, char **argv) {
     unsigned int iFrame = 0; //latest frame inserted into the dL dM dS,  initialization not necessary
     unsigned int iPhase = 0;
     unsigned int iPhase_old = 0; // initialization not necessary
-    _float framePhase;
+    Float framePhase;
     unsigned int jt = 0;
 
     unsigned int currentSample = 0; // current frame number from stimulus
     unsigned int iSample = 0; //latest frame inserted into the dL dM dS,  initialization not necessary
     unsigned int kPhase = 0;
     unsigned int kPhase_old = 0; // initialization not necessary
-    _float samplePhase;
+    Float samplePhase;
     unsigned int kt = 0;
 
     for (unsigned int it = 0; it < nt; it++) {
 
         _float t = it*dt;
 
+        // next frame comes between (t, t+dt), read and store frame to texture memory
         if (it+1 > (currentFrame/denorm)*co_product + exact_it[iPhase]) {
-            jt = it;
+            jt = it; // starting it for the current frame
             iFrame = currentFrame % maxFrame;
-            // generate/read new frame
-            for (unsigned int ih = 0; ih < height; ih++) {
-                for (unsigned int iw = 0; iw < width; iw++) {
-                    //L[ih*width + iw] =    iw*1.0f/width + ih + iFrame*height;
-                    //M[ih*width + iw] = 2*(iw*1.0f/width + ih + iFrame*height);
-                    //S[ih*width + iw] = 3*(iw*1.0f/width + ih + iFrame*height);
-                    unsigned int id = ih*width + iw;
-                    L[id] = init_luminance + currentFrame/10 * init_luminance/2;
-                    M[id] = init_luminance + currentFrame/10 * init_luminance/2;
-                    S[id] = init_luminance + currentFrame/10 * init_luminance/2;
-                }
-            }
-            //fplane.write((char*)hLMS_frame, nChannel*nPixelPerFrame*sizeof(float));
-
+            // TODO: read the new frame
             {
                 //cp to texture mem in device
                 cudaMemcpy3DParms params = {0};
@@ -571,30 +436,18 @@ int main(int argc, char **argv) {
                 checkCudaErrors(cudaEventRecord(i0));
                 checkCudaErrors(cudaEventSynchronize(i0));
             }
-            // transform from euclidean coord to retinal visual field in rad 1:1 and store to dLMS for later average
-            plane_to_retina<<<globalGrid, localBlock>>>(LMS, iFrame, maxFrame, nPixelPerFrame, width, height, sup, inf, tem, nas, yb, yt, xr, xl);
-            getLastCudaError("plane_to_retina failed");
-
-            checkCudaErrors(cudaEventRecord(i1));
-            checkCudaErrors(cudaEventSynchronize(i1));
-
-            ///* check
-                checkCudaErrors(cudaMemcpy(L, &(dL[iFrame*nPixelPerFrame]), nPixelPerFrame*sizeof(float), cudaMemcpyDeviceToHost));
-                checkCudaErrors(cudaMemcpy(M, &(dM[iFrame*nPixelPerFrame]), nPixelPerFrame*sizeof(float), cudaMemcpyDeviceToHost));
-                checkCudaErrors(cudaMemcpy(S, &(dS[iFrame*nPixelPerFrame]), nPixelPerFrame*sizeof(float), cudaMemcpyDeviceToHost));
-                checkCudaErrors(cudaEventRecord(i2));
-                checkCudaErrors(cudaEventSynchronize(i2));
-                // store frame
-                fretina.write((char*)hLMS_frame, nChannel*nPixelPerFrame*sizeof(float));
-            //*/
-            printf("frame #%i prepared at t = %f, %f%% from previous t = %f.\n", currentFrame, currentFrame*tPerFrame, static_cast<_float>(exact_norm[iPhase])/denorm, t);
+            printf("frame #%i prepared at t = %f, in (%f,%f) ~ %.3f%%.\n", currentFrame, currentFrame*tPerFrame, t, t+dt, exact_norm[iPhase]*100.0f/denorm);
             currentFrame++;
             iPhase_old = iPhase;
             iPhase = (iPhase + 1) % denorm;
         }
+        //->|  |<-exact_norm/denorm
+        //  |--|------frame------|
+        //  |----|----|
+        // jt   jt+1  it
+        framePhase = ((it - jt + 1)*denorm - exact_norm[iPhase_old])/denorm*dt; // current frame length shown till t+dt
 
-        framePhase = (((it - jt + 1)*denorm - exact_norm[iPhase_old])*dt)/denorm;
-        // convert intensity to contrast for temporal kernel sample points, thus frame-wise info incorporated into kernel sample points
+        // next kernel sample, use intensity to contrast to get contrast signal
         if (it+1 > (currentSample/kernel_denorm)*co_kernel_product + exact_kernel_it[kPhase]) {
             kt = it;
             iSample = currentSample % nKernelSample;
@@ -626,7 +479,7 @@ int main(int argc, char **argv) {
         samplePhase = (((it - kt + 1)*kernel_denorm - exact_kernel_norm[kPhase_old])*dt)/kernel_denorm;
 
         // perform kernel convolution with built-in texture interpolation
-        LGN_convol<<<convolGrid, convolBlock, sizeof(_float)*2*nKernelSample>>>(d_LGN_fr, dLGN, iSample, samplePhase, nKernelSample, kernelSampleDt, nsig, nSpatialSample1D);
+        LGN_convol<<<convolGrid, convolBlock, sizeof(_float)*2*nKernelSample>>>(d_LGN_fr, dLGN, iSample, framePhase, nKernelSample, kernelSampleDt, nsig, nSpatialSample1D);
 		getLastCudaError("LGN_convol failed");
         checkCudaErrors(cudaMemcpy(LGN_fr, d_LGN_fr, nLGN*sizeof(_float), cudaMemcpyDeviceToHost));
         fLGN_convol.write((char*)LGN_fr, nLGN*sizeof(_float));

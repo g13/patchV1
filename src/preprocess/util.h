@@ -90,4 +90,34 @@ std::vector<std::vector<T>> read_listOfList(std:string filename, bool print = fa
     } while (!input_file.eof());
 	input_file.close()
 	return data;
-}
+} 
+
+// denorm is the min number of advance made in u1 such that u1 and u2 has no phase difference.
+PosInt find_denorm(PosInt u1, PosInt u2, bool MorN, PosInt &norm) { 
+    PosInt m, n;
+    if (MorN) { //u2 > u1
+        m = u1;
+        if (u2%u1 == 0) { // only one zero phase
+            norm = 1;
+            return 1;
+        }
+        n = u2 - u1*(u2/u1);
+    } else {
+        m = u2;
+        if (u1%u2 == 0) { // only one zero phase
+            norm = 1;
+            return 1;
+        }
+        n = u1 - u2*(u1/u2);
+    }
+    printf("m = %u, n = %u\n", m, n);
+    assert (m>n);
+    for (PosInt i=n; i>1; i--) {
+        if (n%i==0 && m%i==0) { 
+            norm = n/i;
+            return m/i;
+        } 
+    }
+    norm = 1;
+    return m;
+} 
