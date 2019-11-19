@@ -13,6 +13,7 @@
 extern texture<float, cudaTextureType2DLayered> L_retinaConSig;
 extern texture<float, cudaTextureType2DLayered> M_retinaConSig;
 extern texture<float, cudaTextureType2DLayered> S_retinaConSig;
+extern const float sqrt2;
 
 #ifdef SINGLE_PRECISION
 	#define square_root sqrtf

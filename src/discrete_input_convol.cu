@@ -9,33 +9,27 @@
 // http://www.cs.ust.hk/mjg_lib/bibs/DPSu/DPSu.Files/Ga95.PDF
 // block processing file:///C:/Users/gueux/Desktop/FFTConvolution.pdf
 // direct form:
-__inline__ 
 __device__ 
+__inline__ 
 _float AexpTau(_float a, _float tau) {
     return a * expp(-tau);
 }
 
-__inline__ 
 __device__ 
-_float spatialProduct(_float x, _float y, _float contrast, _float k, _float rx, _float ry) {
-    return k * expp(-x*x/(rx*rx) - y*y/(ry*ry)) * contrast;
+__inline__ 
+_float spatialKernel(Float x, Float y, Float k, Float rx, Float ry) {
+    return k * expp(-x*x/(rx*rx) - y*y/(ry*ry));
 }
 
-__inline__ 
 __device__ 
-_float temporalKernel(_float tau, LGN_subregion subr) {
-	// address delay
-    _float fac1 = 1.0f;
-    for (unsigned int i=1; i<subr.nR; i++) fac1*=i;
-    _float fac2 = fac1;
-    for (unsigned int i=subr.nR; i<subr.nD; i++) fac2*=i;
+__inline__ 
+_float temporalKernel(Float tau, Temporal_component &temp, Float fac1, Float fac2) {
+    Float tau1 = tau/subr.tauR;
+    Float tau2 = tau/subr.tauD;
+    Float A1 = power(tau1, subr.nR-1)/(subr.tauR * fac1);
+    Float A2 = power(tau2, subr.nD-1)/(subr.tauD * fac2);
 
-    _float tau1 = tau/subr.tauR;
-    _float tau2 = tau/subr.tauD;
-    _float A1 = power(tau1, subr.nR-1)/(subr.tauR * fac1);
-    _float A2 = power(tau2, subr.nD-1)/(subr.tauD * fac2);
-
-    _float tp = subr.ratio * AexpTau(A1, tau1) - AexpTau(A2, tau2);
+    Float tp = subr.ratio * AexpTau(A1, tau1) - AexpTau(A2, tau2);
     return tp;
 }
 
