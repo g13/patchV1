@@ -479,7 +479,7 @@ int main(int argc, char **argv) {
         samplePhase = (((it - kt + 1)*kernel_denorm - exact_kernel_norm[kPhase_old])*dt)/kernel_denorm;
 
         // perform kernel convolution with built-in texture interpolation
-        LGN_convol<<<convolGrid, convolBlock, sizeof(_float)*2*nKernelSample>>>(d_LGN_fr, dLGN, iSample, framePhase, nKernelSample, kernelSampleDt, nsig, nSpatialSample1D);
+        LGN_convol_c1s<<<convolGrid, convolBlock, sizeof(_float)*2*nKernelSample>>>(d_LGN_fr, dLGN, iSample, framePhase, nKernelSample, kernelSampleDt, nsig, nSpatialSample1D);
 		getLastCudaError("LGN_convol failed");
         checkCudaErrors(cudaMemcpy(LGN_fr, d_LGN_fr, nLGN*sizeof(_float), cudaMemcpyDeviceToHost));
         fLGN_convol.write((char*)LGN_fr, nLGN*sizeof(_float));

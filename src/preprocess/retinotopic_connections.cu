@@ -356,7 +356,7 @@ int main(int argc, char *argv[]) {
 
     // write poolList to disk
 	print_listOfList<Int>(poolList);
-	write_listOfList<Int>("LGNtoV1_idList.bin", poolList);
-	write_listOfList<Float>("LGNtoV1_srList.bin", srList);
+	write_listOfList<Int>("LGNtoV1_idList.bin", poolList, false);
+	write_listOfList<Float>("LGNtoV1_srList.bin", srList, false);
     return 0;
 }

@@ -14,8 +14,8 @@
 #include <functional>
 #include <cuda.h>
 #include <helper_cuda.h>
-#include "cuda_util.h"
-#include "types.h"
+#include "../implicit/cuda_util.h"
+#include "../types.h"
 #include "util.h"
 #include "Dow_et_al_1981.h"
 

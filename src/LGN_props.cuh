@@ -1,6 +1,9 @@
 #ifndef LGN_PROPS_CUH
 #define LGN_PROPS_CUH
 
+// Array structure: (type, nLGN), different from spatial and temporal weight storage, see "discrete_input_convol.cu->store_weight" which are (nLGN, type).
+// This is to optimize read and write in CUDA
+
 struct Spatial_component {
     Float* mem_block;
     Float* __restrict__ x; // normalize to (0,1)
@@ -9,14 +12,14 @@ struct Spatial_component {
     Float* __restrict__ ry;
     Float* __restrict__ k; // its sign determine On-Off
 
-    void allocAndMemcpy(unsigned int nLGN, hspatial_component &host) {
-		size_t memSize = 5*sizeof(Float)*nLGN;
+    void allocAndMemcpy(Size arraySize, hSpatial_component &host) {
+		size_t memSize = 5*arraySize*sizeof(Float) ;
         checkCudaErrors(cudaMalloc((void**)&mem_block, memSize));
         x = mem_block;
-        rx = x + nLGN;
-        y = rx + nLGN;
-        ry = y + nLGN;
-        k = ry + nLGN;
+        rx = x + arraySize;
+        y = rx + arraySize;
+        ry = y + arraySize;
+        k = ry + arraySize;
         checkCudaErrors(cudaMemcpy(mem_block, host.mem_block, memSize, cudaMemcpyHostToDevice));
     }
 	void freeMem() {
@@ -33,30 +36,20 @@ struct Temporal_component {
     Float* __restrict__ nR; // factorials also defined in floating points as gamma function
     Float* __restrict__ nD;
 
-    void allocAndMemcpy(unsigned int nLGN, htemporal_component &host) {
-		size_t memSize = 6*sizeof(Float)*nLGN;
+    void allocAndMemcpy(Size arraySize, hTemporal_component &host) {
+		size_t memSize = 6*arraySize*sizeof(Float);
         checkCudaErrors(cudaMalloc((void**)&mem_block, memSize));
         tauR = mem_block;
-        tauD = tauR + nLGN;
-		delay = tauD + nLGN;
-        ratio = delay + nLGN;
-        nR = ratio + nLGN;
-        nD = nR + nLGN;
+        tauD = tauR + arraySize;
+		delay = tauD + arraySize;
+        ratio = delay + arraySize;
+        nR = ratio + arraySize;
+        nD = nR + arraySize;
         checkCudaErrors(cudaMemcpy(mem_block, host.mem_block, memSize, cudaMemcpyHostToDevice));
     }
 	void freeMem() {
 		cudaFree(mem_block);
 	}
-};
-
-struct Cone_specific {
-    Spatial_component spatial;
-    Temporal_component temporal;
-
-    void allocAndMemcpy(unsigned int nLGN, hcone_specific &host) {
-        spatial.allocAndMemcpy(nLGN, host.spatial);
-        temporal.allocAndMemcpy(nLGN, host.temporal);
-    }
 };
 
 struct Static_nonlinear {
@@ -67,13 +60,14 @@ struct Static_nonlinear {
     Float* __restrict__ a;
     Float* __restrict__ b;
 
-    void allocAndMemcpy(unsigned int nLGN, hstatic_nonlinear &host) {
-        checkCudaErrors(cudaMalloc((void**)&mem_block, 4*nLGN*sizeof(Float)));
+    void allocAndMemcpy(Size arraySize, hStatic_nonlinear &host) {
+        size_t memSize = 4*arraySize*sizeof(Float);
+        checkCudaErrors(cudaMalloc((void**)&mem_block, memSize));
         c50 = memblock;
-        sharpness = c50 + nLGN;
-        a = sharpness + nLGN;
-        b = a + nLGN;
-        checkCudaErrors(cudaMemcpy(mem_block, host.mem_block, 4*nLGN*sizeof(Float), cudaMemcpyHostToDevice));
+        sharpness = c50 + arraySize;
+        a = sharpness + arraySize;
+        b = a + arraySize;
+        checkCudaErrors(cudaMemcpy(mem_block, host.mem_block, memSize, cudaMemcpyHostToDevice));
     }
 	void freeMem() {
 		cudaFree(mem_block);
@@ -92,11 +86,11 @@ struct Static_nonlinear {
     }
 };
 
+// collect all the components and send to device
 struct LGN_parameter {
-    // block allocation
-    Size nLGN;
-    cone_specific center, surround;
-    static_nonlinear logistic;
+    Spatial_component spatial;
+    Temporal_component temporal;
+    Static_nonlinear logistic;
 
     SmallSize* mem_block;
     // 0: L
@@ -106,22 +100,23 @@ struct LGN_parameter {
     // 4: L+M
     // 5: M+S
     // 6: S+L
-    SmallSize* __restrict__ centerType;
-    SmallSize* __restrict__ surroundType;
-    Float* __restrict__ covariant; // color in the surround and center ay covary
+    SmallSize* __restrict__ coneType;
+    Float* __restrict__ covariant; // color in the surround and center ay co-vary (
+    // ASSUME: mutiple surround types vs single center type
     
     LGN_parameter(hLGN_parameter &host) {
-        nLGN = host.nLGN;
-        center.allocAndMemcpy(nLGN, host.center);
-        surround.allocAndMemcpy(nLGN, host.surround);
+        Size nLGN = host.nLGN;
+        SmallSize nType = host.nType;
+        Size arraySize = nLGN*nType;
+        temporal.allocAndMemcpy(arraySize, host.temporal);
+        spatial.allocAndMemcpy(arraySize, host.spatial);
         logistic.allocAndMemcpy(nLGN, host.logistic);
 
-        size_t memSize = (2*sizeof(SmallSize)+sizeof(Float))*nLGN;
+        size_t memSize = arraySize*sizeof(SmallSize)+sizeof(Float)*(nType-1)*nLGN;
         checkCudaErrors(cudaMalloc((void**)&mem_block, memSize));
 
-        centerType = mem_block;
-        surroundType = centerType + nLGN;
-        covariant = (Float*) (surroundType + nLGN);
+        coneType = mem_block;
+        covariant = (Float*) (coneType + arraySize);
         checkCudaErrors(cudaMemcpy(mem_block, host.mem_block, memSize, cudaMemcpyHostToDevice));
     }
 	void freeMem() {
@@ -150,7 +145,6 @@ struct Zip_temporal {
         tauD = t.tauD[id];
         ratio = t.ratio[id];
     }
-
 }
 
 struct Zip_spatial {

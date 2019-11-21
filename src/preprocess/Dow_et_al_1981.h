@@ -4,7 +4,7 @@
 #include <vector>
 #include <iostream>
 #include <utility>
-#include "types.h"
+#include "../types.h"
 
 std::pair<Float, Float> lognstats(const Float m, const Float s);
 std::vector<Float> generate_sfreq(const Size n, RandomEngine &rGen);
