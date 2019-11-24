@@ -124,13 +124,11 @@ struct hStatic_nonlinear {
             sharpness[i] = _sharpness[i]
         }
         for (Size i=0; i<nLGN; i++) {
-            // pre cache a and c
-            const Float expk = exp(sharpness[i]);
-            const Float expkr = exp(sharpness[i]*c50[i]);
-            const Float expkr_1 = expkr/expk;
-            const Float c = (expkr+expk)/(expkr*(1-expk)) * (1-spont[i]);
-            a[i] = -c*(1+expkr);
-            b[i] = c + spont[i];
+            // pre cache a and b
+            const Float e_kc50 = exp(sharpness[i]*c50[i]);
+            const Float e_kc50_k = exp(sharpness[i]*c50[i]-sharpness[i]);
+            a[i] = (1-spont[i])*(1+e_kc50)*(1+e_kc50_k)/(e_kc50-e_kc50_k);
+            b[i] = 1-a[i]/(1+e_kc50_k);
         }
     }
 	void freeMem() {

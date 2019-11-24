@@ -35,84 +35,6 @@ void prep_sample(unsigned int iSample, unsigned int width, unsigned int height, 
     checkCudaErrors(cudaMemcpy3D(&params));
 }
 
-
-// what is contrast, when stimuli is natural, in general not drifiting grating
-// here defined as T-300 ms average of previous intensity
-__global__ 
-void intensity_to_contrast(float* __restrict__ LMS,
-						   unsigned int maxFrame,
-                           unsigned int nPixelPerFrame,
-                           unsigned int nKernelSample,
-                           Float tPerFrame,
-                           Float ave_tau,
-                           unsigned int frame0,
-                           unsigned int frame1,
-                           Float framePhase0,
-                           Float framePhase1,
-                           bool simpleContrast)
-{
-    unsigned int id = blockIdx.x*blockDim.x + threadIdx.x;
-    if (id < nPixelPerFrame) {
-        Float current;
-        Float average;
-        unsigned int iChannel = blockIdx.y;
-        // gridDim.y = 3 Channels
-        // blockDim.x * gridDim.x = nPixelPerFrame
-
-        float *inputChannel = LMS + iChannel*maxFrame*nPixelPerFrame;
-        Float *output = (Float*)(LMS + gridDim.y*maxFrame*nPixelPerFrame) + iChannel*nKernelSample*nPixelPerFrame + id;
-        // 1                       latestframe   0
-        // :    |->          |->          |->     :
-        //  fP1              fP0              fP
-        unsigned int iFrame = frame0 % maxFrame;
-        current = static_cast<Float>(inputChannel[iFrame*nPixelPerFrame + id]);
-        if (!simpleContrast) {
-            if (ave_tau > framePhase0) { // then there is the ending frame, frame1, and frames inbetween to be considered
-
-                _float add_t;
-                iFrame = frame1 % maxFrame;
-                _float last = static_cast<_float>(inputChannel[iFrame*nPixelPerFrame + id]);
-                _float mid = 0.0;
-                for (unsigned int frame = frame1 + 1; frame < frame0; frame++) {
-                    iFrame = frame % maxFrame;
-                    mid += static_cast<_float>(inputChannel[iFrame*nPixelPerFrame + id]);
-                }
-
-                add_t = framePhase0 + framePhase1 + (frame0-frame1-1)*tPerFrame;
-                average = (current*framePhase0 + mid*tPerFrame + last*framePhase1)/add_t;
-            } else {
-                // averaging windows ends within framePhase0
-                average = current;
-            }
-
-            _float c;
-
-            if (average > 0.0) { 
-                c = (current - average)/average;
-                if (c > 1.0) {
-                    c = 1.0;
-                } else {
-                    if (c < -1.0) {
-                        c = -1.0;
-                    }
-                }
-            } else {
-                if (current == 0.0) {
-                    c = 0.0;
-                } else { 
-                    c = 1.0;
-                }
-            }
-            __syncwarp();
-            *output = c;
-        } else {
-            *output = 2*current - 1;
-        }
-    }
-}
-// to-do:
-// 1. use non-uniform temporal filtering to mimick cone behavior, is it necessary?
-
 int main(int argc, char **argv) {
     cudaDeviceProp deviceProps;
 
@@ -523,19 +445,3 @@ int main(int argc, char **argv) {
     cudaDeviceReset();
     return 0;
 }
-
-/*
-    __global__ void load(float *data, int nx, int ny) {
-        unsigned int x = blockIdx.x*blockDim.x + threadIdx.x
-        unsigned int y = blockIdx.y*blockDim.y + threadIdx.y;
-    
-        surf2Dwrite(data[y * nx + x], outputSurface, x*sizeof(float), y, cudaBoundaryModeTrap);
-    }
-    
-    void init_tex(texture<float, cudaTextureType2D, cudaReadModeElementType> &tex) {
-        tex.addressMode[0] = cudaAddressModeBorder;
-        tex.addressMode[1] = cudaAddressModeBorder;
-        tex.filterMode = cudaFilterModeLinear;
-        tex.normalized = true;
-    }
-*/
