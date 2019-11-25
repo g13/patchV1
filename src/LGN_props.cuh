@@ -75,13 +75,13 @@ struct Static_nonlinear {
     // transform convolution result (input) with logistic function and return as firing rate
     __device__
     Float transform(unsigned int id, Float input) {
-		// loads
-        Float K = sharpness[id];
+		// load from global memory
         Float C50 = c50[id];
+        Float K = sharpness[id];
         Float A = a[id];
         Float B = b[id];
         // calculation
-        Float X = 1/(1+expp(-K*(input-C50)));
+        Float X = 1/(1+expp(K*(C50-input)));
         return A*X + B;
     }
 };

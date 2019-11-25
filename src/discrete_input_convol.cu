@@ -96,25 +96,6 @@ Float get_intensity(unsigned int coneType, float x, float y, unsigned int iLayer
     return contrast;
 }
 
-__global__ 
-void LGN_nonlinear(
-        Static_nonlinear &logistic,
-        Float* __restrict__ max_convol,
-        Float* __restrict__ LGN_fr
-) {
-	unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
-	Float _max_convol = max_convol[id];
-	// min = -max;
-	_float current_convol = LGN_fr[id];
-    if (current_convol < 0) {
-        current_convol = 0;
-    }
-    __syncwarp(); // check necessity
-
-    Float ratio = logistic.transform(id, current_convol/_max_convol);
-    LGN_fr[id] = current_convol * ratio;
-}
-
 // for 2 cone-types LGN only, can be generalized for more cone-types
 // gridSize: (nLGN, nType) blocks for store 1-D nLGN for convol
 // blockSize: spatialSample1D x spatialSample1D (npixel_1D)
@@ -560,3 +541,23 @@ void LGN_convol_c1s(
         LGNfr[id] = convol;
     }
 }
+
+__global__ 
+void LGN_nonlinear(
+        Static_nonlinear &logistic,
+        Float* __restrict__ max_convol,
+        Float* __restrict__ LGN_fr
+) {
+	unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
+	Float _max_convol = max_convol[id];
+	// min = -max;
+	_float current_convol = LGN_fr[id];
+    if (current_convol < 0) {
+        current_convol = 0;
+    }
+    __syncwarp(); // check necessity
+
+    Float ratio = logistic.transform(id, current_convol/_max_convol);
+    LGN_fr[id] = current_convol * ratio;
+}
+
