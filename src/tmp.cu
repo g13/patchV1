@@ -3,6 +3,7 @@
 #include <math.h>
 #include "discrete_input_convol.h"
 #include "global.h"
+#include "boost/program_options.hpp"
 
 // the retinal discrete x, y as cone receptors id
 texture<float, cudaTextureType2DLayered> LMS_frame;
@@ -20,7 +21,7 @@ void prep_sample(unsigned int iSample, unsigned int width, unsigned int height, 
     params.srcPos = make_cudaPos(0, 0, 0);
     params.dstPos = make_cudaPos(0, 0, iSample);
     params.extent = make_cudaExtent(width, height, nSample);
-    params.kind = cudaMemcpyDeviceToDevice;
+    params.kind = cudaMemcpyHostToDevice;
 
     params.srcPtr = make_cudaPitchedPtr(L, width * sizeof(float), width, height);
     params.dstArray = dL;
@@ -35,87 +36,9 @@ void prep_sample(unsigned int iSample, unsigned int width, unsigned int height, 
     checkCudaErrors(cudaMemcpy3D(&params));
 }
 
-
-// what is contrast, when stimuli is natural, in general not drifiting grating
-// here defined as T-300 ms average of previous intensity
-__global__ 
-void intensity_to_contrast(float* __restrict__ LMS,
-						   unsigned int maxFrame,
-                           unsigned int nPixelPerFrame,
-                           unsigned int nKernelSample,
-                           Float tPerFrame,
-                           Float ave_tau,
-                           unsigned int frame0,
-                           unsigned int frame1,
-                           Float framePhase0,
-                           Float framePhase1,
-                           bool simpleContrast)
-{
-    unsigned int id = blockIdx.x*blockDim.x + threadIdx.x;
-    if (id < nPixelPerFrame) {
-        Float current;
-        Float average;
-        unsigned int iChannel = blockIdx.y;
-        // gridDim.y = 3 Channels
-        // blockDim.x * gridDim.x = nPixelPerFrame
-
-        float *inputChannel = LMS + iChannel*maxFrame*nPixelPerFrame;
-        Float *output = (Float*)(LMS + gridDim.y*maxFrame*nPixelPerFrame) + iChannel*nKernelSample*nPixelPerFrame + id;
-        // 1                       latestframe   0
-        // :    |->          |->          |->     :
-        //  fP1              fP0              fP
-        unsigned int iFrame = frame0 % maxFrame;
-        current = static_cast<Float>(inputChannel[iFrame*nPixelPerFrame + id]);
-        if (!simpleContrast) {
-            if (ave_tau > framePhase0) { // then there is the ending frame, frame1, and frames inbetween to be considered
-
-                _float add_t;
-                iFrame = frame1 % maxFrame;
-                _float last = static_cast<_float>(inputChannel[iFrame*nPixelPerFrame + id]);
-                _float mid = 0.0;
-                for (unsigned int frame = frame1 + 1; frame < frame0; frame++) {
-                    iFrame = frame % maxFrame;
-                    mid += static_cast<_float>(inputChannel[iFrame*nPixelPerFrame + id]);
-                }
-
-                add_t = framePhase0 + framePhase1 + (frame0-frame1-1)*tPerFrame;
-                average = (current*framePhase0 + mid*tPerFrame + last*framePhase1)/add_t;
-            } else {
-                // averaging windows ends within framePhase0
-                average = current;
-            }
-
-            _float c;
-
-            if (average > 0.0) { 
-                c = (current - average)/average;
-                if (c > 1.0) {
-                    c = 1.0;
-                } else {
-                    if (c < -1.0) {
-                        c = -1.0;
-                    }
-                }
-            } else {
-                if (current == 0.0) {
-                    c = 0.0;
-                } else { 
-                    c = 1.0;
-                }
-            }
-            __syncwarp();
-            *output = c;
-        } else {
-            *output = 2*current - 1;
-        }
-    }
-}
-// to-do:
-// 1. use non-uniform temporal filtering to mimick cone behavior, is it necessary?
-
 int main(int argc, char **argv) {
+    //TODO: collect CUDA device properties to determine grid and block sizes
     cudaDeviceProp deviceProps;
-
     checkCudaErrors(cudaGetDeviceProperties(&deviceProps, 0));
     printf("CUDA device [%s] has %d Multi-Processors ", deviceProps.name, deviceProps.multiProcessorCount);
     printf("SM %d.%d\n", deviceProps.major, deviceProps.minor);
@@ -125,8 +48,9 @@ int main(int argc, char **argv) {
 #else
     cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
 #endif
-    
+    printf("maximum threads per MP: %d.", deviceProps.maxThreadsPerMultiProcessor);
 
+    // files
     std::ofstream fplane, fretina, fcontrast, fLGN_fr, fLGN_convol, fmax_convol;
     fplane.open("3xplane.bin", std::ios::out | std::ios::binary);
     fretina.open("3xretina.bin", std::ios::out | std::ios::binary);
@@ -153,7 +77,7 @@ int main(int argc, char **argv) {
     Float dt; // in ms, better in fractions of binary 
     unsigned int nt;
     PosInt nKernelSample; // kernel sampling
-    char tmpStr[101]
+    char tmpStr[101];
         Itau
         tau
         frameRate
@@ -175,12 +99,10 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
+    const SmallSize nType = 2;
+    Size nSample = nSpatialSample1D * nSpatialSample1D;
+    height = width;
     Size nPixelPerFrame = width*height;
-    Float dy = 2*tan(ecc)/height;
-    Float dx = 2*tan(ecc)/width;
-    
-    Size local_width = width/8;
-    Size local_height = height/8;
 
     string LGN_prop_file = tmpStr;
     printf("simulating for %u steps, t = %f ms\n", nt, nt*dt);
@@ -300,7 +222,7 @@ int main(int argc, char **argv) {
 
     PosInt *exact_it = new PosInt[denorm];
     for (PosInt i=0; i<denorm; i++) {
-        exact_it[i] = (i*stepRate)/frameRate; // => i*Tframe/Tdt
+        exact_it[i] = (i*stepRate)/frameRate; // => quotient of "i*Tframe/Tdt"
         printf("i == %f", (exact_it[i] + (Float)exact_norm[i]/denorm)*dt*frameRate);
     }
     // i frames' length in steps = exact_it[i] + exact_norm[i]/denorm
@@ -319,62 +241,68 @@ int main(int argc, char **argv) {
     checkCudaErrors(cudaMalloc3DArray(&cuArr_M, &channelDesc, make_cudaExtent(width, height, maxFrame), cudaArrayLayered));
     checkCudaErrors(cudaMalloc3DArray(&cuArr_S, &channelDesc, make_cudaExtent(width, height, maxFrame), cudaArrayLayered));
 
-    cudaArray *cuArr_frame;
-    checkCudaErrors(cudaMalloc3DArray(&cuArr_frame, &channelDesc, make_cudaExtent(width, height, nChannel), cudaArrayLayered));
-
     // bind texture to cudaArrays
     checkCudaErrors(cudaBindTextureToArray(L_retinaConSig,  cuArr_L, channelDesc));
     checkCudaErrors(cudaBindTextureToArray(M_retinaConSig,  cuArr_M, channelDesc));
     checkCudaErrors(cudaBindTextureToArray(S_retinaConSig,  cuArr_S, channelDesc));
-    checkCudaErrors(cudaBindTextureToArray(LMS_frame,  cuArr_frame, channelDesc));
 
     float* LMS; // memory head
 
-    // LMS retina projection intensity array of [maxFrame] frames from t - (tau + ave_tau) on device
-    float* __restrict__ dL;
-    float* __restrict__ dM;
-    float* __restrict__ dS;
-    // LMS contrast signal on device
-    Float* __restrict__ cL;
-    Float* __restrict__ cM;
-    Float* __restrict__ cS;
+    // LMS frame intensity array of [maxFrame] frames from (t-tau) -> t on device
+    float* __restrict__ L;
+    float* __restrict__ M;
+    float* __restrict__ S;
 
     // allocate the memory for a video of maxFrame with channels, and the memory for the contrast signal extracted from the video by sampling
-    checkCudaErrors(cudaMalloc((void **) &LMS, nPixelPerFrame*sizeof(float)*3*maxFrame + nPixelPerFrame*sizeof(Float)*3*nKernelSample));
+    checkCudaErrors(cudaMalloc((void **) &LMS, nPixelPerFrame*sizeof(float)*3));
 
-    dL = LMS;
-    dM = dL + nPixelPerFrame*maxFrame;
-    dS = dM + nPixelPerFrame*maxFrame;
+    L = LMS;
+    M = L + nPixelPerFrame;
+    S = M + nPixelPerFrame;
 
-    cL = (Float*) (dS + nPixelPerFrame*maxFrame);
-    cM = cL + nPixelPerFrame*nKernelSample;
-    cS = cM + nPixelPerFrame*nKernelSample;
-
-    Float* LGN_fr = new _float[nLGN];
-    Float* __restrict__ d_LGN_fr;
+    Float* LGN_fr = new Float[nLGN];
+    Float* __restrict__ d_LGNfr;
     Float* __restrict__ max_convol;
-    checkCudaErrors(cudaMalloc((void **) &d_LGN_fr, nLGN*sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void **) &d_LGNfr, nLGN*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &max_convol, nLGN*sizeof(Float)));
 
+    Float* decayIn;
+    Float* lastF;
+    Float* TW_storage;
+    Float* SW_storage;
+    Float* SC_storage;
+    Float* dxdy_storage;
+    checkCudaErrors(cudaMalloc((void **) &decayIn, nType*nLGN*sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void **) &lastF, nType*nLGN*sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void **) &TW_storage, nType*nKernelSample*nLGN*sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void **) &SW_storage, nType*nSample*nLGN*sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void **) &SC_storage, 2*nType*nSample*nLGN*sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void **) &dxdy_storage, 2*nType*nSample*nLGN*sizeof(Float)));
+
+    checkCudaErrors(cudaMemset(decayIn, 0, nType*nLGN*sizeof(Float)));
+    checkCudaErrors(cudaMemset(lastF, 0, nType*nLGN*sizeof(Float)));
     // initialize average to normalized mean luminnace
     cudaStream_t s0, s1, s2;
     checkCudaErrors(cudaStreamCreate(&s0));
     checkCudaErrors(cudaStreamCreate(&s1));
     checkCudaErrors(cudaStreamCreate(&s2));
 
-    Float init_contrast = init_luminance;
     dim3 initBlock(blockSize, 1, 1);
-    dim3 initGrid((nPixelPerFrame*nKernelSample + blockSize-1) / blockSize, 1, 1);
-    init<<<initGrid, initBlock, 0, s0>>>(cL, init_contrast, nPixelPerFrame * nKernelSample);
-    init<<<initGrid, initBlock, 0, s1>>>(cM, init_contrast, nPixelPerFrame * nKernelSample);
-    init<<<initGrid, initBlock, 0, s2>>>(cS, init_contrast, nPixelPerFrame * nKernelSample);
+    dim3 initGrid((nPixelPerFrame + blockSize-1) / blockSize, 1, 1);
 
-    prep_sample(0, width, height, cL, cM, cS, cuArr_L, cuArr_M, cuArr_S, nKernelSample);
-
-    initGrid.x = (nPixelPerFrame*maxFrame + blockSize - 1)/blockSize;
-    init<<<initGrid, initBlock, 0, s0>>>(dL, init_luminance, nPixelPerFrame*maxFrame);
-    init<<<initGrid, initBlock, 0, s1>>>(dM, init_luminance, nPixelPerFrame*maxFrame);
-    init<<<initGrid, initBlock, 0, s2>>>(dS, init_luminance, nPixelPerFrame*maxFrame);
+    {// initialize texture to 0
+        float* tLMS;
+        float* __restrict__ tL;
+        float* __restrict__ tM;
+        float* __restrict__ tS;
+        checkCudaErrors(cudaMalloc((void **) &tLMS, nPixelPerFrame*sizeof(float)*3*maxFrame));
+        tL = tLMS;
+        tM = tL + nPixelPerFrame*maxFrame;
+        tS = tM + nPixelPerFrame*maxFrame;
+        checkCudaErrors(cudaMemset(tLMS, init_luminance, nPixelPerFrame*sizeof(float)*3*maxFrame));
+        prep_sample(0, width, height, tL, tM, tS, cuArr_L, cuArr_M, cuArr_S, maxFrame);
+        checkCudaErrors(cudaFree(tLMS));
+    }
 
     cudaEvent_t i0, i1, i2;
 
@@ -383,123 +311,91 @@ int main(int argc, char **argv) {
     checkCudaErrors(cudaEventCreate(&i2));
 
     dim3 convolBlock(nSpatialSample1D, nSpatialSample1D, 1);
-    dim3 convolGrid(nLGN, 1, 1);
+    dim3 convolGrid(nLGN, 2, 1);
 
-    float* __restrict__ hLMS_frame = new float[nChannel*nPixelPerFrame];
-    float* __restrict__ L = hLMS_frame;
-    float* __restrict__ M = L + nPixelPerFrame;
-    float* __restrict__ S = M + nPixelPerFrame;
-
-    dim3 localBlock(local_width, local_height, 1);
-    dim3 globalGrid((width + local_width - 1)/local_width, (height + local_height - 1)/local_height, nChannel);
-
-    dim3 spatialBlock(blockSize, 1, 1);
-    dim3 sampleGrid((nPixelPerFrame + blockSize - 1)/blockSize, nChannel, 1);
-
-    // determine the maximums of LGN kernel convolutions
-    LGN_maxResponse<<<convolGrid, convolBlock, sizeof(_float)*2*nKernelSample>>>(max_convol, dLGN, nKernelSample-1, kernelSampleDt, nsig, nSpatialSample1D);
+    // store spatial and temporal weights determine the maximums of LGN kernel convolutions
+    store<<<convolGrid, convolBlock>>>(
+            max_convol,
+            d_LGN.temporal,
+            TW_storage,
+            nKernelSample,
+            kernelSampleDt,
+            kernelSampleT0,
+            d_LGN.spatial,
+            SW_storage,
+            SC_storage,
+            dxdy_storage,
+            nsig,
+            storeSpatial);
+    checkCudaErrors(cudaMemcpy(LGNfr, max_convol, nLGN*sizeof(Float), cudaMemcpyDeviceToHost));
+    fmax_convol.write((char*)LGNfr, nLGN*sizeof(Float));
     // calc LGN firing rate at the end of current dt
     unsigned int currentFrame = 0; // current frame number from stimulus
     unsigned int iFrame = 0; //latest frame inserted into the dL dM dS,  initialization not necessary
     unsigned int iPhase = 0;
     unsigned int iPhase_old = 0; // initialization not necessary
     Float framePhase;
-    unsigned int jt = 0;
-
-    unsigned int currentSample = 0; // current frame number from stimulus
-    unsigned int iSample = 0; //latest frame inserted into the dL dM dS,  initialization not necessary
-    unsigned int kPhase = 0;
-    unsigned int kPhase_old = 0; // initialization not necessary
-    Float samplePhase;
-    unsigned int kt = 0;
 
     for (unsigned int it = 0; it < nt; it++) {
-
-        _float t = it*dt;
-
+        Float t = it*dt;
         // next frame comes between (t, t+dt), read and store frame to texture memory
         if (it+1 > (currentFrame/denorm)*co_product + exact_it[iPhase]) {
-            jt = it; // starting it for the current frame
             iFrame = currentFrame % maxFrame;
-            // TODO: read the new frame
-            {
-                //cp to texture mem in device
-                cudaMemcpy3DParms params = {0};
-                params.srcPos = make_cudaPos(0, 0, 0);
-                params.dstPos = make_cudaPos(0, 0, 0);
-                params.extent = make_cudaExtent(width, height, nChannel);
-                params.kind = cudaMemcpyHostToDevice;
-                params.srcPtr = make_cudaPitchedPtr(hLMS_frame, width * sizeof(float), width, height);
-                params.dstArray = cuArr_frame;
-                checkCudaErrors(cudaMemcpy3D(&params));
-
-                checkCudaErrors(cudaEventRecord(i0));
-                checkCudaErrors(cudaEventSynchronize(i0));
+            {// TODO: read the new frame
+                
             }
+            //cp to texture mem in device
+            prep_sample(iFrame, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1);
             printf("frame #%i prepared at t = %f, in (%f,%f) ~ %.3f%%.\n", currentFrame, currentFrame*tPerFrame, t, t+dt, exact_norm[iPhase]*100.0f/denorm);
             currentFrame++;
-            iPhase_old = iPhase;
             iPhase = (iPhase + 1) % denorm;
         }
-        //->|  |<-exact_norm/denorm
-        //  |--|------frame------|
-        //  |----|----|
-        // jt   jt+1  it
-        framePhase = ((it - jt + 1)*denorm - exact_norm[iPhase_old])/denorm*dt; // current frame length shown till t+dt
-
-        // next kernel sample, use intensity to contrast to get contrast signal
-        if (it+1 > (currentSample/kernel_denorm)*co_kernel_product + exact_kernel_it[kPhase]) {
-            kt = it;
-            iSample = currentSample % nKernelSample;
-    
-            unsigned int frame0, frame1;
-            _float framePhase0, framePhase1;
-            assert(ave_tau > tPerFrame);
-            framePhase0 = framePhase;
-            frame0 = iFrame + maxFrame;
-            if (ave_tau > framePhase0) { 
-                // then there is the ending frame, frame1 to be consider
-                frame1 = iFrame + maxFrame - static_cast<unsigned int>(ceil((ave_tau-framePhase)/tPerFrame));
-                framePhase1 = fmod(ave_tau - framePhase, tPerFrame);
-            }
-
-            intensity_to_contrast<<<sampleGrid, spatialBlock>>>(LMS, maxFrame, nPixelPerFrame, nKernelSample, tPerFrame, ave_tau, frame0, frame1, framePhase0, framePhase1, simpleContrast);
-		    getLastCudaError("intensity_to_contrast failed");
-            checkCudaErrors(cudaMemcpy(L, cL, nPixelPerFrame*sizeof(float), cudaMemcpyDeviceToHost));
-            checkCudaErrors(cudaEventRecord(i2));
-            checkCudaErrors(cudaEventSynchronize(i2));
-            fcontrast.write((char*)L, nPixelPerFrame*sizeof(float));
-		    // copy contrast signals to texture
-            prep_sample(iSample, width, height, cL, cM, cS, cuArr_L, cuArr_M, cuArr_S, 1);
-
-            currentSample++;
-            kPhase_old = kPhase;
-            kPhase = (kPhase + 1) % kernel_denorm;
+        if (it > nRetrace) {
+            framePhase += dt;
+            framePhase = fmod(framePhase, tPerFrame);
+            //    -->|        |<-- framePhase
+            //    |--|------frame------|
+            //    |-----|-----|-----|-----|-----|
+            //    jt-2, jt-1, jt ...nRetrace... it
+        } else {
+            framePhase = framePhase0;
         }
-        samplePhase = (((it - kt + 1)*kernel_denorm - exact_kernel_norm[kPhase_old])*dt)/kernel_denorm;
-
         // perform kernel convolution with built-in texture interpolation
-        LGN_convol_c1s<<<convolGrid, convolBlock, sizeof(_float)*2*nKernelSample>>>(d_LGN_fr, dLGN, iSample, framePhase, nKernelSample, kernelSampleDt, nsig, nSpatialSample1D);
-		getLastCudaError("LGN_convol failed");
-        checkCudaErrors(cudaMemcpy(LGN_fr, d_LGN_fr, nLGN*sizeof(_float), cudaMemcpyDeviceToHost));
-        fLGN_convol.write((char*)LGN_fr, nLGN*sizeof(_float));
+        convolGrid.y = 1;
+        LGN_convol_c1s<<<convolGrid, convolBlock, sizeof(Float)*2*convolBlock.x*convolBlock.y>>>(
+                decayIn,
+                lastF,
+                SW_storage,
+                SC_storage,
+                dxdy_storage,
+                TW_storage,
+                d_LGNfr,
+                d_LGN.coneType,
+                d_LGN.spatial,
+                nsig,
+                iFrame,
+                framePhase,
+                Itau,
+                kernelSampleDt,
+                nKernelSample,
+                dt,
+                storeSpatial);
+
+		getLastCudaError("LGN_convol_c1s failed");
+        checkCudaErrors(cudaMemcpy(LGNfr, d_LGNfr, nLGN*sizeof(Float), cudaMemcpyDeviceToHost));
+        fLGN_convol.write((char*)LGNfr, nLGN*sizeof(Float));
 
 		// generate LGN fr with logistic function
-        LGN_nonlinear<<<nLGN_x, nLGN_y>>>(d_LGN_fr, dLGN.logistic, max_convol);
+        LGN_nonlinear<<<nLGN_x, nLGN_y>>>(d_LGNfr, d_LGN.logistic, max_convol);
 		getLastCudaError("LGN_nonlinear failed");
-        checkCudaErrors(cudaMemcpy(LGN_fr, d_LGN_fr, nLGN*sizeof(_float), cudaMemcpyDeviceToHost));
-        fLGN_fr.write((char*)LGN_fr, nLGN*sizeof(_float));
+        checkCudaErrors(cudaMemcpy(LGNfr, d_LGNfr, nLGN*sizeof(Float), cudaMemcpyDeviceToHost));
+        fLGN_fr.write((char*)LGN_fr, nLGN*sizeof(Float));
     }
-    checkCudaErrors(cudaMemcpy(LGN_fr, max_convol, nLGN*sizeof(_float), cudaMemcpyDeviceToHost));
-    fmax_convol.write((char*)LGN_fr, nLGN*sizeof(_float));
 
     checkCudaErrors(cudaDeviceSynchronize());
-    delete []hLMS_frame;
     delete []LGN_fr;
     delete []exact_norm;
     delete []exact_it;
-    delete []exact_kernel_norm;
-    delete []exact_kernel_it;
     
     fretina.close();
     fplane.close();
@@ -514,7 +410,7 @@ int main(int argc, char **argv) {
     checkCudaErrors(cudaStreamDestroy(s1));
     checkCudaErrors(cudaStreamDestroy(s2));
     checkCudaErrors(cudaFree(LMS));
-    checkCudaErrors(cudaFree(d_LGN_fr));
+    checkCudaErrors(cudaFree(d_LGNfr));
     checkCudaErrors(cudaFree(max_convol));
     checkCudaErrors(cudaFreeArray(cuArr_L));
     checkCudaErrors(cudaFreeArray(cuArr_M));
@@ -523,19 +419,3 @@ int main(int argc, char **argv) {
     cudaDeviceReset();
     return 0;
 }
-
-/*
-    __global__ void load(float *data, int nx, int ny) {
-        unsigned int x = blockIdx.x*blockDim.x + threadIdx.x
-        unsigned int y = blockIdx.y*blockDim.y + threadIdx.y;
-    
-        surf2Dwrite(data[y * nx + x], outputSurface, x*sizeof(float), y, cudaBoundaryModeTrap);
-    }
-    
-    void init_tex(texture<float, cudaTextureType2D, cudaReadModeElementType> &tex) {
-        tex.addressMode[0] = cudaAddressModeBorder;
-        tex.addressMode[1] = cudaAddressModeBorder;
-        tex.filterMode = cudaFilterModeLinear;
-        tex.normalized = true;
-    }
-*/

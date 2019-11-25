@@ -42,7 +42,9 @@ void LGN_nonlinear(
 );
 
 __global__
-void store_weight(
+void store(// weights and max convolution
+        Float* __restrict__ max_convol,
+
         Temporal_component* __restrict__ temporal,
         Float* __restrict__ TW_storage,
         SmallSize nKernelSample,
@@ -54,7 +56,6 @@ void store_weight(
         Float* __restrict__ SC_storage,
         Float* __restrict__ dxdy_storage,
         Float nsig, // span of spatialRF sample in units of std
-        SmallSize nSpatialSample_1D, 
         bool storeSpatial
 );
 
@@ -69,13 +70,14 @@ void LGN_convol_c1s(
         Float* __restrict__ LGNfr,
         SmallSize* __restrict__ coneType,
         Spatial_component &spatial,
-        PosInt nsig,
+        Float nsig,
+        SmallSize currentFrame,
+        SmallSize maxFrame,
         Float framePhase,
-        Float ave_tau,
+        Float Itau,
         Float kernelSampleDt,
         Size nKernelSample,
         Float dt,
         bool spatialStored
 );
-
 #endif
