@@ -4,18 +4,18 @@ addpath(genpath('/home/wd554/MATLAB/'))
  
 gen = 'twister';
 clear seed
-seed = 1435269651;
+seed = 1435269650;
 %seed = 1422230161;
 format = '-dpng';
 
 separateData = true; % set to false for ease of comparison in one folder
 plots = true;
-new = false;
+new = true;
 ENproc = 'save';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
-name = 'steadyp';
-var = 'NxNy'
-equi = 'VF';
+name = 'recreate';
+var = 'Ny'
+equi = 'cortex';
 heteroAlpha = -1; % -1 reciprocal, 0 identity, 1 area
 switch heteroAlpha
 case -1
@@ -26,17 +26,17 @@ case 1
 	wtString = 'a';
 end
 ENfilename0 = [name,'-',equi,'-',wtString,'-',var]   % Simulation name ***
-VFpath = 'uniform_Tmat_cortex.bin';
+VFpath = '';
 plotting = 'last' % 'all', 'first', >0 frame, <0 frame:end
 %range = [6,8,10,12,14];
 %range = [1.2,1.3,1.4,1.5,1.6];
 %range = [10,15,20,25,30];
 %range = [1.0,1.25,1.5,1.75,2.0];
 %range = [5,7.5,10,12.5,15];
-range = [0.8,0.9,1.0,1.1,1.2];
+%range = [0.8,0.9,1.0,1.1,1.2];
 %range = [1.0];
-%range = [1];
-cortical_VF = true;
+range = [1];
+cortical_VF = 'cortex';
 non_cortical_LR = false;
 % non_cortical_LR = true;
 uniform_LR = true;
@@ -72,8 +72,8 @@ else
     scurr = rng('shuffle')
     seed = scurr.Seed;
 end
-parfor i = 1:length(range)
-%for i = 1:length(range)
+%parfor i = 1:length(range)
+for i = 1:length(range)
     % for non_cortical_shape edge boundaries
     test_dw = 5;
     test_dh = 7;
@@ -81,26 +81,26 @@ parfor i = 1:length(range)
 
     alpha = 1.0;		% Fitness term weight
 	%beta = 50*range(i);
-	beta = 500;
+	beta = 100;
     % Training parameters
 	iters = 10; %21;			% No. of annealing rates (saved)
-    max_it = 5;		        % No. of iterations per annealing rate (not saved) ***
+    max_it = 10;		        % No. of iterations per annealing rate (not saved) ***
 	%max_it = round(20 *range(i)/range(end)); 
     Kin = 0.15;			% Initial K ***
     Kend = 0.03;        % Final K ***    
     % - VFx: Nx points in [0,1], with interpoint separation dx.
-	Nx = round(17*range(i))			% Number of points along VFx ***
-	%Nx = 17;
+	%Nx = round(17*range(i))			% Number of points along VFx ***
+	Nx = 8;
 	%Nx = range(i)
 	%Nx = round(16*range(i)); %			% Number of points along VFx ***
 	%nvf = range(i);
-    nvf = 10;
-    rx = [0 0.25]*nvf;			% Range of VFx
+    nvf = 8;
+    rx = [0 0.16]*nvf;			% Range of VFx
     % - VFy: ditto for Ny, dy.
 	%
 	% even
-	Ny = round(34*range(i)) 
-	%Ny = 34;
+	%Ny = round(34*range(i)) 
+	Ny = 12;
 	%Ny = 60 - range(i);
 	if mod(Nx,2) == 1,Nx = Nx + 1; end
 	if mod(Ny,2) == 1,Ny = Ny - 1; end
@@ -108,15 +108,15 @@ parfor i = 1:length(range)
 	%	assert(Nx*2 == Ny);
 	%end
 	%Ny = round(25*range(i));			% Number of points along VFy ***
-    ry = [0 0.5]*nvf;			% Range of VFy
+    ry = [0 0.24]*nvf;			% Range of VFy
     % - OD: NOD values in range rOD, with interpoint separation dOD.
-	l = 0.11;
+	l = 0.12;
     NOD = 2;			% Number of points along OD
     rOD = [-l l];			% Range of OD
     %  coded as NOR Cartesian-coordinate pairs (ORx,ORy). -- later by pol2cart
     %  r = 6*l/pi
 	%r = range(i)*l;			% OR modulus -- the radius of pinwheel
-	r = 1.4*l;
+	r = 1.2*l;
     NOR = 8;	 %8;		% Number of points along OR    
     % for myCortex patch
     ODnoise = l*0.0;
