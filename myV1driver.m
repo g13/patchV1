@@ -26,7 +26,7 @@
 % scaffolding for the underlying continuous set of training vectors.
 % 'noisy' and 'uniform*' approximate online training over the continuous
 % domain of (VFx,VFy,OD,ORt).
-function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,weightType,VFpath)
+function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,weightType,VFpath,old)
 	irange = fign;
     datafileabsolpath = [pwd,'/',ENfilename0,'-',ENfilename,'.mat'];
 	stream = RandStream('mt19937ar','Seed',seed);
@@ -403,7 +403,13 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
        	if cortical_shape
             switch cortical_VF
             case 'VF'
-                mu = reshape(VF, M, 2);
+				if old
+        			mu = ENtrset('grid',zeros(1,2),...		% Small noise
+        			    linspace(rx(1),rx(2),G(1)),...	% VFx
+        			    linspace(ry(1),ry(2),G(2)),stream);	% VFy
+				else
+                	mu = reshape(VF, M, 2);
+				end
             case 'cortex'
                 tmp1 = linspace(rx(1),rx(2),G(1)-1);
                 dtmp = (tmp1(2)-tmp1(1))/2;
@@ -623,7 +629,7 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
     stats = myV1stats(stream,G,bc,ENlist,v,plotting,T,T_vec,Pi,murange,id,[],[ENfilename0,'/',ENfilename,'.png'],figlist,statsOnly,right_open,separateData,xgrid,ygrid);
 	if saveLR
 		fID = fopen([ENfilename0,'/',ENfilename,'-LR_Pi.bin'],'a');
-		fwrite(fID, int32(ENlist(end).mu(:,id.OD)), 'int');
+		fwrite(fID, ENlist(end).mu(:,id.OD), 'double');
 		fclose(fID);
 	end
 end

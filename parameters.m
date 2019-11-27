@@ -17,6 +17,7 @@ name = 'steadyp';
 var = 'NxNy'
 equi = 'VF';
 heteroAlpha = -1; % -1 reciprocal, 0 identity, 1 area
+old = false;
 switch heteroAlpha
 case -1
 	wtString = 'r';
@@ -128,7 +129,7 @@ parfor i = 1:length(range)
     a = 0.635; b = 96.7; k = sqrt(140)*0.873145;
     fign = 106;
     ENfilename = [var,'-',num2str(range(i))];
-    stats(i) = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,weightType,VFpath);
+    stats(i) = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,weightType,VFpath,old);
 end
 nnpinw = [stats.npinw];
 nnpinw = nnpinw./mean(nnpinw);
