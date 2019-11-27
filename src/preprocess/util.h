@@ -67,7 +67,9 @@ void write_listOfList(std::string filename, std::vector<std::vector<T>> data, bo
 	for (Size i=0; i<data.size(); i++) {
         Size listSize = data[i].size();
         output_file.write((char*)&listSize, sizeof(Size));
-        output_file.write((char*)&data[i][0], listSize * sizeof(T));
+		if (listSize > 0) {
+			output_file.write((char*)&data[i][0], listSize * sizeof(T));
+		}
     }
 	output_file.close();
 }
@@ -85,7 +87,9 @@ std::vector<std::vector<T>> read_listOfList(std::string filename, bool print = f
         Size listSize;
         input_file.read(reinterpret_cast<char*>(&listSize), sizeof(Int));
 		std::vector<T> new_data(listSize);
-        input_file.read(reinterpret_cast<char*>(&new_data[0]), listSize * sizeof(T));
+		if (listSize > 0) {
+			input_file.read(reinterpret_cast<char*>(&new_data[0]), listSize * sizeof(T));
+		}
 		data.push_back(new_data);
     } while (!input_file.eof());
 	input_file.close();

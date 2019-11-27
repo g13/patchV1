@@ -400,7 +400,7 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
         % Initial elastic net: retinotopic with some noise and random, uniform
         % OD and OR.
         
-       	if cortical_VF && cortical_shape
+       	if cortical_shape
             switch cortical_VF
             case 'VF'
                 mu = reshape(VF, M, 2);

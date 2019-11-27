@@ -7,8 +7,6 @@
 #include "boost/program_options.hpp"
 
 // the retinal discrete x, y as cone receptors id
-texture<float, cudaTextureType2DLayered> LMS_frame;
-
 void init_layer(texture<float, cudaTextureType2DLayered> &layer) {
     layer.addressMode[0] = cudaAddressModeBorder;
     layer.addressMode[1] = cudaAddressModeBorder; 
@@ -39,6 +37,7 @@ void prep_sample(unsigned int iSample, unsigned int width, unsigned int height, 
 
 int main(int argc, char **argv) {
 	namespace po = boost::program_options;
+    using namespace std;
     Float dt; // in ms, better in fractions of binary 
     Float ecc;
     Size width;
@@ -51,35 +50,37 @@ int main(int argc, char **argv) {
     Float tau = 256.0f; // required length of memory for LGN temporal kernel
     Float Itau = 300.0f; // in ms .. cone adaptation at 300ms https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1003289
     PosInt frameRate; // Hz
-    unsigned int nt; // number of steps
+    Size nt; // number of steps
     PosInt nKernelSample; // kernel sampling
+
 	po::options_description generic_opt("Generic options");
 	generic.add_options()
-		("cfg_file,c", po::value<std::string>()->default_value("patchV1.cfg"), "filename for configuration file")
+		("cfg_file,c", po::value<string>()->default_value("patchV1.cfg"), "filename for configuration file")
 		("help,h", "print usage");
 	po::options_description top_opt("top-level configuration");
 	top_opt.add_options()
 		("seed,s", po::value<PosInt>(&seed),"seed for trial")
-		("dt", po::value<Float>(&dt)->default_value(0.125), "simulatoin time step")
+		("dt", po::value<Float>(&dt)->default_value(0.125), "simulatoin time step") 
+		("nt", po::value<Size>(&nt)->default_value(8000), "total simulatoin time in units of time step") // TODO: determine by stimulus
 		("nSpatialSample1D", po::value<SmallSize>(&nSpatialSample1D)->default_value(warpSize), "number of samples per x,y direction for a LGN spatial RF")
 		("tau", po::value<Float>(&tau)->default_value(256.0), "the backward time interval that a LGN temporal RF should cover")
 		("Itau", po::value<Float>(&Itau)->default_value(150.0), "the light intensity adaptation time-scale of a cone")
 		("nKernelSample", po::value<Size>(&nKernelSample)->default_value(256.0), "number of samples per x,y direction for LGN spatial RF")
 		("frameRate", po::value<Float>(&frameRate)->default_value(60), "frame rate of the input stimulus");
-		("nLGN", po::value<Float>(&frameRate)->default_value(60), "frame rate of the input stimulus");
 
     // files
-	std::string LGN_pos_filename, LGN_prop_filename, LGN_V1_filename; // inputs
-    std::string LGN_fr_filename; // outputs
-	std::string LGN_convol_filename, max_convol_filename;
+	string stimulus_filename, V1_filename, LGN_filename, LGN_V1_s_filename, LGN_V1_ID_filename; // inputs
+    string LGN_fr_filename; // outputs
+	string LGN_convol_filename, max_convol_filename;
 	top_opt.add_options()
-		("fInput_movie", po::value<std::string>(&LGN_pos_filename)->default_value("stimulus"),"file that stores LGN firing rates")
-		("fLGN_pos", po::value<std::string>(&LGN_pos_filename)->default_value("LGN_pos.bin"),"file that stores LGN firing rates")
-		("fLGN_prop", po::value<std::string>(&LGN_prop_filename)->default_value("LGN_prop.bin"),"file that stores LGN properties")
-		("fLGN_V1", po::value<std::string>(&LGN_V1_filename)->default_value("LGN_V1.bin"),"file stores LGN to V1 connections")
-		("fLGN_fr", po::value<std::string>(&LGN_fr_filename)->default_value("LGN_fr.bin"),"file stores LGN firing rates")
-		("fLGN_convol", po::value<std::string>(&LGN_convol_filename)->default_value("LGN_convol.bin"),"file that stores LGN convolution values") // TEST 
-		("fLGN_max", po::value<std::string>(&max_convol_filename)->default_value("max_convol.bin"),"file that stores LGN maximum values of convolution"); // TEST
+		("fStimulus", po::value<string>(&stimulus_filename)->default_value("stimulus.bin"),"file that stores LGN firing rates, array of size (nframes,width,height,3)")
+		("fV1", po::value<string>(&V1_filename)->default_value("V1.bin"),"file that stores V1 neurons information")
+		("fLGN", po::value<string>(&LGN_filename)->default_value("LGN.bin"),"file that stores LGN neurons information")
+		("fLGN_V1_ID", po::value<string>(&LGN_V1_ID_filename)->default_value("LGN_V1_idList.bin"),"file stores LGN to V1 connections")
+		("fLGN_V1_s", po::value<string>(&LGN_V1_s_filename)->default_value("LGN_V1_sList.bin"),"file stores LGN to V1 connection strengths")
+		("fLGN_fr", po::value<string>(&LGN_fr_filename)->default_value("LGN_fr.bin"),"file stores LGN firing rates")
+		("fLGN_convol", po::value<string>(&LGN_convol_filename)->default_value("LGN_convol.bin"),"file that stores LGN convolution values") // TEST 
+		("fLGN_max", po::value<string>(&max_convol_filename)->default_value("max_convol.bin"),"file that stores LGN maximum values of convolution"); // TEST
 	
 	po::options_description cmdline_options;
 	cmdline_options.add(generic_opt).add(top_opt);
@@ -93,8 +94,8 @@ int main(int argc, char **argv) {
 		cout << cmdline_options << "\n";
 		return EXIT_SUCCESS;
 	}
-	std::strin cfg_filename = vm["cfg_file"].as<std::string>();
-	std::ifstream cfg_file{cfg_filename.c_str()};
+	strin cfg_filename = vm["cfg_file"].as<string>();
+	ifstream cfg_file{cfg_filename.c_str()};
 	if (cfg_file) {
 		po::store(po::parse_config_file(cfg_file, cfg_file_options), vm);
 		cout << "Using configuration file: " << cfg_filename << "\n";
@@ -102,6 +103,13 @@ int main(int argc, char **argv) {
 		cout << "No configuration file is given, default values are used for non-specified paraeters\n";
 	}
 	po::notify(vm);
+
+    printf("simulating for %u steps, t = %f ms\n", nt, nt*dt);
+
+    if (nSpatialSample1D > 32) {
+        cout << "nSpatialSample1D has to be smaller than 32 (1024 threads per block).\n"
+        return EXIT_FAILURE;
+    }
 
     //TODO: collect CUDA device properties to determine grid and block sizes
     cudaDeviceProp deviceProps;
@@ -121,16 +129,73 @@ int main(int argc, char **argv) {
 
     // from the retina facing out
     const Float toRad = M_PI/180.0f;
-	std::ifstream fLGN_pos_, fLGN_prop, fLGN_V1; // inputs
-    std::ofstream fLGN_fr // outputs
-	std::ofstream fLGN_convol, fmax_convol;
+	ifstream fStimulus, fLGN, fV1, fLGN; // inputs
+    ofstream fLGN_fr // outputs
+	ofstream fLGN_convol, fmax_convol;
 
-    fLGN_pos.open("LGNfr.bin", std::ios::out | std::ios::binary);
-    fLGN_prop.open("LGN_convol.bin", std::ios::out | std::ios::binary);
-    fLGN_V1.open("max_convol.bin", std::ios::out | std::ios::binary);
-    fLGN_fr.open("LGNfr.bin", std::ios::out | std::ios::binary);
-    fLGN_convol.open("LGN_convol.bin", std::ios::out | std::ios::binary);
-    fmax_convol.open("max_convol.bin", std::ios::out | std::ios::binary);
+    fStimulus.open(stimulus_filename, fstream::in | fstream::binary);
+    Size nPixelPerFrame;
+    Float deg0, ldeg; // VF in x-dimension: (deg0, deg0+ldeg); y-dimension: (-ldeg, ldeg)
+    if (!fStimulus) {
+        cout << "cannot open " << stimulus_filename << "\n";
+        return EXIT_FAILURE;
+    } else {
+        vector<int> stimulus_dimensions(3, 0); 
+        fStimulus.read(reinterpret_cast<char*>(&stimulus_dimensions[0]), 4 * sizeof(int));
+        nFrame = stimulus_dimensions[0];
+        height = stimulus_dimensions[1];
+        width = stimulus_dimensions[2];
+        vector<float> domain(2, 0); 
+        fStimulus.read(reinterpret_cast<char*>(&domain[0]), 2 * sizeof(float));
+        deg0 = domain[0];
+        ldeg = domain[1];
+        nPixelPerFrame = width*height;
+        if (height != width) {
+            // TODO:
+            cout << "width != height, not implemented\n";
+            return EXIT_FAILURE;
+        }
+    }
+    
+    Size nV1;
+    Float midL = 0 - deg0;
+    Float midR = ldeg - deg0;
+	vector<Float> V1_x, V1_y;
+    fV1.open(V1_filename, fstream::in | fstream::binary);
+    if (!fV1) {
+        fV1.read(reinterpret_cast<char*>(&nV1), sizeof(Size));
+        fV1.read(reinterpret_cast<char*>(&V1_x[0]), nV1 * sizeof(Float));
+	    fV1.read(reinterpret_cast<char*>(&V1_y[0]), nV1 * sizeof(Float));
+        fV1.read(reinterpret_cast<char*>(&a[0]), nV1 * sizeof(Float));
+        fV1.read(reinterpret_cast<char*>(&baRatio[0], nV1 * sizeof(Float));
+	    fV1.read(reinterpret_cast<char*>(&sfreq[0], nV1 * sizeof(Float));
+	    fV1.read(reinterpret_cast<char*>(&theta[0], nV1 * sizeof(Float));
+	    fV1.read(reinterpret_cast<char*>(&phase[0], nV1 * sizeof(Float));
+	    fV1.read(reinterpret_cast<char*>(&amp[0], nV1 * sizeof(Float));
+	    fV1.read(reinterpret_cast<char*>(&sig[0], nV1 * sizeof(Float));
+        cout << nV1 << " V1 neurons\n";
+    }
+
+    Size nLGN;
+	vector<Float> LGN_x, LGN_y;
+	vector<Int> OnOff;
+    fLGN.open(LGN_filename, fstream::in | fstream::binary);
+    if (!fLGN) {
+	    fLGN_vpos.read(reinterpret_cast<char*>(&nLGN), sizeof(Int));
+	    fLGN_vpos.read(reinterpret_cast<char*>(&LGN_x[0]), nLGN*sizeof(Float));
+	    fLGN_vpos.read(reinterpret_cast<char*>(&LGN_y[0]), nLGN*sizeof(Float));
+	    fLGN_vpos.read(reinterpret_cast<char*>(&on_off[0]), nLGN*sizeof(Int));
+        cout << nLGN << " LGN neurons\n";
+	    fLGN_vpos.close();
+    }
+
+	vector<vector<Int>> LGN_V1_ID = read_listOfList<Int>(LGN_V1_ID_filename, false);
+	vector<vector<Int>> LGN_V1_s = read_listOfList<Float>(LGN_V1_s_filename, false);
+
+    // output file
+    fLGN_fr.open(LGN_fr_filename, fstream::out | fstream::binary);
+    fLGN_convol.open(LGN_convol_filename, fstream::out | fstream::binary);
+    fmax_convol.open(max_convol_filename, fstream::out | fstream::binary);
 
     bool simpleContrast = true; // no cone adaptation if set to true
     PosInt stepRate = round(1000/dt);
@@ -146,21 +211,10 @@ int main(int argc, char **argv) {
     const SmallSize nType = 2;
     Size nSample = nSpatialSample1D * nSpatialSample1D;
     height = width;
-    Size nPixelPerFrame = width*height;
 
-    std::ofstream fLGN_fr, fLGN_convol, fmax_convol;
-    fLGN_fr.open("LGNfr.bin", std::ios::out | std::ios::binary);
-    fLGN_convol.open("LGN_convol.bin", std::ios::out | std::ios::binary);
-    fmax_convol.open("max_convol.bin", std::ios::out | std::ios::binary);
-    fLGN_fr.open("LGNfr.bin", std::ios::out | std::ios::binary);
-    fLGN_convol.open("LGN_convol.bin", std::ios::out | std::ios::binary);
-    fmax_convol.open("max_convol.bin", std::ios::out | std::ios::binary);
-
-    printf("simulating for %u steps, t = %f ms\n", nt, nt*dt);
-    Size nLGN = nLGN_x * nLGN_y;
 
     // setup LGN here
-    LGN_parameter hLGN(nLGN);
+    hLGN_parameter;
 
     // set test param for LGN subregion RF kernel 
     /*
@@ -209,17 +263,11 @@ int main(int argc, char **argv) {
 
     LGN_parameter dLGN(nLGN, hLGN);
     // finish LGN setup
-    if (nSpatialSample1D > 32) {
-        cout << "nSpatialSample1D has to be smaller than 32 (1024 threads per block).\n"
-        return EXIT_FAILURE;
-    }
 
     // set params for layerd texture memory
     init_layer(L_retinaConSig);
     init_layer(M_retinaConSig);
     init_layer(S_retinaConSig);
-
-    init_layer(LMS_frame);
 
     Size nRetrace = static_cast<Size>(round(tau/dt));
     if (round(tau/dt) != tau/dt) {
@@ -393,9 +441,12 @@ int main(int argc, char **argv) {
         // next frame comes between (t, t+dt), read and store frame to texture memory
         if (it+1 > (currentFrame/denorm)*co_product + exact_it[iPhase]) {
             iFrame = currentFrame % maxFrame;
-            {// TODO: read the new frame
-                
+            if (fStimulus.eof()) { // if at the end of input file loop back to the beginning
+                fStimulus.clear()
+                fStimulus.seekg(0, ios::beg);
             }
+            fStimulus.read(reinterpret_cast<char*>(LMS, 3*nPixelPerFrame*sizeof(float));
+                        
             //cp to texture mem in device
             prep_sample(iFrame, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1);
             printf("frame #%i prepared at t = %f, in (%f,%f) ~ %.3f%%.\n", currentFrame, currentFrame*tPerFrame, t, t+dt, exact_norm[iPhase]*100.0f/denorm);

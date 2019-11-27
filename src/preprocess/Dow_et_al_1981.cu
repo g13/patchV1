@@ -88,6 +88,7 @@ Float mapping_rule(Float ecc, Float normalRand, RandomEngine &rGen) {
 	const Float d = 0.0116f;
 	const Float scatter = c + d * ecc;
 	Float R = scatter * normalRand + mean;
+	
 	if (R < 0) {
 		// rarely rethrow
 		normal_distribution<Float> dist(mean, scatter);

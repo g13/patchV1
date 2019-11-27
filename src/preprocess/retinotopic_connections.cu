@@ -1,4 +1,5 @@
 #include "retinotopic_connections.h"
+#include <boost/program_options.hpp>
 using namespace std;
 
 pair<Float, Float> average(vector<Float> x, vector<Float> y) {
@@ -7,35 +8,51 @@ pair<Float, Float> average(vector<Float> x, vector<Float> y) {
     return make_pair(mx,my);
 }
 
+// normalize x to [-1,1], y to baRatio*[-1,1]
 pair<Float, Float> transform_coord_to_unitRF(Float x, Float y, const Float mx, const Float my, const Float theta, const Float a) {
     // a is half-width at the x-axis
     x = (x - mx)/a;
     y = (y - my)/a;
     Float new_x, new_y;
     new_x = cos(theta) * x + sin(theta) * y;
-    new_y = -sin(theta) * y + cos(theta) * y;
+	new_y = -sin(theta) * x + cos(theta) * y;
     return make_pair(new_x, new_y);
 }
 
 // probability distribution
-Float prob_dist(Float x, Float y, Float phase, Float sfreq, Float amp, Float baRatio, Int on_off, Float sig = 1.1775) {
+Float prob_dist(Float x, Float y, Float phase, Float sfreq, Float amp, Float baRatio, Int LM_phaseRef, Int LM_OF, Float sig = 1.1775) {
     // sfreq should be given as a percentage of the width
     // baRatio comes from Dow et al., 1981
-    assert(abs(on_off) == 1);
+	Int OF, LM;
+	if (LM_OF % 2 == 1) {
+		OF = 1;
+	} else {
+		OF = -1 ;
+	}
+	// check LGN 
+	if (LM_OF < 2) {
+		LM = 1;
+	} else {
+		LM = -1;
+	}
     Float envelope;
     envelope = exp(-0.5*(pow(x/sig,2)+pow(y/(sig*baRatio),2)));
-    // when sfreq == 1, the RF contain a full cycle of cos(x) x\in[-pi, pi]
-    Float modulation = amp * cos(M_PI*sfreq * x + phase);
-    if (on_off * modulation < 0) {
+    // when sfreq == 1, the RF contain a full cycle of cos(x), x\in[-pi, pi]
+    Float modulation = amp * cos(sfreq * x * M_PI + phase);
+    if (LM * LM_phaseRef * OF * modulation < 0) {
+		// mismatch between L/M cone or On/Off
         modulation = 0;
-    }
-    Float prob = envelope * (1 - amp + on_off*modulation);
+    } // else a mismatch between none or both have positive modulation on connection probability
+    Float prob = envelope * (1 - amp + abs(modulation));
  	return prob;
 }
 
 void normalize_prob(vector<Float> &prob, Float percent) {
+	// average connection probability is controlled at percent.
     const Float norm = accumulate(prob.begin(), prob.end(), 0.0) / (percent * prob.size());
-	cout << "norm = " << norm << "\n";
+	//cout << "norm = " << norm << "\n";
+	//print_list<Float>(prob);
+	assert(!isnan(norm));
     Float sum = 0.0;
     for (Size i=0; i<prob.size(); i++) {
         prob[i] = prob[i] / norm;
@@ -95,6 +112,7 @@ vector<vector<Float>> retinotopic_connection(
         RandomEngine &rGen,
         const Float percent,
         const Size n,
+		const pair<vector<Float>, vector<Float>> &cart, // V1 VF position (tentative)
         const pair<vector<Float>,vector<Float>> &cart0, // LGN VF position
         const vector<Float> &theta,
         const vector<Float> &phase,
@@ -103,51 +121,76 @@ vector<vector<Float>> retinotopic_connection(
         const vector<Float> &sig,
         const vector<Float> &baRatio,
         const vector<Float> &a,
+		const vector<Int> &LM_ref,
         const vector<Int> &on_off,
-        vector<Float> &cx,
+        vector<Float> &cx, // V1 VF position (final)
         vector<Float> &cy) {
     uniform_real_distribution<Float> dist(0,1);
     vector<vector<Float>> srList;
     // for each neuron i in sheet 2 at (e, p)
     for (Size i=0; i<n; i++) {
         const Int m = poolList[i].size();
-        vector<Float> sr;
-        vector<Float> x, y;
-        x.reserve(m);
-        assert(x.size() == 0);
-        for (Size j=0; j<m; j++) {
-            x.push_back(cart0.first[poolList[i][j]]);
-            y.push_back(cart0.second[poolList[i][j]]);
-        }
-        pair<Float, Float> center = average(x, y);
-        cx[i] = center.first;
-        cy[i] = center.second;
-		cout << "(" << cx[i] << ", " << cy[i] << ")\n";
-        vector<Float> prob;
-        prob.reserve(m);
-        for (Size j=0; j<m; j++) {
-            pair<Float, Float> norm_coord = transform_coord_to_unitRF(x[j], y[j], center.first, center.second, theta[i], a[i]);
-            prob.push_back(prob_dist(norm_coord.first, norm_coord.second, phase[i], sfreq[i], amp[i], baRatio[i], on_off[poolList[i][j]], sig[i]));
-        }
-        normalize_prob(prob, percent);
-        //print_list(prob);
-        vector<Int> newList;
-        newList.reserve(poolList[i].size());
-        sr.reserve(m);
-        for (Size j=0; j<m; j++) {
-            if (dist(rGen) < prob[j]) {
-                newList.push_back(poolList[i][j]);
-                if (prob[j] > 1) {
-                    sr.push_back(prob[j]);
-                } else {
-                    sr.push_back(1);
-                }
-            }
-        }
-        srList.push_back(sr);
-        cout << newList.size() << " <= " << poolList[i].size() << "\n";
-        poolList[i].resize(newList.size());
-        poolList[i] = newList;
+		if (m > 0) { // if the pool has LGN neuron
+			// intermdiate V1 VF position (tentative)
+			vector<Float> x, y;
+			x.reserve(m);
+			assert(x.size() == 0);
+			for (Size j = 0; j < m; j++) {
+				x.push_back(cart0.first[poolList[i][j]]);
+				y.push_back(cart0.second[poolList[i][j]]);
+			}
+			pair<Float, Float> center = average(x, y);
+			cx[i] = center.first;
+			cy[i] = center.second;
+			// calculate pooled LGN neurons' connection probability to the V1 neuron
+			vector<Float> prob;
+			prob.reserve(m);
+			for (Size j = 0; j < m; j++) {
+				pair<Float, Float> norm_coord = transform_coord_to_unitRF(x[j], y[j], center.first, center.second, theta[i], a[i]);
+				prob.push_back(prob_dist(norm_coord.first, norm_coord.second, phase[i], sfreq[i], amp[i], baRatio[i], LM_ref[i], on_off[poolList[i][j]], sig[i]));
+			}
+			normalize_prob(prob, percent);
+			// make connections and strength (normalized i.e., if prob > 1 then s = 1 else s = prob)
+			vector<Int> newList;
+			newList.reserve(m);
+			vector<Float> sr;
+			sr.reserve(m);
+			for (Size j = 0; j < m; j++) {
+				if (dist(rGen) < prob[j]) {
+					newList.push_back(poolList[i][j]);
+					if (prob[j] > 1) {
+						sr.push_back(prob[j]);
+					} else {
+						sr.push_back(1);
+					}
+				}
+			}
+			srList.push_back(sr);
+			//cout << newList.size() << " <= " << poolList[i].size() << "\n";
+			poolList[i] = newList;
+			poolList[i].shrink_to_fit();
+			// calculate vf position (final)
+			if (newList.size() > 0) { 
+				x.clear();
+				y.clear();
+				for (Size j = 0; j < newList.size(); j++) {
+					x.push_back(cart0.first[newList[j]]);
+					y.push_back(cart0.second[newList[j]]);
+				}
+				pair<Float, Float> center = average(x, y);
+				cx[i] = center.first;
+				cy[i] = center.second;
+			} else {
+				cx[i] = cart.first[i];
+				cy[i] = cart.second[i];
+			}
+		} else {
+			// keep tentative VF position
+			cx[i] = cart.first[i];
+			cy[i] = cart.second[i];
+			// empty list of connection strength, idList is already empty
+			srList.push_back(vector<Float>());
+		}
     }
     return srList;
 }
@@ -166,14 +209,31 @@ vector<Int> draw_from_radius(
 
     Float mx = 0.0f;
     Float my = 0.0f;
+	Float min_dis;
+	Size min_id;
     for (Size i=0; i<n; i++) {
-        if (norm_vec(cart.first[i] - x0, cart.second[i] - y0) < radius) {
+		Float dis = norm_vec(cart.first[i] - x0, cart.second[i] - y0);
+		/*if (i == 0) {
+			min_dis = dis;
+		}
+		else {
+			if (dis < min_dis) {
+				min_id = i;
+			}
+		}*/
+        if (dis < radius) {
             index.push_back(i);
             mx = mx + cart.first[i];
             my = my + cart.second[i];
         }
     }
-    cout << "(" << mx/index.size() << ", " << my/index.size() << ")\n";
+	/*
+	if (index.size() > 0) {
+		cout << "(" << mx / index.size() << ", " << my / index.size() << ")\n";
+	} else {
+		cout << "receive no ff input\n";
+	}
+	*/
     return index;
 }
 
@@ -269,49 +329,74 @@ vector<vector<Int>> retinotopic_vf_pool(
 
 // unit test
 int main(int argc, char *argv[]) {
-    for (int i = 0; i<argc; i++) {
-        cout << argv[i] << " ";
-    }
-    cout << "\n";
-	char tmp1[101];
-	char tmp2[101];
-    Float percent;
-	if (argc == 4) {
-	  	sscanf(argv[argc-1], "%f", &percent);
-        sscanf(argv[argc-2], "%100s", tmp2);
-        sscanf(argv[argc-3], "%100s", tmp1);
-    }
-	string fname = tmp1;
-    Size n, m;
-	ifstream p_file;
-	p_file.open(fname, fstream::in | fstream::binary);
-	if (!p_file.is_open()) {
-		cout << "Cannot open or find " << fname <<"\n";
+	namespace po = boost::program_options;
+    Float percent = 1.00;
+    
+	string LGN_vpos_filename, V1_vpos_filename, V1_prop_filename;
+	po::options_description input_opt("input options");
+	input_opt.add_options()
+		("fV1_prop", po::value<string>(&V1_prop_filename)->default_value("V1_prop.bin"),"file that stores V1 neurons' parameters")
+		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"),"file that stores LGN position in visual field (and on-cell off-cell label)")
+		("fV1_vpos", po::value<string>(&V1_vpos_filename)->default_value("V1_vpos.bin"),"file that stores V1 position in visual field)");
+
+    string V1_filename, idList_filename, sList_filename; 
+	po::options_description output_opt("output options");
+	output_opt.add_options()
+		("fV1", po::value<string>(&V1_filename)->default_value("V1.bin"),"file that stores V1 neurons' information")
+		("fLGN_V1_ID", po::value<string>(&idList_filename)->default_value("LGN_V1_idList.bin"),"file stores LGN to V1 connections")
+		("fLGN_V1_s", po::value<string>(&sList_filename)->default_value("LGN_V1_sList.bin"),"file stores LGN to V1 connection strengths");
+
+	po::options_description cmdline_options;
+	cmdline_options.add(input_opt).add(output_opt);
+
+	po::variables_map vm;
+	po::store(po::parse_command_line(argc, argv, cmdline_options), vm);
+	po::notify(vm);
+
+	ifstream fV1_vpos;
+	fV1_vpos.open(V1_vpos_filename, fstream::in | fstream::binary);
+	if (!fV1_vpos) {
+		cout << "Cannot open or find " << V1_vpos_filename <<"\n";
 		return EXIT_FAILURE;
 	}
-	p_file.read(reinterpret_cast<char*>(&n), sizeof(Int));
+	Size n;
+	fV1_vpos.read(reinterpret_cast<char*>(&n), sizeof(Size));
     cout << n << " post-synaptic neurons\n";
+	//temporary vectors to get coordinate pairs
 	vector<Float> x(n);
 	vector<Float> y(n);
-	p_file.read(reinterpret_cast<char*>(&x[0]), n * sizeof(Float));
-	p_file.read(reinterpret_cast<char*>(&y[0]), n * sizeof(Float));
+	fV1_vpos.read(reinterpret_cast<char*>(&x[0]), n * sizeof(Float));
+	fV1_vpos.read(reinterpret_cast<char*>(&y[0]), n * sizeof(Float));
 	auto cart = make_pair(x, y);
-	//print_pair(cart);
+	// release memory from temporary vectors
 	x.swap(vector<Float>());
 	y.swap(vector<Float>());
+	vector<Int> LR(n);
+	fV1_vpos.read(reinterpret_cast<char*>(&LR[0]), n * sizeof(Int));
+	fV1_vpos.close();
 
-	p_file.read(reinterpret_cast<char*>(&m), sizeof(Int));
+	ifstream fLGN_vpos;
+	fLGN_vpos.open(LGN_vpos_filename, fstream::in | fstream::binary);
+	if (!fLGN_vpos) {
+		cout << "Cannot open or find " << LGN_vpos_filename << "\n";
+		return EXIT_FAILURE;
+	}
+	Size m;
+	fLGN_vpos.read(reinterpret_cast<char*>(&m), sizeof(Size));
+	cout << m << " pre-synaptic neurons\n";
+	cout << "need " << 3 * m * sizeof(Float) / 1024 / 1024 << "mb\n";
+	//temporary vectors to get coordinate pairs
 	vector<Float> x0(m);
 	vector<Float> y0(m);
-	p_file.read(reinterpret_cast<char*>(&x0[0]), m*sizeof(Float));
-	p_file.read(reinterpret_cast<char*>(&y0[0]), m*sizeof(Float));
-	vector<Int> on_off(m);
-	p_file.read(reinterpret_cast<char*>(&on_off[0]), m*sizeof(Int));
+	fLGN_vpos.read(reinterpret_cast<char*>(&x0[0]), m*sizeof(Float));
+	fLGN_vpos.read(reinterpret_cast<char*>(&y0[0]), m*sizeof(Float));
 	auto cart0 = make_pair(x0, y0);
-	//print_pair(cart0);
+	// release memory from temporary vectors
 	x0.swap(vector<Float>());
-	y0.swap(vector<Float>());
-	p_file.close();
+	y0.swap(vector<Float>()); 
+	vector<Int> LM_OF(m);
+	fLGN_vpos.read(reinterpret_cast<char*>(&LM_OF[0]), m * sizeof(Int));
+	fLGN_vpos.close();
 
 	cout << "carts ready\n";
     vector<Int> seed{820,702};
@@ -321,42 +406,50 @@ int main(int argc, char *argv[]) {
 	vector<Float> baRatio = generate_baRatio(n, rGen);
     vector<vector<Int>> poolList = retinotopic_vf_pool(cart, cart0, false, rGen, baRatio, a);
 	cout << "poolList and R ready\n";
-	string pname = tmp2;
-    fstream prop_file;
-	prop_file.open(pname, fstream::in | fstream::binary);
-	if (!prop_file.is_open()) {
-		cout << "Cannot open or find " << pname <<"\n";
-		return EXIT_FAILURE;
-	}
+
+	vector<Int> LM_phaseRef(n);
 	vector<Float> theta(n);
 	vector<Float> phase(n);
 	vector<Float> amp(n);
 	vector<Float> sig(n);
-	prop_file.read(reinterpret_cast<char*>(&theta[0]), n * sizeof(Float));
-	prop_file.read(reinterpret_cast<char*>(&phase[0]), n * sizeof(Float));
-	prop_file.read(reinterpret_cast<char*>(&amp[0]), n * sizeof(Float));
-	prop_file.read(reinterpret_cast<char*>(&sig[0]), n * sizeof(Float));
-    prop_file.close();
+    ifstream fV1_prop(V1_prop_filename, fstream::in | fstream::binary);
+	if (!fV1_prop) {
+		cout << "Cannot open or find " << V1_prop_filename <<"\n";
+		return EXIT_FAILURE;
+	}
+	fV1_prop.read(reinterpret_cast<char*>(&LM_phaseRef[0]), n * sizeof(Int));
+	fV1_prop.read(reinterpret_cast<char*>(&theta[0]), n * sizeof(Float));
+	fV1_prop.read(reinterpret_cast<char*>(&phase[0]), n * sizeof(Float));
+	fV1_prop.read(reinterpret_cast<char*>(&amp[0]), n * sizeof(Float));
+	fV1_prop.read(reinterpret_cast<char*>(&sig[0]), n * sizeof(Float));
+    fV1_prop.close();
+
 	vector<Float> sfreq = generate_sfreq(n, rGen);
 	vector<Float> cx(n);
 	vector<Float> cy(n);
-    vector<vector<Float>> srList = retinotopic_connection(poolList, rGen, percent, n, cart0, theta, phase, sfreq, amp, sig, baRatio, a, on_off, cx, cy);
+    vector<vector<Float>> srList = retinotopic_connection(poolList, rGen, percent, n, cart, cart0, theta, phase, sfreq, amp, sig, baRatio, a, LM_phaseRef, LM_OF, cx, cy);
 
-	prop_file.open(pname, fstream::app | fstream::binary);
-	if (!prop_file.is_open()) {
-		cout << "Cannot open or find " << pname <<"\n";
+	ofstream fV1(V1_filename, fstream::out | fstream::binary);
+	if (!fV1) {
+		cout << "Cannot open or find V1." << V1_filename <<"\n";
 		return EXIT_FAILURE;
 	}
-    prop_file.write((char*)&a[0], n * sizeof(Float));
-    prop_file.write((char*)&baRatio[0], n * sizeof(Float));
-	prop_file.write((char*)&sfreq[0], n * sizeof(Float));
-    prop_file.write((char*)&cx[0], n * sizeof(Float));
-	prop_file.write((char*)&cy[0], n * sizeof(Float));
-    prop_file.close();
+    fV1.write((char*)&n, sizeof(Size));
+    fV1.write((char*)&cx[0], n * sizeof(Float));
+	fV1.write((char*)&cy[0], n * sizeof(Float));
+    fV1.write((char*)&a[0], n * sizeof(Float));
+    fV1.write((char*)&baRatio[0], n * sizeof(Float));
+	fV1.write((char*)&sfreq[0], n * sizeof(Float));
+	fV1.write((char*)&theta[0], n * sizeof(Float));
+	fV1.write((char*)&phase[0], n * sizeof(Float));
+	fV1.write((char*)&amp[0], n * sizeof(Float));
+	fV1.write((char*)&sig[0], n * sizeof(Float));
+	fV1.write((char*)&LM_phaseRef[0], n * sizeof(Int));
+    fV1.close();
 
     // write poolList to disk
 	print_listOfList<Int>(poolList);
-	write_listOfList<Int>("LGNtoV1_idList.bin", poolList, false);
-	write_listOfList<Float>("LGNtoV1_srList.bin", srList, false);
+	write_listOfList<Int>(idList_filename, poolList, false);
+	write_listOfList<Float>(sList_filename, srList, false);
     return 0;
 }

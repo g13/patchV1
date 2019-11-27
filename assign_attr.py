@@ -30,7 +30,7 @@ class macroMap:
         self.zpos = pos[:,2,:]
         with open(LR_Pi_file,'r') as f:
             self.Pi = np.reshape(np.fromfile(f, 'i4', count = nx*ny),(ny,nx))
-            self.LR = np.reshape(np.fromfile(f, 'f8', count = nx*ny),(ny,nx)) # update to 'i4'
+            self.LR = np.reshape(np.fromfile(f, 'i4', count = nx*ny),(ny,nx))
         self.LR[self.LR > 0] = 1
         self.LR[self.LR < 0] = -1
         self.LR[self.Pi <=0] = 0
@@ -57,7 +57,7 @@ class macroMap:
         if OP_file is not None:
             with open(OP_file,'r') as f:
                 self.OPgrid = np.reshape(np.fromfile(f, 'f8', count = nx*ny),(ny,nx))
-                assert(np.max(self.OPgrid) <= np.pi/2 and np.min(self.OPgrid >= -np.pi/2))
+                assert(np.max(self.OPgrid[self.Pi>0]) <= np.pi/2 and np.min(self.OPgrid[self.Pi>0]) >= -np.pi/2)
 
         if VF_file is not None:
             with open(VF_file,'r') as f:
@@ -606,9 +606,9 @@ class macroMap:
 
     def plot_map(self,ax1,ax2,ax3,dpi,pltOD=True,pltVF=True,pltOP=True,ngridLine=4):
         if pltOD:
-            if not self.pODready:
+            #if not self.pODready:
                 #self.assign_pos_OD0()
-                self.assign_pos_OD1()
+                #self.assign_pos_OD1()
                 
             if pltOP:
                 if not self.pOPready:
@@ -628,8 +628,11 @@ class macroMap:
                 for i in np.arange(sum(pick)):
                     ax1.plot(self.pos[0,pick][i], self.pos[1,pick][i], markersize = 1/dpi, marker = ',', c = hsv(self.op[pick][i])*0.75)
             else:
-                ax1.plot(self.pos[0,self.ODlabel>0], self.pos[1,self.ODlabel>0],',m')
-                ax1.plot(self.pos[0,self.ODlabel<0], self.pos[1,self.ODlabel<0],',c')
+                ax1.plot(self.pos[0,:], self.pos[1,:],',k')
+                ax1.plot(self.xx[self.Pi<=0], self.yy[self.Pi<=0],',r')
+                ax1.plot(self.xx[self.Pi>0], self.yy[self.Pi>0],',g')
+                #ax1.plot(self.pos[0,self.ODlabel>0], self.pos[1,self.ODlabel>0],',m')
+                #ax1.plot(self.pos[0,self.ODlabel<0], self.pos[1,self.ODlabel<0],',c')
 
             if ngridLine > 0:
                 for ip in range(self.npolar):

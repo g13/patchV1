@@ -20,9 +20,6 @@ sRGB2XYZ = np.array([[0.4124, 0.3576, 0.1805],\
                      [0.2126, 0.7152, 0.0722],\
                      [0.0193, 0.1192, 0.9504]])
 
-h_max_ecc = 90 #degree
-v_max_ecc = 72 #degree
-
 #sBGR2LMS = np.matmul(XYZ2LMS,sRGB2XYZ[:,::-1])
 sBGR2LMS = np.matmul(XYZ2LMS,sRGB2XYZ[:,::-1])
 sRGB2LMS = sBGR2LMS[:,::-1]
@@ -37,23 +34,41 @@ def video_to_LMS_time_series(vid, start, end):
     ret = True
     captured = False
     i = start
+    
+    (major_ver, minor_ver, subminor_ver) = (cv.__version__).split('.')
+    if int(major_ver) < 3:
+        frameRate = cap.get(cv.cv.CV_CAP_PROP_FPS)
+        width = cap.get(cv.cv.CV_CAP_PROP_FRAME_WIDTH)
+        height = cap.get(cv.cv.CV_CAP_PROP_FRAME_HEIGHT)
+    else:
+        frameRate = cap.get(cv.CAP_PROP_FPS)
+        width = cap.get(cv.CAP_PROP_FRAME_WIDTH)
+        height = cap.get(cv.CAP_PROP_FRAME_HEIGHT)
+
+    frameRate = int(frameRate)
+    height = int(height)
+    width = int(width)
+    print(f'fps: {frameRate}, size: {height}x{width}')
+    FourCC = cv.VideoWriter_fourcc(*'HFYU')
+    output = cv.VideoWriter(vid+'_LMS.avi', FourCC, frameRate, (width, height), True)
+
     while(i < end):
         ret, frame = cap.read()
         if ret:
             if i==start:
-                LMS = np.empty((end-start,)+frame.shape)
+                LMS = np.empty((end-start,)+frame.shape, dtype=float)
+
             LMS[i-start] = img_to_LMS(frame)
+            output.write((LMS[i-start]*255).astype('uint8'))
             i += 1
-            captured = True
         else:
-            break
+            raise Exception('video file corrupted')
+        
+    output.release()
         
     cap.release()
     cv.destroyAllWindows()
-    if captured:
-        return LMS
-    else:
-        raise Exception('video file corrupted')
+    return LMS
 
 def img_to_LMS(image):
     LMS = np.matmul(np.reshape(image.astype('float'), (image.size//3, 3)), sRGB2LMS.T)/255
