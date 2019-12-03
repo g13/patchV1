@@ -3,7 +3,7 @@
 #SBATCH --nodes=1
 #SBATCH --mem=65GB
 #SBATCH --time=8:00:00
-#SBATCH --cpus-per-task=5
+#SBATCH --cpus-per-task=3
 #SBATCH --job-name=formMap
 #SBATCH -o log/fM_%J.out
 #SBATCH --mail-user=wd554@nyu.edu

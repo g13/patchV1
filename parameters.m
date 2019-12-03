@@ -15,8 +15,9 @@ ENproc = 'save';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
 name = 'recreate';
 var = 'Ny'
-equi = 'cortex';
-heteroAlpha = -1; % -1 reciprocal, 0 identity, 1 area
+equi = 'VF';
+old = true;
+heteroAlpha = 1; % -1 reciprocal, 0 identity, 1 area
 switch heteroAlpha
 case -1
 	wtString = 'r';
@@ -35,8 +36,8 @@ plotting = 'last' % 'all', 'first', >0 frame, <0 frame:end
 %range = [5,7.5,10,12.5,15];
 %range = [0.8,0.9,1.0,1.1,1.2];
 %range = [1.0];
-range = [1];
-cortical_VF = 'cortex';
+range = [1,2,3];
+cortical_VF = 'VF';
 non_cortical_LR = false;
 % non_cortical_LR = true;
 uniform_LR = true;
@@ -72,8 +73,8 @@ else
     scurr = rng('shuffle')
     seed = scurr.Seed;
 end
-%parfor i = 1:length(range)
-for i = 1:length(range)
+parfor i = 1:length(range)
+%for i = 1:length(range)
     % for non_cortical_shape edge boundaries
     test_dw = 5;
     test_dh = 7;
@@ -93,8 +94,8 @@ for i = 1:length(range)
 	Nx = 8;
 	%Nx = range(i)
 	%Nx = round(16*range(i)); %			% Number of points along VFx ***
-	%nvf = range(i);
-    nvf = 8;
+	nvf = 4*range(i);
+    %nvf = 4;
     rx = [0 0.16]*nvf;			% Range of VFx
     % - VFy: ditto for Ny, dy.
 	%
@@ -102,8 +103,8 @@ for i = 1:length(range)
 	%Ny = round(34*range(i)) 
 	Ny = 12;
 	%Ny = 60 - range(i);
-	if mod(Nx,2) == 1,Nx = Nx + 1; end
-	if mod(Ny,2) == 1,Ny = Ny - 1; end
+	%if mod(Nx,2) == 1,Nx = Nx + 1; end
+	%if mod(Ny,2) == 1,Ny = Ny - 1; end
 	%if cortical_VF
 	%	assert(Nx*2 == Ny);
 	%end
@@ -116,7 +117,7 @@ for i = 1:length(range)
     %  coded as NOR Cartesian-coordinate pairs (ORx,ORy). -- later by pol2cart
     %  r = 6*l/pi
 	%r = range(i)*l;			% OR modulus -- the radius of pinwheel
-	r = 1.2*l;
+	r = 1.4*l;
     NOR = 8;	 %8;		% Number of points along OR    
     % for myCortex patch
     ODnoise = l*0.0;
@@ -128,7 +129,7 @@ for i = 1:length(range)
     a = 0.635; b = 96.7; k = sqrt(140)*0.873145;
     fign = 106;
     ENfilename = [var,'-',num2str(range(i))];
-    stats(i) = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,weightType,VFpath);
+    stats(i) = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,weightType,VFpath,old);
 end
 nnpinw = [stats.npinw];
 nnpinw = nnpinw./mean(nnpinw);
