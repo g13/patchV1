@@ -4,7 +4,7 @@ addpath(genpath('/home/wd554/MATLAB/'))
  
 gen = 'twister';
 clear seed
-seed = 1435269650;
+seed = 1435259639;
 %seed = 1422230161;
 format = '-dpng';
 
@@ -13,9 +13,9 @@ plots = true;
 new = true;
 ENproc = 'save';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
-name = 'recreate';
-var = 'Ny'
-equi = 'VF';
+name = 'uniformXY-hb1';
+var = 'ODl'
+equi = 'cortex';
 old = true;
 heteroAlpha = 1; % -1 reciprocal, 0 identity, 1 area
 switch heteroAlpha
@@ -26,18 +26,22 @@ case 0
 case 1
 	wtString = 'a';
 end
-ENfilename0 = [name,'-',equi,'-',wtString,'-',var]   % Simulation name ***
-VFpath = '';
-plotting = 'last' % 'all', 'first', >0 frame, <0 frame:end
+VFpath = 'Training_pos-hb-1.bin';
+if isempty(VFpath)
+	ENfilename0 = [name,'-',equi,'-',wtString,'-',var]   % Simulation name ***
+else
+	ENfilename0 = [name,'-ext-',var]   % Simulation name ***
+end
+plotting = 'all' % 'all', 'first', >0 frame, <0 frame:end
 %range = [6,8,10,12,14];
 %range = [1.2,1.3,1.4,1.5,1.6];
 %range = [10,15,20,25,30];
 %range = [1.0,1.25,1.5,1.75,2.0];
 %range = [5,7.5,10,12.5,15];
-%range = [0.8,0.9,1.0,1.1,1.2];
+range = [0.8,0.9,1.0,1.1,1.2];
 %range = [1.0];
-range = [1,2,3];
-cortical_VF = 'VF';
+%range = [1];
+cortical_VF = 'cortex';
 non_cortical_LR = false;
 % non_cortical_LR = true;
 uniform_LR = true;
@@ -82,7 +86,7 @@ parfor i = 1:length(range)
 
     alpha = 1.0;		% Fitness term weight
 	%beta = 50*range(i);
-	beta = 100;
+	beta = 500;
     % Training parameters
 	iters = 10; %21;			% No. of annealing rates (saved)
     max_it = 10;		        % No. of iterations per annealing rate (not saved) ***
@@ -91,27 +95,27 @@ parfor i = 1:length(range)
     Kend = 0.03;        % Final K ***    
     % - VFx: Nx points in [0,1], with interpoint separation dx.
 	%Nx = round(17*range(i))			% Number of points along VFx ***
-	Nx = 8;
+	Nx = 17;
 	%Nx = range(i)
 	%Nx = round(16*range(i)); %			% Number of points along VFx ***
-	nvf = 4*range(i);
-    %nvf = 4;
-    rx = [0 0.16]*nvf;			% Range of VFx
+	%nvf = range(i);
+    nvf = 10;
+    rx = [0 0.25]*nvf;			% Range of VFx
     % - VFy: ditto for Ny, dy.
 	%
 	% even
 	%Ny = round(34*range(i)) 
-	Ny = 12;
+	Ny = 34;
 	%Ny = 60 - range(i);
-	%if mod(Nx,2) == 1,Nx = Nx + 1; end
-	%if mod(Ny,2) == 1,Ny = Ny - 1; end
+	if mod(Nx,2) == 1,Nx = Nx + 1; end
+	if mod(Ny,2) == 1,Ny = Ny - 1; end
 	%if cortical_VF
 	%	assert(Nx*2 == Ny);
 	%end
 	%Ny = round(25*range(i));			% Number of points along VFy ***
-    ry = [0 0.24]*nvf;			% Range of VFy
+    ry = [0 0.5]*nvf;			% Range of VFy
     % - OD: NOD values in range rOD, with interpoint separation dOD.
-	l = 0.12;
+	l = 0.11*range(i);
     NOD = 2;			% Number of points along OD
     rOD = [-l l];			% Range of OD
     %  coded as NOR Cartesian-coordinate pairs (ORx,ORy). -- later by pol2cart

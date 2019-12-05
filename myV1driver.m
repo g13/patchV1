@@ -213,6 +213,7 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
 		    dx = mean(diff(x_vec));
 		    dy = mean(diff(y_vec));
         else
+			disp(['reading VF training points from ', VFpath])
             fID = fopen(VFpath, 'rb');
             nxny = fread(fID, 1, 'int');
             data = fread(fID, [nxny,2], 'double');
@@ -300,9 +301,11 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
             LR(LR > l) = l;
         end
 		if saveLR
-			fID = fopen([ENfilename0,'/',ENfilename,'-LR_Pi.bin'],'w');
-			fwrite(fID, Pi, 'int');
-			fclose(fID);
+			for i=1:iters
+				fID = fopen([ENfilename0,'/',ENfilename,'-LR_Pi',num2str(i),'.bin'],'w');
+				fwrite(fID, Pi, 'int');
+				fclose(fID);
+			end
         end
 
         %T = ENtrset('grid',zeros(1,3),...
@@ -630,9 +633,11 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
 	right_open = cortical_shape;
     stats = myV1stats(stream,G,bc,ENlist,v,plotting,T,T_vec,Pi,murange,id,[],[ENfilename0,'/',ENfilename,'.png'],figlist,statsOnly,right_open,separateData,xgrid,ygrid);
 	if saveLR
-		fID = fopen([ENfilename0,'/',ENfilename,'-LR_Pi.bin'],'a');
-		fwrite(fID, ENlist(end).mu(:,id.OD), 'double');
-		fclose(fID);
+		for i = 1:iters
+			fID = fopen([ENfilename0,'/',ENfilename,'-LR_Pi',num2str(i),'.bin'],'a');
+			fwrite(fID, ENlist(i).mu(:,id.OD), 'double');
+			fclose(fID);
+		end
 	end
 end
 function f = midpoints(v)
