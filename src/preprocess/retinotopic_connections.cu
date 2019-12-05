@@ -2,14 +2,14 @@
 #include <boost/program_options.hpp>
 using namespace std;
 
-pair<Float, Float> average(vector<Float> x, vector<Float> y) {
+auto average(vector<Float> x, vector<Float> y) {
     Float mx = accumulate(x.begin(), x.end(), 0.0f)/x.size();
     Float my = accumulate(y.begin(), y.end(), 0.0f)/y.size();
     return make_pair(mx,my);
 }
 
 // normalize x to [-1,1], y to baRatio*[-1,1]
-pair<Float, Float> transform_coord_to_unitRF(Float x, Float y, const Float mx, const Float my, const Float theta, const Float a) {
+auto transform_coord_to_unitRF(Float x, Float y, const Float mx, const Float my, const Float theta, const Float a) {
     // a is half-width at the x-axis
     x = (x - mx)/a;
     y = (y - my)/a;
@@ -39,11 +39,11 @@ Float prob_dist(Float x, Float y, Float phase, Float sfreq, Float amp, Float baR
     envelope = exp(-0.5*(pow(x/sig,2)+pow(y/(sig*baRatio),2)));
     // when sfreq == 1, the RF contain a full cycle of cos(x), x\in[-pi, pi]
     Float modulation = amp * cos(sfreq * x * M_PI + phase);
-    if (LM * LM_phaseRef * OF * modulation < 0) {
+    //if (LM * LM_phaseRef * OF * modulation < 0) {
 		// mismatch between L/M cone or On/Off
-        modulation = 0;
-    } // else a mismatch between none or both have positive modulation on connection probability
-    Float prob = envelope * (1 - amp + abs(modulation));
+        //modulation = 0;
+    //} // else a mismatch between none or both have positive modulation on connection probability
+    Float prob = envelope * (1 + LM * LM_phaseRef * OF *modulation);
  	return prob;
 }
 
@@ -58,7 +58,7 @@ void normalize_prob(vector<Float> &prob, Float percent) {
         prob[i] = prob[i] / norm;
         sum += prob[i];
     }
-    cout << percent*prob.size() << " ~ " << sum << "\n";
+    //cout << percent*prob.size() << " ~ " << sum << "\n";
 }
 
 /* 
@@ -139,15 +139,14 @@ vector<vector<Float>> retinotopic_connection(
 				x.push_back(cart0.first[poolList[i][j]]);
 				y.push_back(cart0.second[poolList[i][j]]);
 			}
-			pair<Float, Float> center = average(x, y);
-			cx[i] = center.first;
-			cy[i] = center.second;
+			tie(cx[i], cy[i]) = average(x, y);
 			// calculate pooled LGN neurons' connection probability to the V1 neuron
 			vector<Float> prob;
 			prob.reserve(m);
 			for (Size j = 0; j < m; j++) {
-				pair<Float, Float> norm_coord = transform_coord_to_unitRF(x[j], y[j], center.first, center.second, theta[i], a[i]);
-				prob.push_back(prob_dist(norm_coord.first, norm_coord.second, phase[i], sfreq[i], amp[i], baRatio[i], LM_ref[i], on_off[poolList[i][j]], sig[i]));
+                Float norm_x, norm_y;
+				tie(norm_x, norm_y) = transform_coord_to_unitRF(x[j], y[j], cx[i], cy[i], theta[i], a[i]);
+				prob.push_back(prob_dist(norm_x, norm_y, phase[i], sfreq[i], amp[i], baRatio[i], LM_ref[i], on_off[poolList[i][j]], sig[i]));
 			}
 			normalize_prob(prob, percent);
 			// make connections and strength (normalized i.e., if prob > 1 then s = 1 else s = prob)
@@ -177,9 +176,7 @@ vector<vector<Float>> retinotopic_connection(
 					x.push_back(cart0.first[newList[j]]);
 					y.push_back(cart0.second[newList[j]]);
 				}
-				pair<Float, Float> center = average(x, y);
-				cx[i] = center.first;
-				cy[i] = center.second;
+				tie(cx[i], cy[i]) = average(x, y);
 			} else {
 				cx[i] = cart.first[i];
 				cy[i] = cart.second[i];
@@ -309,7 +306,8 @@ vector<vector<Int>> retinotopic_vf_pool(
         }
         // find radius from mapping rule at (e,p)
         for (Size i=0; i<n; i++) {
-            Float R = mapping_rule(VFposEcc[i]*60, normRand[i], rGen)/120.0f;
+			// convert input eccentricity to mins and convert output back to degrees.
+            Float R = mapping_rule(VFposEcc[i]*60, normRand[i], rGen)/60.0;
             a.push_back(R/sqrt(M_PI*baRatio[i]));
             Float b = R*R/M_PI/a[i];
             if (a[i] > b) {
@@ -330,7 +328,7 @@ vector<vector<Int>> retinotopic_vf_pool(
 // unit test
 int main(int argc, char *argv[]) {
 	namespace po = boost::program_options;
-    Float percent = 1.00;
+    Float percent = 0.50;
     
 	string LGN_vpos_filename, V1_vpos_filename, V1_prop_filename;
 	po::options_description input_opt("input options");
@@ -448,7 +446,7 @@ int main(int argc, char *argv[]) {
     fV1.close();
 
     // write poolList to disk
-	print_listOfList<Int>(poolList);
+	//print_listOfList<Int>(poolList);
 	write_listOfList<Int>(idList_filename, poolList, false);
 	write_listOfList<Float>(sList_filename, srList, false);
     return 0;

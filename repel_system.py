@@ -559,7 +559,7 @@ class rec_boundary:
     def get_avh(self, i, pos):
         return self.get_turn(i, pos, 2)
 
-def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = None, particle_param = None, initial_v = None, nlayer = 1, layer = None, layer_seq = None, soft_boundary = None, soft_btype = None, ax = None, seed = None, ns = 1000, ret_vel = False, p_scale = 2.0, b_scale = 1.0, fixed = None):
+def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = None, particle_param = None, initial_v = None, nlayer = 1, layer = None, layer_seq = None, soft_boundary = None, soft_btype = None, ax = None, seed = None, ns = 1000, ret_vel = False, p_scale = 2.0, b_scale = 1.0, fixed = None, mshape = ','):
     # sample points to follow:
     print(boundary.size * pos.size/1024/1024/1024)
     if ax is not None:
@@ -605,12 +605,12 @@ def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = Non
 
     if ax is not None:
         if system.nlayer == 1:
-            ax.plot(pos[0,:], pos[1,:],',k')
+            ax.plot(pos[0,:], pos[1,:], mshape+'k', ms = 0.01)
         else:
             for i in np.arange(system.nlayer):
-                ax.plot(pos[0,system.layer[i]], pos[1,system.layer[i]],',')
+                ax.plot(pos[0,system.layer[i]], pos[1,system.layer[i]], mshape)
         if ns > 0:
-            ax.plot(starting_pos[0,:], starting_pos[1,:],',m')
+            ax.plot(starting_pos[0,:], starting_pos[1,:], mshape+'m', ms = 0.01)
     print('\n')
     # normalize convergence of position relative the inter-particle-distance 
     convergence = convergence/system.cl

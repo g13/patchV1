@@ -10,7 +10,7 @@ import py_compile
 py_compile.compile('assign_attr.py')
 
 class macroMap:
-    def __init__(self, nx, ny, x, y, nblock, blockSize, LR_Pi_file, pos_file, OP_file, a, b, k, ecc, p0, p1, posUniform = False, OD_file = None, VF_file = None):
+    def __init__(self, nx, ny, x, y, nblock, blockSize, LR_Pi_file, pos_file, a, b, k, ecc, p0, p1, posUniform = False, OP_file = None, OD_file = None, VF_file = None):
         self.nblock = nblock
         self.blockSize = blockSize
         self.networkSize = nblock * blockSize
@@ -375,7 +375,7 @@ class macroMap:
             assert(nLR < np.sum(LR > 0))
         return LR, spreaded
          
-    def check_pos(self):
+    def check_pos(self, checkLR = True):
         # check in boundary
         i, j, d2 = self.get_ij_grid(get_d2 = True, get_coord = False)
         ipick = np.argmin(d2,1)
@@ -384,21 +384,22 @@ class macroMap:
         assert((self.Pi[i+1,  j][ipick == 1] > 0).all())
         assert((self.Pi[i,  j+1][ipick == 2] > 0).all())
         assert((self.Pi[i+1,j+1][ipick == 3] > 0).all())
-        # in the R stripe
-        pR = self.ODlabel > 0
-        assert((self.LR[i,    j][np.logical_and(ipick == 0, pR)] == 1).all())
-        assert((self.LR[i+1,  j][np.logical_and(ipick == 1, pR)] == 1).all())
-        assert((self.LR[i,  j+1][np.logical_and(ipick == 2, pR)] == 1).all())
-        assert((self.LR[i+1,j+1][np.logical_and(ipick == 3, pR)] == 1).all())
-        # in the L stripe
-        pL = self.ODlabel < 0
-        assert((self.LR[i,    j][np.logical_and(ipick == 0, pL)] == -1).all())
-        assert((self.LR[i+1,  j][np.logical_and(ipick == 1, pL)] == -1).all())
-        assert((self.LR[i,  j+1][np.logical_and(ipick == 2, pL)] == -1).all())
-        assert((self.LR[i+1,j+1][np.logical_and(ipick == 3, pL)] == -1).all())
-        print('boundary and LR checked')
+        if checkLR:
+            # in the R stripe
+            pR = self.ODlabel > 0
+            assert((self.LR[i,    j][np.logical_and(ipick == 0, pR)] == 1).all())
+            assert((self.LR[i+1,  j][np.logical_and(ipick == 1, pR)] == 1).all())
+            assert((self.LR[i,  j+1][np.logical_and(ipick == 2, pR)] == 1).all())
+            assert((self.LR[i+1,j+1][np.logical_and(ipick == 3, pR)] == 1).all())
+            # in the L stripe
+            pL = self.ODlabel < 0
+            assert((self.LR[i,    j][np.logical_and(ipick == 0, pL)] == -1).all())
+            assert((self.LR[i+1,  j][np.logical_and(ipick == 1, pL)] == -1).all())
+            assert((self.LR[i,  j+1][np.logical_and(ipick == 2, pL)] == -1).all())
+            assert((self.LR[i+1,j+1][np.logical_and(ipick == 3, pL)] == -1).all())
+            print('boundary and LR checked')
 
-    def make_pos_uniformT(self, dt, seed = None, particle_param = None, boundary_param = None, ax1 = None, ax2 = None, check = True, fixed = None):
+    def make_pos_uniformT(self, dt, seed = None, particle_param = None, boundary_param = None, ax1 = None, ax2 = None, check = True, b_scale = 2.0, fixed = None):
         subarea = self.subgrid[0] * self.subgrid[1]
         area = subarea * np.sum(self.Pi > 0)
         print(f'grid area: {area}, used in simulation')
@@ -408,9 +409,10 @@ class macroMap:
         OD_bound, btype = self.define_bound(A)
 
         oldpos = self.pos.copy()
-        self.pos, convergence, nlimited, _ = simulate_repel(area, self.subgrid, self.pos, dt, OD_bound, btype, boundary_param, particle_param, ax = ax1, seed = seed, fixed = fixed)
+        self.pos, convergence, nlimited, _ = simulate_repel(area, self.subgrid, self.pos, dt, OD_bound, btype, boundary_param, particle_param, ax = ax1, seed = seed, b_scale = b_scale, fixed = fixed, mshape = '.')
+
         if check:
-            self.check_pos()
+            self.check_pos(False)
 
     def make_pos_uniform(self, dt, seed = None, particle_param = None, boundary_param = None, ax1 = None, ax2 = None, check = True):
         if not self.pODready:
@@ -682,7 +684,8 @@ class macroMap:
             with open(VF_file,'wb') as f:
                 self.vpos.tofile(f)
 
-    ######## rarely-used functions ##############
+######## rarely-used functions ##############
+    #
     # memory requirement low, slower
     def assign_pos_OD0(self):
         ## determine which blocks to be consider in each subgrid to avoid too much iteration over the whole network
