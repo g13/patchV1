@@ -2,65 +2,6 @@
 #include <boost/program_options.hpp>
 using namespace std;
 
-auto average(vector<Float> x, vector<Float> y) {
-    Float mx = accumulate(x.begin(), x.end(), 0.0f)/x.size();
-    Float my = accumulate(y.begin(), y.end(), 0.0f)/y.size();
-    return make_pair(mx,my);
-}
-
-// normalize x to [-1,1], y to baRatio*[-1,1]
-auto transform_coord_to_unitRF(Float x, Float y, const Float mx, const Float my, const Float theta, const Float a) {
-    // a is half-width at the x-axis
-    x = (x - mx)/a;
-    y = (y - my)/a;
-    Float new_x, new_y;
-    new_x = cos(theta) * x + sin(theta) * y;
-	new_y = -sin(theta) * x + cos(theta) * y;
-    return make_pair(new_x, new_y);
-}
-
-// probability distribution
-Float prob_dist(Float x, Float y, Float phase, Float sfreq, Float amp, Float baRatio, Int LM_phaseRef, Int LM_OF, Float sig = 1.1775) {
-    // sfreq should be given as a percentage of the width
-    // baRatio comes from Dow et al., 1981
-	Int OF, LM;
-	if (LM_OF % 2 == 1) {
-		OF = 1;
-	} else {
-		OF = -1 ;
-	}
-	// check LGN 
-	if (LM_OF < 2) {
-		LM = 1;
-	} else {
-		LM = -1;
-	}
-    Float envelope;
-    envelope = exp(-0.5*(pow(x/sig,2)+pow(y/(sig*baRatio),2)));
-    // when sfreq == 1, the RF contain a full cycle of cos(x), x\in[-pi, pi]
-    Float modulation = amp * cos(sfreq * x * M_PI + phase);
-    //if (LM * LM_phaseRef * OF * modulation < 0) {
-		// mismatch between L/M cone or On/Off
-        //modulation = 0;
-    //} // else a mismatch between none or both have positive modulation on connection probability
-    Float prob = envelope * (1 + LM * LM_phaseRef * OF *modulation);
- 	return prob;
-}
-
-void normalize_prob(vector<Float> &prob, Float percent) {
-	// average connection probability is controlled at percent.
-    const Float norm = accumulate(prob.begin(), prob.end(), 0.0) / (percent * prob.size());
-	//cout << "norm = " << norm << "\n";
-	//print_list<Float>(prob);
-	assert(!isnan(norm));
-    Float sum = 0.0;
-    for (Size i=0; i<prob.size(); i++) {
-        prob[i] = prob[i] / norm;
-        sum += prob[i];
-    }
-    //cout << percent*prob.size() << " ~ " << sum << "\n";
-}
-
 /* 
     Purpose:
         Connect neurons with visual field centered at (eccentricity, polar) in retinotopic Sheet1 :pre-synaptically: to neurons in another retinotopic Sheet2, with visual field centered near the same spot.
@@ -108,7 +49,7 @@ void normalize_prob(vector<Float> &prob, Float percent) {
 */
 
 vector<vector<Float>> retinotopic_connection(
-        vector<vector<Int>> &poolList,
+        vector<vector<Size>> &poolList,
         RandomEngine &rGen,
         const Float percent,
         const Size n,
@@ -129,7 +70,7 @@ vector<vector<Float>> retinotopic_connection(
     vector<vector<Float>> srList;
     // for each neuron i in sheet 2 at (e, p)
     for (Size i=0; i<n; i++) {
-        const Int m = poolList[i].size();
+        const Size m = poolList[i].size();
 		if (m > 0) { // if the pool has LGN neuron
 			// intermdiate V1 VF position (tentative)
 			vector<Float> x, y;
@@ -139,7 +80,6 @@ vector<vector<Float>> retinotopic_connection(
 				x.push_back(cart0.first[poolList[i][j]]);
 				y.push_back(cart0.second[poolList[i][j]]);
 			}
-			tie(cx[i], cy[i]) = average(x, y);
 			// calculate pooled LGN neurons' connection probability to the V1 neuron
 			vector<Float> prob;
 			prob.reserve(m);
@@ -402,7 +342,7 @@ int main(int argc, char *argv[]) {
     RandomEngine rGen(seq);
     vector<Float> a; // radius of the VF
 	vector<Float> baRatio = generate_baRatio(n, rGen);
-    vector<vector<Int>> poolList = retinotopic_vf_pool(cart, cart0, false, rGen, baRatio, a);
+    vector<vector<Size>> poolList = retinotopic_vf_pool(cart, cart0, false, rGen, baRatio, a);
 	cout << "poolList and R ready\n";
 
 	vector<Int> LM_phaseRef(n);
@@ -447,7 +387,7 @@ int main(int argc, char *argv[]) {
 
     // write poolList to disk
 	//print_listOfList<Int>(poolList);
-	write_listOfList<Int>(idList_filename, poolList, false);
+	write_listOfList<Size>(idList_filename, poolList, false);
 	write_listOfList<Float>(sList_filename, srList, false);
     return 0;
 }

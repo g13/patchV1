@@ -100,12 +100,23 @@ class macroMap:
 
     # memory requirement high, faster 
     def assign_pos_OD1(self, check = True):
+        duplicate = 0
+        for i in np.arange(self.networkSize):
+            #assert(np.sum((self.pos[:,i] - self.pos[:,i+1:].T == 0).all(-1))==0)
+            test = (self.pos[:,i] - self.pos[:,i+1:].T == 0).all(-1)
+            nd = np.sum(test.any())
+            if nd > 0:
+                duplicate = duplicate + 1
+                did = np.nonzero(test)[0] + i+1
+                print(f'#{i} is duplicated by #{did} at {self.pos[:,i]}')
+        if duplicate > 0:
+            print(f'before pos adjustment: {duplicate} points have duplicate(s)')
+            assert(duplicate == 0)
+
         i, j, d2 = self.get_ij_grid(get_d2 = True, get_coord = False)
         print(np.sum(np.abs(self.LR[i,j]) + np.abs(self.LR[i+1,j]) + np.abs(self.LR[i,j+1]) + np.abs(self.LR[i+1,j+1]) == 0))
 
-        print('adjust neuron positions near the boundary')
         # pick neurons that is outside the discrete ragged boundary
-        outsideRaggedBound = ((self.Pi[i,j] <= 0) + (self.Pi[i+1,j] <= 0) + (self.Pi[i,j+1] <= 0) + (self.Pi[i+1,j+1] <= 0)).astype(bool)
         d2[self.Pi[i,j]<=0,    0] = np.float('inf')
         d2[self.Pi[i+1,j]<=0,  1] = np.float('inf')
         d2[self.Pi[i,j+1]<=0,  2] = np.float('inf')
@@ -116,12 +127,18 @@ class macroMap:
         ipick = np.argmin(d2,1)
         
         # retain neurons inside the discrete ragged boundary
+        outsideRaggedBound = ((self.Pi[i,j] <= 0) + (self.Pi[i+1,j] <= 0) + (self.Pi[i,j+1] <= 0) + (self.Pi[i+1,j+1] <= 0)).astype(bool)
+        print(f'adjust {np.sum(outsideRaggedBound)} positions near the boundary')
+        print(self.pos[:,733])
+        print(self.pos[:,776])
         x = np.mod(ipick[outsideRaggedBound],2)
         y = ipick[outsideRaggedBound]//2
         bx = self.xx[i[outsideRaggedBound] + x , j[outsideRaggedBound] + y]
         by = self.yy[i[outsideRaggedBound] + x , j[outsideRaggedBound] + y]
         self.pos[0,outsideRaggedBound] = bx + (self.pos[0,outsideRaggedBound]-bx)/3
         self.pos[1,outsideRaggedBound] = by + (self.pos[1,outsideRaggedBound]-by)/3
+        print(self.pos[:,733])
+        print(self.pos[:,776])
 
         print('assign ocular dominance preference to neuron according to their position in the cortex')
         self.ODlabel = np.zeros((self.networkSize), dtype = int)
@@ -150,14 +167,21 @@ class macroMap:
         
         # checks
         if check:
-            i, j, d2 = self.get_ij_grid(get_d2 = True, get_coord = False)
-            ipick = np.argmin(d2,1)
-            assert((self.Pi[i,    j][ipick == 0] > 0).all())
-            assert((self.Pi[i+1,  j][ipick == 1] > 0).all())
-            assert((self.Pi[i,  j+1][ipick == 2] > 0).all())
-            assert((self.Pi[i+1,j+1][ipick == 3] > 0).all())
+            self.check_pos(False, False) # check outer boundary only
+            # check if exists overlap positions
+            print('after pos adjustment: ')
+            duplicate = 0
             for i in np.arange(self.networkSize):
-                assert(np.sum((self.pos[:,i] - self.pos[:,i+1:].T == 0).all(-1))==0)
+                #assert(np.sum((self.pos[:,i] - self.pos[:,i+1:].T == 0).all(-1))==0)
+                test = (self.pos[:,i] - self.pos[:,i+1:].T == 0).all(-1)
+                nd = np.sum(test.any())
+                if nd > 0:
+                    duplicate = duplicate + 1
+                    did = np.nonzero(test)[0] + i+1
+                    print(f'#{i} is duplicated by #{did} at {self.pos[:,i]}')
+            if duplicate > 0:
+                print(f'after pos adjustment: {duplicate} points have duplicate(s)')
+                assert(duplicate == 0)
         
         self.pODready = True
         return self.ODlabel
@@ -375,7 +399,7 @@ class macroMap:
             assert(nLR < np.sum(LR > 0))
         return LR, spreaded
          
-    def check_pos(self, checkLR = True):
+    def check_pos(self, checkL = True, checkR = True):
         # check in boundary
         i, j, d2 = self.get_ij_grid(get_d2 = True, get_coord = False)
         ipick = np.argmin(d2,1)
@@ -384,22 +408,26 @@ class macroMap:
         assert((self.Pi[i+1,  j][ipick == 1] > 0).all())
         assert((self.Pi[i,  j+1][ipick == 2] > 0).all())
         assert((self.Pi[i+1,j+1][ipick == 3] > 0).all())
-        if checkLR:
-            # in the R stripe
-            pR = self.ODlabel > 0
-            assert((self.LR[i,    j][np.logical_and(ipick == 0, pR)] == 1).all())
-            assert((self.LR[i+1,  j][np.logical_and(ipick == 1, pR)] == 1).all())
-            assert((self.LR[i,  j+1][np.logical_and(ipick == 2, pR)] == 1).all())
-            assert((self.LR[i+1,j+1][np.logical_and(ipick == 3, pR)] == 1).all())
+
+        if checkL:
             # in the L stripe
             pL = self.ODlabel < 0
             assert((self.LR[i,    j][np.logical_and(ipick == 0, pL)] == -1).all())
             assert((self.LR[i+1,  j][np.logical_and(ipick == 1, pL)] == -1).all())
             assert((self.LR[i,  j+1][np.logical_and(ipick == 2, pL)] == -1).all())
             assert((self.LR[i+1,j+1][np.logical_and(ipick == 3, pL)] == -1).all())
-            print('boundary and LR checked')
+            print('left boundary checked')
 
-    def make_pos_uniformT(self, dt, seed = None, particle_param = None, boundary_param = None, ax1 = None, ax2 = None, check = True, b_scale = 2.0, fixed = None):
+        if checkR:
+            # in the R stripe
+            pR = self.ODlabel > 0
+            assert((self.LR[i,    j][np.logical_and(ipick == 0, pR)] == 1).all())
+            assert((self.LR[i+1,  j][np.logical_and(ipick == 1, pR)] == 1).all())
+            assert((self.LR[i,  j+1][np.logical_and(ipick == 2, pR)] == 1).all())
+            assert((self.LR[i+1,j+1][np.logical_and(ipick == 3, pR)] == 1).all())
+            print('right boundary checked')
+
+    def make_pos_uniformT(self, dt, seed = None, particle_param = None, boundary_param = None, ax1 = None, ax2 = None, check = True, b_scale = 2.0, p_scale = 2.0, fixed = None, ratio = 2.0):
         subarea = self.subgrid[0] * self.subgrid[1]
         area = subarea * np.sum(self.Pi > 0)
         print(f'grid area: {area}, used in simulation')
@@ -408,11 +436,18 @@ class macroMap:
         A[self.Pi > 0] = 1
         OD_bound, btype = self.define_bound(A)
 
+        nfixed = fixed.size
+        per_unit_area = 2*np.sqrt(3) # in cl^2
+        i_cl = np.sqrt(area/per_unit_area/(self.networkSize - ratio*nfixed*np.power(b_scale/p_scale,2)))
+        b_cl = b_scale/p_scale * i_cl
+
         oldpos = self.pos.copy()
-        self.pos, convergence, nlimited, _ = simulate_repel(area, self.subgrid, self.pos, dt, OD_bound, btype, boundary_param, particle_param, ax = ax1, seed = seed, b_scale = b_scale, fixed = fixed, mshape = '.')
+        self.pos, convergence, nlimited, _ = simulate_repel(area, self.subgrid, self.pos, dt, OD_bound, btype, boundary_param, particle_param, ax = ax1, seed = seed, p_scale = p_scale, b_scale = b_scale, fixed = fixed, mshape = '.', b_cl = b_cl, i_cl = i_cl)
 
         if check:
-            self.check_pos(False)
+            self.check_pos(False, False) # check outer boundary only
+
+        return b_cl, i_cl
 
     def make_pos_uniform(self, dt, seed = None, particle_param = None, boundary_param = None, ax1 = None, ax2 = None, check = True):
         if not self.pODready:
@@ -508,14 +543,12 @@ class macroMap:
                 ax.plot(np.vstack((self.pos[0,LRpick], self.vpos[0,LRpick])), np.vstack((self.pos[1,LRpick], self.vpos[1,LRpick])),'-,c', lw =0.01)
             # final positions
             ax.plot(self.vpos[0,LRpick], self.vpos[1,LRpick], ',k')
-        # check in boundary
-        i, j, d2 = self.get_ij_grid(get_d2 = True, get_coord = False)
-        ipick = np.argmin(d2,1)
-        # in the LR stripe
-        assert((LR[i,    j][np.logical_and(ipick == 0, LRpick)] == 1).all())
-        assert((LR[i+1,  j][np.logical_and(ipick == 1, LRpick)] == 1).all())
-        assert((LR[i,  j+1][np.logical_and(ipick == 2, LRpick)] == 1).all())
-        assert((LR[i+1,j+1][np.logical_and(ipick == 3, LRpick)] == 1).all())
+
+        # check only the relevant boundary
+        if LRlabel == 'L':
+            self.check_pos(True, False) 
+        else:
+            self.check_pos(False, True)
 
         if LRlabel == 'L':
             self.vposLready = True

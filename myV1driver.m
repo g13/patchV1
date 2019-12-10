@@ -196,10 +196,12 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
                     	yy_cortex = imag(w);
 		    	end
 		    else
-		    	x_vec = midpoints(linspace(rx(1),rx(2),Nx+1));
+		    	x_vec0 = linspace(rx(1),rx(2),Nx+1);
+		    	y_vec0 = linspace(ry(1),ry(2),Ny+1);
+		    	x_vec = midpoints(x_vec0);
+		    	y_vec = midpoints(y_vec0);
 		    	%x_vec = cumsum([0.25, 0.5*ones(1,Nx/2-1), ones(1,Nx/2)]);
 		    	%x_vec = rx(1) + x_vec/(max(x_vec)+0.5) * (rx(2) - rx(1));
-		    	y_vec = midpoints(linspace(ry(1),ry(2),Ny+1));
 		    end
             T = ENtrset('grid',zeros(1,5),...
                 x_vec,...	% VFx

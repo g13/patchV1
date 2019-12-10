@@ -18,6 +18,7 @@
 #include "../types.h"
 #include "util.h"
 #include "Dow_et_al_1981.h"
+#include "RFtype.h"
 
 /* Purpose
    make connection retinotopic connections from LGN to V1
