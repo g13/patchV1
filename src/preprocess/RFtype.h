@@ -3,33 +3,33 @@
 #include <vector>
 #include "types.h"
 #include "util.h"
+#include <cassert>
 
-enum class RFtype {
-	nonOppopent,  // different cone input correlates, i.e., have the same sign, in center surround, find in V1
-	nonOppopent_concentric,  // different cone input correlates, i.e., have the same sign, in center surround, find in V1
+enum class RFtype: Size {
+	nonOppopent_gabor,  // different cone input correlates, i.e., have the same sign, in gabor form, find in V1
+	nonOppopent_cs,  // different cone input correlates, i.e., have the same sign, in center surround form not necessarily concentric, find in V1
 	singleOppopent, // center surround cone opponency, LGN and V1
-	singleOppopent_mixed, // mixed surround, i.e., center cone has spatial opponency (diff. of Gaussian), LGN and V1
-	doubleOppopent, // center surround cone and spatial opponency, V1
+	doubleOppopent_cs, // center surround cone and spatial opponency, V1
     doubleOppopent_gabor // cone and spatial opponency in Gabor profile, V1
 };
 
-enum class OutputType { // V1 local RF 
-    // if double peak, choose the first on the left
-    // surround ignored
+enum class OutputType: Size { // V1 local RF 
+    // if RF has double peaks, choose the first on the left
+    // surround ignored when RF have double peaks
     // non-opponent
-    LonMon, 
-    LoffMoff, 
+    LonMon = 0,
+    LoffMoff = 1, 
     // opponent
-    LonMoff,
-    LoffMon 
+    LonMoff = 2,
+    LoffMon = 3 
 }
 
-enum class InputType { // LGN
+enum class InputType: Size { // LGN
     // center-surround
-    LonMoff,
-    LoffMon,
-    MonLoff,
-    MoffLon
+    LonMoff = 0,
+    LoffMon = 1,
+    MonLoff = 2,
+    MoffLon = 3
     // ignore mixed surround, almost always from a different cone type
 };
 
@@ -44,11 +44,85 @@ auto transform_coord_to_unitRF(Float x, Float y, const Float mx, const Float my,
     return make_pair(new_x, new_y);
 }
 
+inline Int match_OnOff(InputType iType, OutputType oType, Float &modulation) {
+	Float match;
+   	switch (oType) {
+   	    case OutputType::LonMon:
+   			switch (iType) {
+   				case InputType::LonMoff: case InputType::MonLoff: match = 1;
+   					break;
+   				case InputType::LoffMon: case InputType::MoffLon: match = -1;
+   				default: throw("There's no implementation of such combination of cone types for center-surround RF")
+   	        }
+   	        break;
+   	    case OutputType::LoffMoff:
+   	        switch (iType) {
+   				case InputType::LoffMon: case InputType::MoffLon: match = 1;
+   					break;
+   				case InputType::LonMoff: case InputType::MonLoff: match = -1;
+   				default: throw("There's no implementation of such combination of cone types for center-surround RF")
+   	        }
+   	    default: throw("There's no implementation of such non-opponent RF");
+	}
+   	return match;
+}
+
+inline Int oppose_Cone_OnOff_double(InputType iType, OutputType oType, Float &modulation) {
+	Int opponent;
+   	switch (oType) {
+   	    case OutputType::LonMoff:
+   			switch (iType) {
+   				case InputType::LonMoff: case InputType::MoffLon: opponent = 1;
+   					break;
+   				case InputType::LoffMon: case InputType::MonLoff: opponent = -1;
+					break;
+   				default: throw("There's no implementation of such combination of cone types for center-surround RF")
+   	        }
+   	        break;
+   	    case OutputType::LoffMon:
+   	        switch (iType) {
+   				case InputType::LoffMon: case InputType::MonLoff: opponent = 1;
+   					break;
+   				case InputType::LonMoff: case InputType::MoffLon: opponent = -1;
+					break;
+   				default: throw("There's no implementation of such combination of cone types for center-surround RF")
+   	        }
+   	    default: throw("There's no implementation of such opponent RF");
+	}
+   	return opponent;
+}
+
+inline Int oppose_Cone_OnOff_single(InputType iType, OutputType oType, Float &modulation) {
+	Int opponent;
+   	switch (oType) {
+   	    case OutputType::LonMoff:
+   			switch (iType) {
+   				case InputType::LonMoff: opponent = 1;
+   					break;
+   				case InputType::LoffMon: case InputType::MoffLon case InputType::MonLoff: opponent = -1;
+					break;
+   				default: throw("There's no implementation of such combination of cone types for center-surround RF")
+   	        }
+   	        break;
+   	    case OutputType::LoffMon:
+   	        switch (iType) {
+   				case InputType::LoffMon: opponent = 1;
+   					break;
+   				case InputType::LonMoff: case InputType::MonLoff: case InputType::MoffLon: opponent = -1;
+					break;
+   				default: throw("There's no implementation of such combination of cone types for center-surround RF")
+   	        }
+   	    default: throw("There's no implementation of such opponent RF");
+	}
+   	return opponent;
+}
+
 struct LinearReceptiveField { // RF sample without implementation of check_opponency
 	vector<Float> prob;
     Size n;
     Float sfreq, phase, amp, theta, radius, baRatio, sig;
     OutputType oType;
+	/* not needed
     // default constructor
     LinearReceptiveField(Size n, Float sfreq, Float phase, Float amp, Float theta, Float radius, Float baRatio, OutputType oType, Float sig = 1.177):
         n(n),
@@ -60,9 +134,24 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         baRatio(baRatio),
         oType(oType),
         sig(sig)
-    {}
+    {} */
+    virtual void setup_param(Size n, Float sfreq, Float phase, Float amp, Float theta, Float radius, Float baRatio, OutputType oType, Float sig = 1.177) {
+        this->n = n;
+        this->sfreq = sfreq;
+        this->phase = phase;
+        this->amp = amp;
+        this->theta = theta;
+        this->radius = radius;
+        this->baRatio = baRatio;
+        this->oType = oType;
+        this->sig = sig;
+	}
+
+	virtual void clear() {
+		prob.clear();
+	}
  
-    virtual Size construct_RF(vector<Float> &x, vector<Float> &y, vector<Float> &iLM_OF, vector<Size> &idList, vector<Float> strengthList, RandomEngine &rGen) {
+    virtual Size construct_connection(vector<Float> &x, vector<Float> &y, vector<Float> &iLM_OF, vector<Size> &idList, vector<Float> strengthList, RandomEngine &rGen) {
         Size nConnected;
         if (n > 0) {
 		    prob.reserve(n);
@@ -77,7 +166,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                 // calc. modulation of prob at coord.
                 Float modulation = modulate(norm_x, norm_y);
                 // calc. cone and position opponency at coord.
-	            Float opponent = check_opponency(iLM_OF[i], oLM_OF, modulation);
+	            Float opponent = check_opponency(iLM_OF[i], oLM_OF, &modulation);
                 prob.push_back(get_prob(opponent, modulation, envelope, amp));
             }
             // make connection and update ID and strength list
@@ -92,14 +181,14 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         return exp(-0.5*(pow(x/sig,2)+pow(y/(sig*baRatio),2)));
         // baRatio comes from Dow et al., 1981
     }
-    // Full cosine modulation
+    // Full cosine modulation, modulation is on cone and on-off types
     virtual Float modulate(Float x, Float y) {
-        return 1.0 + cos(sfreq * x * M_PI + phase);
+        return 0.5 + 0.5 * cos(sfreq * x * M_PI + phase);
         // sfreq should be given as a percentage of the width
         // when sfreq == 1, the RF contain a full cycle of cos(x), x\in[-pi, pi]
     }
     // To be implemented by derived class
-    virtual Float check_opponency(InputType iType, OutputType oType, Float modulation) = 0;
+    virtual Float check_opponency(InputType iType, OutputType oType, Float &modulation) = 0;
     // produce connection prob. at coord. for i-th LGN
     virtual Float get_prob(bool opponent, Float modulation, Float envelope, Float amp) {
         return envelope * (1.0 + amp * opponent * modulation);
@@ -139,50 +228,15 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 		idList.shrink_to_fit();
         return idList.size();
     }
-}
+};
 
-struct NonOpponent: LinearReceptiveField {
-    NonOpponentConcentric(Size n, Float amp, Float theta, Float radius, Float baRatio, OutputType oType, Float sig = 1.177):
-        n(n),
-        sfreq(sfreq),
-        phase(phase),
-        amp(amp),
-        theta(theta),
-        radius(radius) 
-        baRatio(baRatio),
-        oType(oType),
-        sig(sig)
-    {}
-
-    Float modulate(Float x, Float y) {
-        return 1.0;
-        // sfreq should be given as a percentage of the width
-        // when sfreq == 1, the RF contain a full cycle of cos(x), x\in[-pi, pi]
-    }
-
-    Float check_opponency(InputType iType, OutputType oType, Float modulation) override {
-        Int LM, OF;
-        Float opponent;
-        // no opponency in cone, only in space
-	    if (iLM_OF % 2 == oLM_OF % 2) {
-	    	opponent = 1;
-	    } else {
-	    	opponent = -1;
-	    }
-        return opponent;
-    }
-
-    Float get_prob(bool opponent, Float modulation, Float envelope, Float amp) {
-        return envelope * (1.0 + amp * opponent * modulation);
-    }
-}
-
-struct NonOpponentConcentric: LinearReceptiveField {
-    NonOpponentConcentric(Size n, Float amp, Float theta, Float radius, Float baRatio, OutputType oType, Float sig = 1.177):
+struct SingleOpponent: LinearReceptiveField {
+	// center-surround
+    void setup_param(Size n, Float amp, Float theta, Float radius, Float baRatio, OutputType oType, Float sig = 1.177):
         n(n),
         sfreq(0), // no modulation inside the envelope
         phase(0),
-        amp(1),
+        amp(0.5),
         theta(theta),
         radius(radius) 
         baRatio(baRatio),
@@ -194,32 +248,105 @@ struct NonOpponentConcentric: LinearReceptiveField {
         return 0.5;
     }
 
-    Float check_opponency(InputType iType, OutputType oType, Float modulation) override {
-        Float opponent;
-        switch (oType) {
-            case OutputType::LonMon:
-                if (iType == InputType::LonMoff || iType == InputType::MonLoff) {
-                    opponent = 1;
-                } else {
-                    opponent = -1;
-                }
-                break;
-            case OutputType::LoffMoff:
-                if (iType == InputType::LoffMon || iType == InputType::MoffLon) {
-                    opponent = 1;
-                } else {
-                    opponent = -1;
-                }
-            default:
-                throw("There's no implementation of such combination of cone types for non-opponent concentric RF");
-        }
-        return opponent;
-    }
+    Float check_opponency(InputType iType, OutputType oType, Float &modulation) override {
+		return 1.0 * oppose_Cone_OnOff_single(iType, oType, modulation);
+	}
 
     Float get_prob(bool opponent, Float modulation, Float envelope, Float amp) override {
         return envelope * (0.5 + amp * opponent * modulation);
     }
-}
+};
+
+struct DoubleOpponent_Gabor: LinearReceptiveField {
+	// Gabor
+    Float check_opponency(InputType iType, OutputType oType, Float &modulation) override {
+        Float opponent;
+		if (modulation < 0.5) {
+			// switch to the dominant type
+			modulation = 1 - modulation;
+			oType = static_cast<OutputType> ( 1- static_cast<Size>(oType) );
+			assert(oType == OutputType::LonMoff or oType == OutputType::LoffMon);
+		}
+		opponent = 1.0 * oppose_Cone_OnOff_double(iType, oType, modulation);
+        return opponent;
+    }
+
+    Float get_prob(bool opponent, Float modulation, Float envelope, Float amp) {
+        return envelope * (1.0 + amp * opponent * modulation);
+    }
+};
+
+struct DoubleOpponent_CS: LinearReceptiveField {
+	// center-surround
+    void setup_param(Size n, Float sfreq, Float phase, Float amp, Float theta, Float radius, Float baRatio, OutputType oType, Float sig = 1.177) {
+        this->n = n;
+        this->sfreq = 0.0;
+        this->phase = 0.0;
+        this->amp = 0.5;
+        this->theta = theta;
+        this->radius = radius;
+        this->baRatio = baRatio;
+        this->oType = oType;
+        this->sig = sig;
+	}
+
+    Float modulate(Float x, Float y) override {
+        return 0.5;
+    }
+
+    Float check_opponency(InputType iType, OutputType oType, Float &modulation) override {
+		return 1.0 * oppose_Cone_OnOff_double(iType, oType, modulation);
+	}
+
+    Float get_prob(bool opponent, Float modulation, Float envelope, Float amp) override {
+        return envelope * (0.5 + amp * opponent * modulation);
+    }
+};
+
+struct NonOpponent_Gabor: LinearReceptiveField {
+	// Gabor
+    Float check_opponency(InputType iType, OutputType oType, Float &modulation) override {
+        Float opponent;
+		if (modulation < 0.5) {
+			// switch to the dominant type
+			modulation = 1 - modulation;
+			oType = static_cast<OutputType> ( 1- static_cast<Size>(oType) );
+			assert(oType == OutputType::LonMon or oType == OutputType::LoffMoff);
+		}
+		opponent = 1.0 * match_OnOff(iType, oType, modulation);
+        return opponent;
+    }
+
+    Float get_prob(bool opponent, Float modulation, Float envelope, Float amp) {
+        return envelope * (0.5 + amp * opponent * modulation);
+    }
+};
+
+struct NonOpponent_CS: LinearReceptiveField {
+	// center-surround
+    void setup_param(Size n, Float sfreq, Float phase, Float amp, Float theta, Float radius, Float baRatio, OutputType oType, Float sig = 1.177) {
+        this->n = n;
+        this->sfreq = 0.0;
+        this->phase = 0.0;
+        this->amp = 0.5;
+        this->theta = theta;
+        this->radius = radius;
+        this->baRatio = baRatio;
+        this->oType = oType;
+        this->sig = sig;
+	}
+
+    Float modulate(Float x, Float y) override {
+        return 0.5;
+    }
+
+    Float check_opponency(InputType iType, OutputType oType, Float &modulation) override {
+		return 1.0 * match_OnOff(iType, oType, modulation);
+	}
+
+    Float get_prob(bool opponent, Float modulation, Float envelope, Float amp) override {
+        return envelope * (0.5 + amp * opponent * modulation);
+    }
 };
 
 #endif

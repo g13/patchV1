@@ -55,6 +55,7 @@ vector<vector<Float>> retinotopic_connection(
         const Size n,
 		const pair<vector<Float>, vector<Float>> &cart, // V1 VF position (tentative)
         const pair<vector<Float>,vector<Float>> &cart0, // LGN VF position
+		const vector<RFtype> &type,
         const vector<Float> &theta,
         const vector<Float> &phase,
         const vector<Float> &sfreq,
@@ -62,65 +63,68 @@ vector<vector<Float>> retinotopic_connection(
         const vector<Float> &sig,
         const vector<Float> &baRatio,
         const vector<Float> &a,
-		const vector<Int> &LM_ref,
-        const vector<Int> &on_off,
+		const vector<OutputType> &RefType,
+        const vector<InputType> &LGNtype,
         vector<Float> &cx, // V1 VF position (final)
         vector<Float> &cy) {
     uniform_real_distribution<Float> dist(0,1);
     vector<vector<Float>> srList;
+	// different V1 RF types ready for pointer RF to use
+	LinearReceptiveField* RF;		
+	NonOpponent_CS NO_CS;
+	NonOpponent_Gabor NO_G;
+	DoubleOpponent_CS DO_CS;
+	DoubleOpponent_Gabor DO_G;
+	SingleOpponent SO;
     // for each neuron i in sheet 2 at (e, p)
     for (Size i=0; i<n; i++) {
         const Size m = poolList[i].size();
 		if (m > 0) { // if the pool has LGN neuron
 			// intermdiate V1 VF position (tentative)
 			vector<Float> x, y;
+			// LGN types of the pool
+			vector<InputType> iType;
+			// assert no need to reset at each end of loop
+			assert(x.size() == 0);
+			assert(y.size() == 0);
+			assert(iType.size() == 0);
+			iType.reserve(m);
 			x.reserve(m);
+			y.reserve(m);
 			assert(x.size() == 0);
 			for (Size j = 0; j < m; j++) {
 				x.push_back(cart0.first[poolList[i][j]]);
 				y.push_back(cart0.second[poolList[i][j]]);
+				iType.push_back(LGNtype[poolList[i][j]]);
 			}
-			// calculate pooled LGN neurons' connection probability to the V1 neuron
-			vector<Float> prob;
-			prob.reserve(m);
-			for (Size j = 0; j < m; j++) {
-                Float norm_x, norm_y;
-				tie(norm_x, norm_y) = transform_coord_to_unitRF(x[j], y[j], cx[i], cy[i], theta[i], a[i]);
-				prob.push_back(prob_dist(norm_x, norm_y, phase[i], sfreq[i], amp[i], baRatio[i], LM_ref[i], on_off[poolList[i][j]], sig[i]));
+			// initialize the V1 neuron to the corresponding RF type
+			switch (type[i]) {
+				case nonOppopent_cs: RF = &NO_CS;
+				case nonOppopent_gabor: RF = &NO_G;
+				case doubleOppopent_cs: RF = &NO_CS;
+				case doubleOppopent_gabor: RF = &NO_G;
+				case singleOppopent: RF = &SO;
+				default: throw "no such type of receptive field befined (./src/preprocess/RFtype.h"
 			}
-			normalize_prob(prob, percent);
-			// make connections and strength (normalized i.e., if prob > 1 then s = 1 else s = prob)
-			vector<Int> newList;
-			newList.reserve(m);
-			vector<Float> sr;
-			sr.reserve(m);
-			for (Size j = 0; j < m; j++) {
-				if (dist(rGen) < prob[j]) {
-					newList.push_back(poolList[i][j]);
-					if (prob[j] > 1) {
-						sr.push_back(prob[j]);
-					} else {
-						sr.push_back(1);
-					}
-				}
-			}
-			srList.push_back(sr);
-			//cout << newList.size() << " <= " << poolList[i].size() << "\n";
-			poolList[i] = newList;
-			poolList[i].shrink_to_fit();
-			// calculate vf position (final)
-			if (newList.size() > 0) { 
+			RF->setup_param(m, sfreq[i], phase[i], amp[i], theta[i], a[i], baRatio[i], RefType[i], sig[i]);
+			vector<Float> strengthList;
+			// construct pooled LGN neurons' connection to the V1 neuron
+			m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen);
+			srList.push_back(strengthList);
+			if (m > 0) { 
 				x.clear();
 				y.clear();
-				for (Size j = 0; j < newList.size(); j++) {
-					x.push_back(cart0.first[newList[j]]);
-					y.push_back(cart0.second[newList[j]]);
+				for (Size j = 0; j < m; j++) {
+					x.push_back(cart0.first[poolList[i][j]]);
+					y.push_back(cart0.second[poolList[i][j]]);
 				}
 				tie(cx[i], cy[i]) = average(x, y);
 			} else {
 				cx[i] = cart.first[i];
 				cy[i] = cart.second[i];
 			}
+			// reset reusable variables
+			RF.clear();
 		} else {
 			// keep tentative VF position
 			cx[i] = cart.first[i];
@@ -332,8 +336,8 @@ int main(int argc, char *argv[]) {
 	// release memory from temporary vectors
 	x0.swap(vector<Float>());
 	y0.swap(vector<Float>()); 
-	vector<Int> LM_OF(m);
-	fLGN_vpos.read(reinterpret_cast<char*>(&LM_OF[0]), m * sizeof(Int));
+	vector<Int> LGNtype(m);
+	fLGN_vpos.read(reinterpret_cast<char*>(&LGNtype[0]), m * sizeof(Int));
 	fLGN_vpos.close();
 
 	cout << "carts ready\n";
@@ -345,7 +349,8 @@ int main(int argc, char *argv[]) {
     vector<vector<Size>> poolList = retinotopic_vf_pool(cart, cart0, false, rGen, baRatio, a);
 	cout << "poolList and R ready\n";
 
-	vector<Int> LM_phaseRef(n);
+	vector<RFtype> V1Type(n);
+	vector<OutputType> RefType(n);
 	vector<Float> theta(n);
 	vector<Float> phase(n);
 	vector<Float> amp(n);
@@ -355,7 +360,8 @@ int main(int argc, char *argv[]) {
 		cout << "Cannot open or find " << V1_prop_filename <<"\n";
 		return EXIT_FAILURE;
 	}
-	fV1_prop.read(reinterpret_cast<char*>(&LM_phaseRef[0]), n * sizeof(Int));
+	fV1_prop.read(reinterpret_cast<char*>(&V1Type[0]), n * sizeof(Int));
+	fV1_prop.read(reinterpret_cast<char*>(&RefType[0]), n * sizeof(Int));
 	fV1_prop.read(reinterpret_cast<char*>(&theta[0]), n * sizeof(Float));
 	fV1_prop.read(reinterpret_cast<char*>(&phase[0]), n * sizeof(Float));
 	fV1_prop.read(reinterpret_cast<char*>(&amp[0]), n * sizeof(Float));
@@ -365,7 +371,7 @@ int main(int argc, char *argv[]) {
 	vector<Float> sfreq = generate_sfreq(n, rGen);
 	vector<Float> cx(n);
 	vector<Float> cy(n);
-    vector<vector<Float>> srList = retinotopic_connection(poolList, rGen, percent, n, cart, cart0, theta, phase, sfreq, amp, sig, baRatio, a, LM_phaseRef, LM_OF, cx, cy);
+    vector<vector<Float>> srList = retinotopic_connection(poolList, rGen, percent, n, cart, cart0, V1Type, theta, phase, sfreq, amp, sig, baRatio, a, RefType, LGNtype, cx, cy);
 
 	ofstream fV1(V1_filename, fstream::out | fstream::binary);
 	if (!fV1) {
@@ -382,7 +388,7 @@ int main(int argc, char *argv[]) {
 	fV1.write((char*)&phase[0], n * sizeof(Float));
 	fV1.write((char*)&amp[0], n * sizeof(Float));
 	fV1.write((char*)&sig[0], n * sizeof(Float));
-	fV1.write((char*)&LM_phaseRef[0], n * sizeof(Int));
+	fV1.write((char*)&RefType[0], n * sizeof(Int));
     fV1.close();
 
     // write poolList to disk
