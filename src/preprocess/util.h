@@ -1,3 +1,5 @@
+#ifndef UTIL_H
+#define UTIL_H
 #include <vector>
 #include <utility>
 #include <iostream>
@@ -129,6 +131,6 @@ PosInt find_denorm(PosInt u1, PosInt u2, bool MorN, PosInt &norm) {
 auto average(std::vector<Float> x, std::vector<Float> y) {
     Float mx = std::accumulate(x.begin(), x.end(), 0.0f)/x.size();
     Float my = std::accumulate(y.begin(), y.end(), 0.0f)/y.size();
-    return make_pair(mx,my);
+    return std::make_pair(mx,my);
 }
-
+#endif

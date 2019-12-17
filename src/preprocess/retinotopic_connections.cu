@@ -55,7 +55,7 @@ vector<vector<Float>> retinotopic_connection(
         const Size n,
 		const pair<vector<Float>, vector<Float>> &cart, // V1 VF position (tentative)
         const pair<vector<Float>,vector<Float>> &cart0, // LGN VF position
-		const vector<RFtype> &type,
+		const vector<RFtype> &V1Type,
         const vector<Float> &theta,
         const vector<Float> &phase,
         const vector<Float> &sfreq,
@@ -69,6 +69,7 @@ vector<vector<Float>> retinotopic_connection(
         vector<Float> &cy) {
     uniform_real_distribution<Float> dist(0,1);
     vector<vector<Float>> srList;
+    srList.reserve(n);
 	// different V1 RF types ready for pointer RF to use
 	LinearReceptiveField* RF;		
 	NonOpponent_CS NO_CS;
@@ -78,16 +79,16 @@ vector<vector<Float>> retinotopic_connection(
 	SingleOpponent SO;
     // for each neuron i in sheet 2 at (e, p)
     for (Size i=0; i<n; i++) {
-        const Size m = poolList[i].size();
+        Size m = poolList[i].size();
 		if (m > 0) { // if the pool has LGN neuron
 			// intermdiate V1 VF position (tentative)
 			vector<Float> x, y;
 			// LGN types of the pool
 			vector<InputType> iType;
 			// assert no need to reset at each end of loop
-			assert(x.size() == 0);
-			assert(y.size() == 0);
-			assert(iType.size() == 0);
+			//assert(x.size() == 0);
+			//assert(y.size() == 0);
+			//assert(iType.size() == 0);
 			iType.reserve(m);
 			x.reserve(m);
 			y.reserve(m);
@@ -98,18 +99,40 @@ vector<vector<Float>> retinotopic_connection(
 				iType.push_back(LGNtype[poolList[i][j]]);
 			}
 			// initialize the V1 neuron to the corresponding RF type
-			switch (type[i]) {
-				case nonOppopent_cs: RF = &NO_CS;
-				case nonOppopent_gabor: RF = &NO_G;
-				case doubleOppopent_cs: RF = &NO_CS;
-				case doubleOppopent_gabor: RF = &NO_G;
-				case singleOppopent: RF = &SO;
-				default: throw "no such type of receptive field befined (./src/preprocess/RFtype.h"
+			switch (V1Type[i]) {
+				case RFtype::nonOppopent_cs: 
+					assert(RefType[i] == OutputType::LonMon || RefType[i] == OutputType::LoffMoff);
+					RF = &NO_CS;
+					break;
+				case RFtype::nonOppopent_gabor: 
+					assert(RefType[i] == OutputType::LonMon || RefType[i] == OutputType::LoffMoff);
+					RF = &NO_G;
+					break;
+				case RFtype::doubleOppopent_cs: 
+					assert(RefType[i] == OutputType::LonMoff || RefType[i] == OutputType::LoffMon);
+					RF = &DO_CS;
+					break;
+				case RFtype::doubleOppopent_gabor: 
+					assert(RefType[i] == OutputType::LonMoff || RefType[i] == OutputType::LoffMon);
+					RF = &DO_G;
+					break;
+				case RFtype::singleOppopent: 
+					assert(RefType[i] == OutputType::LonMoff || RefType[i] == OutputType::LoffMon);
+					RF = &SO;
+					break;
+				default: throw "no such type of receptive field for V1 so defined (./src/preprocess/RFtype.h";
 			}
 			RF->setup_param(m, sfreq[i], phase[i], amp[i], theta[i], a[i], baRatio[i], RefType[i], sig[i]);
 			vector<Float> strengthList;
 			// construct pooled LGN neurons' connection to the V1 neuron
-			m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen);
+            /* DEBUG: if (i==959) {
+                std::cout << static_cast<Size>(V1Type[i]) << ": " << static_cast<Size>(RefType[i]) << "\n";
+                std::cout << theta[i]*180.0/M_PI << ", " << phase[i]*180/M_PI << "\n";
+                std::cout << poolList[i][0] << ": " << static_cast<Size>(iType[0]) << "\n";
+                std::cout << poolList[i][1] << ": " << static_cast<Size>(iType[1]) << "\n";
+                std::cout << poolList[i][2] << ": " << static_cast<Size>(iType[2]) << "\n";
+            } */
+			m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen, percent);
 			srList.push_back(strengthList);
 			if (m > 0) { 
 				x.clear();
@@ -124,7 +147,7 @@ vector<vector<Float>> retinotopic_connection(
 				cy[i] = cart.second[i];
 			}
 			// reset reusable variables
-			RF.clear();
+			RF->clear();
 		} else {
 			// keep tentative VF position
 			cx[i] = cart.first[i];
@@ -140,18 +163,18 @@ Float norm_vec(Float x, Float y) {
     return sqrt(pow(x,2)+pow(y,2));
 }
 // *** Boundary cases are simply cut-off, assuming on calloscal connections not being activated under half-field stimulation. 
-vector<Int> draw_from_radius(
+vector<Size> draw_from_radius(
         const Float x0,
         const Float y0, 
         const Size n,
         const pair<vector<Float>,vector<Float>> &cart,
         const Float radius) {
-    vector<Int> index;
+    vector<Size> index;
 
     Float mx = 0.0f;
     Float my = 0.0f;
-	Float min_dis;
-	Size min_id;
+	//Float min_dis;
+	//Size min_id;
     for (Size i=0; i<n; i++) {
 		Float dis = norm_vec(cart.first[i] - x0, cart.second[i] - y0);
 		/*if (i == 0) {
@@ -207,14 +230,14 @@ vector<Int> draw_from_radius(
                 use tentative radius of interest rmap(e_i,p_i) on Sheet 1 and make sure that it contains at least one neuron, otherwsie only include the nearest one to the poolList.
 */
 
-vector<vector<Int>> retinotopic_vf_pool(
+vector<vector<Size>> retinotopic_vf_pool(
         const pair<vector<Float>,vector<Float>> &cart,
         const pair<vector<Float>,vector<Float>> &cart0,
         const bool use_cuda,
         RandomEngine &rGen,
         vector<Float> &baRatio,
         vector<Float> &a) {
-    vector<vector<Int>> poolList;
+    vector<vector<Size>> poolList;
     const Size n = cart.first.size();
     poolList.reserve(n);
     if (use_cuda) {
@@ -272,21 +295,21 @@ vector<vector<Int>> retinotopic_vf_pool(
 // unit test
 int main(int argc, char *argv[]) {
 	namespace po = boost::program_options;
-    Float percent = 0.50;
-    
+    Float percent;
 	string LGN_vpos_filename, V1_vpos_filename, V1_prop_filename;
 	po::options_description input_opt("input options");
 	input_opt.add_options()
-		("fV1_prop", po::value<string>(&V1_prop_filename)->default_value("V1_prop.bin"),"file that stores V1 neurons' parameters")
-		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"),"file that stores LGN position in visual field (and on-cell off-cell label)")
-		("fV1_vpos", po::value<string>(&V1_vpos_filename)->default_value("V1_vpos.bin"),"file that stores V1 position in visual field)");
+		("percent", po::value<Float>(&percent)->default_value(0.5), "LGN conneciton probability")
+		("fV1_prop", po::value<string>(&V1_prop_filename)->default_value("V1_prop.bin"), "file that stores V1 neurons' parameters")
+		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"), "file that stores LGN position in visual field (and on-cell off-cell label)")
+		("fV1_vpos", po::value<string>(&V1_vpos_filename)->default_value("V1_vpos.bin"), "file that stores V1 position in visual field)");
 
     string V1_filename, idList_filename, sList_filename; 
 	po::options_description output_opt("output options");
 	output_opt.add_options()
-		("fV1", po::value<string>(&V1_filename)->default_value("V1.bin"),"file that stores V1 neurons' information")
-		("fLGN_V1_ID", po::value<string>(&idList_filename)->default_value("LGN_V1_idList.bin"),"file stores LGN to V1 connections")
-		("fLGN_V1_s", po::value<string>(&sList_filename)->default_value("LGN_V1_sList.bin"),"file stores LGN to V1 connection strengths");
+		("fV1", po::value<string>(&V1_filename)->default_value("V1.bin"), "file that stores V1 neurons' information")
+		("fLGN_V1_ID", po::value<string>(&idList_filename)->default_value("LGN_V1_idList.bin"), "file stores LGN to V1 connections")
+		("fLGN_V1_s", po::value<string>(&sList_filename)->default_value("LGN_V1_sList.bin"), "file stores LGN to V1 connection strengths");
 
 	po::options_description cmdline_options;
 	cmdline_options.add(input_opt).add(output_opt);
@@ -302,7 +325,8 @@ int main(int argc, char *argv[]) {
 		return EXIT_FAILURE;
 	}
 	Size n;
-	fV1_vpos.read(reinterpret_cast<char*>(&n), sizeof(Size));
+	Size* size_pointer = &n;
+	fV1_vpos.read(reinterpret_cast<char*>(size_pointer), sizeof(Size));
     cout << n << " post-synaptic neurons\n";
 	//temporary vectors to get coordinate pairs
 	vector<Float> x(n);
@@ -324,7 +348,8 @@ int main(int argc, char *argv[]) {
 		return EXIT_FAILURE;
 	}
 	Size m;
-	fLGN_vpos.read(reinterpret_cast<char*>(&m), sizeof(Size));
+	size_pointer = &m;
+	fLGN_vpos.read(reinterpret_cast<char*>(size_pointer), sizeof(Size));
 	cout << m << " pre-synaptic neurons\n";
 	cout << "need " << 3 * m * sizeof(Float) / 1024 / 1024 << "mb\n";
 	//temporary vectors to get coordinate pairs
@@ -336,8 +361,8 @@ int main(int argc, char *argv[]) {
 	// release memory from temporary vectors
 	x0.swap(vector<Float>());
 	y0.swap(vector<Float>()); 
-	vector<Int> LGNtype(m);
-	fLGN_vpos.read(reinterpret_cast<char*>(&LGNtype[0]), m * sizeof(Int));
+	vector<InputType> LGNtype(m);
+	fLGN_vpos.read(reinterpret_cast<char*>(&LGNtype[0]), m * sizeof(Size));
 	fLGN_vpos.close();
 
 	cout << "carts ready\n";
@@ -360,8 +385,8 @@ int main(int argc, char *argv[]) {
 		cout << "Cannot open or find " << V1_prop_filename <<"\n";
 		return EXIT_FAILURE;
 	}
-	fV1_prop.read(reinterpret_cast<char*>(&V1Type[0]), n * sizeof(Int));
-	fV1_prop.read(reinterpret_cast<char*>(&RefType[0]), n * sizeof(Int));
+	fV1_prop.read(reinterpret_cast<char*>(&V1Type[0]), n * sizeof(Size));
+	fV1_prop.read(reinterpret_cast<char*>(&RefType[0]), n * sizeof(Size));
 	fV1_prop.read(reinterpret_cast<char*>(&theta[0]), n * sizeof(Float));
 	fV1_prop.read(reinterpret_cast<char*>(&phase[0]), n * sizeof(Float));
 	fV1_prop.read(reinterpret_cast<char*>(&amp[0]), n * sizeof(Float));
@@ -388,11 +413,11 @@ int main(int argc, char *argv[]) {
 	fV1.write((char*)&phase[0], n * sizeof(Float));
 	fV1.write((char*)&amp[0], n * sizeof(Float));
 	fV1.write((char*)&sig[0], n * sizeof(Float));
-	fV1.write((char*)&RefType[0], n * sizeof(Int));
+	fV1.write((char*)&RefType[0], n * sizeof(Size));
     fV1.close();
 
     // write poolList to disk
-	//print_listOfList<Int>(poolList);
+	//print_listOfList<Size>(poolList);
 	write_listOfList<Size>(idList_filename, poolList, false);
 	write_listOfList<Float>(sList_filename, srList, false);
     return 0;

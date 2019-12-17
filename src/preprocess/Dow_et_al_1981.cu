@@ -42,7 +42,7 @@ vector<Float> generate_sfreq(Size n, RandomEngine &rGen) {
 	}
 	// mix the two distribution
 	random_shuffle(sfreq.begin(), sfreq.end());
-	return vector<Float>(n, 0.5);
+	return vector<Float>(n, 1.0);
 }
 
 vector<Float> generate_baRatio(Size n, RandomEngine &rGen) {
@@ -92,7 +92,7 @@ Float mapping_rule(Float ecc, Float normalRand, RandomEngine &rGen) {
 	// *** set LGN contribution of the total RF size
 	const Float ratio = sqrt(0.8 / M_PI);
 	// Dow et al., 1981 Fig. 7 TODO: consider generalized extreme value distribution
-	const Float a = 9.0f; //13.32f;
+	const Float a = 20.0f; //13.32f;
 	const Float b = 0.037f;
 	const Float mean = a + b * ecc;
 	const Float std = 3.0; // it is NOT the scatter in the paper, which means the VF center's scatter around an electrode
