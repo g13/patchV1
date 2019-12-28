@@ -371,8 +371,6 @@ int main(int argc, char **argv) {
                 tie(tauD[i],nD[i]) = get_rands_from_correlated_norm(tauD_onC, nD_onC, rho_tau_n, rho_tau_n_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound);
                 tie(tauD[i+nLGN],nD[i+nLGN]) = get_rands_from_correlated_norm(tauD_offS, nD_offS, rho_tau_n, rho_tau_n_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound);
 
-                rand1 = norm(rGen_LGNsetup);
-                rand2 = norm(rGen_LGNsetup);
                 tauD[i+nLGN] = tauD_offS[0] + rho_tau_n*rand1*tauD_offS[1];
                 nD[i+nLGN] = nD_offS[0] + (rho_tau_n*rand1 + rho_tau_n_comp*rand2)*nD_offS[1];
 
