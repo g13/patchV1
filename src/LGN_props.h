@@ -11,13 +11,14 @@ struct hSpatial_component {
     Float* y; // normalize to (0,1)
     Float* ry;
     Float* k; // its sign determine On-Off
+    // TODO: construct from file directly, save memory
     hSpatial_component(
             Size nLGN,
-            Size nType,
+            Size nType, // center and surround, 2
             const vector<Float> &_x,
             const vector<Float> &_rx,
             const vector<Float> &_y,
-            const vector<Float> &_rx,
+            const vector<Float> &_ry,
             const vector<Float> &_k
     ) {
         Size arraySize = nLGN*nType;
@@ -49,15 +50,16 @@ struct hSpatial_component {
 };
 
 struct hTemporal_component {
+    // check temporalKernel in discrete_input_convol.cu for the formula
     Float* mem_block;
     Float* tauR;
     Float* tauD;
     Float* delay;
-    Float* ratio; // 2 for parvo 1 for magno
+    Float* ratio; 
     Float* nR; // factorials are also defined for floats as gamma function
     Float* nD;
 
-    hspatial_component(
+    hTemporal_component(
             Size nLGN,
             Size nType,
             const vector<Float> &_tauR,
@@ -145,6 +147,7 @@ struct hLGN_parameter {
     hStatic_nonlinear logistic;
 
     char* mem_block;
+    // TODO: enum this
     // 0: L
     // 1: M
     // 2: S
@@ -153,7 +156,7 @@ struct hLGN_parameter {
     // 5: M+S
     // 6: S+L
     SmallSize* coneType;
-    Float* covariant; // color in the surround and center ay covary
+    Float* covariant; // color in the surround and center usually covary, for calculating the max convol
     
     hLGN_parameter(
             Size _nLGN,
@@ -166,18 +169,18 @@ struct hLGN_parameter {
     ) {
         nLGN = _nLGN;
         nType = _nType;
-        Size arraySize = nLGN*nType
+        Size arraySize = nLGN*nType;
         spatial = _spatial;
         temporal = _temporal;
         logistic = _logistic;
 
-        mem_block = new char[arraySize*sizeof(SmallSize)+sizeof(Float)*(nType-1)*nLGN];
+        mem_block = new char[arraySize*sizeof(SmallSize)+sizeof(Float)*(nType-1)*nType/2*nLGN];
         coneType = (SmallSize*) mem_block;
         covariant = (Float*) (coneType + nLGN);
         for (Size i=0; i<arraySize; i++) {
             coneType[i] = _coneType[i];
         }
-        for (Size i=0; i<(nType-1)*nLGN; i++) {
+        for (Size i=0; i<(nType-1)*nType/2*nLGN; i++) {
             covariant[i] = _covariant[i];
         }
     }

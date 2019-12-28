@@ -4,6 +4,7 @@
 #include "../types.h"
 #include "util.h"
 #include <cassert>
+#include <type_traits>
 //#include <algorithm>
 
 enum class RFtype: Size {
@@ -33,6 +34,10 @@ enum class InputType: Size { // LGN
     MoffLon = 3
     // ignore mixed surround, almost always from a different cone type
 };
+
+typedef std::underlying_type<RFtype>::type RFtype_t;
+typedef std::underlying_type<InputType>::type InputType_t;
+typedef std::underlying_type<OutputType>::type OutputType_t;
 
 // normalize x to [-1,1], y to baRatio*[-1,1]
 auto transform_coord_to_unitRF(Float x, Float y, const Float mx, const Float my, const Float theta, const Float a) {
@@ -400,6 +405,10 @@ struct NonOpponent_CS: LinearReceptiveField {
     Float get_prob(Float opponent, Float modulation, Float envelope) override {
         return envelope * (0.5 + amp * opponent * modulation);
     }
+};
+
+struct load_prop {
+
 };
 
 #endif

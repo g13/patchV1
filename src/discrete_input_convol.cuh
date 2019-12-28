@@ -1,6 +1,6 @@
 //#include <cufft.h>
-#ifndef DISCRETE_INPUT_H
-#define DISCRETE_INPUT_H
+#ifndef DISCRETE_INPUT_CONVOL_CUH
+#define DISCRETE_INPUT_CONVOL_CUH
 
 #include <cuda_runtime.h>
 #include <helper_functions.h>    // includes cuda.h and cuda_runtime_api.h
@@ -9,6 +9,7 @@
 #include "DIRECTIVE.h"
 #include "cuda_util.h"
 #include "LGN_props.cuh"
+#include "global.h"
 
 extern texture<float, cudaTextureType2DLayered> L_retinaConSig;
 extern texture<float, cudaTextureType2DLayered> M_retinaConSig;

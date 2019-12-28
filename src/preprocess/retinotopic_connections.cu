@@ -166,8 +166,9 @@ Float norm_vec(Float x, Float y) {
 vector<Size> draw_from_radius(
         const Float x0,
         const Float y0, 
-        const Size n,
         const pair<vector<Float>,vector<Float>> &cart,
+        const Size start,
+        const Size end,
         const Float radius) {
     vector<Size> index;
 
@@ -175,7 +176,7 @@ vector<Size> draw_from_radius(
     Float my = 0.0f;
 	//Float min_dis;
 	//Size min_id;
-    for (Size i=0; i<n; i++) {
+    for (Size i=start; i<end; i++) {
 		Float dis = norm_vec(cart.first[i] - x0, cart.second[i] - y0);
 		/*if (i == 0) {
 			min_dis = dis;
@@ -236,7 +237,11 @@ vector<vector<Size>> retinotopic_vf_pool(
         const bool use_cuda,
         RandomEngine &rGen,
         vector<Float> &baRatio,
-        vector<Float> &a) {
+        vector<Float> &a,
+        vector<Int> &LR,
+        Size mL,
+        Size m
+) {
     vector<vector<Size>> poolList;
     const Size n = cart.first.size();
     poolList.reserve(n);
@@ -284,9 +289,12 @@ vector<vector<Size>> retinotopic_vf_pool(
             }
         }
         // next nearest neuron j to (e,p) in sheet 1
-		const Size m = cart0.first.size();
         for (Size i=0; i<n; i++) {
-            poolList.push_back(draw_from_radius(cart.first[i], cart.second[i], m, cart0, rMap[i]));
+            if (LR[i] > 0) {
+                poolList.push_back(draw_from_radius(cart.first[i], cart.second[i], cart0, mL, m, rMap[i]));
+            } else {
+                poolList.push_back(draw_from_radius(cart.first[i], cart.second[i], cart0, 0, mL, rMap[i]));
+            }
         }
     }
     return poolList;
@@ -301,7 +309,7 @@ int main(int argc, char *argv[]) {
 	input_opt.add_options()
 		("percent", po::value<Float>(&percent)->default_value(0.5), "LGN conneciton probability")
 		("fV1_prop", po::value<string>(&V1_prop_filename)->default_value("V1_prop.bin"), "file that stores V1 neurons' parameters")
-		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"), "file that stores LGN position in visual field (and on-cell off-cell label)")
+		("fLGN", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"), "file that stores LGN position in visual field (and on-cell off-cell label)")
 		("fV1_vpos", po::value<string>(&V1_vpos_filename)->default_value("V1_vpos.bin"), "file that stores V1 position in visual field)");
 
     string V1_filename, idList_filename, sList_filename; 
@@ -340,30 +348,45 @@ int main(int argc, char *argv[]) {
 	vector<Int> LR(n);
 	fV1_vpos.read(reinterpret_cast<char*>(&LR[0]), n * sizeof(Int));
 	fV1_vpos.close();
+    /*
+    Size nL = 0;
+    Size nR = 0;
+    for (auto lr: LR) {
+        if (lr > 0) {
+            nR++;
+        } else {
+            nL++;
+        }
+    } */
 
-	ifstream fLGN_vpos;
-	fLGN_vpos.open(LGN_vpos_filename, fstream::in | fstream::binary);
-	if (!fLGN_vpos) {
+	ifstream fLGN;
+	fLGN.open(LGN_vpos_filename, fstream::in | fstream::binary);
+	if (!fLGN) {
 		cout << "Cannot open or find " << LGN_vpos_filename << "\n";
 		return EXIT_FAILURE;
 	}
-	Size m;
-	size_pointer = &m;
-	fLGN_vpos.read(reinterpret_cast<char*>(size_pointer), sizeof(Size));
-	cout << m << " pre-synaptic neurons\n";
+	Size mL;
+	Size mR;
+    Size m;
+	size_pointer = &mL;
+	fLGN.read(reinterpret_cast<char*>(size_pointer), sizeof(Size));
+	size_pointer = &mR;
+	fLGN.read(reinterpret_cast<char*>(size_pointer), sizeof(Size));
+    m = mL + mR;
+    cout << m << " LGN neurons, " << mL << " from left eye, " << mR << " from right eye.\n";
 	cout << "need " << 3 * m * sizeof(Float) / 1024 / 1024 << "mb\n";
 	//temporary vectors to get coordinate pairs
 	vector<Float> x0(m);
 	vector<Float> y0(m);
-	fLGN_vpos.read(reinterpret_cast<char*>(&x0[0]), m*sizeof(Float));
-	fLGN_vpos.read(reinterpret_cast<char*>(&y0[0]), m*sizeof(Float));
+	fLGN.read(reinterpret_cast<char*>(&x0[0]), m*sizeof(Float));
+	fLGN.read(reinterpret_cast<char*>(&y0[0]), m*sizeof(Float));
 	auto cart0 = make_pair(x0, y0);
 	// release memory from temporary vectors
 	x0.swap(vector<Float>());
 	y0.swap(vector<Float>()); 
 	vector<InputType> LGNtype(m);
-	fLGN_vpos.read(reinterpret_cast<char*>(&LGNtype[0]), m * sizeof(Size));
-	fLGN_vpos.close();
+	fLGN.read(reinterpret_cast<char*>(&LGNtype[0]), m * sizeof(Size));
+	fLGN.close();
 
 	cout << "carts ready\n";
     vector<Int> seed{820,702};
@@ -371,7 +394,7 @@ int main(int argc, char *argv[]) {
     RandomEngine rGen(seq);
     vector<Float> a; // radius of the VF
 	vector<Float> baRatio = generate_baRatio(n, rGen);
-    vector<vector<Size>> poolList = retinotopic_vf_pool(cart, cart0, false, rGen, baRatio, a);
+    vector<vector<Size>> poolList = retinotopic_vf_pool(cart, cart0, false, rGen, baRatio, a, LR, mL, m);
 	cout << "poolList and R ready\n";
 
 	vector<RFtype> V1Type(n);
@@ -385,8 +408,8 @@ int main(int argc, char *argv[]) {
 		cout << "Cannot open or find " << V1_prop_filename <<"\n";
 		return EXIT_FAILURE;
 	}
-	fV1_prop.read(reinterpret_cast<char*>(&V1Type[0]), n * sizeof(Size));
-	fV1_prop.read(reinterpret_cast<char*>(&RefType[0]), n * sizeof(Size));
+	fV1_prop.read(reinterpret_cast<char*>(&V1Type[0]), n * sizeof(RFtype_t));
+	fV1_prop.read(reinterpret_cast<char*>(&RefType[0]), n * sizeof(OutputType_t));
 	fV1_prop.read(reinterpret_cast<char*>(&theta[0]), n * sizeof(Float));
 	fV1_prop.read(reinterpret_cast<char*>(&phase[0]), n * sizeof(Float));
 	fV1_prop.read(reinterpret_cast<char*>(&amp[0]), n * sizeof(Float));
@@ -413,7 +436,8 @@ int main(int argc, char *argv[]) {
 	fV1.write((char*)&phase[0], n * sizeof(Float));
 	fV1.write((char*)&amp[0], n * sizeof(Float));
 	fV1.write((char*)&sig[0], n * sizeof(Float));
-	fV1.write((char*)&RefType[0], n * sizeof(Size));
+	fV1.write((char*)&V1Type[0], n * sizeof(RFtype_t));
+	fV1.write((char*)&RefType[0], n * sizeof(OutputType_t));
     fV1.close();
 
     // write poolList to disk

@@ -22,12 +22,12 @@ _float spatialKernel(Float x, Float y, Float rx, Float ry) {
 __device__ 
 __inline__ 
 _float temporalKernel(Float tau, Temporal_component &temp, Float fac1, Float fac2) {
-    Float tau1 = tau/subr.tauR;
-    Float tau2 = tau/subr.tauD;
-    Float A1 = power(tau1, subr.nR-1)/(subr.tauR * fac1);
-    Float A2 = power(tau2, subr.nD-1)/(subr.tauD * fac2);
+    Float tau1 = tau/temp.tauR;
+    Float tau2 = tau/temp.tauD;
+    Float A1 = power(tau1, temp.nR-1)/(temp.tauR * fac1);
+    Float A2 = power(tau2, temp.nD-1)/(temp.tauD * fac2);
 
-    Float tp = subr.ratio * AexpTau(A1, tau1) - AexpTau(A2, tau2);
+    Float tp = temp.ratio * AexpTau(A1, tau1) - AexpTau(A2, tau2);
     return tp;
 }
 
@@ -346,7 +346,7 @@ void sub_convol(
 
     Float dxdy, k;
     Float spatialWeight;
-    float x0, y0;
+    float x0, y0; // coord on the stimulus plane
     Size offset0 = (id*nType + iType);
     if (spatialStored) {
         Size offset = offset0*nSample;
@@ -492,6 +492,8 @@ void sub_convol(
     }
 }
 
+// grid: [nLGN, 1, 1]
+// block: [nSpatialSample1D, nSpatialSample1D, 1]
 __global__ 
 void LGN_convol_c1s(
         Float* __restrict__ decayIn,

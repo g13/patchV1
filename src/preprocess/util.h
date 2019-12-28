@@ -7,6 +7,26 @@
 #include <string>
 #include <cassert>
 
+std::pair<Float, Float> get_rands_from_correlated_norm(Float p1[], Float p2[], Float rho, Float rho_comp, std::default_random_engine &rGen1, std::default_random_engine &rGen2, std::function<bool(Float)> &outOfBound1, std::function<bool(Float)> &outOfBound2) {
+    static std::normal_distribution<Float> norm(0.0, 1.0);
+    Float rand1, rand2, v1, v2;
+    do {
+        rand1 = norm(rGen1);
+        v1 = p1[0] + rand1*p1[1];
+    } while(outOfBound1(v1));
+    do {
+        rand2 = norm(rGen2);
+        v2 = p2[0] + (rho*rand1 + rho_comp*rand2)*p2[1];
+    } while(outOfBound2(v2));
+    return std::make_pair(v1, v2);
+}
+
+std::pair<Float, Float> lognstats(const Float true_mean, const Float true_std) {
+	Float log_mean = log(true_mean*true_mean / sqrt(true_std*true_std + true_mean * true_mean));
+	Float log_std = sqrt(log(true_std*true_std / (true_mean*true_mean) + 1));
+	return std::make_pair(log_mean, log_std);
+}
+
 template <typename T1, typename T2>
 void print_pair(std::pair<std::vector<T1>, std::vector<T2>> coord) {
 	for (Size i = 0; i < coord.first.size(); i++) {

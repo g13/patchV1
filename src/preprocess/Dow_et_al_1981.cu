@@ -2,11 +2,6 @@
 using namespace std;
 
 // Dow et al., 1981
-pair<Float, Float> lognstats(const Float m, const Float s) {
-	Float mean = log(m*m / sqrt(s + m * m));
-	Float std = sqrt(log(s / (m*m) + 1));
-	return make_pair(mean, std);
-}
 
 vector<Float> generate_sfreq(Size n, RandomEngine &rGen) {
 	// width to bar ratio ~ spatial frequency doubled
@@ -17,13 +12,13 @@ vector<Float> generate_sfreq(Size n, RandomEngine &rGen) {
 	const Size n2 = n - n1;
 	// mean and std for the first distribution
 	const Float m1 = 1.0;
-	const Float s1 = 0.2;
+	const Float std = 0.2;
 	// mean and std for the second distribution
 	const Float m2 = (4.05*n - n1 * m1) / n2;
-	const Float s2 = m2 * 1.0;
+	const Float s2 = sqrt(m2);
 
 	// generate from the first distribution
-	normal_distribution<Float> normal(m1, s1);
+	normal_distribution<Float> normal(m1, std);
 	for (Size i = 0; i < n1; i++) {
 		Float v = normal(rGen);
 		if (v < 1) {
@@ -53,13 +48,13 @@ vector<Float> generate_baRatio(Size n, RandomEngine &rGen) {
 	const Size n2 = n - n1;
 	// mean and std for the first distribution
 	const Float m1 = 1.8;
-	const Float s1 = 0.4;
+	const Float std = 0.4;
 	// mean and std for the second distribution
 	const Float m2 = (1.71*n - n1 * m1) / n2;
-	const Float s2 = 0.7;
+	const Float s2 = 0.8367;
 
 	// generate from the first distribution
-	normal_distribution<Float> normal(m1, s1);
+	normal_distribution<Float> normal(m1, std);
 	for (Size i = 0; i < n1; i++) {
 		Float v = normal(rGen);
 		if (v <= 0) {
