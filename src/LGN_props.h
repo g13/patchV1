@@ -176,7 +176,7 @@ struct hLGN_parameter {
 
         mem_block = new char[arraySize*sizeof(SmallSize)+sizeof(Float)*(nType-1)*nType/2*nLGN];
         coneType = (SmallSize*) mem_block;
-        covariant = (Float*) (coneType + nLGN);
+        covariant = (Float*) (coneType + arraySize);
         for (Size i=0; i<arraySize; i++) {
             coneType[i] = _coneType[i];
         }

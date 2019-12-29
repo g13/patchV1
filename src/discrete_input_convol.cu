@@ -27,7 +27,7 @@ _float temporalKernel(Float tau, Temporal_component &temp, Float fac1, Float fac
     Float A1 = power(tau1, temp.nR-1)/(temp.tauR * fac1);
     Float A2 = power(tau2, temp.nD-1)/(temp.tauD * fac2);
 
-    Float tp = temp.ratio * AexpTau(A1, tau1) - AexpTau(A2, tau2);
+    Float tp = AexpTau(A1, tau1) - temp.ratio*AexpTau(A2, tau2);
     return tp;
 }
 
@@ -533,7 +533,7 @@ void LGN_convol_c1s(
     // convolve center and update decayIn, lastF
     sub_convol(type, nsig, currentFrame, maxFrame, framePhase, Itau, kernelSampleDt, nKernelSample, convol, spatial, decayIn, lastF, reduced, nSampleShared, SW_storage, SC_storage, dxdy_storage, TW_storage, lid, tid, 0, 2, dt, spatialStored);
 
-    type = coneType[gridDim.x + id];
+    type = coneType[id + gridDim.x];
 
     // convolve surround and add to convol and update decayIn, lastF
     sub_convol(type, nsig, currentFrame, maxFrame, framePhase, Itau, kernelSampleDt, nKernelSample, convol, spatial, decayIn, lastF, reduced, nSampleShared, SW_storage, SC_storage, dxdy_storage, TW_storage, lid, tid, 1, 2, dt, spatialStored);

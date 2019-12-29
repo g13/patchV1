@@ -32,6 +32,7 @@ enum class InputType: Size { // LGN
     LoffMon = 1,
     MonLoff = 2,
     MoffLon = 3
+	// even -> on, odd -> off
     // ignore mixed surround, almost always from a different cone type
 };
 
