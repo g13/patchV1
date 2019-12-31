@@ -5,20 +5,26 @@ import time
 py_compile.compile('repel_system.py')
 
 class repel_system:
-    def __init__(self, area, subgrid, initial_x, bp, btype, boundary_param = None, particle_param = None, initial_v = None, nlayer = 1, layer = None, soft_boundary = None, soft_btype = None,  enough_memory = False, p_scale = 2.0, b_scale = 1.0, fixed = None):
+    def __init__(self, area, subgrid, initial_x, bp, btype, boundary_param = None, particle_param = None, initial_v = None, nlayer = 1, layer = None, soft_boundary = None, soft_btype = None,  enough_memory = False, p_scale = 2.0, b_scale = 1.0, fixed = None, b_cl = None, i_cl = None):
         self.nn = initial_x.shape[1]
         self.nb = bp.shape[0]
         if fixed is None:
             self.fixList = np.array([])
         else:
             self.fixList = fixed
-        per_unit_area = 2*np.sqrt(3) # in cl^2
-        self.cl = np.sqrt((area/self.nn)/per_unit_area)
-        print(f'characteristic length (inter-particle-distance)')
-        self.damp = 0.1
-        a_particle = self.cl*p_scale
-        a_boundary = self.cl*b_scale
+        if b_cl is None:
+            per_unit_area = 2*np.sqrt(3) # in cl^2
+            self.cl = np.sqrt((area/self.nn)/per_unit_area)
+            print(f'characteristic length (inter-particle-distance)')
+            a_particle = self.cl*p_scale
+            a_boundary = self.cl*b_scale
+        else:
+            assert(i_cl is not None)
+            self.cl = b_cl/b_scale
+            a_particle = i_cl
+            a_boundary = b_cl
         # will be used to limit displacement and velocity
+        self.damp = 0.1
         self.default_limiting = self.cl
         self.limiting = np.zeros(self.nn) + self.default_limiting
         if nlayer == -1:
@@ -559,7 +565,7 @@ class rec_boundary:
     def get_avh(self, i, pos):
         return self.get_turn(i, pos, 2)
 
-def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = None, particle_param = None, initial_v = None, nlayer = 1, layer = None, layer_seq = None, soft_boundary = None, soft_btype = None, ax = None, seed = None, ns = 1000, ret_vel = False, p_scale = 2.0, b_scale = 1.0, fixed = None):
+def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = None, particle_param = None, initial_v = None, nlayer = 1, layer = None, layer_seq = None, soft_boundary = None, soft_btype = None, ax = None, seed = None, ns = 1000, ret_vel = False, p_scale = 2.0, b_scale = 1.0, fixed = None, mshape = ',', b_cl = None, i_cl = None):
     # sample points to follow:
     print(boundary.size * pos.size/1024/1024/1024)
     if ax is not None:
@@ -588,7 +594,7 @@ def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = Non
             spos[0,:,:] =  pos[:,spick]
             starting_pos = pos[:,spick].copy()
     # test with default bound potential param
-    system = repel_system(area, subgrid, pos, boundary, btype, boundary_param, particle_param, initial_v, nlayer = nlayer, layer = layer, soft_boundary = soft_boundary, soft_btype = soft_btype, p_scale = p_scale, b_scale = b_scale, fixed = fixed)
+    system = repel_system(area, subgrid, pos, boundary, btype, boundary_param, particle_param, initial_v, nlayer = nlayer, layer = layer, soft_boundary = soft_boundary, soft_btype = soft_btype, p_scale = p_scale, b_scale = b_scale, fixed = fixed, b_cl = b_cl, i_cl = i_cl)
     system.initialize()
     if dt is not None:
         convergence = np.empty((dt.size,2))
@@ -605,12 +611,12 @@ def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = Non
 
     if ax is not None:
         if system.nlayer == 1:
-            ax.plot(pos[0,:], pos[1,:],',k')
+            ax.plot(pos[0,:], pos[1,:], mshape+'k', ms = 0.01)
         else:
             for i in np.arange(system.nlayer):
-                ax.plot(pos[0,system.layer[i]], pos[1,system.layer[i]],',')
+                ax.plot(pos[0,system.layer[i]], pos[1,system.layer[i]], mshape)
         if ns > 0:
-            ax.plot(starting_pos[0,:], starting_pos[1,:],',m')
+            ax.plot(starting_pos[0,:], starting_pos[1,:], mshape+'m', ms = 0.01)
     print('\n')
     # normalize convergence of position relative the inter-particle-distance 
     convergence = convergence/system.cl

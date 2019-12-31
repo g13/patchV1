@@ -4,6 +4,7 @@
 #include <vector>
 #include <iostream>
 #include <utility>
+#include "../util/util.h"
 #include "../types.h"
 
 std::pair<Float, Float> lognstats(const Float m, const Float s);

@@ -1,5 +1,7 @@
 #ifndef LGN_PROPS_H
 #define LGN_PROPS_H
+#include "types.h"
+#include <vector>
 
 // Array structure: (type, nLGN), different from spatial and temporal weight storage which are (nLGN, type).
 // This is to optimize read and write in CUDA
@@ -11,14 +13,16 @@ struct hSpatial_component {
     Float* y; // normalize to (0,1)
     Float* ry;
     Float* k; // its sign determine On-Off
+    // TODO: construct from file directly, save memory
+	hSpatial_component() {};
     hSpatial_component(
             Size nLGN,
-            Size nType,
-            const vector<Float> &_x,
-            const vector<Float> &_rx,
-            const vector<Float> &_y,
-            const vector<Float> &_rx,
-            const vector<Float> &_k
+            Size nType, // center and surround, 2
+            const std::vector<Float> &_x,
+            const std::vector<Float> &_rx,
+            const std::vector<Float> &_y,
+            const std::vector<Float> &_ry,
+            const std::vector<Float> &_k
     ) {
         Size arraySize = nLGN*nType;
         mem_block = new Float[5*arraySize];
@@ -49,23 +53,25 @@ struct hSpatial_component {
 };
 
 struct hTemporal_component {
-    Float* mem_block;
-    Float* tauR;
-    Float* tauD;
-    Float* delay;
-    Float* ratio; // 2 for parvo 1 for magno
-    Float* nR; // factorials are also defined for floats as gamma function
-    Float* nD;
+	// check temporalKernel in discrete_input_convol.cu for the formula
+	Float* mem_block;
+	Float* tauR;
+	Float* tauD;
+	Float* delay;
+	Float* ratio;
+	Float* nR; // factorials are also defined for floats as gamma function
+	Float* nD;
 
-    hspatial_component(
+	hTemporal_component() {};
+    hTemporal_component(
             Size nLGN,
             Size nType,
-            const vector<Float> &_tauR,
-            const vector<Float> &_tauD,
-            const vector<Float> &_delay,
-            const vector<Float> &_ratio,
-            const vector<Float> &_nR,
-            const vector<Float> &_nD
+            const std::vector<Float> &_tauR,
+            const std::vector<Float> &_tauD,
+            const std::vector<Float> &_delay,
+            const std::vector<Float> &_ratio,
+            const std::vector<Float> &_nR,
+            const std::vector<Float> &_nD
     ) {
         Size arraySize = nLGN*nType;
         mem_block = new Float[6*arraySize];
@@ -106,11 +112,12 @@ struct hStatic_nonlinear {
     Float* a;
     Float* b;
 
+	hStatic_nonlinear() {};
     hStatic_nonlinear(
             Size nLGN,
-            const vector<Float> &_spont,
-            const vector<Float> &_c50,
-            const vector<Float> &_sharpness
+            const std::vector<Float> &_spont,
+            const std::vector<Float> &_c50,
+            const std::vector<Float> &_sharpness
     ) {
         mem_block = new Float[4*nLGN];
         c50 = mem_block;
@@ -121,13 +128,13 @@ struct hStatic_nonlinear {
             c50[i] = _c50[i]; 
         }
         for (Size i=0; i<nLGN; i++) {
-            sharpness[i] = _sharpness[i]
+			sharpness[i] = _sharpness[i];
         }
         for (Size i=0; i<nLGN; i++) {
             // pre cache a and b
             const Float e_kc50 = exp(sharpness[i]*c50[i]);
             const Float e_kc50_k = exp(sharpness[i]*c50[i]-sharpness[i]);
-            a[i] = (1-spont[i])*(1+e_kc50)*(1+e_kc50_k)/(e_kc50-e_kc50_k);
+            a[i] = (1-_spont[i])*(1+e_kc50)*(1+e_kc50_k)/(e_kc50-e_kc50_k);
             b[i] = 1-a[i]/(1+e_kc50_k);
         }
     }
@@ -145,6 +152,7 @@ struct hLGN_parameter {
     hStatic_nonlinear logistic;
 
     char* mem_block;
+    // TODO: enum this
     // 0: L
     // 1: M
     // 2: S
@@ -153,7 +161,7 @@ struct hLGN_parameter {
     // 5: M+S
     // 6: S+L
     SmallSize* coneType;
-    Float* covariant; // color in the surround and center ay covary
+    Float* covariant; // color in the surround and center usually covary, for calculating the max convol
     
     hLGN_parameter(
             Size _nLGN,
@@ -161,23 +169,23 @@ struct hLGN_parameter {
             hSpatial_component &_spatial,
             hTemporal_component &_temporal,
             hStatic_nonlinear &_logistic,
-            const vector<SmallSize> &_coneType,
-            const vector<Float> &_covariant
+            const std::vector<SmallSize> &_coneType,
+            const std::vector<Float> &_covariant
     ) {
         nLGN = _nLGN;
         nType = _nType;
-        Size arraySize = nLGN*nType
+        Size arraySize = nLGN*nType;
         spatial = _spatial;
         temporal = _temporal;
         logistic = _logistic;
 
-        mem_block = new char[arraySize*sizeof(SmallSize)+sizeof(Float)*(nType-1)*nLGN];
+        mem_block = new char[arraySize*sizeof(SmallSize)+sizeof(Float)*(nType-1)*nType/2*nLGN];
         coneType = (SmallSize*) mem_block;
-        covariant = (Float*) (coneType + nLGN);
+        covariant = (Float*) (coneType + arraySize);
         for (Size i=0; i<arraySize; i++) {
             coneType[i] = _coneType[i];
         }
-        for (Size i=0; i<(nType-1)*nLGN; i++) {
+        for (Size i=0; i<(nType-1)*nType/2*nLGN; i++) {
             covariant[i] = _covariant[i];
         }
     }

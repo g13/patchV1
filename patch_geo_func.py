@@ -19,7 +19,9 @@ def fp(e,p,ab,s1=0.76,s2=0.1821):
         #return inf
         return 0 
     else:
-        return np.power(1/np.cosh(p), 2*s2/(np.power(e/ab,s1) + np.power(e/ab,-s1)))
+        exponent = 2*s2/(np.power(e/ab,s1) + np.power(e/ab,-s1))
+        base = 1/np.cosh(p)
+        return np.power(base, exponent)
     
 def fpp(e,p,ab,s1=0.76,s2=0.1821):
     if p == 0:
@@ -90,9 +92,11 @@ def x_ep(e,p,k,a,b,s1=0.76,s2=0.1821):
     return k/2*np.log(ratio) - k*np.log(a/b)
 
 def e_x(x,k,a,b):
-    xr = np.exp(2*x/k + 2*np.log(a/b)) 
+    assert((x>=0).all())
+    e0 = np.zeros(x.shape)
+    xr = np.exp(2*x[x>0]/k + 2*np.log(a/b)) 
     sqrtb2_4ac = np.sqrt(4*np.power(b*xr-a,2) - 4*(xr-1)*(b*b*xr-a*a))
-    e0 = ((a-b*xr)*2 - sqrtb2_4ac)/2/(xr-1)
+    e0[x>0] = ((a-b*xr)*2 - sqrtb2_4ac)/2/(xr-1)
     return e0
     
 def phi_ep(e,p,ab,s1=0.76,s2=0.1821):
