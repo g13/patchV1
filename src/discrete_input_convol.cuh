@@ -2,37 +2,16 @@
 #ifndef DISCRETE_INPUT_CONVOL_CUH
 #define DISCRETE_INPUT_CONVOL_CUH
 
+#include <stdio.h>
 #include <cuda_runtime.h>
 #include <helper_functions.h>    // includes cuda.h and cuda_runtime_api.h
 #include <helper_cuda.h>         // helper functions for CUDA error check
+#include <tuple>
 #include <math_functions.h>         //
 #include "DIRECTIVE.h"
-#include "cuda_util.h"
 #include "LGN_props.cuh"
-#include "global.h"
-
-extern texture<float, cudaTextureType2DLayered> L_retinaConSig;
-extern texture<float, cudaTextureType2DLayered> M_retinaConSig;
-extern texture<float, cudaTextureType2DLayered> S_retinaConSig;
-extern const float sqrt2;
-
-#ifdef SINGLE_PRECISION
-	#define square_root sqrtf
-	#define atan atan2f
-	#define uniform curand_uniform
-	#define expp expf
-	#define power powf
-	#define abs fabsf 
-    #define copy copysignf
-#else
-	#define square_root sqrt
-	#define atan atan2
-	#define uniform curand_uniform_double
-	#define expp exp 
-	#define power pow
-	#define abs fabs 
-    #define copy copysign
-#endif
+#include "types.h"
+#include "util/cuda_util.cuh"
 
 // assuming viewing distance is a single unit length
 __global__ 
@@ -46,13 +25,13 @@ __global__
 void store(// weights and max convolution
         Float* __restrict__ max_convol,
 
-        Temporal_component* __restrict__ temporal,
+        Temporal_component &temporal,
         Float* __restrict__ TW_storage,
         SmallSize nKernelSample,
         Float kernelSampleDt,
         Float kernelSampleT0,
 
-        Spatial_component* __restrict__ spatial,
+        Spatial_component &spatial,
         Float* __restrict__ SW_storage,
         Float* __restrict__ SC_storage,
         Float* __restrict__ dxdy_storage,
@@ -74,6 +53,7 @@ void LGN_convol_c1s(
         Float nsig,
         SmallSize currentFrame,
         SmallSize maxFrame,
+		Float tPerFrame,
         Float framePhase,
         Float Itau,
         Float kernelSampleDt,

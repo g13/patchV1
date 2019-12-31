@@ -2,32 +2,58 @@
 #define UTIL_H
 #include <vector>
 #include <utility>
+#include <functional>
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <cassert>
+#include "../types.h"
 
-
-Float get_rand_from_norm(Float p[], std::default_random_engine &rGen, std:function<bool(Float)> outOfBound) {
+inline Float get_rand_from_gauss(Float p[], std::default_random_engine &rGen, std::function<bool(Float)> &outOfBound) {
     static std::normal_distribution<Float> norm(0.0, 1.0);
 	Float v;
+	//Size count = 0;
+	//std::cout << "p0: " << p[0] << ", " << p[1] << "\n";
     do {
-        Float rand = norm(rGen1);
+        Float rand = norm(rGen);
         v = p[0] + rand*p[1];
+		//count++;
+		//if (count > 10) {
+		//	std::cout << count << ": " << rand << ", " << v << "\n";
+		//}
+		//if (count > 20) {
+		//	assert(count <= 20);
+		//}
     } while (outOfBound(v));
 	return v;
 }
 
-std::pair<Float, Float> get_rands_from_correlated_norm(Float p1[], Float p2[], Float rho, Float rho_comp, std::default_random_engine &rGen1, std::default_random_engine &rGen2, std::function<bool(Float)> &outOfBound1, std::function<bool(Float)> &outOfBound2) {
+inline std::pair<Float, Float> get_rands_from_correlated_gauss(Float p1[], Float p2[], Float rho, Float rho_comp, std::default_random_engine &rGen1, std::default_random_engine &rGen2, std::function<bool(Float)> &outOfBound1, std::function<bool(Float)> &outOfBound2) {
     static std::normal_distribution<Float> norm(0.0, 1.0);
     Float rand1, rand2, v1, v2;
+	//Size count = 0;
+	//std::cout << "p1: " << p1[0] << ", " << p1[1] << "\n";
+	//std::cout << "p2: " << p2[0] << ", " << p2[1] << "\n";
     do {
         rand1 = norm(rGen1);
         v1 = p1[0] + rand1*p1[1];
+		//if (count > 10) {
+		//	std::cout  << count << ": " << rand1 << ", " << v1 << "\n";
+		//}
+		//if (count > 20) {
+		//	assert(count <= 20);
+		//}
     } while (outOfBound1(v1));
+	//count = 0;
     do {
         rand2 = norm(rGen2);
         v2 = p2[0] + (rho*rand1 + rho_comp*rand2)*p2[1];
+		//if (count > 10) {
+		//	std::cout << count << ": " << rand2 << ", " << v2 << ", " << rand1 << "\n";
+		//}
+		//if (count > 20) {
+		//	assert(count <= 20);
+		//}
     } while (outOfBound2(v2));
     return std::make_pair(v1, v2);
 }

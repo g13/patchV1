@@ -1,4 +1,9 @@
-#include "discrete_input_convol.h"
+#include "discrete_input_convol.cuh"
+
+extern texture<float, cudaTextureType2DLayered> L_retinaConSig;
+extern texture<float, cudaTextureType2DLayered> M_retinaConSig;
+extern texture<float, cudaTextureType2DLayered> S_retinaConSig;
+extern __device__ __constant__ float sqrt2;
 
 // TODO-10:
 // block-processing without input-output delay
@@ -8,20 +13,20 @@
 // DIRECT FORM only:
 
 __device__ 
-__inline__ 
-_float AexpTau(_float a, _float tau) {
+__forceinline__ 
+Float AexpTau(Float a, Float tau) {
     return a * expp(-tau);
 }
 
 __device__ 
-__inline__ 
-_float spatialKernel(Float x, Float y, Float rx, Float ry) {
+__forceinline__ 
+Float spatialKernel(Float x, Float y, Float rx, Float ry) {
     return expp(-x*x/(rx*rx) - y*y/(ry*ry));
 }
 
 __device__ 
-__inline__ 
-_float temporalKernel(Float tau, Temporal_component &temp, Float fac1, Float fac2) {
+__forceinline__ 
+Float temporalKernel(Float tau, Zip_temporal &temp, Float fac1, Float fac2) {
     Float tau1 = tau/temp.tauR;
     Float tau2 = tau/temp.tauD;
     Float A1 = power(tau1, temp.nR-1)/(temp.tauR * fac1);
@@ -31,10 +36,20 @@ _float temporalKernel(Float tau, Temporal_component &temp, Float fac1, Float fac
     return tp;
 }
 
+__device__
+__forceinline__
+void retina_to_plane(Float x0, Float y0, float &x, float &y) {
+    Float r = sqrt(x0*x0 + y0*y0);
+    Float tanr = -tan(r);
+    Float xr = x0/r;
+    Float yr = x0/r;
+    x = static_cast<float>(xr*tanr);
+    y = static_cast<float>(yr*tanr);
+}
 
 __device__
-__inline__
-void get_coord_in_plane(Float xsig, Float ysig, Float cx, Float cy, Float nsig, SmallSize nx, SmallSize ny, float &x0, float &y0, Float &dxdy, bool mainThread) {
+__forceinline__
+void get_coord_in_plane(Float xsig, Float ysig, Float cx, Float cy, Float nsig, SmallSize nx, SmallSize ny, Float &x, Float &y, Float &dxdy, float &x0, float &y0, bool mainThread) {
     // make change consistent with the same part in store_spatialWeight
     Float xhspan = nsig * xsig / sqrt2;
     Float dx = 2*xhspan/nx;
@@ -52,19 +67,8 @@ void get_coord_in_plane(Float xsig, Float ysig, Float cx, Float cy, Float nsig, 
     }
 }
 
-__device__
-__inline__
-void retina_to_plane(Float x0, Float y0, float &x, float &y) {
-    Float r = sqrt(x0*x0 + y0*y0);
-    Float tanr = -tan(r);
-    Float xr = x0/r;
-    Float yr = x0/r;
-    x = static_cast<float>(xr*tanr);
-    y = static_cast<float>(yr*tanr);
-}
-
 __device__ 
-__inline__
+__forceinline__
 Float get_intensity(unsigned int coneType, float x, float y, unsigned int iLayer) {
     Float contrast;
     switch (coneType) {
@@ -133,7 +137,7 @@ Float get_intensity(unsigned int coneType, float x, float y, unsigned int iLayer
         Float sample_vol = dx * dy;
     
         SW_storage[storeID] = spatialKernel(x, y, k, spat.rx, spat.ry)*sample_vol;
-        Float x_plane, y_plane;
+        float x_plane, y_plane;
         retina_to_plane(cx + x, cy + y, x_plane, y_plane);
         SC_storage[xID] = x_plane;
         SC_storage[yID] = y_plane;
@@ -145,6 +149,8 @@ Float get_intensity(unsigned int coneType, float x, float y, unsigned int iLayer
 
 struct shared_spat {
     Float xhspan, yhspan, dx, dy, cx, cy, rx, ry;
+	__device__
+	__forceinline__
     shared_spat(Float *spat) {
         xhspan = spat[0];
         yhspan = spat[1];
@@ -155,10 +161,10 @@ struct shared_spat {
         rx = spat[6];
         ry = spat[7];
     }
-}
+};
 
 __device__
-__inline__
+__forceinline__
 void store_temporalWeight(
         Temporal_component &temporal,
         Float* __restrict__ TW_storage,
@@ -193,9 +199,10 @@ void store_temporalWeight(
             SmallSize twid = nKernelSample-1 - iPatch*patchSize - tid;
             Size storeID = (id*nType + iType)*nKernelSample + iPatch*patchSize + tid;
 
-            Float t = twid*kernelSampleDt + kernelSampleT0
+			Float t = twid * kernelSampleDt + kernelSampleT0;
             tw = temporalKernel(t, temp, fac1, fac2);
             TW_storage[storeID] = tw;
+            // get absolute values ready for max_convol
             if (tw < 0) tw = -tw;
         } else {
             tw = 0.0;
@@ -208,11 +215,11 @@ void store_temporalWeight(
 }
 
 __device__
-__inline__
+__forceinline__
 Float store_spatialWeight(
         shared_spat &ss,
         Float* __restrict__ SW_storage,
-        Float* __restrict__ SC_storage,
+        float* __restrict__ SC_storage,
         Float nsig, // span of spatialRF sample in units of std
         Size id,
         Size tid,
@@ -229,11 +236,11 @@ Float store_spatialWeight(
     Float x = (threadIdx.x + 0.5)*ss.dx - ss.xhspan;
     Float y = (threadIdx.y + 0.5)*ss.dy - ss.yhspan;
 
-    spatialWeight = spatialKernel(x, y, ss.rx, ss.ry);
+    Float spatialWeight = spatialKernel(x, y, ss.rx, ss.ry);
     
     if (storeSpatial) {
         SW_storage[storeID] = spatialWeight;
-        Float x_plane, y_plane;
+        float x_plane, y_plane;
         retina_to_plane(ss.cx + x, ss.cy + y, x_plane, y_plane);
         SC_storage[xID] = x_plane;
         SC_storage[yID] = y_plane;
@@ -242,19 +249,20 @@ Float store_spatialWeight(
 }
 
 // weights are stored in shapes of (nLGN, nType, weight)
+__launch_bounds__(1024, 2)
 __global__
 void store(
         Float* __restrict__ max_convol,
 
-        Temporal_component* __restrict__ temporal,
+        Temporal_component &temporal,
         Float* __restrict__ TW_storage,
         SmallSize nKernelSample,
         Float kernelSampleDt,
         Float kernelSampleT0,
 
-        Spatial_component* __restrict__ spatial,
+        Spatial_component &spatial,
         Float* __restrict__ SW_storage,
-        Float* __restrict__ SC_storage,
+        float* __restrict__ SC_storage,
         Float* __restrict__ dxdy_storage,
         Float nsig, // span of spatialRF sample in units of std
         bool storeSpatial
@@ -270,6 +278,9 @@ void store(
 
     Float temporalWeight, spatialWeight, dxdy, k;
     store_temporalWeight(temporal, TW_storage, reduced, temporalWeight, nKernelSample, kernelSampleDt, kernelSampleT0, id, tid, lid, iType, nType);
+    if (tid == 0 && lid == 0) {
+        printf("temporalWeights stored\n");
+    }
 
     bool use_shared = true;
     if (use_shared) { // TODO: compare with global broadcast
@@ -283,7 +294,7 @@ void store(
             Float yhspan = nsig * spat0.ry / sqrt2;
             Float dy = 2*yhspan/blockDim.y;
             dxdy = dx*dy;
-            k = spat0.k
+			k = spat0.k;
             // store dxdy
             dxdy_storage[offset] = dxdy;
 
@@ -294,7 +305,10 @@ void store(
         shared_spat ss(spat);
         spatialWeight = store_spatialWeight(ss, SW_storage, SC_storage, nsig, id, tid, offset*nSample, nSample, storeSpatial);
     } 
-    block_reduce<Float>(reduced, spatialWeight)
+    if (tid == 0 && lid == 0) {
+        printf("spatialWeights stored\n");
+    }
+	block_reduce<Float>(reduced, spatialWeight);
 
     if (tid == 0) { // iType = 0, 1
         atomicAdd(max_convol+id, reduced[0] * temporalWeight * k * dxdy * kernelSampleDt);
@@ -302,11 +316,13 @@ void store(
 }
 
 __device__
+__forceinline__
 void sub_convol(
         SmallSize type,
         PosInt nsig,
         SmallSize currentFrame,
         SmallSize maxFrame,
+		Float tPerFrame,
         Float framePhase,
         Float Itau,
         Float kernelSampleDt,
@@ -318,10 +334,9 @@ void sub_convol(
         Float* __restrict__ reduced, // shared mem ptr for block_reduce
         Float* __restrict__ nSampleShared, // shared mem ptr for block_reduce
         Float* __restrict__ SW_storage,
-        Float* __restrict__ SC_storage,
+        float* __restrict__ SC_storage,
         Float* __restrict__ dxdy_storage,
         Float* __restrict__ TW_storage,
-        Size lid,
         Size tid,
         SmallSize iType,
         SmallSize nType,
@@ -343,12 +358,13 @@ void sub_convol(
     */
     Size id = blockIdx.x;
     SmallSize nSample = blockDim.x * blockDim.y;
+    Size lid = iType*gridDim.x + id;
 
     Float dxdy, k;
     Float spatialWeight;
     float x0, y0; // coord on the stimulus plane
-    Size offset0 = (id*nType + iType);
     if (spatialStored) {
+		Size offset0 = (id*nType + iType);
         Size offset = offset0*nSample;
         Size storeID = offset + threadIdx.y*blockDim.x + threadIdx.x;
         Size xID = storeID + offset;
@@ -363,8 +379,9 @@ void sub_convol(
     } else {
         Zip_spatial spat;
         spat.load(spatial, lid);
+        Float x, y;
         // texture coords have to be float
-        get_coord_in_plane(spat.rx, spat.ry, spat.x, spat.y, nsig, blockDim.x, blockDim.y, x0, y0, dxdy, tid == 0); // dxdy is only given to the tid == 0
+        get_coord_in_plane(spat.rx, spat.ry, spat.x, spat.y, nsig, blockDim.x, blockDim.y, x, y, dxdy, x0, y0, tid == 0); // dxdy is only given to the tid == 0
         spatialWeight = spatialKernel(x, y, spat.rx, spat.ry);
         if (tid == 0) {
             k = spat.k;
@@ -374,10 +391,16 @@ void sub_convol(
         tau*dI/dt = -I + F(t);
         F(t) = piecewise F(t_{i}), for t in [t_{i}, t_{i+1}), t_{i} is the onset time of the i-th frame
     */
-    Size offset = gridDim.x*iType + id;
-    Float lastDecayIn = decayIn[offset]; // = sum_i2n(F_i[exp(-t_{i+1}/Itau) - exp(-t_{i}/Itau)] - F_{n+1})*exp(-(t-tau)/Itau)
-    Float F_1 = lastF[offset]; // = F_{n+1}
+    Float lastDecayIn = decayIn[lid]; // = sum_i2n(F_i[exp(-t_{i+1}/Itau) - exp(-t_{i}/Itau)] - F_{n+1})*exp(-(t-tau)/Itau)
+    Float F_1 = lastF[lid]; // = F_{n+1}
     //F_i is the mean of all sampled pixel value of the ith frame in the LGN's RF.
+
+    // DEBUG:
+    __syncthreads();
+    if (id == 0 && threadIdx.y*blockDim.x + threadIdx.x == 0) {
+        printf("spatial storage loaded\n");
+    }
+    //
 
     /* looping the following over (nPatch + 1) patches on nKernelSample samples points:
         p - parallelized by all threads;
@@ -385,7 +408,6 @@ void sub_convol(
         s - single thread 
      */
     SmallSize nPatch = nKernelSample/nSample;
-    patchSize
     for (SmallSize iPatch=0; iPatch<nPatch+1; iPatch++) {
         Float temporalWeight;
         SmallSize nActive;
@@ -400,6 +422,12 @@ void sub_convol(
             //convolution time start at t-tau, forward in time, reversed in temporalKernel; first sample point: t-tau+kernelSampleT0
             temporalWeight = TW_storage[iPatch*nSample + tid]; 
         }
+    // DEBUG:
+        __syncthreads();
+        if (id == 0 && threadIdx.y*blockDim.x + threadIdx.x == 0) {
+            printf("temporal storage of patch %d loaded.\n", iPatch);
+        }
+    //
         //2. Find new frames - n
         Float tFrames = nActive*kernelSampleDt + framePhase;
         SmallSize nFrame = static_cast<SmallSize>(tFrames/tPerFrame);
@@ -414,17 +442,23 @@ void sub_convol(
             }
             __syncthreads();
         }
+    // DEBUG:
+        __syncthreads();
+        if (id == 0 && threadIdx.y*blockDim.x + threadIdx.x == 0) {
+            printf("%d frames in the new patch.\n", nFrame);
+        } 
+    //
         //!!! Update light adapation variables here to hide latency: p in space 
         if (iPatch == 0 && tid == 0) { // dt < kernelSampleDt, must be in the first patch
             Float tf0 = dt + framePhase;
             if (tf0 < tPerFrame) {
                 //lastF is not changed
-                decayIn[offset] = lastDecayIn*expp(-dt/Itau);
+                decayIn[lid] = lastDecayIn*expp(-dt/Itau);
             } else {
                 // here we ASSUME tPerframe > dt, i.e., at most one change of frame happen within a single dt
                 Float F_2 = nSampleShared[0];
-                decayIn[offset] = lastDecayIn*expp(-dt/Itau) + (F_1 - F_2) * expp(-(tf0- tPerFrame)/Itau);
-                lastF[id] = F_2;
+                decayIn[lid] = lastDecayIn*expp(-dt/Itau) + (F_1 - F_2) * expp(-(tf0- tPerFrame)/Itau);
+                lastF[lid] = F_2;
             }
         }
         //4. Calculate mean_I: p in time 
@@ -445,6 +479,11 @@ void sub_convol(
             nSampleShared[tid] = lastDecayIn + F_1; //shared memory now used as mean luminance
         }
         __syncthreads();
+    // DEBUG:
+        if (id == 0 && threadIdx.y*blockDim.x + threadIdx.x == 0) {
+            printf("mean Intensity ready.\n");
+        } 
+    //
         //5. For each sample point in time: 
         //  Get contrast from local_I(ntensity) and mean_I(ntensity): p in space 
         SmallSize iFrame = static_cast<SmallSize>((kernelSampleDt + framePhase)/tPerFrame);
@@ -468,6 +507,11 @@ void sub_convol(
                 nSampleShared[iSample] = reduced[0]; // shared memory now stores spatially convolved values
             }
         }
+    // DEBUG:
+        if (id == 0 && threadIdx.y*blockDim.x + threadIdx.x == 0) {
+            printf("contrast, done.\n");
+        } 
+    //
         //6. reduce sum with temporal weights: p in time
         Float filtered;
         if (tid < nActive) {
@@ -475,7 +519,7 @@ void sub_convol(
         } else {
             filtered = 0.0f;
         }
-        block_reduced<Float>(reduced, filtered);
+        block_reduce<Float>(reduced, filtered);
         //7. add to convol: s
         if (tid == 0) {
             convol += reduced[0];
@@ -486,6 +530,11 @@ void sub_convol(
             framePhase = fmod(nActive*kernelSampleDt + framePhase, tPerFrame);
         }
     }
+    // DEBUG:
+        if (id == 0 && threadIdx.y*blockDim.x + threadIdx.x == 0) {
+            printf("contrast, done.\n");
+        } 
+    //
     if (tid == 0) {
         // times amplitude and space-time volume
         convol *= kernelSampleDt*dxdy*k;
@@ -494,12 +543,13 @@ void sub_convol(
 
 // grid: [nLGN, 1, 1]
 // block: [nSpatialSample1D, nSpatialSample1D, 1]
+__launch_bounds__(1024, 2)
 __global__ 
 void LGN_convol_c1s(
         Float* __restrict__ decayIn,
         Float* __restrict__ lastF,
         Float* __restrict__ SW_storage,
-        Float* __restrict__ SC_storage,
+        float* __restrict__ SC_storage,
         Float* __restrict__ dxdy_storage,
         Float* __restrict__ TW_storage,
         Float* __restrict__ LGNfr,
@@ -508,6 +558,7 @@ void LGN_convol_c1s(
         Float nsig,
         SmallSize currentFrame,
         SmallSize maxFrame,
+		Float tPerFrame,
         Float framePhase,
         Float Itau,
         Float kernelSampleDt,
@@ -516,7 +567,6 @@ void LGN_convol_c1s(
         bool spatialStored
 ) {
     __shared__ Float reduced[warpSize];
-    SmallSize nSample = blockDim.x*blockDim.y;
     extern __shared__ Float nSampleShared[];
     unsigned int id = blockIdx.x;
     SmallSize type = coneType[id];
@@ -531,12 +581,12 @@ void LGN_convol_c1s(
 
     //TODO: Itau may take different value for different cone type
     // convolve center and update decayIn, lastF
-    sub_convol(type, nsig, currentFrame, maxFrame, framePhase, Itau, kernelSampleDt, nKernelSample, convol, spatial, decayIn, lastF, reduced, nSampleShared, SW_storage, SC_storage, dxdy_storage, TW_storage, lid, tid, 0, 2, dt, spatialStored);
+    sub_convol(type, nsig, currentFrame, maxFrame, tPerFrame, framePhase, Itau, kernelSampleDt, nKernelSample, convol, spatial, decayIn, lastF, reduced, nSampleShared, SW_storage, SC_storage, dxdy_storage, TW_storage, tid, 0, 2, dt, spatialStored);
 
     type = coneType[id + gridDim.x];
 
     // convolve surround and add to convol and update decayIn, lastF
-    sub_convol(type, nsig, currentFrame, maxFrame, framePhase, Itau, kernelSampleDt, nKernelSample, convol, spatial, decayIn, lastF, reduced, nSampleShared, SW_storage, SC_storage, dxdy_storage, TW_storage, lid, tid, 1, 2, dt, spatialStored);
+    sub_convol(type, nsig, currentFrame, maxFrame, tPerFrame, framePhase, Itau, kernelSampleDt, nKernelSample, convol, spatial, decayIn, lastF, reduced, nSampleShared, SW_storage, SC_storage, dxdy_storage, TW_storage, tid, 1, 2, dt, spatialStored);
 
     // update convolution data 
     if (tid == 0) {
@@ -544,6 +594,7 @@ void LGN_convol_c1s(
     }
 }
 
+__launch_bounds__(1024, 2)
 __global__ 
 void LGN_nonlinear(
         Static_nonlinear &logistic,
@@ -553,7 +604,7 @@ void LGN_nonlinear(
 	unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
 	Float _max_convol = max_convol[id];
 	// min = -max;
-	_float current_convol = LGN_fr[id];
+	Float current_convol = LGN_fr[id];
     if (current_convol < 0) {
         current_convol = 0;
     }
@@ -562,4 +613,3 @@ void LGN_nonlinear(
     Float ratio = logistic.transform(id, current_convol/_max_convol);
     LGN_fr[id] = current_convol * ratio;
 }
-

@@ -1,4 +1,4 @@
-#include "cuda_util.h"
+#include "cuda_util.cuh"
 
 __device__ void warp0_min(_float array[], unsigned int id[]) {
     _float value = array[threadIdx.x];

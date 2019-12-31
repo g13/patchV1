@@ -1,8 +1,9 @@
 #ifndef RFTYPE_H
 #define RFTYPE_H
 #include <vector>
+#include <numeric>
 #include "../types.h"
-#include "util.h"
+#include "../util/util.h"
 #include <cassert>
 #include <type_traits>
 //#include <algorithm>
@@ -15,7 +16,7 @@ enum class RFtype: Size {
     doubleOppopent_gabor = 4 // cone and spatial opponency in Gabor profile, V1
 };
 
-enum class OutputType : Size { // V1 local RF 
+enum class OutputType: Size { // V1 local RF 
 	// if RF has double peaks, choose the first on the left
 	// surround ignored when RF have double peaks
 	// non-opponent

@@ -1,6 +1,6 @@
 #include "connect.h"
 #include <cassert>
-#include "cuda_util.h"
+#include "../util/cuda_util.h"
 
 #ifndef SINGLE_PRECISION
 	//using func = _float(*)(_float);

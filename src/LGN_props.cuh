@@ -1,6 +1,12 @@
 #ifndef LGN_PROPS_CUH
 #define LGN_PROPS_CUH
-
+#include <stdio.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <helper_cuda.h>
+#include "types.h"
+#include "LGN_props.h"
+#include "DIRECTIVE.h"
 // Array structure: (type, nLGN), different from spatial and temporal weight storage, see "discrete_input_convol.cu->store_weight" which are (nLGN, type).
 // This is to optimize read and write in CUDA
 
@@ -23,7 +29,7 @@ struct Spatial_component {
         checkCudaErrors(cudaMemcpy(mem_block, host.mem_block, memSize, cudaMemcpyHostToDevice));
     }
 	void freeMem() {
-		cudaFree(mem_block);
+		checkCudaErrors(cudaFree(mem_block));
 	}
 };
 
@@ -48,7 +54,7 @@ struct Temporal_component {
         checkCudaErrors(cudaMemcpy(mem_block, host.mem_block, memSize, cudaMemcpyHostToDevice));
     }
 	void freeMem() {
-		cudaFree(mem_block);
+		checkCudaErrors(cudaFree(mem_block));
 	}
 };
 
@@ -63,14 +69,14 @@ struct Static_nonlinear {
     void allocAndMemcpy(Size arraySize, hStatic_nonlinear &host) {
         size_t memSize = 4*arraySize*sizeof(Float);
         checkCudaErrors(cudaMalloc((void**)&mem_block, memSize));
-        c50 = memblock;
+        c50 = mem_block;
         sharpness = c50 + arraySize;
         a = sharpness + arraySize;
         b = a + arraySize;
         checkCudaErrors(cudaMemcpy(mem_block, host.mem_block, memSize, cudaMemcpyHostToDevice));
     }
 	void freeMem() {
-		cudaFree(mem_block);
+		checkCudaErrors(cudaFree(mem_block));
 	}
     // transform convolution result (input) with logistic function and return as firing rate
     __device__
@@ -88,9 +94,14 @@ struct Static_nonlinear {
 
 // collect all the components and send to device
 struct LGN_parameter {
-    Spatial_component spatial;
-    Temporal_component temporal;
-    Static_nonlinear logistic;
+    // dev pointer to structs that contain dev pointer to data
+    Spatial_component* spatial;
+    Temporal_component* temporal;
+    Static_nonlinear* logistic;
+    // dev pointer to data, may be needed for cudaFree(*);
+    Spatial_component hSpat;
+    Temporal_component hTemp;
+    Static_nonlinear hLogi;
 
     SmallSize* mem_block;
     // 0: L
@@ -106,11 +117,21 @@ struct LGN_parameter {
     
     LGN_parameter(hLGN_parameter &host) {
         Size nLGN = host.nLGN;
+
         SmallSize nType = host.nType;
         Size arraySize = nLGN*nType;
-        temporal.allocAndMemcpy(arraySize, host.temporal);
-        spatial.allocAndMemcpy(arraySize, host.spatial);
-        logistic.allocAndMemcpy(nLGN, host.logistic);
+
+        hTemp.allocAndMemcpy(arraySize, host.temporal);
+        checkCudaErrors(cudaMalloc((void**) &temporal, sizeof(hTemp)));
+        checkCudaErrors(cudaMemcpy(temporal, &hTemp, sizeof(hTemp),cudaMemcpyHostToDevice));
+
+        hSpat.allocAndMemcpy(arraySize, host.spatial);
+        checkCudaErrors(cudaMalloc((void**) &spatial, sizeof(hSpat)));
+        checkCudaErrors(cudaMemcpy(spatial, &hSpat, sizeof(hSpat),cudaMemcpyHostToDevice));
+
+        hLogi.allocAndMemcpy(nLGN, host.logistic);
+        checkCudaErrors(cudaMalloc((void**) &logistic, sizeof(hLogi)));
+        checkCudaErrors(cudaMemcpy(logistic, &hLogi, sizeof(hLogi),cudaMemcpyHostToDevice));
 
         size_t memSize = arraySize*sizeof(SmallSize)+sizeof(Float)*(nType-1)*nLGN;
         checkCudaErrors(cudaMalloc((void**)&mem_block, memSize));
@@ -120,10 +141,13 @@ struct LGN_parameter {
         checkCudaErrors(cudaMemcpy(mem_block, host.mem_block, memSize, cudaMemcpyHostToDevice));
     }
 	void freeMem() {
-		center.freeMem();
-		surround.freeMem();
-		logistic.freeMem();
-		cudaFree(mem_block);
+		hSpat.freeMem();
+		hTemp.freeMem();
+		hLogi.freeMem();
+		checkCudaErrors(cudaFree(temporal));
+		checkCudaErrors(cudaFree(spatial));
+		checkCudaErrors(cudaFree(logistic));
+		checkCudaErrors(cudaFree(mem_block));
 	}
 };
 
@@ -135,9 +159,11 @@ struct Zip_temporal {
     Float nR;
     Float nD;
 	__device__ 
-    void load(temporal_component &t, Size id) {
+	__forceinline__
+    void load(Temporal_component &t, Size id) {
         // loading order corresponds to calculation order
         // think before change order of load
+		//printf("thread %i access %i\n", threadIdx.y*blockDim.x + threadIdx.x, id);
         nR = t.nR[id]; 
         nD = t.nD[id];
         delay = t.delay[id];
@@ -145,7 +171,7 @@ struct Zip_temporal {
         tauD = t.tauD[id];
         ratio = t.ratio[id];
     }
-}
+};
 
 struct Zip_spatial {
     Float x;
@@ -155,12 +181,30 @@ struct Zip_spatial {
     Float k;
 	
 	__device__
-    load(spatial_component &s, unsigned int id) {
+	__forceinline__
+    void load(Spatial_component &s, unsigned int id) {
         x = s.x[id];
         y = s.y[id];
         rx = s.rx[id];
         ry = s.ry[id];
         k = s.k[id];
+    }
+};
+
+
+struct shared_spat {
+    Float xhspan, yhspan, dx, dy, cx, cy, rx, ry;
+	__device__
+	__forceinline__
+    shared_spat(Float *spat) {
+        xhspan = spat[0];
+        yhspan = spat[1];
+        dx = spat[2];
+        dy = spat[3];
+        cx = spat[4];
+        cy = spat[5];
+        rx = spat[6];
+        ry = spat[7];
     }
 };
 

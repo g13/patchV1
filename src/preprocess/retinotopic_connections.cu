@@ -309,7 +309,7 @@ int main(int argc, char *argv[]) {
 	input_opt.add_options()
 		("percent", po::value<Float>(&percent)->default_value(0.5), "LGN conneciton probability")
 		("fV1_prop", po::value<string>(&V1_prop_filename)->default_value("V1_prop.bin"), "file that stores V1 neurons' parameters")
-		("fLGN", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"), "file that stores LGN position in visual field (and on-cell off-cell label)")
+		("fLGN", po::value<string>(&LGN_vpos_filename)->default_value("LGN(vpos).bin"), "file that stores LGN position in visual field (and on-cell off-cell label)")
 		("fV1_vpos", po::value<string>(&V1_vpos_filename)->default_value("V1_vpos.bin"), "file that stores V1 position in visual field)");
 
     string V1_filename, idList_filename, sList_filename; 
@@ -375,6 +375,9 @@ int main(int argc, char *argv[]) {
     m = mL + mR;
     cout << m << " LGN neurons, " << mL << " from left eye, " << mR << " from right eye.\n";
 	cout << "need " << 3 * m * sizeof(Float) / 1024 / 1024 << "mb\n";
+
+	vector<InputType> LGNtype(m);
+	fLGN.read(reinterpret_cast<char*>(&LGNtype[0]), m * sizeof(Size));
 	//temporary vectors to get coordinate pairs
 	vector<Float> x0(m);
 	vector<Float> y0(m);
@@ -384,8 +387,6 @@ int main(int argc, char *argv[]) {
 	// release memory from temporary vectors
 	x0.swap(vector<Float>());
 	y0.swap(vector<Float>()); 
-	vector<InputType> LGNtype(m);
-	fLGN.read(reinterpret_cast<char*>(&LGNtype[0]), m * sizeof(Size));
 	fLGN.close();
 
 	cout << "carts ready\n";
