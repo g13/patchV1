@@ -77,8 +77,8 @@ int main(int argc, char **argv) {
     SmallSize nSpatialSample1D; // spatial kernel sample size = nSpatialSample1D x nSpatialSample1D
     SmallSize nKernelSample; // spatial kernel sample size = nSpatialSample1D x nSpatialSample1D
     Float nsig = 3; // extent of spatial RF sampling in units of std
-    Float tau = 256.0f; // required length of memory for LGN temporal kernel
-    Float Itau = 300.0f; // in ms .. cone adaptation at 300ms https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1003289
+    Float tau; // required length of memory for LGN temporal kernel
+    Float Itau; // in ms .. cone adaptation at 300ms https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1003289
     PosInt frameRate; // Hz
     Size nt; // number of steps
 	PosIntL seed;
@@ -91,12 +91,12 @@ int main(int argc, char **argv) {
 	// non-files
 	top_opt.add_options()
 		("seed,s", po::value<PosIntL>(&seed),"seed for trial")
-		("dt", po::value<Float>(&dt)->default_value(0.125), "simulatoin time step") 
+		("dt", po::value<Float>(&dt)->default_value(0.0625), "simulatoin time step") 
 		("nt", po::value<Size>(&nt)->default_value(8000), "total simulatoin time in units of time step") // TODO: determine by stimulus
 		("nSpatialSample1D", po::value<SmallSize>(&nSpatialSample1D)->default_value(warpSize), "number of samples per x,y direction for a LGN spatial RF")
-		("tau", po::value<Float>(&tau)->default_value(256.0), "the backward time interval that a LGN temporal RF should cover")
-		("Itau", po::value<Float>(&Itau)->default_value(150.0), "the light intensity adaptation time-scale of a cone")
-		("nKernelSample", po::value<Size>(&nKernelSample)->default_value(256), "number of samples per x,y direction for LGN spatial RF")
+		("tau", po::value<Float>(&tau)->default_value(250.0), "the backward time interval that a LGN temporal RF should cover")
+		("Itau", po::value<Float>(&Itau)->default_value(300.0), "the light intensity adaptation time-scale of a cone")
+		("nKernelSample", po::value<Size>(&nKernelSample)->default_value(2000), "number of samples per temporal kernel")
 		("frameRate", po::value<PosInt>(&frameRate)->default_value(60), "frame rate of the input stimulus")
 		("useNewLGN", po::value<bool>(&useNewLGN)->default_value(false), "regenerate the a new ensemble of LGN parameters according to their distribution");
 
@@ -468,13 +468,13 @@ int main(int argc, char **argv) {
     	}
 		//cout << "\n";
 
-    	auto get_c50 = get_rand_from_gauss0(rGen_LGNsetup, normal_distribution<Float>(0.25, 0.1), positiveBound);
+        norm = normal_distribution<Float>(0.25, 0.1);
+    	auto get_c50 = get_rand_from_gauss0(rGen_LGNsetup, norm, positiveBound);
     	generate(c50.begin(), c50.end(), get_c50);
 
-        //Float unity = 1.0;
-    	//auto unityBound = get_lowBound(unity);
+        norm = normal_distribution<Float>(10.0, 1.0);
     	auto unityBound = get_lowBound(1.0);
-    	auto get_sharpness = get_rand_from_gauss0(rGen_LGNsetup, normal_distribution<Float>(10.0,1.0), unityBound);
+    	auto get_sharpness = get_rand_from_gauss0(rGen_LGNsetup, norm, unityBound);
     	generate(sharpness.begin(), sharpness.end(), get_sharpness);
 
     	fLGN.open(LGN_filename, fstream::out | fstream::app | fstream::binary);
@@ -546,14 +546,9 @@ int main(int argc, char **argv) {
 	LGN_parameter dLGN(hLGN);
 
     printf("size of dLGN = %u\n", sizeof(dLGN));
-	Size nLGN_x, nLGN_y;
-	if (nLGN < blockSize) {
-		nLGN_x = nLGN;
-		nLGN_y = 1;
-	} else {
-		nLGN_x = warpSize;
-		nLGN_y = warpSize;
-	}
+	Size nLGN_x, nLGN_y; // for LGN_nonlinear
+	nLGN_x = (nLGN + warpSize - 1)/warpSize;
+	nLGN_y = warpSize;
 	cout << "LGN initialized\n";
     // finish LGN setup
 
@@ -740,14 +735,14 @@ int main(int argc, char **argv) {
     Float* lastF;
     Float* TW_storage;
     Float* SW_storage;
-    float* SC_storage;
     Float* dxdy_storage;
+    float* SC_storage;
     checkCudaErrors(cudaMalloc((void **) &decayIn, nType*nLGN*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &lastF, nType*nLGN*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &TW_storage, nType*nKernelSample*nLGN*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &SW_storage, nType*nSample*nLGN*sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void **) &dxdy_storage, nType*nLGN*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &SC_storage, 2*nType*nSample*nLGN*sizeof(float)));
-    checkCudaErrors(cudaMalloc((void **) &dxdy_storage, 2*nType*nSample*nLGN*sizeof(Float)));
 
     checkCudaErrors(cudaMemset(decayIn, 0, nType*nLGN*sizeof(Float)));
     checkCudaErrors(cudaMemset(lastF, 0, nType*nLGN*sizeof(Float)));
@@ -803,6 +798,7 @@ int main(int argc, char **argv) {
 	getLastCudaError("store failed");
     checkCudaErrors(cudaMemcpy(LGN_fr, max_convol, nLGN*sizeof(Float), cudaMemcpyDeviceToHost));
     fmax_convol.write((char*)LGN_fr, nLGN*sizeof(Float));
+    fmax_convol.close();
     // calc LGN firing rate at the end of current dt
     unsigned int currentFrame = 0; // current frame number from stimulus
     unsigned int iFrame = 0; //latest frame inserted into the dL dM dS,  initialization not necessary
@@ -844,6 +840,7 @@ int main(int argc, char **argv) {
         //    |-----|-----|-----|-----|-----|
         //    jt-2, jt-1, jt ...nRetrace... it
         // perform kernel convolution with built-in texture interpolation
+        convolGrid.x = 2;
         convolGrid.y = 1;
 		cout << "LGN_convol_c1s<<<" << convolGrid.x  << "x" << convolGrid.y  << "x" << convolGrid.z << ", " << convolBlock.x  << "x" << convolBlock.y  << "x" << convolBlock.z << ", " << sizeof(Float)*2*convolBlock.x*convolBlock.y << ">>>\n";
         LGN_convol_c1s<<<convolGrid, convolBlock, sizeof(Float)*2*convolBlock.x*convolBlock.y>>>(
@@ -872,7 +869,7 @@ int main(int argc, char **argv) {
         fLGN_convol.write((char*)LGN_fr, nLGN*sizeof(Float));
 
 		// generate LGN fr with logistic function
-        LGN_nonlinear<<<nLGN_x, nLGN_y>>>(*dLGN.logistic, max_convol, dLGN_fr);
+        LGN_nonlinear<<<nLGN_x, nLGN_y>>>(nLGN, *dLGN.logistic, max_convol, dLGN_fr);
 		getLastCudaError("LGN_nonlinear failed");
         checkCudaErrors(cudaMemcpy(LGN_fr, dLGN_fr, nLGN*sizeof(Float), cudaMemcpyDeviceToHost));
         fLGN_fr.write((char*)LGN_fr, nLGN*sizeof(Float));
@@ -888,20 +885,19 @@ int main(int argc, char **argv) {
         
 	    fLGN_fr.close();
         fLGN_convol.close();
-        fmax_convol.close();
 
         dLGN.freeMem();
         hLGN.freeMem();
 	    checkCudaErrors(cudaStreamDestroy(s0));
         checkCudaErrors(cudaStreamDestroy(s1));
         checkCudaErrors(cudaStreamDestroy(s2));
-        checkCudaErrors(cudaFree(LMS));
         checkCudaErrors(cudaFree(dLGN_fr));
         checkCudaErrors(cudaFree(max_convol));
         checkCudaErrors(cudaFreeArray(cuArr_L));
         checkCudaErrors(cudaFreeArray(cuArr_M));
         checkCudaErrors(cudaFreeArray(cuArr_S));
-        cudaDeviceReset();
+        checkCudaErrors(cudaDeviceReset());
+        cout << "memory trace cleaned\n";
     }
     return EXIT_SUCCESS;
 }

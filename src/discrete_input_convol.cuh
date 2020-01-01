@@ -16,6 +16,7 @@
 // assuming viewing distance is a single unit length
 __global__ 
 void LGN_nonlinear(
+        Size nLGN,
         Static_nonlinear &logistic,
         Float* __restrict__ max_convol,
         Float* __restrict__ LGN_fr

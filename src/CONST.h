@@ -1,5 +1,5 @@
-#ifndef CONST_H
-#define CONST_H
+#ifndef MODEL_CONST_H
+#define MODEL_CONST_H
 
 #define vE 14.0f/3.0f
 #define vI -2.0f/3.0f

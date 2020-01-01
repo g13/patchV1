@@ -15,53 +15,62 @@ extern __device__ __constant__ float sqrt2;
 __device__ 
 __forceinline__ 
 Float AexpTau(Float a, Float tau) {
-    return a * expp(-tau);
+    return a * exponential(-tau);
 }
 
 __device__ 
 __forceinline__ 
 Float spatialKernel(Float x, Float y, Float rx, Float ry) {
-    return expp(-x*x/(rx*rx) - y*y/(ry*ry));
+    return exponential(-x*x/(rx*rx) - y*y/(ry*ry));
 }
 
 __device__ 
 __forceinline__ 
-Float temporalKernel(Float tau, Zip_temporal &temp, Float fac1, Float fac2) {
+Float temporalKernel(Float tau, Zip_temporal &temp, Float lfac1, Float lfac2, Size lid, Size tid) {
     Float tau1 = tau/temp.tauR;
     Float tau2 = tau/temp.tauD;
-    Float A1 = power(tau1, temp.nR-1)/(temp.tauR * fac1);
-    Float A2 = power(tau2, temp.nD-1)/(temp.tauD * fac2);
+    //Float A1 = power(tau1, temp.nR-1)/temp.tauR;
+    //Float A2 = power(tau2, temp.nD-1)/temp.tauD;
 
-    Float tp = AexpTau(A1, tau1) - temp.ratio*AexpTau(A2, tau2);
+    Float A1 = (temp.nR-1) * logrithm(tau1);
+    Float A2 = (temp.nD-1) * logrithm(tau2);
+
+    //if ((lid ==0 || lid == gridDim.x) && tid == 0) {
+    //  printf("lid:%d, tid:%d\n A1 = %f, tau1 = %f\n A2 = %f, tau2 = %f\n", lid, tid, A1, tau1, A2, tau2);
+    //}
+
+    //Float tp = AexpTau(A1, tau1 + lfac1) - temp.ratio*AexpTau(A2, tau2 + lfac2);
+
+    Float tpR = exponential(A1 - tau1 - lfac1)/temp.tauR;
+    Float tpD = exponential(A2 - tau2 - lfac2)/temp.tauD;
+    Float tp = tpR - temp.ratio*tpD;
+    //if ((lid ==0 || lid == gridDim.x) && tid == 0) {
+    //  printf("lid:%d, id:%d, tpR = %f, tpD = %f\n", lid, tid, tpR, tpD);
+    //}
     return tp;
 }
 
 __device__
 __forceinline__
-void retina_to_plane(Float x0, Float y0, float &x, float &y) {
-    Float r = sqrt(x0*x0 + y0*y0);
-    Float tanr = -tan(r);
-    Float xr = x0/r;
-    Float yr = x0/r;
-    x = static_cast<float>(xr*tanr);
-    y = static_cast<float>(yr*tanr);
+void retina_to_plane(Float polar, Float ecc, float &x, float &y, const Float curv_ratio) {
+    Float r = tangent(theta);
+    x = static_cast<float>(r*curv_ratio*cosine(polar));
+    y = static_cast<float>(r*curv_ratio*sine(polar));
 }
 
 __device__
 __forceinline__
-void get_coord_in_plane(Float xsig, Float ysig, Float cx, Float cy, Float nsig, SmallSize nx, SmallSize ny, Float &x, Float &y, Float &dxdy, float &x0, float &y0, bool mainThread) {
+void get_coord_in_plane(Float wSpan, Float hSpan, Float Ori, Float centerPolar, Float centerEcc, SmallSize nWidth, SmallSize nHeight, Float &polar, Float &ecc, Float &dxdy, float &x0, float &y0, bool mainThread) {
     // make change consistent with the same part in store_spatialWeight
-    Float xhspan = nsig * xsig / sqrt2;
-    Float dx = 2*xhspan/nx;
+    Float dw = 2*wSpan/nWidth;
 
-    Float yhspan = nsig * ysig / sqrt2;
-    Float dy = 2*yhspan/ny;
+    Float dy = 2*hSpan/nHeight;
 
-    x = (threadIdx.x + 0.5)*dx - xhspan;
-    y = (threadIdx.y + 0.5)*dy - yhspan;
+    x = (threadIdx.x + 0.5)*dx - wSpan;
+    y = (threadIdx.y + 0.5)*dy - wSpan;
 
     // texture coords have to be float
-    retina_to_plane(cx+x, cy+y, x0, y0);
+    retina_to_plane(cP+x, cE+y, x0, y0);
     if (mainThread) {
         dxdy = dx*dy;
     }
@@ -147,22 +156,6 @@ Float get_intensity(unsigned int coneType, float x, float y, unsigned int iLayer
 // iType is for center surround (or multiple surroud) in a single LGN
 // not to be confused with coneTypes
 
-struct shared_spat {
-    Float xhspan, yhspan, dx, dy, cx, cy, rx, ry;
-	__device__
-	__forceinline__
-    shared_spat(Float *spat) {
-        xhspan = spat[0];
-        yhspan = spat[1];
-        dx = spat[2];
-        dy = spat[3];
-        cx = spat[4];
-        cy = spat[5];
-        rx = spat[6];
-        ry = spat[7];
-    }
-};
-
 __device__
 __forceinline__
 void store_temporalWeight(
@@ -185,12 +178,28 @@ void store_temporalWeight(
     SmallSize patchSize = blockDim.x*blockDim.y;
     SmallSize nPatch = nKernelSample/patchSize;
     SmallSize remain = nKernelSample%patchSize;
+    //DEBUG
+    //if ((lid ==0 || lid == gridDim.x) && tid == 0) {
+    //    printf("%f, %f, %f, %f, %f, %f\n", temp.nR, temp.nD, temp.tauR, temp.tauD, temp.delay, temp.ratio);
+    //    printf("patchSize = %u, nPatch = %u, remain = %u\n", patchSize, nPatch, remain);
+    //}
+    //__syncthreads();
+    //
     
-    Float fac1, fac2;
-    fac1 = tgamma(temp.nR);
-    fac2 = tgamma(temp.nD);
-    
+    Float lfac1, lfac2;
+    lfac1 = log_gamma(temp.nR);
+    lfac2 = log_gamma(temp.nD);
 
+    //DEBUG
+    //if ((lid ==0 || lid == gridDim.x) && tid == 0) {
+    //    printf("lid:%d, tid:%d\n%f: %f, %f, %f\n %f: %f, %f, %f\n", lid, tid, temp.nR, lfac1, tgamma(temp.nR), exp(lfac1), temp.nD, lfac2, tgamma(temp.nD), exp(lfac2));
+    //}
+	//__syncthreads(); 
+    //
+    // account for the delay into T0
+    kernelSampleT0 -= temp.delay;
+    // initialize the sum of temporalWeights to 0
+    temporalWeight = 0;
     for (SmallSize iPatch = 0; iPatch < nPatch+1; iPatch++) {
         Float tw;
         if (iPatch < nPatch || tid < remain) {
@@ -200,15 +209,36 @@ void store_temporalWeight(
             Size storeID = (id*nType + iType)*nKernelSample + iPatch*patchSize + tid;
 
 			Float t = twid * kernelSampleDt + kernelSampleT0;
-            tw = temporalKernel(t, temp, fac1, fac2);
+
+            //DEBUG
+			//if ((lid ==0 || lid == gridDim.x) && tid == 0) {
+            //  printf("lid = %d, tid = %d, t = %f\n", lid, tid, t);
+            //}
+            //
+            if (t < 0) {
+                tw = 0.0;
+            } else {
+                tw = temporalKernel(t, temp, lfac1, lfac2, lid, tid);
+            }
+            //DEBUG
+			//if ((lid ==0 || lid == gridDim.x) && tid == 0) {
+            //  printf("lid = %d, tid = %d, tw = %f\n", lid, tid, tw);
+            //}
+            //
+			
             TW_storage[storeID] = tw;
             // get absolute values ready for max_convol
             if (tw < 0) tw = -tw;
         } else {
             tw = 0.0;
         }
+        __syncthreads();
         block_reduce<Float>(reduced, tw);
         if (tid == 0) {
+            //DEBUG
+            //printf("total summed tw = %f\n", temporalWeight);
+            //printf("patch summed tw = %f\n", reduced[0]);
+            //assert(!isnan(reduced[0]));
             temporalWeight += reduced[0];
         }
     }
@@ -229,8 +259,6 @@ Float store_spatialWeight(
 ) {
     // parameter are stored as (nType, nLGN), weights are stored as (nLGN, nType, weight)
     Size storeID = offset + tid;
-    Size xID = offset + storeID;
-    Size yID = xID + nSample;
 
     // coord to center
     Float x = (threadIdx.x + 0.5)*ss.dx - ss.xhspan;
@@ -242,8 +270,13 @@ Float store_spatialWeight(
         SW_storage[storeID] = spatialWeight;
         float x_plane, y_plane;
         retina_to_plane(ss.cx + x, ss.cy + y, x_plane, y_plane);
-        SC_storage[xID] = x_plane;
-        SC_storage[yID] = y_plane;
+        // store coords for retrieve data from texture
+        assert(x_plane < 1);
+        assert(x_plane > 0);
+        assert(y_plane < 1);
+        assert(y_plane > 0);
+        SC_storage[storeID] = x_plane; // x
+        SC_storage[storeID + gridDim.x*blockIdx.y*nSample] = y_plane; // y
     }
     return spatialWeight;
 }
@@ -278,13 +311,17 @@ void store(
 
     Float temporalWeight, spatialWeight, dxdy, k;
     store_temporalWeight(temporal, TW_storage, reduced, temporalWeight, nKernelSample, kernelSampleDt, kernelSampleT0, id, tid, lid, iType, nType);
-    if (tid == 0 && lid == 0) {
+    // DEBUG
+	if ((lid ==0 || lid == gridDim.x) && tid == 0) {
         printf("temporalWeights stored\n");
+        assert(!isnan(temporalWeight));
     }
+    __syncthreads();
+    //
 
     bool use_shared = true;
     if (use_shared) { // TODO: compare with global broadcast
-        Size offset = id*nType + iType;
+        Size offset = gridDim.x*iType + id;
         if (tid == 0) {
             Zip_spatial spat0;
             spat0.load(spatial, lid);
@@ -305,8 +342,12 @@ void store(
         shared_spat ss(spat);
         spatialWeight = store_spatialWeight(ss, SW_storage, SC_storage, nsig, id, tid, offset*nSample, nSample, storeSpatial);
     } 
-    if (tid == 0 && lid == 0) {
+	if (lid ==0 || lid == gridDim.x && tid == 0) {
         printf("spatialWeights stored\n");
+        assert(!isnan(spatialWeight));
+    }
+	if (lid ==0 && tid == 0) {
+        assert(max_convol[id] == 0.0);
     }
 	block_reduce<Float>(reduced, spatialWeight);
 
@@ -364,14 +405,12 @@ void sub_convol(
     Float spatialWeight;
     float x0, y0; // coord on the stimulus plane
     if (spatialStored) {
-		Size offset0 = (id*nType + iType);
+		Size offset0 = (gridDim.x*iType + id);
         Size offset = offset0*nSample;
         Size storeID = offset + threadIdx.y*blockDim.x + threadIdx.x;
-        Size xID = storeID + offset;
-        Size yID = xID + nSample;
         spatialWeight = SW_storage[storeID];
-        x0 = SC_storage[xID];
-        y0 = SC_storage[yID];
+        x0 = SC_storage[storeID];
+        y0 = SC_storage[storeID + gridDim.x*nType*nSample];
         if (tid == 0) {
             dxdy = dxdy_storage[offset0];
             k = spatial.k[lid];
@@ -379,10 +418,10 @@ void sub_convol(
     } else {
         Zip_spatial spat;
         spat.load(spatial, lid);
-        Float x, y;
+        Float polar, ecc;
         // texture coords have to be float
         get_coord_in_plane(spat.rx, spat.ry, spat.x, spat.y, nsig, blockDim.x, blockDim.y, x, y, dxdy, x0, y0, tid == 0); // dxdy is only given to the tid == 0
-        spatialWeight = spatialKernel(x, y, spat.rx, spat.ry);
+        spatialWeight = spatialKernel(polar, ecc, spat.sPolar, spat.sEcc);
         if (tid == 0) {
             k = spat.k;
         }
@@ -453,11 +492,11 @@ void sub_convol(
             Float tf0 = dt + framePhase;
             if (tf0 < tPerFrame) {
                 //lastF is not changed
-                decayIn[lid] = lastDecayIn*expp(-dt/Itau);
+                decayIn[lid] = lastDecayIn*exponential(-dt/Itau);
             } else {
                 // here we ASSUME tPerframe > dt, i.e., at most one change of frame happen within a single dt
                 Float F_2 = nSampleShared[0];
-                decayIn[lid] = lastDecayIn*expp(-dt/Itau) + (F_1 - F_2) * expp(-(tf0- tPerFrame)/Itau);
+                decayIn[lid] = lastDecayIn*exponential(-dt/Itau) + (F_1 - F_2) * exponential(-(tf0- tPerFrame)/Itau);
                 lastF[lid] = F_2;
             }
         }
@@ -467,12 +506,12 @@ void sub_convol(
             Float tf0 = t+framePhase;
             Size local_nFrame = static_cast<Size>(tf0/tPerFrame);
             // if nFrame == 0 then F_{n+1} (F_1) is not changed
-            lastDecayIn *= expp(-t/Itau); // sum_i2n(F_i[exp(-t_{i+1}/Itau) - exp(-t_{i}/Itau)] - F_{n+1})*exp(-(t0-tau)/Itau) decayed to t = t0 + t
+            lastDecayIn *= exponential(-t/Itau); // sum_i2n(F_i[exp(-t_{i+1}/Itau) - exp(-t_{i}/Itau)] - F_{n+1})*exp(-(t0-tau)/Itau) decayed to t = t0 + t
             for (SmallSize iFrame = 0; iFrame < local_nFrame; iFrame++) {
                 // number of active threads decreases for each loop
                 Float F_2 = nSampleShared[iFrame]; // load from shared memory to register first // TODO: check register usage here 
                 tf0 -= tPerFrame;
-                Float decay = expp(-tf0/Itau);
+                Float decay = exponential(-tf0/Itau);
                 lastDecayIn += (F_1 - F_2) * decay; // F_{n+1} decayed with exp(-((t+t0) - t_{i+2})/Itau);
                 F_1 = F_2;
             }
@@ -594,22 +633,27 @@ void LGN_convol_c1s(
     }
 }
 
-__launch_bounds__(1024, 2)
+__launch_bounds__(32, 64)
 __global__ 
 void LGN_nonlinear(
+        Size nLGN,
         Static_nonlinear &logistic,
         Float* __restrict__ max_convol,
         Float* __restrict__ LGN_fr
 ) {
 	unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
-	Float _max_convol = max_convol[id];
-	// min = -max;
-	Float current_convol = LGN_fr[id];
-    if (current_convol < 0) {
-        current_convol = 0;
+    Float _max_convol, current_convol;
+    if (id < nLGN) {
+        _max_convol = max_convol[id];
+        current_convol = LGN_fr[id];
+        if (current_convol < 0) {
+            current_convol = 0;
+        }
     }
     __syncwarp(); // check necessity
 
-    Float ratio = logistic.transform(id, current_convol/_max_convol);
-    LGN_fr[id] = current_convol * ratio;
+    if (id < nLGN) {
+        Float ratio = logistic.transform(id, current_convol/_max_convol);
+        LGN_fr[id] = current_convol * ratio;
+    }
 }
