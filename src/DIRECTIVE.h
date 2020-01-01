@@ -18,21 +18,41 @@
 
 #define SINGLE_PRECISION
 #ifdef SINGLE_PRECISION
-	#define square_root sqrtf
-	#define atan atan2f
-	#define uniform curand_uniform
-	#define expp expf
-	#define power powf
 	#define abs fabsf 
     #define copy copysignf
+	#define power powf
+	#define square_root sqrtf
+    #define logrithm logf
+	#define exponential expf
+    #define log_gamma lgammaf
+
+    #define tangent tanf
+    #define sine sinf 
+    #define cosine cosf 
+	#define atan atan2f
+    #define arccos acosf 
+
+	#define uniform curand_uniform
+    #define normal curand_normal
+    #define log_normal curand_log_normal
 #else
-	#define square_root sqrt
-	#define atan atan2
-	#define uniform curand_uniform_double
-	#define expp exp 
-	#define power pow
 	#define abs fabs 
     #define copy copysign
+	#define power pow
+	#define square_root sqrt
+    #define logrithm log
+	#define exponential exp 
+    #define log_gamma lgamma
+
+    #define tangent tan
+    #define sine sin 
+    #define cosine cos 
+	#define atan atan2
+    #define arccos acos 
+
+	#define uniform curand_uniform_double
+    #define normal curand_normal_double
+    #define log_normal curand_log_normal_double
 #endif
 
 #endif

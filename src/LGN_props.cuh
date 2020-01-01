@@ -87,7 +87,7 @@ struct Static_nonlinear {
         Float A = a[id];
         Float B = b[id];
         // calculation
-        Float X = 1/(1+expp(K*(C50-input)));
+        Float X = 1/(1+exponential(K*(C50-input)));
         return A*X + B;
     }
 };
@@ -163,7 +163,12 @@ struct Zip_temporal {
     void load(Temporal_component &t, Size id) {
         // loading order corresponds to calculation order
         // think before change order of load
-		//printf("thread %i access %i\n", threadIdx.y*blockDim.x + threadIdx.x, id);
+        // DEBUG
+        if (id == 0 && threadIdx.y * blockDim.x + threadIdx.x == 0){
+		    printf("nR[%i] = %f\n", id, t.nR[id]);
+        }
+        __syncthreads();
+        //
         nR = t.nR[id]; 
         nD = t.nD[id];
         delay = t.delay[id];

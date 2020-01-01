@@ -2,7 +2,7 @@
 #define CONNECT_H
 
 #include <curand_kernel.h>
-#include "MACRO.h"
+#include "../MACRO.h"
 
 struct initialize_package {
     _float radius[NTYPE][2];

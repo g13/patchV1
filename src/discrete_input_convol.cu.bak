@@ -205,7 +205,7 @@ tau = 40*dt
     _float sample_vol = dx * dy;
     _float spatialWeight = spatialKernel(x, y, 1.0f, center.k, center.rx, center.ry);
     
-    Float decay = expp(-samplePhase/tau_ave);
+    Float decay = exponential(-samplePhase/tau_ave);
     unsigned int it = 0;
     Float old_qs = q[id]; // sum_i(F_i[exp(-t_i+1/tau) - exp(-t_i/tau)])*exp(-t/tau)
     for (unsigned int iSample=iSample0; iSample<iSample0+nKernelSample; iSample++) {
@@ -220,7 +220,7 @@ tau = 40*dt
             Float sum_I = linearResponse[0]*(1-decay);
             sum_I += old_qs*decay + ;
             if samplePhase
-            old_I = old_I + expp(
+            old_I = old_I + exponential(
         }
         __device__
         __inline__

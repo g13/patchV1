@@ -2,50 +2,6 @@
 #include <cassert>
 #include "../util/cuda_util.h"
 
-#ifndef SINGLE_PRECISION
-	//using func = _float(*)(_float);
-	//__device__ func expp = &expf;
-	//using func0 = _float(*)(curandStateMRG32k3a_t*);
-	//__device__ func0 uniform = &curand_uniform;
-	//__device__ func0 normal = &curand_normal;
-	//using func1 = _float(*)(curandStateMRG32k3a_t*, _float, _float);
-	//__device__ func1 log_normal = &curand_log_normal;
-	//using func2 = _float(*)(_float);
-    //__device__ func2 arccos = &acosf;
-    //__device__ func2 square_root = &sqrtf;
-    //__device__ func2 abs_value = &fabsf;
-
-    #define expp exp 
-    #define log_normal curand_log_normal_double
-    #define normal curand_normal_double
-    #define uniform curand_uniform_double
-    #define arccos acos 
-    #define sine sin 
-    #define square_root sqrt
-    #define abs_value fabs 
-#else
-	//using func = _float(*)(_float);
-	//__device__ func expp = &exp;
-	//using func0 = _float(*)(curandStateMRG32k3a_t*);
-	//__device__ func0 uniform = &curand_uniform_double;
-	//__device__ func0 normal = &curand_normal_double;
-	//using func1 = _float(*)(curandStateMRG32k3a_t*, _float, _float);
-	//__device__ func1 log_normal = &curand_log_normal_double;
-	//using func2 = _float(*)(_float);
-    //__device__ func2 arccos = &acos;
-    //__device__ func2 square_root = &sqrt;
-    //__device__ func2 abs_value = &fabs;
-
-    #define expp expf
-    #define log_normal curand_log_normal
-    #define normal curand_normal
-    #define uniform curand_uniform
-    #define arccos acosf 
-    #define sine sinf 
-    #define square_root sqrtf
-    #define abs_value fabsf 
-#endif
-
 __global__ void initialize(curandStateMRG32k3a* __restrict__ state,
                            unsigned int* __restrict__ preType,
                            _float* __restrict__ rden,
@@ -111,9 +67,9 @@ __device__ _float area(_float raxn, _float rden, _float d) {
 // co-occupied area of the presynaptic axons / dendritic area
 __device__ _float connect(_float distance, _float raxn, _float rden) {
     _float weight = 0.0;
-    if (raxn + rden > distance && distance > abs_value(raxn - rden)) {
+    if (raxn + rden > distance && distance > abs(raxn - rden)) {
         weight = area(raxn, rden, distance)/(CUDA_PI*rden*rden);
-    } else if (distance <= abs_value(raxn - rden)) {
+    } else if (distance <= abs(raxn - rden)) {
         weight = 1.0;
     }
     __syncwarp();
