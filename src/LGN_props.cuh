@@ -7,6 +7,7 @@
 #include "types.h"
 #include "LGN_props.h"
 #include "DIRECTIVE.h"
+
 // Array structure: (type, nLGN), different from spatial and temporal weight storage, see "discrete_input_convol.cu->store_weight" which are (nLGN, type).
 // This is to optimize read and write in CUDA
 
@@ -16,6 +17,7 @@ struct Spatial_component {
     Float* __restrict__ rx;
     Float* __restrict__ y; // normalize to (0,1)
     Float* __restrict__ ry;
+    Float* __restrict__ orient;
     Float* __restrict__ k; // its sign determine On-Off
 
     void allocAndMemcpy(Size arraySize, hSpatial_component &host) {
@@ -25,7 +27,8 @@ struct Spatial_component {
         rx = x + arraySize;
         y = rx + arraySize;
         ry = y + arraySize;
-        k = ry + arraySize;
+        orient = ry + arraySize;
+        k = orient + arraySize;
         checkCudaErrors(cudaMemcpy(mem_block, host.mem_block, memSize, cudaMemcpyHostToDevice));
     }
 	void freeMem() {
@@ -193,23 +196,6 @@ struct Zip_spatial {
         rx = s.rx[id];
         ry = s.ry[id];
         k = s.k[id];
-    }
-};
-
-
-struct shared_spat {
-    Float xhspan, yhspan, dx, dy, cx, cy, rx, ry;
-	__device__
-	__forceinline__
-    shared_spat(Float *spat) {
-        xhspan = spat[0];
-        yhspan = spat[1];
-        dx = spat[2];
-        dy = spat[3];
-        cx = spat[4];
-        cy = spat[5];
-        rx = spat[6];
-        ry = spat[7];
     }
 };
 

@@ -12,6 +12,7 @@ struct hSpatial_component {
     Float* rx;
     Float* y; // normalize to (0,1)
     Float* ry;
+    Float* orient;
     Float* k; // its sign determine On-Off
     // TODO: construct from file directly, save memory
 	hSpatial_component() {};
@@ -22,6 +23,7 @@ struct hSpatial_component {
             const std::vector<Float> &_rx,
             const std::vector<Float> &_y,
             const std::vector<Float> &_ry,
+            const std::vector<Float> &_orient,
             const std::vector<Float> &_k
     ) {
         Size arraySize = nLGN*nType;
@@ -30,7 +32,8 @@ struct hSpatial_component {
         rx = x + arraySize;
         y = rx + arraySize;
         ry = y + arraySize;
-        k = ry + arraySize;
+        orient = y + arraySize;
+        k = orient + arraySize;
         for (Size i=0; i<arraySize; i++) {
             x[i] = _x[i];
         }
@@ -42,6 +45,9 @@ struct hSpatial_component {
         }
         for (Size i=0; i<arraySize; i++) {
             ry[i] = _ry[i];
+        }
+        for (Size i=0; i<arraySize; i++) {
+            orient[i] = _orient[i];
         }
         for (Size i=0; i<arraySize; i++) {
             k[i] = _k[i];

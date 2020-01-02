@@ -31,6 +31,7 @@
     #define cosine cosf 
 	#define atan atan2f
     #define arccos acosf 
+    #define arcsin asinf 
 
 	#define uniform curand_uniform
     #define normal curand_normal
@@ -49,6 +50,7 @@
     #define cosine cos 
 	#define atan atan2
     #define arccos acos 
+    #define arcsin asin 
 
 	#define uniform curand_uniform_double
     #define normal curand_normal_double

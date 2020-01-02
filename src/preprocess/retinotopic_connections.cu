@@ -234,6 +234,7 @@ vector<Size> draw_from_radius(
 vector<vector<Size>> retinotopic_vf_pool(
         const pair<vector<Float>,vector<Float>> &cart,
         const pair<vector<Float>,vector<Float>> &cart0,
+        const vector<Float> &VFposEcc,
         const bool use_cuda,
         RandomEngine &rGen,
         vector<Float> &baRatio,
@@ -259,19 +260,13 @@ vector<vector<Size>> retinotopic_vf_pool(
             assert(false);
         }
     } else {
-        vector<Float> VFposEcc;
         vector<Float> normRand;
         vector<Float> rMap;
-        VFposEcc.reserve(n);
         normRand.reserve(n);
         rMap.reserve(n);
         a.reserve(n);
         normal_distribution<Float> dist(0, 1);
 
-        // transform cart to pol coords
-        for (Size i=0; i<n; i++) {
-            VFposEcc.push_back(norm_vec(cart.first[i], cart.second[i]));
-        }
         // generate random number for RF size distribution
         for (Size i=0; i<n; i++) {
             normRand.push_back(dist(rGen));
@@ -368,10 +363,12 @@ int main(int argc, char *argv[]) {
 	Size mL;
 	Size mR;
     Size m;
+	Float max_ecc;
 	size_pointer = &mL;
 	fLGN.read(reinterpret_cast<char*>(size_pointer), sizeof(Size));
 	size_pointer = &mR;
 	fLGN.read(reinterpret_cast<char*>(size_pointer), sizeof(Size));
+	fLGN.read(reinterpret_cast<char*>(&max_ecc), sizeof(Float));
     m = mL + mR;
     cout << m << " LGN neurons, " << mL << " from left eye, " << mR << " from right eye.\n";
 	cout << "need " << 3 * m * sizeof(Float) / 1024 / 1024 << "mb\n";
@@ -379,14 +376,25 @@ int main(int argc, char *argv[]) {
 	vector<InputType> LGNtype(m);
 	fLGN.read(reinterpret_cast<char*>(&LGNtype[0]), m * sizeof(Size));
 	//temporary vectors to get coordinate pairs
+	vector<Float> polar0(m);
+	vector<Float> ecc0(m);
+	fLGN.read(reinterpret_cast<char*>(&polar0[0]), m*sizeof(Float));
+	fLGN.read(reinterpret_cast<char*>(&ecc0[0]), m*sizeof(Float));
 	vector<Float> x0(m);
 	vector<Float> y0(m);
-	fLGN.read(reinterpret_cast<char*>(&x0[0]), m*sizeof(Float));
-	fLGN.read(reinterpret_cast<char*>(&y0[0]), m*sizeof(Float));
+	auto polar2x = [] (Float polar, Float ecc) {
+		return ecc*cos(polar);
+	};
+	auto polar2y = [] (Float polar, Float ecc) {
+		return ecc*sin(polar);
+	};
+	transform(polar0.begin(), polar0.end(), ecc0.begin(), x0.begin(), polar2x);
+	transform(polar0.begin(), polar0.end(), ecc0.begin(), y0.begin(), polar2y);
 	auto cart0 = make_pair(x0, y0);
 	// release memory from temporary vectors
 	x0.swap(vector<Float>());
 	y0.swap(vector<Float>()); 
+	polar0.swap(vector<Float>());
 	fLGN.close();
 
 	cout << "carts ready\n";
@@ -395,7 +403,7 @@ int main(int argc, char *argv[]) {
     RandomEngine rGen(seq);
     vector<Float> a; // radius of the VF
 	vector<Float> baRatio = generate_baRatio(n, rGen);
-    vector<vector<Size>> poolList = retinotopic_vf_pool(cart, cart0, false, rGen, baRatio, a, LR, mL, m);
+    vector<vector<Size>> poolList = retinotopic_vf_pool(cart, cart0, ecc0, false, rGen, baRatio, a, LR, mL, m);
 	cout << "poolList and R ready\n";
 
 	vector<RFtype> V1Type(n);
