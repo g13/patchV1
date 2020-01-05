@@ -237,7 +237,7 @@ int main(int argc, char **argv) {
 		L_y0 = 0.5;
 		R_x0 = 0.5 + L_x0;
 		R_y0 = 0.5;
-        cout << nLGN << " LGN neurons, " << nLGN_L << " from left eye, " << nLGN_R << " from right eye, center positions are within the eccentricity of " << max_ecc << " deg, reaching normalized stimulus radius of " << normEccMaxStimulus_extent << " and a buffer range of " << L_x0 << ".\n";
+        cout << nLGN << " LGN neurons, " << nLGN_L << " from left eye, " << nLGN_R << " from right eye, center positions are within the eccentricity of " << max_ecc << " deg, reaching normalized stimulus radius of " << normEccMaxStimulus_extent << "(" << max_ecc << ", " << stimulus_range << ")" << " and a buffer range of " << L_x0 << "(" << stimulus_buffer << ")" << ".\n";
         max_ecc = max_ecc * deg2rad;
 		normViewDistance = normEccMaxStimulus_extent/tan(max_ecc);
         cout << "normalized view distance: " << normViewDistance << "\n";
@@ -275,7 +275,7 @@ int main(int argc, char **argv) {
     }
     for (Size i = 0; i <nLGN; i++) {
         assert(!isnan(LGN_polar[i]));
-        assert(abs(LGN_polar[i]) < M_PI/2.0);
+		assert(abs(LGN_polar[i]) <= static_cast<Float>(M_PI) / 2.0);
     }
     auto transform_deg2rad = [deg2rad] (Float ecc) {return ecc*deg2rad;};
     transform(LGN_ecc.begin(), LGN_ecc.begin()+nLGN, LGN_ecc.begin(), transform_deg2rad);
@@ -440,6 +440,7 @@ int main(int argc, char **argv) {
         }
         for (Size i=0; i<2*nLGN; i++) {
             float polar, ecc, w, h, x, y;
+            Float cosp, sinp;
             Float* x_max;
             Float* x_min;
             Float* y_max;
@@ -497,7 +498,7 @@ int main(int argc, char **argv) {
                 }
             }
 
-            retina_to_plane(LGN_polar[i], LGN_ecc[i], x, y, normViewDistance, LR_x0, LR_y0);
+            retina_to_plane(cosine(LGN_polar[i]), sine(LGN_polar[i]), LGN_ecc[i], x, y, normViewDistance, LR_x0, LR_y0);
             fLGN_xy.write((char*)&x, sizeof(Float));
             fLGN_xy.write((char*)&y, sizeof(Float));
             if (condition(x,y)) {
@@ -508,11 +509,15 @@ int main(int argc, char **argv) {
             w = nsig * LGN_rw[i]/sqrt(2.0);
             h = nsig * LGN_rh[i]/sqrt(2.0);
 	        orthPhiRotate3D(LGN_polar[i], LGN_ecc[i] + h, w, polar, ecc);
-            retina_to_plane(polar, ecc, x, y, normViewDistance, LR_x0, LR_y0);
+            cosp = cosine(polar);
+            sinp = sine(polar);
+            retina_to_plane(cosp, sinp, ecc, x, y, normViewDistance, LR_x0, LR_y0);
             fLGN_xy.write((char*)&x, sizeof(Float));
             fLGN_xy.write((char*)&y, sizeof(Float));
-	        axisRotate3D(LGN_polar[i], LGN_ecc[i], cos(LGN_orient[i]), sin(LGN_orient[i]), polar, ecc);
-            retina_to_plane(polar, ecc, x, y, normViewDistance, LR_x0, LR_y0);
+            cosp = cosine(polar);
+            sinp = sine(polar);
+	        axisRotate3D(LGN_polar[i], LGN_ecc[i], cos(LGN_orient[i]), sin(LGN_orient[i]), cosp, sinp, ecc);
+            retina_to_plane(cosp, sinp, ecc, x, y, normViewDistance, LR_x0, LR_y0);
             fLGN_xy_post.write((char*)&x, sizeof(Float));
             fLGN_xy_post.write((char*)&y, sizeof(Float));
             if (condition(x,y)) {
@@ -527,11 +532,15 @@ int main(int argc, char **argv) {
             w = -nsig * LGN_rw[i]/sqrt(2.0);
             h = nsig * LGN_rh[i]/sqrt(2.0);
 	        orthPhiRotate3D(LGN_polar[i], LGN_ecc[i] + h, w, polar, ecc);
-            retina_to_plane(polar, ecc, x, y, normViewDistance, LR_x0, LR_y0);
+            cosp = cosine(polar);
+            sinp = sine(polar);
+            retina_to_plane(cosp, sinp, ecc, x, y, normViewDistance, LR_x0, LR_y0);
             fLGN_xy.write((char*)&x, sizeof(Float));
             fLGN_xy.write((char*)&y, sizeof(Float));
-	        axisRotate3D(LGN_polar[i], LGN_ecc[i], cos(LGN_orient[i]), sin(LGN_orient[i]), polar, ecc);
-            retina_to_plane(polar, ecc, x, y, normViewDistance, LR_x0, LR_y0);
+            cosp = cosine(polar);
+            sinp = sine(polar);
+	        axisRotate3D(LGN_polar[i], LGN_ecc[i], cos(LGN_orient[i]), sin(LGN_orient[i]), cosp, sinp, ecc);
+            retina_to_plane(cosp, sinp, ecc, x, y, normViewDistance, LR_x0, LR_y0);
             fLGN_xy_post.write((char*)&x, sizeof(Float));
             fLGN_xy_post.write((char*)&y, sizeof(Float));
             if (condition(x,y)) {
@@ -546,11 +555,15 @@ int main(int argc, char **argv) {
             w = -nsig * LGN_rw[i]/sqrt(2.0);
             h = -nsig * LGN_rh[i]/sqrt(2.0);
 	        orthPhiRotate3D(LGN_polar[i], LGN_ecc[i] + h, w, polar, ecc);
-            retina_to_plane(polar, ecc, x, y, normViewDistance, LR_x0, LR_y0);
+            cosp = cosine(polar);
+            sinp = sine(polar);
+            retina_to_plane(cosp, sinp, ecc, x, y, normViewDistance, LR_x0, LR_y0);
             fLGN_xy.write((char*)&x, sizeof(Float));
             fLGN_xy.write((char*)&y, sizeof(Float));
-	        axisRotate3D(LGN_polar[i], LGN_ecc[i], cos(LGN_orient[i]), sin(LGN_orient[i]), polar, ecc);
-            retina_to_plane(polar, ecc, x, y, normViewDistance, LR_x0, LR_y0);
+            cosp = cosine(polar);
+            sinp = sine(polar);
+	        axisRotate3D(LGN_polar[i], LGN_ecc[i], cos(LGN_orient[i]), sin(LGN_orient[i]), cosp, sinp, ecc);
+            retina_to_plane(cosp, sinp, ecc, x, y, normViewDistance, LR_x0, LR_y0);
             fLGN_xy_post.write((char*)&x, sizeof(Float));
             fLGN_xy_post.write((char*)&y, sizeof(Float));
             if (condition(x,y)) {
@@ -565,11 +578,15 @@ int main(int argc, char **argv) {
             w = nsig * LGN_rw[i]/sqrt(2.0);
             h = -nsig * LGN_rh[i]/sqrt(2.0);
 	        orthPhiRotate3D(LGN_polar[i], LGN_ecc[i] + h, w, polar, ecc);
-            retina_to_plane(polar, ecc, x, y, normViewDistance, LR_x0, LR_y0);
+            cosp = cosine(polar);
+            sinp = sine(polar);
+            retina_to_plane(cosp, sinp, ecc, x, y, normViewDistance, LR_x0, LR_y0);
             fLGN_xy.write((char*)&x, sizeof(Float));
             fLGN_xy.write((char*)&y, sizeof(Float));
-	        axisRotate3D(LGN_polar[i], LGN_ecc[i], cos(LGN_orient[i]), sin(LGN_orient[i]), polar, ecc);
-            retina_to_plane(polar, ecc, x, y, normViewDistance, LR_x0, LR_y0);
+            cosp = cosine(polar);
+            sinp = sine(polar);
+	        axisRotate3D(LGN_polar[i], LGN_ecc[i], cos(LGN_orient[i]), sin(LGN_orient[i]), cosp, sinp, ecc);
+            retina_to_plane(cosp, sinp, ecc, x, y, normViewDistance, LR_x0, LR_y0);
             fLGN_xy_post.write((char*)&x, sizeof(Float));
             fLGN_xy_post.write((char*)&y, sizeof(Float));
             if (condition(x,y)) {
@@ -943,9 +960,14 @@ int main(int argc, char **argv) {
 	// max frame need to be stored in texture for temporal convolution with the LGN kernel.
     //  |---|--------|--|
     
-    printf("temporal kernel retrace (tau) = %f ms needs at most %u frames\n", tau, maxFrame);
+    printf("temporal kernel retrace (tau): %f ms, frame rate: %d Hz needs at most %u frames\n", tau, frameRate, maxFrame);
 	Float tPerFrame = 1000.0f / frameRate; //ms
     printf("~ %f plusminus 1 kernel sample per frame\n", tPerFrame/kernelSampleDt);
+    cout << "========= MEMORY REQUIREMENT ========\n";
+    printf("texture memory required: %dx%dx%d = %fMB\n", maxFrame,width,height, maxFrame*width*height*sizeof(float)/1024.0/1024.0);
+    printf("temporal storage memory required: %dx%dx%d = %fMB\n", nKernelSample,nLGN,nType,nKernelSample*nLGN*nType*sizeof(float)/1024.0/1024.0);
+    printf("spatial storage memory required: %dx%dx%d = %fMB\n", nSample, nLGN, nType, nSample*nType*nLGN*sizeof(float)/1024.0/1024.0);
+    cout << "\n";
 
     // calculate phase difference between sampling point and next-frame point  
     bool moreDt = true;
@@ -1037,10 +1059,10 @@ int main(int argc, char **argv) {
     float* SC_storage;
     checkCudaErrors(cudaMalloc((void **) &decayIn, nType*nLGN*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &lastF, nType*nLGN*sizeof(Float)));
-    checkCudaErrors(cudaMalloc((void **) &TW_storage, nType*nKernelSample*nLGN*sizeof(Float)));
-    checkCudaErrors(cudaMalloc((void **) &SW_storage, nType*nSample*nLGN*sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void **) &TW_storage, nLGN*nType*nKernelSample*sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void **) &SW_storage, nLGN*nType*nSample*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &dwdh_storage, nType*nLGN*sizeof(Float)));
-    checkCudaErrors(cudaMalloc((void **) &SC_storage, 2*nType*nSample*nLGN*sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void **) &SC_storage, 2*nLGN*nType*nSample*sizeof(Float)));
 
     checkCudaErrors(cudaMemset(decayIn, 0, nType*nLGN*sizeof(Float)));
     checkCudaErrors(cudaMemset(lastF, 0, nType*nLGN*sizeof(Float)));
@@ -1103,17 +1125,23 @@ int main(int argc, char **argv) {
     fmax_convol.write((char*)LGN_fr, nLGN*sizeof(Float));
     fmax_convol.close();
 	{// storage check output
-    	checkCudaErrors(cudaMemcpy(arrayOf_2nType_nSample_nLGN, TW_storage, nType*nKernelSample*nLGN*sizeof(Float), cudaMemcpyDeviceToHost));
+        fStorage.write((char*)&nLGN, sizeof(Size));
+        Size _nType = static_cast<Size>(nType);
+        fStorage.write((char*)&_nType, sizeof(Size));
+        fStorage.write((char*)&nKernelSample, sizeof(Size));
+        fStorage.write((char*)&nSample, sizeof(Size));
+
+    	checkCudaErrors(cudaMemcpy(arrayOf_2nType_nSample_nLGN, TW_storage, nLGN*nType*nKernelSample*sizeof(Float), cudaMemcpyDeviceToHost));
 		fStorage.write((char*)arrayOf_2nType_nSample_nLGN, nType*nKernelSample*nLGN*sizeof(Float));
 
-    	checkCudaErrors(cudaMemcpy(arrayOf_2nType_nSample_nLGN, SW_storage, nType*nSample*nLGN*sizeof(Float), cudaMemcpyDeviceToHost));
-		fStorage.write((char*)arrayOf_2nType_nSample_nLGN, nType*nSample*nLGN*sizeof(Float));
+    	checkCudaErrors(cudaMemcpy(arrayOf_2nType_nSample_nLGN, SW_storage, nLGN*nType*nSample*sizeof(Float), cudaMemcpyDeviceToHost));
+		fStorage.write((char*)arrayOf_2nType_nSample_nLGN, nLGN*nType*nSample*sizeof(Float));
 
-    	checkCudaErrors(cudaMemcpy(arrayOf_2nType_nSample_nLGN, SC_storage, 2*nType*nSample*nLGN*sizeof(Float), cudaMemcpyDeviceToHost));
-		fStorage.write((char*)arrayOf_2nType_nSample_nLGN, 2*nType*nSample*nLGN*sizeof(Float));
+    	checkCudaErrors(cudaMemcpy(arrayOf_2nType_nSample_nLGN, SC_storage, 2*nLGN*nType*nSample*sizeof(Float), cudaMemcpyDeviceToHost));
+		fStorage.write((char*)arrayOf_2nType_nSample_nLGN, 2*nLGN*nType*nSample*sizeof(Float));
 
-    	checkCudaErrors(cudaMemcpy(arrayOf_2nType_nSample_nLGN, dwdh_storage, nType*nLGN*sizeof(Float), cudaMemcpyDeviceToHost));
-		fStorage.write((char*)arrayOf_2nType_nSample_nLGN, nType*nLGN*sizeof(Float));
+    	checkCudaErrors(cudaMemcpy(arrayOf_2nType_nSample_nLGN, dwdh_storage, nLGN*nType*sizeof(Float), cudaMemcpyDeviceToHost));
+		fStorage.write((char*)arrayOf_2nType_nSample_nLGN, nLGN*nType*sizeof(Float));
 		fStorage.close();
 	}
     // calc LGN firing rate at the end of current dt

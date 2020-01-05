@@ -13,37 +13,26 @@ void orthPhiRotate3D(Float theta0, Float phi0, Float eta, Float &theta, Float &p
 	// phi (0, pi)
 	// theta [-pi,pi]
 	// eta [-pi/2, pi/2] the rotating angle, orhogonal to radius*dPhi
-	//
-	//cosine(phi) = cosine(phi0) * cosine(eta);
-	//sine(dtheta) = sine(eta)/sine(phi);
 	
-	//phi = arccos(cosine(phi0) * cosine(eta));
-	//phi = arccos(cos(phi0) * cos(eta));
     if (phi0 < 0.0) {
         phi0 = -phi0;
-        theta0 -= copy(static_cast<Float>(M_PI), theta0);
+        theta0 -= copy(M_PI, theta0);
     }
-    double sinPhi;
-	double dphi = acos(cos(static_cast<double>(phi0)) * cos(static_cast<double>(eta)));
-    sinPhi = sin(dphi);
-    assert(!isnan(sinPhi));
-    if (sinPhi > 0) {
-        double sinEta = sin(static_cast<double>(eta));
-        assert(!isnan(sinEta));
-        assert(sinPhi > sinEta);
-	    theta = theta0 + asin(sinEta / sinPhi);
-        phi = dphi;
-    } else {
-        assert(phi0 == 0);
-        theta = copy(M_PI, eta);
-        phi = abs(eta);
+    Float sinPhi0 = sine(phi0);
+    if (sinPhi0 == 0) {
+        printf("phi0: %f\n", phi0);
+        sinPhi0 = phi0;
     }
+	phi = arccos(cosine(phi0) * cos(eta));
+	theta = theta0 + atan(tangent(eta), sinPhi0); //atan2(y, x)
+    assert(!isnan(phi));
+    assert(!isnan(theta));
 }
 
 __host__
 __device__
 __forceinline__
-void axisRotate3D(Float theta0, Float phi0, Float ceta, Float seta, Float &theta, Float &phi) {
+void axisRotate3D(Float theta0, Float phi0, Float ceta, Float seta, Float &cost, Float &sint, Float &phi) {
 	// view the globe from the eye as the origin looking along the z-axis pointing out, with x-y-z axis
 	// the stimulus plane will have a vertical x-axis, horizontal y-axis
 	// theta0 is the angle formed by the rotation axis's projection on x-y plane and the y-axis
@@ -51,13 +40,15 @@ void axisRotate3D(Float theta0, Float phi0, Float ceta, Float seta, Float &theta
 	// eta is the angle rotating along the axis counter-clockwisely view from the eye.
 	// ceta = cos(eta)
 	// seta = cos(eta)
-	Float x_rot = sine(phi0) * sine(theta0);
-	Float y_rot = sine(phi0) * cosine(theta0);
+    Float sinPhi = sine(phi0);
+	Float x_rot = sinPhi * sine(theta0);
+	Float y_rot = sinPhi * cosine(theta0);
 	Float z_rot = cosine(phi0);
-	Float x = sine(phi) * sine(theta);
-	Float y = sine(phi) * cosine(theta);
+    sinPhi = sine(phi);
+	Float x = sinPhi * sint;
+	Float y = sinPhi * cost;
 	Float z = cosine(phi);
-	// wiki 3d rotation matrix along an axis reverse the rotation direction
+	// wiki 3d rotation matrix along an axis reverse the rotation direction (seta -> -seta)
 	Float z_prime = (z_rot*x_rot*(1-ceta) + y_rot*seta) * x +
                     (z_rot*y_rot*(1-ceta) - x_rot*seta) * y +
                     (z_rot*z_rot*(1-ceta) +       ceta) * z;
@@ -70,19 +61,29 @@ void axisRotate3D(Float theta0, Float phi0, Float ceta, Float seta, Float &theta
                     (x_rot*y_rot*(1-ceta) + z_rot*seta) * y +
                     (x_rot*z_rot*(1-ceta) - y_rot*seta) * z;
 
+    assert(z_prime > 0);
     if (z_prime >= 1) {
-        printf("im at origin");
         phi = 0;
-        theta = 0;
     } else {
 	    phi = arccos(z_prime);
-        if (sine(phi) == 0) {
-            printf("im at origin again");
-            theta = 0;
-        } else {
-	        theta = arcsin(x_prime/sine(phi));
+    }
+    if (isnan(phi)) {
+        assert(!isnan(phi));
+    }
+    sinPhi = sine(phi);
+    if (sinPhi == 0) {
+        Float theta = atan2(x_prime, y_prime);
+        cost = cosine(theta);
+        sint = cosine(theta);
+    } else {
+        cost = y_prime/sinPhi;
+        sint = x_prime/sinPhi;
+        if (abs(cost) > 1 || abs(sint) > 1) {
+            printf("cost: %f, sint %f\n", cost, sint);
         }
     }
+    assert(!isnan(cost));
+    assert(!isnan(sint));
 }
 
 // 1D
