@@ -440,7 +440,7 @@ int main(int argc, char **argv) {
         }
         for (Size i=0; i<2*nLGN; i++) {
             float polar, ecc, w, h, x, y;
-            Float cosp, sinp;
+            Float cosp, sinp, tanEcc;
             Float* x_max;
             Float* x_min;
             Float* y_max;
@@ -498,7 +498,7 @@ int main(int argc, char **argv) {
                 }
             }
 
-            retina_to_plane(cosine(LGN_polar[i]), sine(LGN_polar[i]), LGN_ecc[i], x, y, normViewDistance, LR_x0, LR_y0);
+            retina_to_plane(cosine(LGN_polar[i]), sine(LGN_polar[i]), tangent(LGN_ecc[i]), x, y, normViewDistance, LR_x0, LR_y0);
             fLGN_xy.write((char*)&x, sizeof(Float));
             fLGN_xy.write((char*)&y, sizeof(Float));
             if (condition(x,y)) {
@@ -511,13 +511,13 @@ int main(int argc, char **argv) {
 	        orthPhiRotate3D(LGN_polar[i], LGN_ecc[i] + h, w, polar, ecc);
             cosp = cosine(polar);
             sinp = sine(polar);
-            retina_to_plane(cosp, sinp, ecc, x, y, normViewDistance, LR_x0, LR_y0);
+            retina_to_plane(cosp, sinp, tangent(ecc), x, y, normViewDistance, LR_x0, LR_y0);
             fLGN_xy.write((char*)&x, sizeof(Float));
             fLGN_xy.write((char*)&y, sizeof(Float));
             cosp = cosine(polar);
             sinp = sine(polar);
-	        axisRotate3D(LGN_polar[i], LGN_ecc[i], cos(LGN_orient[i]), sin(LGN_orient[i]), cosp, sinp, ecc);
-            retina_to_plane(cosp, sinp, ecc, x, y, normViewDistance, LR_x0, LR_y0);
+	        axisRotate3D(LGN_polar[i], LGN_ecc[i], cos(LGN_orient[i]), sin(LGN_orient[i]), cosp, sinp, ecc, tanEcc);
+            retina_to_plane(cosp, sinp, tanEcc, x, y, normViewDistance, LR_x0, LR_y0);
             fLGN_xy_post.write((char*)&x, sizeof(Float));
             fLGN_xy_post.write((char*)&y, sizeof(Float));
             if (condition(x,y)) {
@@ -534,13 +534,13 @@ int main(int argc, char **argv) {
 	        orthPhiRotate3D(LGN_polar[i], LGN_ecc[i] + h, w, polar, ecc);
             cosp = cosine(polar);
             sinp = sine(polar);
-            retina_to_plane(cosp, sinp, ecc, x, y, normViewDistance, LR_x0, LR_y0);
+            retina_to_plane(cosp, sinp, tangent(ecc), x, y, normViewDistance, LR_x0, LR_y0);
             fLGN_xy.write((char*)&x, sizeof(Float));
             fLGN_xy.write((char*)&y, sizeof(Float));
             cosp = cosine(polar);
             sinp = sine(polar);
-	        axisRotate3D(LGN_polar[i], LGN_ecc[i], cos(LGN_orient[i]), sin(LGN_orient[i]), cosp, sinp, ecc);
-            retina_to_plane(cosp, sinp, ecc, x, y, normViewDistance, LR_x0, LR_y0);
+	        axisRotate3D(LGN_polar[i], LGN_ecc[i], cos(LGN_orient[i]), sin(LGN_orient[i]), cosp, sinp, ecc, tanEcc);
+            retina_to_plane(cosp, sinp, tanEcc, x, y, normViewDistance, LR_x0, LR_y0);
             fLGN_xy_post.write((char*)&x, sizeof(Float));
             fLGN_xy_post.write((char*)&y, sizeof(Float));
             if (condition(x,y)) {
@@ -557,13 +557,13 @@ int main(int argc, char **argv) {
 	        orthPhiRotate3D(LGN_polar[i], LGN_ecc[i] + h, w, polar, ecc);
             cosp = cosine(polar);
             sinp = sine(polar);
-            retina_to_plane(cosp, sinp, ecc, x, y, normViewDistance, LR_x0, LR_y0);
+            retina_to_plane(cosp, sinp, tangent(ecc), x, y, normViewDistance, LR_x0, LR_y0);
             fLGN_xy.write((char*)&x, sizeof(Float));
             fLGN_xy.write((char*)&y, sizeof(Float));
             cosp = cosine(polar);
             sinp = sine(polar);
-	        axisRotate3D(LGN_polar[i], LGN_ecc[i], cos(LGN_orient[i]), sin(LGN_orient[i]), cosp, sinp, ecc);
-            retina_to_plane(cosp, sinp, ecc, x, y, normViewDistance, LR_x0, LR_y0);
+	        axisRotate3D(LGN_polar[i], LGN_ecc[i], cos(LGN_orient[i]), sin(LGN_orient[i]), cosp, sinp, ecc, tanEcc);
+            retina_to_plane(cosp, sinp, tanEcc, x, y, normViewDistance, LR_x0, LR_y0);
             fLGN_xy_post.write((char*)&x, sizeof(Float));
             fLGN_xy_post.write((char*)&y, sizeof(Float));
             if (condition(x,y)) {
@@ -580,13 +580,13 @@ int main(int argc, char **argv) {
 	        orthPhiRotate3D(LGN_polar[i], LGN_ecc[i] + h, w, polar, ecc);
             cosp = cosine(polar);
             sinp = sine(polar);
-            retina_to_plane(cosp, sinp, ecc, x, y, normViewDistance, LR_x0, LR_y0);
+            retina_to_plane(cosp, sinp, tangent(ecc), x, y, normViewDistance, LR_x0, LR_y0);
             fLGN_xy.write((char*)&x, sizeof(Float));
             fLGN_xy.write((char*)&y, sizeof(Float));
             cosp = cosine(polar);
             sinp = sine(polar);
-	        axisRotate3D(LGN_polar[i], LGN_ecc[i], cos(LGN_orient[i]), sin(LGN_orient[i]), cosp, sinp, ecc);
-            retina_to_plane(cosp, sinp, ecc, x, y, normViewDistance, LR_x0, LR_y0);
+	        axisRotate3D(LGN_polar[i], LGN_ecc[i], cos(LGN_orient[i]), sin(LGN_orient[i]), cosp, sinp, ecc, tanEcc);
+            retina_to_plane(cosp, sinp, tanEcc, x, y, normViewDistance, LR_x0, LR_y0);
             fLGN_xy_post.write((char*)&x, sizeof(Float));
             fLGN_xy_post.write((char*)&y, sizeof(Float));
             if (condition(x,y)) {

@@ -256,10 +256,11 @@ Float store_spatialWeight(
 
     Float cosp = cosine(polar);
     Float sinp = sine(polar);
-	axisRotate3D(centerPolar, centerEcc, coso, sino, cosp, sinp, ecc);
+    Float tanEcc;
+	axisRotate3D(centerPolar, centerEcc, coso, sino, cosp, sinp, ecc, tanEcc);
 
     float x, y;
-    retina_to_plane(cosp, sinp, ecc, x, y, normViewDistance, LR_x0, LR_y0);
+    retina_to_plane(cosp, sinp, tanEcc, x, y, normViewDistance, LR_x0, LR_y0);
     /* DEBUG
     bool tsel = threadIdx.x == 0 && threadIdx.y == gridDim.y-1;
     if (tsel && (x > 1 || x < 0 || y > 1 || y < 0)) {

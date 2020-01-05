@@ -23,6 +23,7 @@ void orthPhiRotate3D(Float theta0, Float phi0, Float eta, Float &theta, Float &p
         printf("phi0: %f\n", phi0);
         sinPhi0 = phi0;
     }
+    // need by the next step is cosine and sine
 	phi = arccos(cosine(phi0) * cos(eta));
 	theta = theta0 + atan(tangent(eta), sinPhi0); //atan2(y, x)
     assert(!isnan(phi));
@@ -32,7 +33,7 @@ void orthPhiRotate3D(Float theta0, Float phi0, Float eta, Float &theta, Float &p
 __host__
 __device__
 __forceinline__
-void axisRotate3D(Float theta0, Float phi0, Float ceta, Float seta, Float &cost, Float &sint, Float &phi) {
+void axisRotate3D(Float theta0, Float phi0, Float ceta, Float seta, Float &cost, Float &sint, Float phi, Float &tanPhi) {
 	// view the globe from the eye as the origin looking along the z-axis pointing out, with x-y-z axis
 	// the stimulus plane will have a vertical x-axis, horizontal y-axis
 	// theta0 is the angle formed by the rotation axis's projection on x-y plane and the y-axis
@@ -60,30 +61,11 @@ void axisRotate3D(Float theta0, Float phi0, Float ceta, Float seta, Float &cost,
 	Float x_prime = (x_rot*x_rot*(1-ceta) +       ceta) * x +
                     (x_rot*y_rot*(1-ceta) + z_rot*seta) * y +
                     (x_rot*z_rot*(1-ceta) - y_rot*seta) * z;
-
-    assert(z_prime > 0);
-    if (z_prime >= 1) {
-        phi = 0;
-    } else {
-	    phi = arccos(z_prime);
-    }
-    if (isnan(phi)) {
-        assert(!isnan(phi));
-    }
-    sinPhi = sine(phi);
-    if (sinPhi == 0) {
-        Float theta = atan2(x_prime, y_prime);
-        cost = cosine(theta);
-        sint = cosine(theta);
-    } else {
-        cost = y_prime/sinPhi;
-        sint = x_prime/sinPhi;
-        if (abs(cost) > 1 || abs(sint) > 1) {
-            printf("cost: %f, sint %f\n", cost, sint);
-        }
-    }
-    assert(!isnan(cost));
-    assert(!isnan(sint));
+    
+    tanPhi = square_root(x_prime*x_prime + y_prime*y_prime)/z_prime;
+    Float theta = atan2(x_prime, y_prime);
+    cost = cosine(theta);
+    sint = sine(theta);
 }
 
 // 1D
