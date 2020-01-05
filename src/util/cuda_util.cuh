@@ -4,10 +4,46 @@
 #include "../DIRECTIVE.h"
 #include "../CUDA_MACRO.h"
 #include "../types.h"
+#include <float.h>
 
 __host__
 __device__
-inline void axisRotate3D(Float theta0, Float, phi0, Float ceta, Float seta, Float &theta, Float &phi) {
+__forceinline__
+void orthPhiRotate3D(Float theta0, Float phi0, Float eta, Float &theta, Float &phi) {
+	// phi (0, pi)
+	// theta [-pi,pi]
+	// eta [-pi/2, pi/2] the rotating angle, orhogonal to radius*dPhi
+	//
+	//cosine(phi) = cosine(phi0) * cosine(eta);
+	//sine(dtheta) = sine(eta)/sine(phi);
+	
+	//phi = arccos(cosine(phi0) * cosine(eta));
+	//phi = arccos(cos(phi0) * cos(eta));
+    if (phi0 < 0.0) {
+        phi0 = -phi0;
+        theta0 -= copy(static_cast<Float>(M_PI), theta0);
+    }
+    double sinPhi;
+	double dphi = acos(cos(static_cast<double>(phi0)) * cos(static_cast<double>(eta)));
+    sinPhi = sin(dphi);
+    assert(!isnan(sinPhi));
+    if (sinPhi > 0) {
+        double sinEta = sin(static_cast<double>(eta));
+        assert(!isnan(sinEta));
+        assert(sinPhi > sinEta);
+	    theta = theta0 + asin(sinEta / sinPhi);
+        phi = dphi;
+    } else {
+        assert(phi0 == 0);
+        theta = copy(M_PI, eta);
+        phi = abs(eta);
+    }
+}
+
+__host__
+__device__
+__forceinline__
+void axisRotate3D(Float theta0, Float phi0, Float ceta, Float seta, Float &theta, Float &phi) {
 	// view the globe from the eye as the origin looking along the z-axis pointing out, with x-y-z axis
 	// the stimulus plane will have a vertical x-axis, horizontal y-axis
 	// theta0 is the angle formed by the rotation axis's projection on x-y plane and the y-axis
@@ -21,28 +57,33 @@ inline void axisRotate3D(Float theta0, Float, phi0, Float ceta, Float seta, Floa
 	Float x = sine(phi) * sine(theta);
 	Float y = sine(phi) * cosine(theta);
 	Float z = cosine(phi);
-	// wiki 3d rotation matrix along an axis
-	z = (z_rot*x_rot*(1-ceta) - y_rot*seta) * x + (z_rot*y_rot*(1-ceta) + x_rot*seta) * y + (ceta + z_rot*z_rot*(1-ceta)) * z;
-	x = (x_rot*x_rot*(1-ceta) + ceta) * x + (x_rot*y_rot*(1-ceta) - z_rot*seta) * y + (x_rot*z_rot*(1-ceta) + y_rot*seta) * z;
+	// wiki 3d rotation matrix along an axis reverse the rotation direction
+	Float z_prime = (z_rot*x_rot*(1-ceta) + y_rot*seta) * x +
+                    (z_rot*y_rot*(1-ceta) - x_rot*seta) * y +
+                    (z_rot*z_rot*(1-ceta) +       ceta) * z;
 
-	phi = arccos(phi);
-	theta = arcsin(x/sine(phi));
+	Float y_prime = (y_rot*x_rot*(1-ceta) - z_rot*seta) * x +
+                    (y_rot*y_rot*(1-ceta) +       ceta) * y +
+                    (y_rot*z_rot*(1-ceta) + x_rot*seta) * z;
+
+	Float x_prime = (x_rot*x_rot*(1-ceta) +       ceta) * x +
+                    (x_rot*y_rot*(1-ceta) + z_rot*seta) * y +
+                    (x_rot*z_rot*(1-ceta) - y_rot*seta) * z;
+
+    if (z_prime >= 1) {
+        printf("im at origin");
+        phi = 0;
+        theta = 0;
+    } else {
+	    phi = arccos(z_prime);
+        if (sine(phi) == 0) {
+            printf("im at origin again");
+            theta = 0;
+        } else {
+	        theta = arcsin(x_prime/sine(phi));
+        }
+    }
 }
-
-__host__
-__device__
-inline void orthPhiRotate3D(Float theta0, Float, phi0, Float eta, Float &theta, Float &phi) {
-	// phi (0, pi)
-	// theta [-pi,pi]
-	// eta [-pi/2, pi/2] the rotating angle, orhogonal to radius*dPhi
-	//
-	//cosine(phi) = cosine(phi0) * cosine(eta);
-	//sine(dtheta) = sine(eta)/sine(phi);
-	
-	phi = arccos(cosine(phi0) * cosine(eta));
-	theta = theta0 + arcsin(sine(eta) / sine(phi));
-}
-
 
 // 1D
 template <typename T>

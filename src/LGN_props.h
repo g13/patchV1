@@ -27,30 +27,36 @@ struct hSpatial_component {
             const std::vector<Float> &_k
     ) {
         Size arraySize = nLGN*nType;
-        mem_block = new Float[5*arraySize];
+        mem_block = new Float[6*arraySize];
         x = mem_block;
         rx = x + arraySize;
         y = rx + arraySize;
         ry = y + arraySize;
-        orient = y + arraySize;
+        orient = ry + arraySize;
         k = orient + arraySize;
         for (Size i=0; i<arraySize; i++) {
             x[i] = _x[i];
+            assert(!isnan(x[i]));
         }
         for (Size i=0; i<arraySize; i++) {
             rx[i] = _rx[i];
+            assert(!isnan(rx[i]));
         }
         for (Size i=0; i<arraySize; i++) {
             y[i] = _y[i];
+            assert(!isnan(y[i]));
         }
         for (Size i=0; i<arraySize; i++) {
             ry[i] = _ry[i];
+            assert(!isnan(ry[i]));
         }
         for (Size i=0; i<arraySize; i++) {
             orient[i] = _orient[i];
+            assert(!isnan(orient[i]));
         }
         for (Size i=0; i<arraySize; i++) {
             k[i] = _k[i];
+            assert(!isnan(k[i]));
         }
     }
 	void freeMem() {
@@ -89,21 +95,27 @@ struct hTemporal_component {
         nD = nR + arraySize;
         for (Size i=0; i<arraySize; i++) {
             tauR[i] = _tauR[i];
+            assert(!isnan(tauR[i]));
         }
         for (Size i=0; i<arraySize; i++) {
             tauD[i] = _tauD[i];
+            assert(!isnan(tauD[i]));
         }
         for (Size i=0; i<arraySize; i++) {
             delay[i] = _delay[i];
+            assert(!isnan(delay[i]));
         }
         for (Size i=0; i<arraySize; i++) {
             ratio[i] = _ratio[i];
+            assert(!isnan(ratio[i]));
         }
         for (Size i=0; i<arraySize; i++) {
             nR[i] = _nR[i];
+            assert(!isnan(nR[i]));
         }
         for (Size i=0; i<arraySize; i++) {
             nD[i] = _nD[i];
+            assert(!isnan(nD[i]));
         }
     }
 	void freeMem() {
@@ -132,9 +144,11 @@ struct hStatic_nonlinear {
         b = a + nLGN;
         for (Size i=0; i<nLGN; i++) {
             c50[i] = _c50[i]; 
+            assert(!isnan(c50[i]));
         }
         for (Size i=0; i<nLGN; i++) {
 			sharpness[i] = _sharpness[i];
+            assert(!isnan(sharpness[i]));
         }
         for (Size i=0; i<nLGN; i++) {
             // pre cache a and b
@@ -190,9 +204,12 @@ struct hLGN_parameter {
         covariant = (Float*) (coneType + arraySize);
         for (Size i=0; i<arraySize; i++) {
             coneType[i] = _coneType[i];
+            assert(coneType[i] >= 0);
+            assert(coneType[i] < 7);
         }
         for (Size i=0; i<(nType-1)*nType/2*nLGN; i++) {
             covariant[i] = _covariant[i];
+            assert(!isnan(covariant[i]));
         }
     }
 	void freeMem() {

@@ -52,14 +52,6 @@ Float temporalKernel(Float tau, Zip_temporal &temp, Float lfac1, Float lfac2, Si
     return tp;
 }
 
-__device__
-__forceinline__
-void retina_to_plane(Float polar, Float ecc, float &x, float &y, const Float normViewDistance, Float LR_x0, Float LR_y0) {
-    Float r = tangent(ecc);
-    x = LR_x0 + static_cast<float>(r*normViewDistance*cosine(polar));
-    y = LR_y0 + static_cast<float>(r*normViewDistance*sine(polar));
-}
-
 __device__ 
 __forceinline__
 Float get_intensity(unsigned int coneType, float x, float y, unsigned int iLayer) {
@@ -240,7 +232,7 @@ Float store_spatialWeight(
 		Float dw,
 		Float dh,
 		Float wSigSqrt2,
-		Float hSigSqrt2;
+		Float hSigSqrt2,
 		Float normViewDistance,
 		Float LR_x0,
 		Float LR_y0,
@@ -250,24 +242,51 @@ Float store_spatialWeight(
         Size nSample
 ) {
     // parameter are stored as (nType, nLGN), weights are stored as (nLGN, nType, weight)
-
-    // coord to center
+    // rads relative to center
     Float w = (threadIdx.x + 0.5)*dw - wSpan;
     Float h = (threadIdx.y + 0.5)*dh - hSpan;
 
-    Float spatialWeight = spatialKernel(w, h, wSigSqrt2*centerEcc, hSigSqrt2);
+    Float spatialWeight = spatialKernel(w, h, wSigSqrt2, hSigSqrt2);
     
     SW_storage[storeID] = spatialWeight;
 	float polar, ecc;
-	orthPhiRotate3D(centerPolar , centerEcc + h, w, polar, ecc);
+	orthPhiRotate3D(centerPolar, centerEcc + h, w, polar, ecc);
+    //if ((threadIdx.x == 0 && threadIdx.y == 1) && (centerPolar > M_PI/2 || centerPolar < -M_PI/2 || centerEcc > 3.0/180.0*M_PI)) {
+    //    printf("center: (%f, %f)\n", centerPolar, centerEcc);
+    //}
+    //if ((threadIdx.x == 0 && threadIdx.y == 1) && (polar > M_PI/2 || polar < -M_PI/2 || ecc > 3.0/180.0*M_PI)) {
+    //    printf("sample on (%d, %d): (%f, %f)\n", threadIdx.x, threadIdx.y, polar, ecc);
+    //}
+    bool tsel = threadIdx.x == 0 && threadIdx.y == gridDim.y-1;
+    float r = tangent(ecc)*normViewDistance;
+    float xecc = r*cosine(polar);
+    float yecc = r*sine(polar);
+    bool condition = (xecc > -0.5/7.0) && (square_root(xecc*xecc + yecc*yecc) <= 3.0/7.0);
+    //bool condition = (abs(ecc*sine(polar)) >= 3.0/180*M_PI || ecc*cosine(polar) <= -0.25/180*M_PI || ecc >= 3.0/180.0*M_PI)
+    if (tsel && !condition) {
+        float rad2deg = 180.0/M_PI;
+        printf("pre: (%f > %f, %f <= %f), w = %f, h = %f, wsig = %f, hsig = %f, polar = %f, ecc = %f, cpolar = %f, cecc = %f\n", xecc, -0.5/7.0, square_root(xecc*xecc + yecc*yecc), 3.0/7.0, w, h, wSigSqrt2/square_root(2.0), hSigSqrt2/square_root(2.0), polar*rad2deg, ecc*rad2deg, centerPolar*rad2deg, centerEcc*rad2deg);
+        //assert(xecc > -0.5/7.0);
+        //assert(square_root(xecc*xecc + yecc*yecc) <= 3.0/7.0);
+    }
+    //assert(abs(ecc*sine(polar)) < 3.0/180*M_PI);
+    //assert(ecc*cosine(polar) > -0.25/180*M_PI);
+    //assert(ecc < 3.0/180.0*M_PI);
 	axisRotate3D(centerPolar, centerEcc, coso, sino, polar, ecc);
+    r = tangent(ecc)*normViewDistance;
+    xecc = r*cosine(polar);
+    yecc = r*sine(polar);
+    if (tsel && !condition) {
+        float rad2deg = 180.0/M_PI;
+        printf("post: (%f, %f), polar = %f, ecc = %f, cpolar = %f, cecc = %f, orient = %f\n", xecc, yecc, polar*rad2deg, ecc*rad2deg, centerPolar*rad2deg, centerEcc*rad2deg, arccos(coso)*rad2deg);
+    }
+
     float x, y;
-    retina_to_plane(polar , ecc , x, y, normViewDistance, LR_x0, LR_y0);
+    retina_to_plane(polar, ecc, x, y, normViewDistance, LR_x0, LR_y0);
     // store coords for retrieve data from texture
-    assert(x < 1);
-    assert(x > 0);
-    assert(y < 1);
-    assert(y > 0);
+    if (tsel && (x >= 1 || x <= 0)) {
+        printf("polar = %f, ecc = %f, x = %f, y = %f, L = %f\n", polar, ecc, x, y, normViewDistance);
+    }
     SC_storage[storeID] = x; // x
     SC_storage[storeID + gridDim.x*blockIdx.y*nSample] = y; // y
     return spatialWeight;
@@ -355,9 +374,9 @@ void store(
         }
         __syncthreads();
         // load from shared mem
-        spatialWeight = store_spatialWeight(shared_spat[0], shared_spat[1], shared_spat[2], shared_spat[3], shared_spat[4], shared_spat[5], shared_spat[6], shared_spat[7], shared_spat[8], shared_spat[9], LR_x0, LR_y0, SW_storage, SC_storage, offset*nSample+tid, nSample);
+        spatialWeight = store_spatialWeight(shared_spat[0], shared_spat[1], shared_spat[2], shared_spat[3], shared_spat[4], shared_spat[5], shared_spat[6], shared_spat[7], shared_spat[8], shared_spat[9], normViewDistance, LR_x0, LR_y0, SW_storage, SC_storage, offset*nSample+tid, nSample);
     } 
-	if (lid ==0 || lid == gridDim.x && tid == 0) {
+	if ((lid ==0 || lid == gridDim.x) && tid == 0) {
         printf("spatialWeights stored\n");
         assert(!isnan(spatialWeight));
     }
@@ -659,7 +678,7 @@ void LGN_nonlinear(
     if (id < nLGN) {
         current = current_convol[id];
 		max = max_convol[id];
-        if (current_convol < thres) {
+        if (current_convol < 0) {
             current_convol = 0;
         }
     }

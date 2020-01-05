@@ -43,8 +43,7 @@ void store(// weights and max convolution
 		Float R_x0,
 		Float R_y0,
 		Float normViewDistance,
-        Float nsig, // span of spatialRF sample in units of std
-        bool storeSpatial
+        Float nsig // span of spatialRF sample in units of std
 );
 
 __global__ 
@@ -72,7 +71,15 @@ void LGN_convol_c1s(
         Float Itau,
         Float kernelSampleDt,
         Size nKernelSample,
-        Float dt,
-        bool spatialStored
+        Float dt
 );
+
+__host__
+__device__
+__forceinline__
+void retina_to_plane(Float polar, Float ecc, float &x, float &y, const Float normViewDistance, Float LR_x0, Float LR_y0) {
+    double r = tan(static_cast<double>(ecc))*static_cast<double>(normViewDistance);
+    x = LR_x0 + static_cast<float>(r*cosine(polar));
+    y = LR_y0 + static_cast<float>(r*sine(polar));
+}
 #endif

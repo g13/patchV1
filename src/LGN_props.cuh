@@ -21,7 +21,7 @@ struct Spatial_component {
     Float* __restrict__ k; // its sign determine On-Off
 
     void allocAndMemcpy(Size arraySize, hSpatial_component &host) {
-		size_t memSize = 5*arraySize*sizeof(Float) ;
+		size_t memSize = 6*arraySize*sizeof(Float) ;
         checkCudaErrors(cudaMalloc((void**)&mem_block, memSize));
         x = mem_block;
         rx = x + arraySize;
@@ -167,9 +167,6 @@ struct Zip_temporal {
         // loading order corresponds to calculation order
         // think before change order of load
         // DEBUG
-        if (id == 0 && threadIdx.y * blockDim.x + threadIdx.x == 0){
-		    printf("nR[%i] = %f\n", id, t.nR[id]);
-        }
         __syncthreads();
         //
         nR = t.nR[id]; 
@@ -183,18 +180,20 @@ struct Zip_temporal {
 
 struct Zip_spatial {
     Float x;
-    Float y;
     Float rx;
+    Float y;
     Float ry;
+    Float orient;
     Float k;
 	
 	__device__
 	__forceinline__
-    void load(Spatial_component &s, unsigned int id) {
+    void load(Spatial_component &s, Size id) {
         x = s.x[id];
         y = s.y[id];
         rx = s.rx[id];
         ry = s.ry[id];
+        orient = s.orient[id];
         k = s.k[id];
     }
 };

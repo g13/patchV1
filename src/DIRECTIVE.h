@@ -30,6 +30,7 @@
     #define sine sinf 
     #define cosine cosf 
 	#define atan atan2f
+	#define arctan atanf
     #define arccos acosf 
     #define arcsin asinf 
 
@@ -49,6 +50,7 @@
     #define sine sin 
     #define cosine cos 
 	#define atan atan2
+	#define arctan atan
     #define arccos acos 
     #define arcsin asin 
 
