@@ -172,7 +172,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 		    prob.reserve(n);
             // putative RF center
 			Float cx, cy;
-            std::tie(cx, cy) = average(x, y);
+            std::tie(cx, cy) = average2D<Float>(x, y);
 		    for (Size i = 0; i < n; i++) {
                 Float norm_x, norm_y;
                 // orient and normalize LGN coord

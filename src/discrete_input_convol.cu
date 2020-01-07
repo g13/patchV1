@@ -251,38 +251,34 @@ Float store_spatialWeight(
     Float spatialWeight = spatialKernel(w, h, wSigSqrt2, hSigSqrt2);
     
     SW_storage[storeID] = spatialWeight;
-	float polar, ecc;
-	orthPhiRotate3D(centerPolar, centerEcc + h, w, polar, ecc);
+	Float cosp, sinp; 
+    Float cosEcc, sinEcc;
+	orthPhiRotate3D(centerPolar, centerEcc + h, w, cosp, sinp, cosEcc, sinEcc);
 
-    Float cosp = cosine(polar);
-    Float sinp = sine(polar);
     Float tanEcc;
-	axisRotate3D(centerPolar, centerEcc, coso, sino, cosp, sinp, ecc, tanEcc);
+	axisRotate3D(centerPolar, centerEcc, coso, sino, cosp, sinp, cosEcc, sinEcc, tanEcc);
 
     float x, y;
     retina_to_plane(cosp, sinp, tanEcc, x, y, normViewDistance, LR_x0, LR_y0);
-    /* DEBUG
-    bool tsel = threadIdx.x == 0 && threadIdx.y == gridDim.y-1;
-    if (tsel && (x > 1 || x < 0 || y > 1 || y < 0)) {
-        printf("polar = %f, ecc = %f, x = %f, y = %f, L = %f\n", polar, ecc, x, y, normViewDistance);
-    }*/
-    if (LR) {
-        if (x < 0 || x > 0.5) {
-            printf("x\n");
-            //assert(x>=0);
-            //assert(x<=0.5);
+    { // visual field and stimulus field not matching
+        if (LR) {
+            if (x < 0 || x > 0.5) {
+                printf("x\n");
+                assert(x>=0);
+                assert(x<=0.5);
+            }
+        } else {
+            if (x < 0.5 || x > 1) {
+                printf("x\n");
+                assert(x>=0.5);
+                assert(x<=1);
+            }
         }
-    } else {
-        if (x < 0.5 || x > 1) {
-            printf("x\n");
-            //assert(x>=0.5);
-            //assert(x<=1);
+        if (y<0 || y>1) {
+            printf("y\n");
+            assert(y>=0);
+            assert(y<=1);
         }
-    }
-    if (y<0 || y>1) {
-        printf("y\n");
-        //assert(y>=0);
-        //assert(y<=1);
     }
     
     // store coords for retrieve data from texture
@@ -565,7 +561,7 @@ void sub_convol(
             }
             Float local_contrast = (local_I-mean_I)/mean_I;
             if (abs(local_contrast) > 1.0) {
-                local_contrast = copy(1.0, local_contrast); // copy is copysign(value, sign);
+                local_contrast = copyms(1.0, local_contrast); // copyms is copysign(value, sign);
             }
             block_reduce<Float>(reduced, spatialWeight*local_contrast);
             if (tid == 0) {

@@ -55,11 +55,11 @@ int main(int argc, char **argv) {
     using namespace std;
 	using std::string;
 
-    //TODO: collect CUDA device properties to determine grid and block sizes
     cudaDeviceProp deviceProps;
     checkCudaErrors(cudaGetDeviceProperties(&deviceProps, 0));
     printf("CUDA device [%s] has %d Multi-Processors ", deviceProps.name, deviceProps.multiProcessorCount);
     printf("SM %d.%d\n", deviceProps.major, deviceProps.minor);
+    printf("total global memory: %d Mb.\n", deviceProps.totalGlobalMem/1024.0/1024.0);
 
 #ifdef SINGLE_PRECISION
     cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeFourByte);
@@ -96,11 +96,11 @@ int main(int argc, char **argv) {
 		("seed,s", po::value<PosIntL>(&seed),"seed for trial")
 		("vFt,v", po::value<Float>(&vFt)->default_value(1.0),"variable for test")
 		("dt", po::value<Float>(&dt)->default_value(0.0625), "simulatoin time step") 
-		("nt", po::value<Size>(&nt)->default_value(8000), "total simulatoin time in units of time step") // TODO: determine by stimulus
+		("nt", po::value<Size>(&nt)->default_value(8000), "total simulatoin time in units of time step")
 		("nSpatialSample1D", po::value<SmallSize>(&nSpatialSample1D)->default_value(warpSize), "number of samples per x,y direction for a LGN spatial RF")
 		("tau", po::value<Float>(&tau)->default_value(250.0), "the backward time interval that a LGN temporal RF should cover")
 		("Itau", po::value<Float>(&Itau)->default_value(300.0), "the light intensity adaptation time-scale of a cone")
-		("nKernelSample", po::value<Size>(&nKernelSample)->default_value(2000), "number of samples per temporal kernel")
+		("nKernelSample", po::value<Size>(&nKernelSample)->default_value(500), "number of samples per temporal kernel")
 		("frameRate", po::value<PosInt>(&frameRate)->default_value(60), "frame rate of the input stimulus")
 		("testStorage", po::value<bool>(&testStorage)->default_value(true), "check storage values, write data to disk, filename specified by fStorage")
 		("checkConvol", po::value<bool>(&checkConvol)->default_value(true), "check convolution values, write data to disk, filename specified by fLGN_convol")
@@ -174,11 +174,6 @@ int main(int argc, char **argv) {
         nFrame = stimulus_dimensions[0];
         height = stimulus_dimensions[1];
         width = stimulus_dimensions[2];
-        if (height != width) {
-            // TODO:
-            cout << "width != height, not implemented\n";
-            return EXIT_FAILURE;
-        }
         cout << "stimulus: " << nFrame << " frames of " << height << "x" << height << "\n";
     }
     nPixelPerFrame = width*height;
@@ -221,27 +216,36 @@ int main(int argc, char **argv) {
     fLGN.open(LGN_filename, fstream::in | fstream::binary);
     if (!fLGN) {
 		cout << "Cannot open or find " << V1_filename <<" to read in LGN properties.\n";
+        return EXIT_FAILURE;
     } else {
 	    fLGN.read(reinterpret_cast<char*>(&nLGN_L), sizeof(Size));
 	    fLGN.read(reinterpret_cast<char*>(&nLGN_R), sizeof(Size));
 	    fLGN.read(reinterpret_cast<char*>(&max_ecc), sizeof(Float)); // in rad
-        nLGN = nLGN_L + nLGN_R;
-		Float stimulus_extent = stimulus_range + stimulus_buffer;
-        if (max_ecc >= stimulus_range) {
-            printf("%f < %f\n", max_ecc, stimulus_range);
-            assert(max_ecc < stimulus_range);
-        }
-		Float normEccMaxStimulus_extent = max_ecc/(2*stimulus_extent); // just the ecc at VF center, its surround can be much bigger, normalized for texture coordinates
-        // normalized stimulus reading points for stimulus access
-		L_x0 = stimulus_buffer/(2*stimulus_extent);
-		L_y0 = 0.5;
-		R_x0 = 0.5 + L_x0;
-		R_y0 = 0.5;
-        cout << nLGN << " LGN neurons, " << nLGN_L << " from left eye, " << nLGN_R << " from right eye, center positions are within the eccentricity of " << max_ecc << " deg, reaching normalized stimulus radius of " << normEccMaxStimulus_extent << "(" << max_ecc << ", " << stimulus_range << ")" << " and a buffer range of " << L_x0 << "(" << stimulus_buffer << ")" << ".\n";
-        max_ecc = max_ecc * deg2rad;
-		normViewDistance = normEccMaxStimulus_extent/tan(max_ecc);
-        cout << "normalized view distance: " << normViewDistance << "\n";
     }
+    nLGN = nLGN_L + nLGN_R;
+	Float stimulus_extent = stimulus_range + stimulus_buffer;
+    if (max_ecc >= stimulus_range) {
+        printf("%f < %f\n", max_ecc, stimulus_range);
+        assert(max_ecc < stimulus_range);
+    }
+	Float normEccMaxStimulus_extent = max_ecc/(2*stimulus_extent); // just the ecc at VF center, its surround can be much bigger, normalized for texture coordinates
+    // normalized stimulus reading points for stimulus access
+	L_x0 = stimulus_buffer/(2*stimulus_extent);
+	L_y0 = 0.5;
+	R_x0 = 0.5 + L_x0;
+	R_y0 = 0.5;
+    cout << nLGN << " LGN neurons, " << nLGN_L << " from left eye, " << nLGN_R << " from right eye, center positions are within the eccentricity of " << max_ecc << " deg, reaching normalized stimulus radius of " << normEccMaxStimulus_extent << "(" << max_ecc << ", " << stimulus_range << ")" << " and a buffer range of " << L_x0 << "(" << stimulus_buffer << ")" << ".\n";
+    max_ecc = max_ecc * deg2rad;
+	normViewDistance = normEccMaxStimulus_extent/tan(max_ecc);
+    cout << "normalized view distance: " << normViewDistance << "\n";
+
+    const SmallSize nType = 2;
+    Size nSample = nSpatialSample1D * nSpatialSample1D;
+    printf("=== temporal storage memory required: %dx%dx%d = %fMB\n", nKernelSample,nLGN,nType,nKernelSample*nLGN*nType*sizeof(Float)/1024.0/1024.0);
+    printf("=== spatial storage memory required: %dx%dx%d = %fMB\n", nSample, nLGN, nType, nSample*nType*nLGN*sizeof(Float)/1024.0/1024.0);
+
+    printf("=== texture coord storage memory required: %dx%dx%d = %fMB\n", nSample, nLGN, nType, 2*nSample*nType*nLGN*sizeof(float)/1024.0/1024.0);
+
     // vectors to initialize LGN
 	// center surround, thus the x2
 	vector<Float> LGN_polar(nLGN*2);
@@ -273,10 +277,6 @@ int main(int argc, char **argv) {
     for (Size i = 0; i <nLGN; i++) {
         assert(!isnan(LGN_ecc[i]));
     }
-    for (Size i = 0; i <nLGN; i++) {
-        assert(!isnan(LGN_polar[i]));
-		assert(abs(LGN_polar[i]) <= static_cast<Float>(M_PI) / 2.0);
-    }
     auto transform_deg2rad = [deg2rad] (Float ecc) {return ecc*deg2rad;};
     transform(LGN_ecc.begin(), LGN_ecc.begin()+nLGN, LGN_ecc.begin(), transform_deg2rad);
     for (Size i = 0; i <nLGN; i++) {
@@ -285,8 +285,6 @@ int main(int argc, char **argv) {
 	streampos eofLGN = fLGN.tellg();
 	fLGN.seekg(0, fLGN.end);
 	streampos true_eof = fLGN.tellg();
-    Size nL_violate = 0;
-    Size nR_violate = 0;
 	if (eofLGN == true_eof || useNewLGN) { // Setup LGN here 
 		cout << "initializing LGN spatial parameters...\n";
 		fLGN.close();
@@ -352,26 +350,6 @@ int main(int argc, char **argv) {
     	     return uniform(rGen_LGNsetup);
     	};
     	generate(LGN_orient.begin(), LGN_orient.end(), get_rand_from_uniform);
-        Float omax = 0;
-        Float omin = M_PI;
-        Float o2max = 0;
-        Float o2min = M_PI;
-        for (Size j = 0; j<nLGN; j++) {
-            if (LGN_orient[j] < omin) {
-                omin = LGN_orient[j];
-            }
-            if (LGN_orient[j] > omax) {
-                omax = LGN_orient[j];
-            }
-            if (LGN_orient[j+nLGN] < o2min) {
-                o2min = LGN_orient[j+nLGN];
-            }
-            if (LGN_orient[j+nLGN] > o2max) {
-                o2max = LGN_orient[j+nLGN];
-            }
-        }
-        printf("o: [%f, %f]\n", omin*rad2deg, omax*rad2deg);
-        printf("o2: [%f, %f]\n", o2min*rad2deg, o2max*rad2deg);
 
     	// surround origin shift
     	function<bool(Float)> noBound = [] (Float value) {
@@ -379,233 +357,15 @@ int main(int argc, char **argv) {
     	};
     	norm = normal_distribution<Float>(0.0, 1.0/3.0/sqrt(2)); // within a 1/3 of the std of the gauss0ian
     	auto get_rand = get_rand_from_gauss0(rGen_LGNsetup, norm, noBound);
-        Float max_ec = 0.0;
-        Float max_es = 0.0;
     	for (Size i=0; i<nLGN; i++) {
 			// not your usual transform 
     	    Float intermediateEcc = LGN_ecc[i]+LGN_rh[i]*get_rand();
 			Float eta = LGN_rw[i]*get_rand();
-			// check this out
-			orthPhiRotate3D(LGN_polar[i], intermediateEcc, eta, LGN_polar[i+nLGN], LGN_ecc[i+nLGN]);
-            //DEBUG
-            Float xc = sin(LGN_ecc[i])*sin(LGN_polar[i]);
-            Float yc = sin(LGN_ecc[i])*cos(LGN_polar[i]);
-            Float zc = cos(LGN_ecc[i]);
-            Float xs = sin(LGN_ecc[i+nLGN])*sin(LGN_polar[i+nLGN]);
-            Float ys = sin(LGN_ecc[i+nLGN])*cos(LGN_polar[i+nLGN]);
-            Float zs = cos(LGN_ecc[i+nLGN]);
-            Float distance = sqrt((xc-xs)*(xc-xs) + (yc-ys)*(yc-ys) + (zc-zs)*(zc-zs)); 
-            Float centerSpan = sqrt(LGN_rw[i]*LGN_rw[i] + LGN_rh[i]*LGN_rh[i]);
-            bool condition = distance < centerSpan;
-            if (!condition) {
-                printf("rw = %f, rh = %f, distance = %f\n", LGN_rw[i], LGN_rh[i], distance);
-                assert(distance < vFt*centerSpan);
-            }
-            if (isnan(LGN_ecc[i+nLGN]) || isnan(LGN_polar[i+nLGN])) {
-                cout << "roaming eta = " << eta << "\n";
-                cout << "cecc = " << LGN_ecc[i] << ", cpolar = " << LGN_polar[i] << "\n";
-                cout << "secc = " << LGN_ecc[i+nLGN] << ", spolar = " << LGN_polar[i+nLGN] << "\n";
-                assert(!isnan(LGN_ecc[i]));
-                assert(!isnan(LGN_polar[i]));
-            }
-            if (LGN_ecc[i] > max_ec) {
-                max_ec = LGN_ecc[i];
-            }
-            if (LGN_ecc[i+nLGN] > max_es) {
-                max_es = LGN_ecc[i+nLGN];
-            }
+			orthPhiRotate3D_arc(LGN_polar[i], intermediateEcc, eta, LGN_polar[i+nLGN], LGN_ecc[i+nLGN]);
 		}
-        printf("max cecc in field: %f\n", max_ec*rad2deg);
-        printf("max secc in field: %f\n", max_es*rad2deg);
-        Float x_max_R = 0;
-        Float x_min_R = 1;
-        Float y_max_R = 0;
-        Float y_min_R = 1;
-        Float x_max_L = 0;
-        Float x_min_L = 1;
-        Float y_max_L = 0;
-        Float y_min_L = 1;
-        string LGN_xy_fn = "LGN_xy.bin";
-        string LGN_xy_post_fn = "LGN_xy_post.bin";
-        ofstream fLGN_xy, fLGN_xy_post;
-        fLGN_xy.open(LGN_xy_fn, fstream::out | fstream::binary);
-        fLGN_xy_post.open(LGN_xy_post_fn, fstream::out | fstream::binary);
-        if (!fLGN_xy) {
-            cout << "failed to open " << LGN_xy_fn << "\n";
-            return EXIT_FAILURE;
-        }
-        if (!fLGN_xy_post) {
-            cout << "failed to open " << LGN_xy_post_fn << "\n";
-            return EXIT_FAILURE;
-        }
-        for (Size i=0; i<2*nLGN; i++) {
-            float polar, ecc, w, h, x, y;
-            Float cosp, sinp, tanEcc;
-            Float* x_max;
-            Float* x_min;
-            Float* y_max;
-            Float* y_min;
-            Float LR_x0, LR_y0;
-            Size *n_violate;
-            function<bool(Float, Float)> condition;
-            if (i < nLGN) {
-                if (i < nLGN_L) {
-                    LR_x0 = L_x0;
-                    LR_y0 = L_y0;
-                    x_max = &x_max_L;
-                    x_min = &x_min_L;
-                    y_max = &y_max_L;
-                    y_min = &y_min_L;
-                    n_violate = &nL_violate;
-                    condition = [] (Float x, Float y) {
-                        return (x > 0.5 || x < 0 || y < 0 || y> 1);
-                    };
-                } else {
-                    LR_x0 = R_x0;
-                    LR_y0 = R_y0;
-                    x_max = &x_max_R;
-                    x_min = &x_min_R;
-                    y_max = &y_max_R;
-                    y_min = &y_min_R;
-                    n_violate = &nR_violate;
-                    condition = [] (Float x, Float y) {
-                        return (x < 0.5 || x > 1 || y < 0 || y> 1);
-                    };
-                }
-            } else {
-                if (i-nLGN < nLGN_L) {
-                    LR_x0 = L_x0;
-                    LR_y0 = L_y0;
-                    x_max = &x_max_L;
-                    x_min = &x_min_L;
-                    y_max = &y_max_L;
-                    y_min = &y_min_L;
-                    n_violate = &nL_violate;
-                    condition = [] (Float x, Float y) {
-                        return (x > 0.5 || x < 0 || y < 0 || y> 1);
-                    };
-                } else {
-                    LR_x0 = R_x0;
-                    LR_y0 = R_y0;
-                    x_max = &x_max_R;
-                    x_min = &x_min_R;
-                    y_max = &y_max_R;
-                    y_min = &y_min_R;
-                    n_violate = &nR_violate;
-                    condition = [] (Float x, Float y) {
-                        return (x < 0.5 || x > 1 || y < 0 || y> 1);
-                    };
-                }
-            }
-
-            retina_to_plane(cosine(LGN_polar[i]), sine(LGN_polar[i]), tangent(LGN_ecc[i]), x, y, normViewDistance, LR_x0, LR_y0);
-            fLGN_xy.write((char*)&x, sizeof(Float));
-            fLGN_xy.write((char*)&y, sizeof(Float));
-            if (condition(x,y)) {
-                //printf("origin polar = %f, ecc = %f, x = %f, y = %f, L = %f\n", polar, ecc, x, y, normViewDistance);
-                (*n_violate)++;
-            }
-
-            w = nsig * LGN_rw[i]/sqrt(2.0);
-            h = nsig * LGN_rh[i]/sqrt(2.0);
-	        orthPhiRotate3D(LGN_polar[i], LGN_ecc[i] + h, w, polar, ecc);
-            cosp = cosine(polar);
-            sinp = sine(polar);
-            retina_to_plane(cosp, sinp, tangent(ecc), x, y, normViewDistance, LR_x0, LR_y0);
-            fLGN_xy.write((char*)&x, sizeof(Float));
-            fLGN_xy.write((char*)&y, sizeof(Float));
-            cosp = cosine(polar);
-            sinp = sine(polar);
-	        axisRotate3D(LGN_polar[i], LGN_ecc[i], cos(LGN_orient[i]), sin(LGN_orient[i]), cosp, sinp, ecc, tanEcc);
-            retina_to_plane(cosp, sinp, tanEcc, x, y, normViewDistance, LR_x0, LR_y0);
-            fLGN_xy_post.write((char*)&x, sizeof(Float));
-            fLGN_xy_post.write((char*)&y, sizeof(Float));
-            if (condition(x,y)) {
-                //printf("++polar = %f, ecc = %f, x = %f, y = %f, L = %f\n", polar, ecc, x, y, normViewDistance);
-                (*n_violate)++;
-            }
-            if (x < *x_min) *x_min = x;
-            if (x > *x_max) *x_max = x;
-            if (y < *y_min) *y_min = y;
-            if (y > *y_max) *y_max = y;
-
-            w = -nsig * LGN_rw[i]/sqrt(2.0);
-            h = nsig * LGN_rh[i]/sqrt(2.0);
-	        orthPhiRotate3D(LGN_polar[i], LGN_ecc[i] + h, w, polar, ecc);
-            cosp = cosine(polar);
-            sinp = sine(polar);
-            retina_to_plane(cosp, sinp, tangent(ecc), x, y, normViewDistance, LR_x0, LR_y0);
-            fLGN_xy.write((char*)&x, sizeof(Float));
-            fLGN_xy.write((char*)&y, sizeof(Float));
-            cosp = cosine(polar);
-            sinp = sine(polar);
-	        axisRotate3D(LGN_polar[i], LGN_ecc[i], cos(LGN_orient[i]), sin(LGN_orient[i]), cosp, sinp, ecc, tanEcc);
-            retina_to_plane(cosp, sinp, tanEcc, x, y, normViewDistance, LR_x0, LR_y0);
-            fLGN_xy_post.write((char*)&x, sizeof(Float));
-            fLGN_xy_post.write((char*)&y, sizeof(Float));
-            if (condition(x,y)) {
-                //printf("-+polar = %f, ecc = %f, x = %f, y = %f, L = %f\n", polar, ecc, x, y, normViewDistance);
-                (*n_violate)++;
-            }
-            if (x < *x_min) *x_min = x;
-            if (x > *x_max) *x_max = x;
-            if (y < *y_min) *y_min = y;
-            if (y > *y_max) *y_max = y;
-
-            w = -nsig * LGN_rw[i]/sqrt(2.0);
-            h = -nsig * LGN_rh[i]/sqrt(2.0);
-	        orthPhiRotate3D(LGN_polar[i], LGN_ecc[i] + h, w, polar, ecc);
-            cosp = cosine(polar);
-            sinp = sine(polar);
-            retina_to_plane(cosp, sinp, tangent(ecc), x, y, normViewDistance, LR_x0, LR_y0);
-            fLGN_xy.write((char*)&x, sizeof(Float));
-            fLGN_xy.write((char*)&y, sizeof(Float));
-            cosp = cosine(polar);
-            sinp = sine(polar);
-	        axisRotate3D(LGN_polar[i], LGN_ecc[i], cos(LGN_orient[i]), sin(LGN_orient[i]), cosp, sinp, ecc, tanEcc);
-            retina_to_plane(cosp, sinp, tanEcc, x, y, normViewDistance, LR_x0, LR_y0);
-            fLGN_xy_post.write((char*)&x, sizeof(Float));
-            fLGN_xy_post.write((char*)&y, sizeof(Float));
-            if (condition(x,y)) {
-                //printf("--polar = %f, ecc = %f, x = %f, y = %f, L = %f\n", polar, ecc, x, y, normViewDistance);
-                (*n_violate)++;
-            }
-            if (x < *x_min) *x_min = x;
-            if (x > *x_max) *x_max = x;
-            if (y < *y_min) *y_min = y;
-            if (y > *y_max) *y_max = y;
-
-            w = nsig * LGN_rw[i]/sqrt(2.0);
-            h = -nsig * LGN_rh[i]/sqrt(2.0);
-	        orthPhiRotate3D(LGN_polar[i], LGN_ecc[i] + h, w, polar, ecc);
-            cosp = cosine(polar);
-            sinp = sine(polar);
-            retina_to_plane(cosp, sinp, tangent(ecc), x, y, normViewDistance, LR_x0, LR_y0);
-            fLGN_xy.write((char*)&x, sizeof(Float));
-            fLGN_xy.write((char*)&y, sizeof(Float));
-            cosp = cosine(polar);
-            sinp = sine(polar);
-	        axisRotate3D(LGN_polar[i], LGN_ecc[i], cos(LGN_orient[i]), sin(LGN_orient[i]), cosp, sinp, ecc, tanEcc);
-            retina_to_plane(cosp, sinp, tanEcc, x, y, normViewDistance, LR_x0, LR_y0);
-            fLGN_xy_post.write((char*)&x, sizeof(Float));
-            fLGN_xy_post.write((char*)&y, sizeof(Float));
-            if (condition(x,y)) {
-                //printf("+-polar = %f, ecc = %f, x = %f, y = %f, L = %f\n", polar, ecc, x, y, normViewDistance);
-                (*n_violate)++;
-            }
-            if (x < *x_min) *x_min = x;
-            if (x > *x_max) *x_max = x;
-            if (y < *y_min) *y_min = y;
-            if (y > *y_max) *y_max = y;
-        }
-        fLGN_xy.close();
-        fLGN_xy_post.close();
-        printf("x: [%f, %f], y: [%f, %f]\n", x_min_L, x_max_L, y_min_L, y_max_L);
-        printf("x: [%f, %f], y: [%f, %f]\n", x_min_R, x_max_R, y_min_R, y_max_R);
-        printf("average violations from L: %f, R: %f\n", nL_violate/4.0, nR_violate/5.0);
 
     	// TODO: Group the same cone-specific types together for warp performance
-
+    	// TODO: correlate the parameters
     	// set test param for LGN subregion RF temporal kernel, also the K_c and K_s
     	// Benardete and Kaplan 1997, LGN_kernel.ipynb
 		
@@ -631,32 +391,32 @@ int main(int argc, char **argv) {
     	Float tauD_offC[2] = {7.71891892, 0.52*0.62/0.59}; //tauS
 
     	// delay from stimulus onset to LGN with mu and std.
-    	Float delay_onC[2] = {6.45, sqrt(2.39*2.39+0.51*0.51)};
-    	Float delay_offC[2] = {6.45, sqrt(2.39*2.39+0.61*0.61)};
+    	Float delay_onC[2] = {13.45, sqrt(2.39*2.39+0.51*0.51)};
+    	Float delay_offC[2] = {13.45, sqrt(2.39*2.39+0.61*0.61)};
 
     	// ON-SURROUND temporal mu and c.v.
-    	Float K_onS[2] = {26.66381766,  1.45*1.53/1.64}; // A
-    	Float ratio_onS[2] = {0.38163168, 0.57*0.74/0.64}; //Hs
+    	Float K_onS[2] = {23.17378917,  1.45*1.53/1.64}; // A
+    	Float ratio_onS[2] = {0.36090931, 0.57*0.74/0.64}; //Hs
 
-    	Float nR_onS[2] = {41.99133574, 0.35*0.12/0.38}; //NL
-    	Float tauR_onS[2] = {1.08704784, 0.35*0.12/0.38}; //NL
+    	Float nR_onS[2] = {50.29602888, 0.35*0.12/0.38}; //NL
+    	Float tauR_onS[2] = {0.90455076, 0.35*0.12/0.38}; //NL
 
-    	Float nD_onS[2] = {21.51639344, 0.35*0.12/0.38}; //NL
-    	Float tauD_onS[2] = {2.80677966, 0.90*1.08/0.94}; //tauS
+    	Float nD_onS[2] = {22.54098361, 0.35*0.12/0.38}; //NL
+    	Float tauD_onS[2] = {3.05084745, 0.90*1.08/0.94}; //tauS
 
     	// OFF-surround temporal mu and c.v.
-    	Float K_offS[2] = {14.42022792, 1.45*1.84/1.64}; // A
-    	Float ratio_offS[2] = {0.34899419, 0.57*0.59/0.64}; //Hs
+    	Float K_offS[2] = {12.53276353, 1.45*1.84/1.64}; // A
+    	Float ratio_offS[2] = {0.33004402, 0.57*0.59/0.64}; //Hs
 
-    	Float nR_offS[2] = {21.90288809, 0.35*0.53/0.38}; //NL
-    	Float tauR_offS[2] = {2.20606768, 0.35*0.53/0.38}; //NL
+    	Float nR_offS[2] = {26.23465704, 0.35*0.53/0.38}; //NL
+    	Float tauR_offS[2] = {1.83570595, 0.35*0.53/0.38}; //NL
 
-    	Float nD_offS[2] = {7.91803279, 0.35*0.53/0.38}; //NL
-    	Float tauD_offS[2] = {8.88813556, 0.90*0.71/0.94}; //tauS
+    	Float nD_offS[2] = {8.29508197, 0.35*0.53/0.38}; //NL
+    	Float tauD_offS[2] = {9.66101695, 0.90*0.71/0.94}; //tauS
 
     	// delay from stimulus onset to LGN with mu and std.
-    	Float delay_onS[2] = {11.18831216, sqrt(1.48*1.48+0.51*0.51)};
-    	Float delay_offS[2] = {14.29270417, sqrt(1.48*1.48+0.61*0.61)};
+    	Float delay_onS[2] = {22.06611570, sqrt(1.48*1.48+0.51*0.51)};
+    	Float delay_offS[2] = {26.68388430, sqrt(1.48*1.48+0.61*0.61)};
     	{ // c.v. to std
     	    K_onC[1] = K_onC[0] * K_onC[1];
     	    ratio_onC[1] = ratio_onC[0] * ratio_onC[1];
@@ -756,7 +516,7 @@ int main(int argc, char **argv) {
 			}
     	    // non-linearity
     	    Float log_mean, log_std;
-    	    std::tie(log_mean, log_std) = lognstats(0.1, 1);
+    	    std::tie(log_mean, log_std) = lognstats<Float>(0.1, 1);
     	    spont[i] = exp(log_mean + norm(rGen_LGNsetup) * log_std); // non-zero so no lambda for boundary check and stuff
     	    // NOTE: proportion between L and M, significantly overlap in cone response curve, not implemented to calculate max_convol
     	    covariant[i] = 0.53753461391295254; 
@@ -829,9 +589,6 @@ int main(int argc, char **argv) {
 		fLGN.close();	
 	}
 
-    if (nL_violate > 0 || nR_violate > 0) {
-        return EXIT_FAILURE;
-    }
     hSpatial_component hSpat(nLGN, 2, LGN_polar, LGN_rw, LGN_ecc, LGN_rh, LGN_orient, LGN_k);
     hTemporal_component hTemp(nLGN, 2, tauR, tauD, delay, ratio, nR, nD);
     hStatic_nonlinear hStat(nLGN, spont, c50, sharpness);
@@ -892,7 +649,10 @@ int main(int argc, char **argv) {
     	if (!fLGN_fr) {
 			cout << "Cannot open or find " << LGN_fr_filename <<" for LGN firing rate output\n";
 			return EXIT_FAILURE;
-    	}
+    	} else {
+            fLGN_fr.write((char*)&nLGN, sizeof(Size));
+            fLGN_fr.write((char*)&nt, sizeof(Size));
+        }
 
     	fmax_convol.open(max_convol_filename, fstream::out | fstream::binary);
     	if (!fLGN_fr) {
@@ -906,7 +666,9 @@ int main(int argc, char **argv) {
     		if (!fLGN_convol) {
 				cout << "Cannot open or find " << LGN_convol_filename <<" for output LGN convolutions.\n";
 				return EXIT_FAILURE;
-    		}
+    		} else {
+                fLGN_fr.write((char*)&nLGN, sizeof(Size));
+            }
 		}
 
 		if (testStorage) {
@@ -919,7 +681,7 @@ int main(int argc, char **argv) {
 		cout << "output file check, done\n";
 	}
 
-    bool simpleContrast = true; // no cone adaptation if set to true
+    bool simpleContrast = true; // TODO : implement this for comparison no cone adaptation if set to true
     PosInt stepRate = round(1000/dt);
     if (round(1000/dt) != 1000/dt) {
         cout << "stepRate = 1000/dt has to be a integer.\n";
@@ -929,15 +691,6 @@ int main(int argc, char **argv) {
         cout << "stepRate cannot be smaller than frameRate, 1000/dt.\n";
         return EXIT_FAILURE;
     }
-
-    const SmallSize nType = 2;
-    Size nSample = nSpatialSample1D * nSpatialSample1D;
-    height = width;
-
-    // set params for layerd texture memory
-    init_layer(L_retinaConSig);
-    init_layer(M_retinaConSig);
-    init_layer(S_retinaConSig);
 
     Size nRetrace = static_cast<Size>(round(tau/dt));
     if (round(tau/dt) != tau/dt) {
@@ -963,11 +716,7 @@ int main(int argc, char **argv) {
     printf("temporal kernel retrace (tau): %f ms, frame rate: %d Hz needs at most %u frames\n", tau, frameRate, maxFrame);
 	Float tPerFrame = 1000.0f / frameRate; //ms
     printf("~ %f plusminus 1 kernel sample per frame\n", tPerFrame/kernelSampleDt);
-    cout << "========= MEMORY REQUIREMENT ========\n";
-    printf("texture memory required: %dx%dx%d = %fMB\n", maxFrame,width,height, maxFrame*width*height*sizeof(float)/1024.0/1024.0);
-    printf("temporal storage memory required: %dx%dx%d = %fMB\n", nKernelSample,nLGN,nType,nKernelSample*nLGN*nType*sizeof(float)/1024.0/1024.0);
-    printf("spatial storage memory required: %dx%dx%d = %fMB\n", nSample, nLGN, nType, nSample*nType*nLGN*sizeof(float)/1024.0/1024.0);
-    cout << "\n";
+    printf("=== texture memory required: %dx%dx%d = %fMB\n", maxFrame,width,height, maxFrame*width*height*sizeof(float)/1024.0/1024.0);
 
     // calculate phase difference between sampling point and next-frame point  
     bool moreDt = true;
@@ -1016,6 +765,11 @@ int main(int argc, char **argv) {
     checkCudaErrors(cudaMalloc3DArray(&cuArr_M, &channelDesc, make_cudaExtent(width, height, maxFrame), cudaArrayLayered));
     checkCudaErrors(cudaMalloc3DArray(&cuArr_S, &channelDesc, make_cudaExtent(width, height, maxFrame), cudaArrayLayered));
 
+    // set params for layerd texture memory
+    init_layer(L_retinaConSig);
+    init_layer(M_retinaConSig);
+    init_layer(S_retinaConSig);
+
     // bind texture to cudaArrays
     checkCudaErrors(cudaBindTextureToArray(L_retinaConSig,  cuArr_L, channelDesc));
     checkCudaErrors(cudaBindTextureToArray(M_retinaConSig,  cuArr_M, channelDesc));
@@ -1027,8 +781,6 @@ int main(int argc, char **argv) {
     float* __restrict__ L;
     float* __restrict__ M;
     float* __restrict__ S;
-    // TODO: verify on host and delete this comment
-    //checkCudaErrors(cudaMalloc((void **) &LMS, nPixelPerFrame*sizeof(float)*nChannel));
 
     L = LMS;
     M = L + nPixelPerFrame;
@@ -1062,7 +814,7 @@ int main(int argc, char **argv) {
     checkCudaErrors(cudaMalloc((void **) &TW_storage, nLGN*nType*nKernelSample*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &SW_storage, nLGN*nType*nSample*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &dwdh_storage, nType*nLGN*sizeof(Float)));
-    checkCudaErrors(cudaMalloc((void **) &SC_storage, 2*nLGN*nType*nSample*sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void **) &SC_storage, 2*nLGN*nType*nSample*sizeof(float)));
 
     checkCudaErrors(cudaMemset(decayIn, 0, nType*nLGN*sizeof(Float)));
     checkCudaErrors(cudaMemset(lastF, 0, nType*nLGN*sizeof(Float)));
@@ -1137,8 +889,8 @@ int main(int argc, char **argv) {
     	checkCudaErrors(cudaMemcpy(arrayOf_2nType_nSample_nLGN, SW_storage, nLGN*nType*nSample*sizeof(Float), cudaMemcpyDeviceToHost));
 		fStorage.write((char*)arrayOf_2nType_nSample_nLGN, nLGN*nType*nSample*sizeof(Float));
 
-    	checkCudaErrors(cudaMemcpy(arrayOf_2nType_nSample_nLGN, SC_storage, 2*nLGN*nType*nSample*sizeof(Float), cudaMemcpyDeviceToHost));
-		fStorage.write((char*)arrayOf_2nType_nSample_nLGN, 2*nLGN*nType*nSample*sizeof(Float));
+    	checkCudaErrors(cudaMemcpy(arrayOf_2nType_nSample_nLGN, SC_storage, 2*nLGN*nType*nSample*sizeof(float), cudaMemcpyDeviceToHost));
+		fStorage.write((char*)arrayOf_2nType_nSample_nLGN, 2*nLGN*nType*nSample*sizeof(float));
 
     	checkCudaErrors(cudaMemcpy(arrayOf_2nType_nSample_nLGN, dwdh_storage, nLGN*nType*sizeof(Float), cudaMemcpyDeviceToHost));
 		fStorage.write((char*)arrayOf_2nType_nSample_nLGN, nLGN*nType*sizeof(Float));
@@ -1151,7 +903,7 @@ int main(int argc, char **argv) {
     Float framePhase = tPerFrame;
 	cout << "convol weights stored\n";
 	cout << "simulation starts: \n";
-    for (unsigned int it = 0; it < 1; it++) {
+    for (unsigned int it = 0; it < nt; it++) {
         Float t = it*dt;
         // next frame comes between (t, t+dt), read and store frame to texture memory
         if (it+1 > (currentFrame/denorm)*co_product + exact_it[iPhase]) {

@@ -30,7 +30,7 @@ vector<Float> generate_sfreq(Size n, RandomEngine &rGen) {
 	}
 
 	// generate from the second distribution
-	pair<Float, Float> logs = lognstats(m2, s2);
+	pair<Float, Float> logs = lognstats<Float>(m2, s2);
 	lognormal_distribution<Float> lognormal(logs.first, logs.second);
 	for (Size i = 0; i < n2; i++) {
 		sfreq.push_back(lognormal(rGen)/2.0);
@@ -65,7 +65,7 @@ vector<Float> generate_baRatio(Size n, RandomEngine &rGen) {
 		}
 	}
 	// generate from the second distribution
-	pair<Float, Float> logs = lognstats(m2 - 1, s2);
+	pair<Float, Float> logs = lognstats<Float>(m2 - 1, s2);
 	lognormal_distribution<Float> lognormal(logs.first, logs.second);
 	for (Size i = 0; i < n2; i++) {
 		Float v = lognormal(rGen) + 1;

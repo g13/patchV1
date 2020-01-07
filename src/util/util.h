@@ -3,6 +3,7 @@
 #include <vector>
 #include <utility>
 #include <functional>
+#include <numeric>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -58,9 +59,10 @@ inline std::pair<Float, Float> get_rands_from_correlated_gauss(Float p1[], Float
     return std::make_pair(v1, v2);
 }
 
-std::pair<Float, Float> lognstats(const Float true_mean, const Float true_std) {
-	Float log_mean = log(true_mean*true_mean / sqrt(true_std*true_std + true_mean * true_mean));
-	Float log_std = sqrt(log(true_std*true_std / (true_mean*true_mean) + 1));
+template <typename T>
+std::pair<T, T> lognstats(const T true_mean, const T true_std) {
+	T log_mean = log(true_mean*true_mean / sqrt(true_std*true_std + true_mean * true_mean));
+	T log_std = sqrt(log(true_std*true_std / (true_mean*true_mean) + 1));
 	return std::make_pair(log_mean, log_std);
 }
 
@@ -156,6 +158,7 @@ std::vector<std::vector<T>> read_listOfList(std::string filename, bool print = f
 } 
 
 // denorm is the min number of advance made in u1 such that u1 and u2 has no phase difference.
+inline
 PosInt find_denorm(PosInt u1, PosInt u2, bool MorN, PosInt &norm) { 
     PosInt m, n;
     if (MorN) { //u2 > u1
@@ -185,7 +188,9 @@ PosInt find_denorm(PosInt u1, PosInt u2, bool MorN, PosInt &norm) {
     return m;
 } 
 
-auto average(std::vector<Float> x, std::vector<Float> y) {
+
+template <typename T>
+std::pair<T, T> average2D(std::vector<T> x, std::vector<T> y) {
     Float mx = std::accumulate(x.begin(), x.end(), 0.0f)/x.size();
     Float my = std::accumulate(y.begin(), y.end(), 0.0f)/y.size();
     return std::make_pair(mx,my);

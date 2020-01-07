@@ -141,7 +141,7 @@ vector<vector<Float>> retinotopic_connection(
 					x.push_back(cart0.first[poolList[i][j]]);
 					y.push_back(cart0.second[poolList[i][j]]);
 				}
-				tie(cx[i], cy[i]) = average(x, y);
+				tie(cx[i], cy[i]) = average2D<Float>(x, y);
 			} else {
 				cx[i] = cart.first[i];
 				cy[i] = cart.second[i];

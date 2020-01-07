@@ -15,7 +15,6 @@
 #include <cuda.h>
 #include <helper_cuda.h>
 #include "../types.h"
-#include "../util/cuda_util.h"
 #include "../util/util.h"
 #include "Dow_et_al_1981.h"
 #include "RFtype.h"
