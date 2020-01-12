@@ -83,17 +83,21 @@ struct Static_nonlinear {
 	}
     // transform convolution result (input) with logistic function and return as firing rate
     __device__
-    Float transform(unsigned int id, Float input) {
-		// load from global memory
-        Float C50 = c50[id];
-        Float K = sharpness[id];
-        Float A = a[id];
-        Float B = b[id];
-        // calculation
-        Float X = 1/(1+exponential(K*(C50-input)));
-        return A*X + B;
+    __forceinline__
+	 void load_first(unsigned int id, Float &C50, Float &K, Float &A, Float &B) {
+        C50 = c50[id];
+        K = sharpness[id];
+        A = a[id];
+        B = b[id];
     }
 };
+__device__
+__forceinline__
+Float transform(Float C50, Float K, Float A, Float B, Float input) {
+    // calculation
+    Float X = 1/(1+exponential(K*(C50-input)));
+    return A*X + B;
+}
 
 // collect all the components and send to device
 struct LGN_parameter {

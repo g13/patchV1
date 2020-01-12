@@ -36,17 +36,14 @@ void prep_sample(unsigned int iSample, unsigned int width, unsigned int height, 
 
     params.srcPtr = make_cudaPitchedPtr(L, width * sizeof(float), width, height);
     params.dstArray = dL;
-    std::cout << "L preped\n";
     checkCudaErrors(cudaMemcpy3D(&params));
 
     params.srcPtr = make_cudaPitchedPtr(M, width * sizeof(float), width, height);
     params.dstArray = dM;
-    std::cout << "M preped\n";
     checkCudaErrors(cudaMemcpy3D(&params));
 
     params.srcPtr = make_cudaPitchedPtr(S, width * sizeof(float), width, height);
     params.dstArray = dS;
-    std::cout << "S preped\n";
     checkCudaErrors(cudaMemcpy3D(&params));
 }
 
@@ -78,7 +75,7 @@ int main(int argc, char **argv) {
 	bool testStorage;
 	bool checkConvol;
     SmallSize nSpatialSample1D; // spatial kernel sample size = nSpatialSample1D x nSpatialSample1D
-    SmallSize nKernelSample; // spatial kernel sample size = nSpatialSample1D x nSpatialSample1D
+    SmallSize nKernelSample;
     Float nsig = 3; // extent of spatial RF sampling in units of std
     Float tau; // required length of memory for LGN temporal kernel
     Float Itau; // in ms .. cone adaptation at 300ms https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1003289
@@ -95,7 +92,7 @@ int main(int argc, char **argv) {
 	top_opt.add_options()
 		("seed,s", po::value<PosIntL>(&seed),"seed for trial")
 		("vFt,v", po::value<Float>(&vFt)->default_value(1.0),"variable for test")
-		("dt", po::value<Float>(&dt)->default_value(0.0625), "simulatoin time step") 
+		("dt", po::value<Float>(&dt)->default_value(0.0625), "simulatoin time step in ms") 
 		("nt", po::value<Size>(&nt)->default_value(8000), "total simulatoin time in units of time step")
 		("nSpatialSample1D", po::value<SmallSize>(&nSpatialSample1D)->default_value(warpSize), "number of samples per x,y direction for a LGN spatial RF")
 		("tau", po::value<Float>(&tau)->default_value(250.0), "the backward time interval that a LGN temporal RF should cover")
@@ -150,7 +147,6 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-
     Float init_luminance = 2.0/6.0; //1.0/6.0;
 
     // from the retina facing out
@@ -188,23 +184,23 @@ int main(int argc, char **argv) {
     // in each frame
     // stimulus start from 0 -> ecc
 	/*			
-	 *			left-eye		right-eye
-	 *    1	_______________ ______________
-	 *	  ^	|b-------------|b-------------| <- buffer(b)  
-	 *    | |b|			   |b|			  |  
-	 *    | |b|			   |b|			  | 
-	 *    | |b|			   |b|			  | 
-	 *    | |b|			   |b|			  | 
-	 *    | |b|			   |b|			  | 
-	 *    | |b|*		   |b|*		  	  |  2 x range
-	 *    | |b|			   |b|			  | 
-	 *    | |b|			   |b|			  | 
-	 *    | |b|			   |b|			  | 
-	 *    | |b|			   |b|			  | 
-	 *	  | |b|____________|b|____________|
-	 *	  0	|--------------|--------------| <- buffer(b)
-	 *	   0 ---------------------------->1
-	 *		|b|	<- range ->|b| <- range ->|				 
+	 			left-eye		right-eye
+	     1	_______________ ______________
+	 	 ^ |b-------------|b-------------| <- buffer(b)  
+	     | |b|			  |b|			 |  
+	     | |b|			  |b|			 | 
+	     | |b|			  |b|			 | 
+	     | |b|			  |b|			 | 
+	     | |b|			  |b|			 | 
+	     | |b|*		      |b|*		  	 |  2 x range
+	     | |b|			  |b|			 | 
+	     | |b|			  |b|			 | 
+	     | |b|			  |b|			 | 
+	     | |b|			  |b|			 | 
+	 	 | |b|____________|b|____________|
+	 	 0 |--------------|--------------| <- buffer(b)
+	 	   0---------------------------->1
+	 	   |b| <- range ->|b| <- range ->|				 
 	*/
 
     // DON'T close file, still being read during simulation
@@ -323,6 +319,7 @@ int main(int argc, char **argv) {
         //Float zero = 0.0;
     	//auto positiveBound = get_lowBound(zero);
     	auto positiveBound = get_lowBound(0.0);
+
     	// set test param for LGN subregion RF spatial kernel 
     	// Croner and Kaplan 1995
 		// center
@@ -367,18 +364,30 @@ int main(int argc, char **argv) {
     	// TODO: Group the same cone-specific types together for warp performance
     	// TODO: correlate the parameters
     	// set test param for LGN subregion RF temporal kernel, also the K_c and K_s
-    	// Benardete and Kaplan 1997, LGN_kernel.ipynb
+    	// Benardete and Kaplan 1997 (source fitted by LGN_kernel.ipynb (mean)
 		
+        auto tspD_dist = [](Float n, Float tau) {
+            Float tsp = (n-1)*tau;
+            Float stride = n*tau/logrithm(n);
+            Float mean = tsp + stride * 1.5;
+            Float std = stride/6.0;
+            return make_pair<Float, Float>(mean, std);
+        }
     	// ON-CENTER temporal mu and c.v.
     	                         // LGN_on = LGN_all * P_on/P_all
     	Float K_onC[2] = {29.13289963, 0.60*0.52/0.48}; //A spatially-integrated K
     	Float ratio_onC[2] = {0.56882181, 0.18*0.11/0.13}; //Hs
-    	    // from nL*tauL c.v. ~ 0.09
-    	Float nR_onC[2] = {23.20564706, 0.28*0.18/0.23}; //NL
-    	Float tauR_onC[2] = {1.89874285, 0.28*0.18/0.23}; //NL
 
-    	Float nD_onC[2] = {12.56210526, 0.28*0.18/0.23}; //NL
+    	Float nR_onC = 23.20564706;
+    	Float tauR_onC = 1.89874285;
+        Float tspR_onC[2]; 
+        tspR_onC[0] = (nR_onC[0]-1) * tauR_onC[0];
+        tspR_onC[1] = 0.08; // NL*TauL, table 5
+
     	Float tauD_onC[2] = {6.34054054, 0.52*0.45/0.59}; //tauS
+
+        // nD'distribution will be controlled by tspD/tauD, with tspD from tspD_dist
+    	//Float nD_onC[2] = {12.56210526, 0.28*0.18/0.23}; //NL
 
     	// OFF-CENTER temporal mu and c.v.
     	Float K_offC[2] = {22.71914498, 0.60*0.37/0.48}; // A
@@ -387,7 +396,7 @@ int main(int argc, char **argv) {
     	Float nR_offC[2] = {16.70023529, 0.28*0.20/0.23}; //NL
     	Float tauR_offC[2] = {2.78125714, 0.28*0.20/0.23}; //NL
 
-    	Float nD_offC[2] = {11.33052632, 0.28*0.20/0.23}; //NL
+    	//Float nD_offC[2] = {11.33052632, 0.28*0.20/0.23}; //NL
     	Float tauD_offC[2] = {7.71891892, 0.52*0.62/0.59}; //tauS
 
     	// delay from stimulus onset to LGN with mu and std.
@@ -401,7 +410,7 @@ int main(int argc, char **argv) {
     	Float nR_onS[2] = {50.29602888, 0.35*0.12/0.38}; //NL
     	Float tauR_onS[2] = {0.90455076, 0.35*0.12/0.38}; //NL
 
-    	Float nD_onS[2] = {22.54098361, 0.35*0.12/0.38}; //NL
+    	//Float nD_onS[2] = {22.54098361, 0.35*0.12/0.38}; //NL
     	Float tauD_onS[2] = {3.05084745, 0.90*1.08/0.94}; //tauS
 
     	// OFF-surround temporal mu and c.v.
@@ -411,7 +420,7 @@ int main(int argc, char **argv) {
     	Float nR_offS[2] = {26.23465704, 0.35*0.53/0.38}; //NL
     	Float tauR_offS[2] = {1.83570595, 0.35*0.53/0.38}; //NL
 
-    	Float nD_offS[2] = {8.29508197, 0.35*0.53/0.38}; //NL
+    	//Float nD_offS[2] = {8.29508197, 0.35*0.53/0.38}; //NL
     	Float tauD_offS[2] = {9.66101695, 0.90*0.71/0.94}; //tauS
 
     	// delay from stimulus onset to LGN with mu and std.
@@ -451,6 +460,12 @@ int main(int argc, char **argv) {
     	// reset norm to standard normal distribution
     	norm = normal_distribution<Float>(0.0, 1.0);
 
+    	auto get_bounds = [](Float floor, Float ceiling) {
+    	    function<bool(Float)> outOfBound = [floor, ceiling] (Float value) {
+    	        return (floor <= value && value <= ceiling);
+    	    };
+    	    return outOfBound;
+		};
 		cout << "initializing LGN temporal parameters...\n";
     	for (unsigned int i=0; i<nLGN; i++) {
     	    // using median from table 2,3  (on,off)/all * table 5,6 with matching c.v.# Benardete and Kaplan 1997
@@ -461,7 +476,7 @@ int main(int argc, char **argv) {
     	        case InputType::MonLoff: case InputType::LonMoff:
     	            // k
     				tie(LGN_k[i], LGN_k[i+nLGN]) = get_rands_from_correlated_gauss(K_onC, K_offS, rho_Kc_Ks, rho_Kc_Ks_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound);
-					LGN_k[i+nLGN] *= -1; //off-surround
+					LGN_k[i+nLGN] *= -1; //off-surround !!!IMPORTANT sign change here
 
     	            // tauR, nR
     	            tie(tauR[i],nR[i]) = get_rands_from_correlated_gauss(tauR_onC, nR_onC, rho_tau_n, rho_tau_n_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound);
@@ -499,9 +514,6 @@ int main(int argc, char **argv) {
     	            break;
    		        default: throw("There's no implementation of such RF for parvo LGN");
     	    }
-			// A ~ K*rx*ry, in deg
-			LGN_k[i] /= LGN_rw[i]*LGN_rh[i]/deg2rad/deg2rad;
-			LGN_k[i+nLGN] /= LGN_rw[i+nLGN]*LGN_rh[i+nLGN]/deg2rad/deg2rad;
 			// c-s coneType, LGN_props.h
 			switch (LGNtype[i]) {
 				case InputType::MonLoff: case InputType::MoffLon:
@@ -599,8 +611,8 @@ int main(int argc, char **argv) {
 
     printf("size of dLGN = %u\n", sizeof(dLGN));
 	Size nLGN_block, nLGN_thread; // for LGN_nonlinear
-	nLGN_block = (nLGN + warpSize - 1)/warpSize;
-	nLGN_thread = warpSize;
+	nLGN_block = (nLGN + blockSize - 1)/blockSize;
+	nLGN_thread = blockSize;
 	cout << "LGN initialized\n";
     // finish LGN setup
 
@@ -684,7 +696,7 @@ int main(int argc, char **argv) {
     bool simpleContrast = true; // TODO : implement this for comparison no cone adaptation if set to true
     PosInt stepRate = round(1000/dt);
     if (round(1000/dt) != 1000/dt) {
-        cout << "stepRate = 1000/dt has to be a integer.\n";
+        cout << "stepRate = " << 1000/dt << "Hz, but it has to be a integer.\n";
         return EXIT_FAILURE;
     }
     if (frameRate > stepRate) {
@@ -807,13 +819,11 @@ int main(int argc, char **argv) {
     Float* lastF;
     Float* TW_storage;
     Float* SW_storage;
-    Float* dwdh_storage;
     float* SC_storage;
     checkCudaErrors(cudaMalloc((void **) &decayIn, nType*nLGN*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &lastF, nType*nLGN*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &TW_storage, nLGN*nType*nKernelSample*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &SW_storage, nLGN*nType*nSample*sizeof(Float)));
-    checkCudaErrors(cudaMalloc((void **) &dwdh_storage, nType*nLGN*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &SC_storage, 2*nLGN*nType*nSample*sizeof(float)));
 
     checkCudaErrors(cudaMemset(decayIn, 0, nType*nLGN*sizeof(Float)));
@@ -864,7 +874,6 @@ int main(int argc, char **argv) {
             *dLGN.spatial,
             SW_storage,
             SC_storage,
-            dwdh_storage,
 			nLGN_L,
 		 	L_x0,
 		 	L_y0,
@@ -892,8 +901,6 @@ int main(int argc, char **argv) {
     	checkCudaErrors(cudaMemcpy(arrayOf_2nType_nSample_nLGN, SC_storage, 2*nLGN*nType*nSample*sizeof(float), cudaMemcpyDeviceToHost));
 		fStorage.write((char*)arrayOf_2nType_nSample_nLGN, 2*nLGN*nType*nSample*sizeof(float));
 
-    	checkCudaErrors(cudaMemcpy(arrayOf_2nType_nSample_nLGN, dwdh_storage, nLGN*nType*sizeof(Float), cudaMemcpyDeviceToHost));
-		fStorage.write((char*)arrayOf_2nType_nSample_nLGN, nLGN*nType*sizeof(Float));
 		fStorage.close();
 	}
     // calc LGN firing rate at the end of current dt
@@ -901,6 +908,7 @@ int main(int argc, char **argv) {
     unsigned int iFrame = 0; //latest frame inserted into the dL dM dS,  initialization not necessary
     unsigned int iPhase = 0;
     Float framePhase = tPerFrame;
+    PosInt oldFrame = currentFrame;
 	cout << "convol weights stored\n";
 	cout << "simulation starts: \n";
     for (unsigned int it = 0; it < nt; it++) {
@@ -908,11 +916,11 @@ int main(int argc, char **argv) {
         // next frame comes between (t, t+dt), read and store frame to texture memory
         if (it+1 > (currentFrame/denorm)*co_product + exact_it[iPhase]) {
             iFrame = currentFrame % maxFrame;
-			cout << "processing frame #" << iFrame << "\n";
+			//cout << "processing frame #" << iFrame << "\n";
             // TODO: realtime video stimulus control
             if (fStimulus) {
                 fStimulus.read(reinterpret_cast<char*>(LMS), nChannel*nPixelPerFrame*sizeof(float));
-                printf("frame #%i is read LMS\n", currentFrame);
+                //printf("frame #%i is read LMS\n", currentFrame);
                 streampos current_fpos = fStimulus.tellg();
                 if (current_fpos == eofStimulus) { // if at the end of input file loop back to the beginning of frame data
                     fStimulus.seekg(sofStimulus);
@@ -924,28 +932,29 @@ int main(int argc, char **argv) {
             }
             //cp to texture mem in device
             prep_sample(iFrame, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, cudaMemcpyHostToDevice);
-            printf("frame #%i prepared at t = %f, in (%f,%f) ~ %.3f%%.\n", currentFrame, currentFrame*tPerFrame, t, t+dt, exact_norm[iPhase]*100.0f/denorm);
+            /*{ // DEBUG printout
+                printf("frame #%i prepared at t = %f, in (%f,%f) ~ %.3f%%.\n", currentFrame, currentFrame*tPerFrame, t, t+dt, exact_norm[iPhase]*100.0f/denorm);
+            }*/
             currentFrame++;
             iPhase = (iPhase + 1) % denorm;
         }
 
         framePhase -= dt;
         framePhase = fmod(framePhase, tPerFrame);
-		// if it < nRetrace, padded zero-valued frames for t<0
-        //    -->|        |<-- framePhase
-        //    |--|------frame------|
-        //    |-----|-----|-----|-----|-----|
-        //    jt-2, jt-1, jt ...nRetrace... it
-        // perform kernel convolution with built-in texture interpolation
-        convolGrid.x = 2;
-        convolGrid.y = 1;
-		cout << "LGN_convol_c1s<<<" << convolGrid.x  << "x" << convolGrid.y  << "x" << convolGrid.z << ", " << convolBlock.x  << "x" << convolBlock.y  << "x" << convolBlock.z << ", " << sizeof(Float)*2*convolBlock.x*convolBlock.y << ">>>\n";
+		/* if it < nRetrace, padded zero-valued frames for t<0
+            -->|        |<-- framePhase
+            |--|------frame------|
+            |-----|-----|-----|-----|-----|
+            jt-2, jt-1, jt ...nRetrace... it
+        */// perform kernel convolution with built-in texture interpolation
+        convolGrid.x = 1024;
+        convolGrid.y = 2;
+		//cout << "LGN_convol_c1s<<<" << convolGrid.x  << "x" << convolGrid.y  << "x" << convolGrid.z << ", " << convolBlock.x  << "x" << convolBlock.y  << "x" << convolBlock.z << ", " << sizeof(Float)*2*convolBlock.x*convolBlock.y << ">>>\n";
         LGN_convol_c1s<<<convolGrid, convolBlock, sizeof(Float)*2*convolBlock.x*convolBlock.y>>>(
                 decayIn,
                 lastF,
                 SW_storage,
                 SC_storage,
-                dwdh_storage,
                 TW_storage,
                 current_convol,
                 dLGN.coneType,
@@ -975,9 +984,12 @@ int main(int argc, char **argv) {
 		getLastCudaError("LGN_nonlinear failed");
         checkCudaErrors(cudaMemcpy(LGN_fr, dLGN_fr, nLGN*sizeof(Float), cudaMemcpyDeviceToHost));
         fLGN_fr.write((char*)LGN_fr, nLGN*sizeof(Float));
-	    printf("\r t = %f, %f %%\n", t, 100*static_cast<float>(it+1)/nt);
+        if (currentFrame > oldFrame || it == nt-1) {
+	        printf("\r@t = %f -> %f simulated, frame %d#%d-%d, %.1f%%", t, t+dt, currentFrame/nFrame, currentFrame%nFrame, nFrame, 100*static_cast<float>(it+1)/nt);
+            oldFrame = currentFrame;
+        }
     }
-    cout << "\n";
+    cout << "simulation done.\n";
 
     { // clean-up
         checkCudaErrors(cudaDeviceSynchronize());

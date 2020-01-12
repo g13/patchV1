@@ -204,7 +204,6 @@ struct hLGN_parameter {
         covariant = (Float*) (coneType + arraySize);
         for (Size i=0; i<arraySize; i++) {
             coneType[i] = _coneType[i];
-            assert(coneType[i] >= 0);
             assert(coneType[i] < 7);
         }
         for (Size i=0; i<(nType-1)*nType/2*nLGN; i++) {
