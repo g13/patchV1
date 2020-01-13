@@ -378,14 +378,13 @@ int main(int argc, char **argv) {
     	Float K_onC[2] = {29.13289963, 0.60*0.52/0.48}; //A spatially-integrated K
     	Float ratio_onC[2] = {0.56882181, 0.18*0.11/0.13}; //Hs
 
-    	Float nR_onC = 23.20564706;
-    	Float tauR_onC = 1.89874285;
+    	Float nR_onC[2] = {23.20564706, 0.28*0.18/0.23};
+    	Float tauR_onC = 1.89874285; // controlled by tspR/(nR_onC-1)
         Float tspR_onC[2]; 
-        tspR_onC[0] = (nR_onC[0]-1) * tauR_onC[0];
-        tspR_onC[1] = 0.08; // NL*TauL, table 5
+        tspR_onC[0] = (nR_onC[0]-1) * tauR_onC;
+        tspR_onC[1] = 0.08*0.09/0.09; // NL*TauL, table2, table 5
 
     	Float tauD_onC[2] = {6.34054054, 0.52*0.45/0.59}; //tauS
-
         // nD'distribution will be controlled by tspD/tauD, with tspD from tspD_dist
     	//Float nD_onC[2] = {12.56210526, 0.28*0.18/0.23}; //NL
 
@@ -393,11 +392,15 @@ int main(int argc, char **argv) {
     	Float K_offC[2] = {22.71914498, 0.60*0.37/0.48}; // A
     	Float ratio_offC[2] = {0.60905210, 0.18*0.14/0.13}; //Hs
 
-    	Float nR_offC[2] = {16.70023529, 0.28*0.20/0.23}; //NL
-    	Float tauR_offC[2] = {2.78125714, 0.28*0.20/0.23}; //NL
+    	Float nR_offC[2] = {16.70023529, 0.28*0.20/0.23};
+    	Float tauR_offC = 2.78125714;
+		FLoat tspR_offC[2]; 	
+        tspR_offC[0] = (nR_offC[0]-1) * tauR_offC;
+        tspR_offC[1] = 0.08*0.09/0.09; // NL*TauL, table 5
 
-    	//Float nD_offC[2] = {11.33052632, 0.28*0.20/0.23}; //NL
     	Float tauD_offC[2] = {7.71891892, 0.52*0.62/0.59}; //tauS
+        // nD'distribution will be controlled by tspD/tauD, with tspD from tspD_dist
+    	//Float nD_offC[2] = {11.33052632, 0.28*0.20/0.23}; //NL
 
     	// delay from stimulus onset to LGN with mu and std.
     	Float delay_onC[2] = {13.45, sqrt(2.39*2.39+0.51*0.51)};
@@ -407,8 +410,11 @@ int main(int argc, char **argv) {
     	Float K_onS[2] = {23.17378917,  1.45*1.53/1.64}; // A
     	Float ratio_onS[2] = {0.36090931, 0.57*0.74/0.64}; //Hs
 
-    	Float nR_onS[2] = {50.29602888, 0.35*0.12/0.38}; //NL
-    	Float tauR_onS[2] = {0.90455076, 0.35*0.12/0.38}; //NL
+    	Float nR_onS[2] = {50.29602888, 0.35*0.12/0.38};
+    	Float tauR_onS = 0.90455076;
+        Float tspR_onS[2]; 
+        tspR_onS[0] = (nR_onS[0]-1) * tauR_onS;
+        tspR_onS[1] = 0.09*0.10/0.08; // NL*TauL, table2, table 5
 
     	//Float nD_onS[2] = {22.54098361, 0.35*0.12/0.38}; //NL
     	Float tauD_onS[2] = {3.05084745, 0.90*1.08/0.94}; //tauS
@@ -417,8 +423,11 @@ int main(int argc, char **argv) {
     	Float K_offS[2] = {12.53276353, 1.45*1.84/1.64}; // A
     	Float ratio_offS[2] = {0.33004402, 0.57*0.59/0.64}; //Hs
 
-    	Float nR_offS[2] = {26.23465704, 0.35*0.53/0.38}; //NL
-    	Float tauR_offS[2] = {1.83570595, 0.35*0.53/0.38}; //NL
+    	Float nR_offS[2] = {26.23465704, 0.35*0.53/0.38};
+    	Float tauR_offS = 1.83570595;
+        Float tspR_offS[2]; 
+        tspR_offS[0] = (nR_offS[0]-1) * tauR_offS;
+        tspR_offS[1] = 0.09*0.06/0.08; // NL*TauL, table2, table 5
 
     	//Float nD_offS[2] = {8.29508197, 0.35*0.53/0.38}; //NL
     	Float tauD_offS[2] = {9.66101695, 0.90*0.71/0.94}; //tauS
@@ -430,26 +439,23 @@ int main(int argc, char **argv) {
     	    K_onC[1] = K_onC[0] * K_onC[1];
     	    ratio_onC[1] = ratio_onC[0] * ratio_onC[1];
     	    nR_onC[1] = nR_onC[0] * nR_onC[1];
-    	    tauR_onC[1] = tauR_onC[0] * tauR_onC[1];
-    	    nD_onC[1] = nD_onC[0] * nD_onC[1];
+    	    tspR_onC[1] = tspR_onC[0] * tspR_onC[1];
     	    tauD_onC[1] = tauD_onC[0] * tauD_onC[1];
     	    K_offC[1] = K_offC[0] * K_offC[1];
     	    ratio_offC[1] = ratio_offC[0] * ratio_offC[1];
     	    nR_offC[1] = nR_offC[0] * nR_offC[1];
-    	    tauR_offC[1] = tauR_offC[0] * tauR_offC[1];
-    	    nD_offC[1] = nD_offC[0] * nD_offC[1];
+    	    tspR_offC[1] = tspR_offC[0] * tsp_offC[1];
     	    tauD_offC[1] = tauD_offC[0] * tauD_offC[1];
+
     	    K_onS[1] = K_onS[0] * K_onS[1];
     	    ratio_onS[1] = ratio_onS[0] * ratio_onS[1];
     	    nR_onS[1] = nR_onS[0] * nR_onS[1];
-    	    tauR_onS[1] = tauR_onS[0] * tauR_onS[1];
-    	    nD_onS[1] = nD_onS[0] * nD_onS[1];
+    	    tspR_onS[1] = tspR_onS[0] * tspR_onS[1];
     	    tauD_onS[1] = tauD_onS[0] * tauD_onS[1];
     	    K_offS[1] = K_offS[0] * K_offS[1];
     	    ratio_offS[1] = ratio_offS[0] * ratio_offS[1];
     	    nR_offS[1] = nR_offS[0] * nR_offS[1];
-    	    tauR_offS[1] = tauR_offS[0] * tauR_offS[1];
-    	    nD_offS[1] = nD_offS[0] * nD_offS[1];
+    	    tspR_offS[1] = tspR_offS[0] * tspR_offS[1];
     	    tauD_offS[1] = tauD_offS[0] * tauD_offS[1];
     	}
     	// tauR and nR anti-correlates for stable peak time
@@ -460,13 +466,16 @@ int main(int argc, char **argv) {
     	// reset norm to standard normal distribution
     	norm = normal_distribution<Float>(0.0, 1.0);
 
+		/* unused, boundary data not available
     	auto get_bounds = [](Float floor, Float ceiling) {
     	    function<bool(Float)> outOfBound = [floor, ceiling] (Float value) {
     	        return (floor <= value && value <= ceiling);
     	    };
     	    return outOfBound;
-		};
+		}; */
 		cout << "initializing LGN temporal parameters...\n";
+		Float pTspD[2];
+		Float tspR, tspD;
     	for (unsigned int i=0; i<nLGN; i++) {
     	    // using median from table 2,3  (on,off)/all * table 5,6 with matching c.v.# Benardete and Kaplan 1997
     	    // fit with difference of exponentials in LGN_kernel.ipynb
@@ -478,12 +487,25 @@ int main(int argc, char **argv) {
     				tie(LGN_k[i], LGN_k[i+nLGN]) = get_rands_from_correlated_gauss(K_onC, K_offS, rho_Kc_Ks, rho_Kc_Ks_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound);
 					LGN_k[i+nLGN] *= -1; //off-surround !!!IMPORTANT sign change here
 
-    	            // tauR, nR
-    	            tie(tauR[i],nR[i]) = get_rands_from_correlated_gauss(tauR_onC, nR_onC, rho_tau_n, rho_tau_n_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound);
-    	            tie(tauR[i+nLGN],nR[i+nLGN]) = get_rands_from_correlated_gauss(tauR_offS, nR_offS, rho_tau_n, rho_tau_n_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound);
-    	            // tauD, nD
-    	            tie(tauD[i],nD[i]) = get_rands_from_correlated_gauss(tauD_onC, nD_onC, rho_tau_n, rho_tau_n_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound);
-    	            tie(tauD[i+nLGN],nD[i+nLGN]) = get_rands_from_correlated_gauss(tauD_offS, nD_offS, rho_tau_n, rho_tau_n_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound);
+    	            // centers' tau, n 
+    	            nR[i] = get_rand_from_gauss(nR_onC, rGen_LGNsetup, positiveBound);
+					tspR = get_rand_from_gauss(tspR_onC, rGen_LGNsetup, positiveBound);
+					tauR[i] = tspR/(nR[i]-1);
+
+        			tie(pTspD[0], pTspD[1]) = tspD_dist(nR[i], tauR[i]);
+					tauD[i] = get_rand_from_gauss(tauD_onC, rGen_LGNsetup, positiveBound);
+					tspD = get_rand_from_gauss(pTspD, rGen_LGNsetup, positiveBound);
+    	            nD[i] = tspD/tauD[i];
+
+    	            // surround' tau, n 
+    	            nR[i+nLGN] = get_rand_from_gauss(nR_offS, rGen_LGNsetup, positiveBound);
+					tspR = get_rand_from_gauss(tspR_offS, rGen_LGNsetup, positiveBound);
+					tauR[i+nLGN] = tspR/(nR[i+nLGN]-1);
+
+        			tie(pTspD[0], pTspD[1]) = tspD_dist(nR[i+nLGN], tauR[i+nLGN]);
+					tauD[i+nLGN] = get_rand_from_gauss(tauD_offS, rGen_LGNsetup, positiveBound);
+					tspD = get_rand_from_gauss(pTspD, rGen_LGNsetup, positiveBound);
+    	            nD[i+nLGN] = tspD/tauD[i+nLGN];
 
     	            // ratio
     	            ratio[i] = get_rand_from_gauss(ratio_onC, rGen_LGNsetup, positiveBound);
@@ -498,12 +520,25 @@ int main(int argc, char **argv) {
     				tie(LGN_k[i], LGN_k[i+nLGN]) = get_rands_from_correlated_gauss(K_offC, K_onS, rho_Kc_Ks, rho_Kc_Ks_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound);
 					LGN_k[i] *= -1; //off-center
 
-    	            // tauR, nR
-    	            tie(tauR[i],nR[i]) = get_rands_from_correlated_gauss(tauR_offC, nR_offC, rho_tau_n, rho_tau_n_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound);
-    	            tie(tauR[i+nLGN],nR[i+nLGN]) = get_rands_from_correlated_gauss(tauR_onS, nR_onS, rho_tau_n, rho_tau_n_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound);
-    	            // tauD, nD
-    	            tie(tauD[i],nD[i]) = get_rands_from_correlated_gauss(tauD_offC, nD_offC, rho_tau_n, rho_tau_n_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound);
-    	            tie(tauD[i+nLGN],nD[i+nLGN]) = get_rands_from_correlated_gauss(tauD_onS, nD_onS, rho_tau_n, rho_tau_n_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound);
+    	            // centers' tau, n 
+    	            nR[i] = get_rand_from_gauss(nR_offC, rGen_LGNsetup, positiveBound);
+					tspR = get_rand_from_gauss(tspR_offC, rGen_LGNsetup, positiveBound);
+					tauR[i] = tspR/(nR[i]-1);
+
+        			tie(pTspD[0], pTspD[1]) = tspD_dist(nR[i], tauR[i]);
+					tauD[i] = get_rand_from_gauss(tauD_offC, rGen_LGNsetup, positiveBound);
+					tspD = get_rand_from_gauss(pTspD, rGen_LGNsetup, positiveBound);
+    	            nD[i] = tspD/tauD[i];
+
+    	            // surround' tau, n 
+    	            nR[i+nLGN] = get_rand_from_gauss(nR_onS, rGen_LGNsetup, positiveBound);
+					tspR = get_rand_from_gauss(tspR_onS, rGen_LGNsetup, positiveBound);
+					tauR[i+nLGN] = tspR/(nR[i+nLGN]-1);
+
+        			tie(pTspD[0], pTspD[1]) = tspD_dist(nR[i+nLGN], tauR[i+nLGN]);
+					tauD[i+nLGN] = get_rand_from_gauss(tauD_onS, rGen_LGNsetup, positiveBound);
+					tspD = get_rand_from_gauss(pTspD, rGen_LGNsetup, positiveBound);
+    	            nD[i+nLGN] = tspD/tauD[i+nLGN];
 
     	            // ratio
     	            ratio[i] = get_rand_from_gauss(ratio_offC, rGen_LGNsetup, positiveBound);
