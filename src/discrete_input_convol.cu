@@ -5,10 +5,6 @@ extern texture<float, cudaTextureType2DLayered> M_retinaConSig;
 extern texture<float, cudaTextureType2DLayered> S_retinaConSig;
 extern __device__ __constant__ float sqrt2;
 
-// TODO-10:
-// block-processing without input-output delay
-// http://www.cs.ust.hk/mjg_lib/bibs/DPSu/DPSu.Files/Ga95.PDF
-// block processing file:///C:/Users/gueux/Desktop/FFTConvolution.pdf
 
 // DIRECT FORM only:
 
@@ -181,6 +177,7 @@ void store_temporalWeight(
         if (iPatch < nPatch || tid < remain) {
             // temporalKernel takes abs(now-t)
             // but we store weight in time-reverse (tau -> 0)
+            // i.e., last in storage-> 0 -^v-- tau <-first in storage,   
             SmallSize twid = nKernelSample-1 - iPatch*patchSize - tid;
             Size storeID = (id*nType + iType)*nKernelSample + iPatch*patchSize + tid;
 
@@ -208,6 +205,7 @@ void store_temporalWeight(
         } else {
             tw = 0.0;
         }
+        assert(!isnan(tw));
         __syncthreads();
         block_reduce<Float>(reduced, tw);
         if (tid == 0) {
@@ -319,13 +317,13 @@ void store(
 
     Float temporalWeight;
     store_temporalWeight(temporal, TW_storage, reduced, temporalWeight, nKernelSample, kernelSampleDt, kernelSampleT0, id, tid, lid, iType, nType);
-    /* DEBUG
+    // DEBUG
 	if ((lid ==0 || lid == gridDim.x) && tid == 0) {
         printf("temporalWeights stored\n");
         assert(!isnan(temporalWeight));
     }
     __syncthreads();
-    */
+    //
 	Float LR_x0, LR_y0;
     bool LR = id < nLGN_L;
 	if (LR) {
@@ -338,7 +336,7 @@ void store(
 
     bool use_shared = true;
     Float spatialWeight, k;
-    if (use_shared) { // TODO: compare with global broadcast
+    if (use_shared) { // TODO: *compare with global broadcast
         Size offset = id*nType + iType;
         if (tid == 0) {
             Zip_spatial spat;
@@ -413,7 +411,6 @@ void sub_convol(
 		Float LR_x0,
 		Float LR_y0,
 		Float normViewDistance,
-        Size tid,
         SmallSize iType,
         SmallSize nType,
         Float dt
@@ -432,16 +429,16 @@ void sub_convol(
         e.g., tau = 40*dt
     */
     Size id = blockIdx.x;
+    Size tid = threadIdx.y*blockDim.x + threadIdx.x;
     SmallSize nSample = blockDim.x * blockDim.y;
     Size lid = iType*gridDim.x + id;
+	Size offset = id*iType + nType;
+    Size storeID = offset*nSample + tid;
 
-    Float k, spatialWeight;
-    float x0, y0; // coord on the stimulus plane
-	Size offset = (id*iType + nType);
-    Size storeID = offset*nSample + threadIdx.y*blockDim.x + threadIdx.x;
-    spatialWeight = SW_storage[storeID];
-    x0 = SC_storage[storeID];
-    y0 = SC_storage[gridDim.x*nType*nSample + storeID];
+    // coord on the stimulus plane
+    float x0 = SC_storage[storeID];
+    float y0 = SC_storage[gridDim.x*nType*nSample + storeID];
+    Float k;
     if (tid == 0) {
         k = spatial.k[lid];
     }
@@ -449,10 +446,11 @@ void sub_convol(
         tau*dI/dt = -I + F(t);
         F(t) = piecewise F(t_{i}), for t in [t_{i}, t_{i+1}), t_{i} is the onset time of the i-th frame
     */
-    Float lastDecayIn = decayIn[lid]; // = sum_i2n(F_i[exp(-t_{i+1}/Itau) - exp(-t_{i}/Itau)] - F_{n+1})*exp(-(t-tau)/Itau)
+    Float lastDecayIn = decayIn[lid]; // = [sum_i2n(F_i[exp(-t_{i+1}/Itau) - exp(-t_{i}/Itau)]) - F_{n+1}*exp(-t_{i+1}/Itau)]*exp(-t/Itau)
     Float F_1 = lastF[lid]; // = F_{n+1}
     //F_i is the mean of all sampled pixel value of the ith frame in the LGN's RF.
 
+    Float spatialWeight = SW_storage[storeID];
     /* DEBUG:
     __syncthreads();
     if (id == 0 && threadIdx.y*blockDim.x + threadIdx.x == 0) {
@@ -469,21 +467,21 @@ void sub_convol(
         n - needed by all threads;
         s - single thread 
     */
-    SmallSize nPatch = nKernelSample/nSample;
-    for (SmallSize iPatch=0; iPatch<nPatch+1; iPatch++) {
+    SmallSize nPatch = (nKernelSample+nSample-1)/nSample;
+    for (SmallSize iPatch=0; iPatch<nPatch; iPatch++) {
         Float temporalWeight;
         SmallSize nActive;
-        // for p in time, active threads only,
-        if (iPatch == nPatch) {
-            nActive = nKernelSample - iPatch*nSample;
+        // for p in time, active (for temporal samples) threads only,
+        if (iPatch == nPatch-1) { // no divergent branch
+            nActive = nKernelSample % nSample;
         } else {
             nActive = nSample;
         }
         //1. Load temporal weights: p in time
-        if (tid < nActive) {
-            //convolution time start at t-tau, forward in time, reversed in temporalKernel; first sample point: t-tau+kernelSampleT0
-            temporalWeight = TW_storage[offset*nKernelSample + iPatch*nSample + tid]; 
-        }
+        // forward in time, stored reversed in TW_storage
+        // i.e., last in storage-> t-0 -^v-- t-tau <-first in storage,   
+        // convolution time start at t-tau; first sample point: t-tau+kernelSampleT0; kernelSampleT0 = 1/2*kernelSampleDt
+        temporalWeight = TW_storage[offset*nKernelSample + iPatch*nSample + tid] * (tid<nActive);  // tid < nActive, 0 otherwise
     /* DEBUG:
         __syncthreads();
         if (id == 0 && threadIdx.y*blockDim.x + threadIdx.x == 0) {
@@ -491,21 +489,25 @@ void sub_convol(
         }
     */
         //2. Find new frames - n
-        Float tFrames = nActive*kernelSampleDt + framePhase;
-        SmallSize nFrame = static_cast<SmallSize>(tFrames/tPerFrame);
+        Float tFrames;
+        if (iPatch == 0) {
+            tFrames = (nActive+0.5)*kernelSampleDt + framePhase;
+        } else {
+            tFrames = nActive*kernelSampleDt + framePhase;
+        }
+        SmallSize nFrame = static_cast<SmallSize>(ceiling(tFrames/tPerFrame))-1; // exclude the currentFrame within framePhase, already in F_1
         //3. For all the new frames
         for (SmallSize iFrame = 0; iFrame < nFrame; iFrame++) {
             //Get F_i by reduce - p: in space
-            Float local_I = get_intensity(type, x0, y0, (currentFrame + iFrame + 1) % maxFrame);
+            Float local_I = get_intensity(type, x0, y0, (currentFrame + iFrame) % maxFrame);
             block_reduce<Float>(reduced, local_I);
             if (tid == 0) {
                 // __shared__ to (register/local) to __shared__
-                nSampleShared[iFrame] = reduced[0]/nSample;  // shared memory now used for spatial luminance sum
+                nSampleShared[iFrame] = reduced[0]/nSample;  // shared memory now used for spatial mean luminance, F_i
             }
-            __syncthreads();
         }
-    /* DEBUG:
         __syncthreads();
+    /* DEBUG:
         if (id == 0 && threadIdx.y*blockDim.x + threadIdx.x == 0) {
             printf("%d frames in the new patch.\n", nFrame);
         } 
@@ -513,32 +515,59 @@ void sub_convol(
         //!!! Update light adapation variables here to hide latency: p in space 
         if (iPatch == 0 && tid == 0) { // dt < kernelSampleDt, must be in the first patch
             Float tf0 = dt + framePhase;
-            if (tf0 < tPerFrame) {
+            if (tf0 <= tPerFrame) {
                 //lastF is not changed
                 decayIn[lid] = lastDecayIn*exponential(-dt/Itau);
             } else {
                 // here we ASSUME tPerframe > dt, i.e., at most one change of frame happen within a single dt
                 Float F_2 = nSampleShared[0];
-                decayIn[lid] = lastDecayIn*exponential(-dt/Itau) + (F_1 - F_2) * exponential(-(tf0- tPerFrame)/Itau);
                 lastF[lid] = F_2;
+                decayIn[lid] = lastDecayIn*exponential(-dt/Itau) + (F_1 - F_2) * exponential(tPerFrame - tf0)/Itau;
+                                                                               // == exp(-(dt+framePhase-tPerFrame)/Itau)
             }
         }
         //4. Calculate mean_I: p in time 
         if (tid < nActive) {
-            Float t = (tid+1)*kernelSampleDt;
-            Float tf0 = t+framePhase;
-            Size local_nFrame = static_cast<Size>(tf0/tPerFrame);
-            // if nFrame == 0 then F_{n+1} (F_1) is not changed
-            lastDecayIn *= exponential(-t/Itau); // sum_i2n(F_i[exp(-t_{i+1}/Itau) - exp(-t_{i}/Itau)] - F_{n+1})*exp(-(t0-tau)/Itau) decayed to t = t0 + t
+            Float t;
+            if (iPatch == 0) { //kernelSampleT0 = 1/2*kernelSampleDt
+                t = (tid + 0.5) * kernelSampleDt;
+            } else {
+                t = tid * kernelSampleDt;
+            }
+            lastDecayIn *= exponential(-t/Itau); // = [sum_i2n(F_i[exp(-t_{i+1}/Itau) - exp(-t_{i}/Itau)]) - F_{n+1}*exp(-t_{i+1}/Itau)]*exp(-t/Itau)
+            Float tf0 = t + framePhase;
+            SmallSize local_nFrame = static_cast<Size>(ceiling(tf0/tPerFrame))-1;
+            /*DEBUG
+            if (tid == 0) {
+                if (local_nFrame >= nSample) {
+                    printf("if0 = %f + %f, local_nFrame: %f/%f = %f - 1\n", t, framePhase, tf0, tPerFrame, tf0/tPerFrame);
+                }
+            } 
+             */
+            // this loop is actually where the most of the branch divergence happen, local_nFrame can be different for each thread;
             for (SmallSize iFrame = 0; iFrame < local_nFrame; iFrame++) {
                 // number of active threads decreases for each loop
-                Float F_2 = nSampleShared[iFrame]; // load from shared memory to register first // TODO: check register usage here 
+                Float F_2 = nSampleShared[iFrame];
                 tf0 -= tPerFrame;
-                Float decay = exponential(-tf0/Itau);
-                lastDecayIn += (F_1 - F_2) * decay; // F_{n+1} decayed with exp(-((t+t0) - t_{i+2})/Itau);
+                // F_{n+1} decayed with exp(-((t+t0) - t_{i+2})/Itau);
+                lastDecayIn += (F_1 - F_2) * exponential(-tf0/Itau);
                 F_1 = F_2;
             }
-            nSampleShared[tid] = lastDecayIn + F_1; //shared memory now used as mean luminance
+        }
+        __syncthreads(); // make sure shared memory reads complete before reuse for other data
+        if (tid < nActive) {
+            nSampleShared[tid] = lastDecayIn + F_1; //shared memory now used as spatiotemporal mean luminance
+        }
+        // broadcast [lastDecayIn, F_1] for the next convolution step if not the final patch: n
+        if (iPatch < nPatch-1) {
+            if (tid == nSample-1) {
+                reduced[0] = lastDecayIn;
+                reduced[1] = F_1;
+            }
+            __syncthreads();
+            // broadcast [lastDecayIn, F_1]
+            lastDecayIn = reduced[0];
+            F_1 = reduced[1];
         }
         __syncthreads();
     /* DEBUG:
@@ -548,18 +577,27 @@ void sub_convol(
     */
         //5. For each sample point in time: 
         //  Get contrast from local_I(ntensity) and mean_I(ntensity): p in space 
-        SmallSize iFrame = static_cast<SmallSize>((kernelSampleDt + framePhase)/tPerFrame);
+        Float t0;
+        if (iPatch==0) {
+            t0 = kernelSampleDt/2 + framePhase;
+        } else {
+            t0 = 0.0 + framePhase;
+        }
+        SmallSize iFrame = static_cast<SmallSize>(ceiling(t0/tPerFrame))-1; // left exclusive, right inclusive
+        // initialize with the first frame in the patch
         Float local_I = get_intensity(type, x0, y0, (currentFrame + iFrame) % maxFrame);
-        for (SmallSize iSample = 0; iSample < nSample; iSample++) {
+        for (SmallSize iSample = 0; iSample < nActive; iSample++) { // for each time step in current patch
             //Load mean luminance from shared memory first
             Float mean_I = nSampleShared[iSample];
-            SmallSize frameNow = static_cast<SmallSize>((iSample*kernelSampleDt + framePhase)/tPerFrame);
-            if (frameNow > iFrame) {
-                // new frame, in case frame rate > sample rate, we don't increase iFrame in single units
-                iFrame = frameNow;
-                local_I = get_intensity(type, x0, y0, (currentFrame + iFrame) % maxFrame);
+            if (iSample > 0) {
+                Float frameNow = static_cast<SmallSize>(ceiling((iSample*kernelSampleDt + t0)/tPerFrame))-1;
+                if (frameNow > iFrame) {
+                    iFrame = frameNow;
+                    // new frame, in case frame rate > sample rate, we don't increase iFrame in single units
+                    local_I = get_intensity(type, x0, y0, (currentFrame + iFrame) % maxFrame);
+                }
             }
-            Float local_contrast = (local_I-mean_I)/mean_I;
+            Float local_contrast = local_I/mean_I - 1.0;
             if (abs(local_contrast) > 1.0) {
                 local_contrast = copyms(1.0, local_contrast); // copyms is copysign(value, sign);
             }
@@ -569,6 +607,7 @@ void sub_convol(
                 nSampleShared[iSample] = reduced[0]; // shared memory now stores spatially convolved values
             }
         }
+        __syncthreads();
     /* DEBUG:
         if (id == 0 && threadIdx.y*blockDim.x + threadIdx.x == 0) {
             printf("contrast, done.\n");
@@ -576,20 +615,20 @@ void sub_convol(
     */
         //6. reduce sum with temporal weights: p in time
         Float filtered;
-        if (tid < nActive) {
-            filtered = nSampleShared[tid]*temporalWeight; // shared memory have spatially convolved values 
-        } else {
-            filtered = 0.0f;
-        }
+        filtered = nSampleShared[tid]*temporalWeight; // shared memory have spatially convolved values 
         block_reduce<Float>(reduced, filtered);
         //7. add to convol: s
         if (tid == 0) {
             convol += reduced[0];
         }
-        //9 .advance currentFrame and framePhase if not the final patch: n
-        if (iPatch < nPatch) {
+        //9. advance [currentFrame, framePhase] if not the final patch: n
+        if (iPatch < nPatch-1) {
             currentFrame += nFrame;
-            framePhase = fmod(nActive*kernelSampleDt + framePhase, tPerFrame);
+            if (iPatch == 0) {
+                framePhase = mod((nSample-0.5)*kernelSampleDt + framePhase, tPerFrame);
+            } else {
+                framePhase = mod(nSample*kernelSampleDt + framePhase, tPerFrame);
+            }
         }
     }
     /* DEBUG:
@@ -634,14 +673,11 @@ void LGN_convol_c1s(
 ) {
     __shared__ Float reduced[warpSize];
     extern __shared__ Float nSampleShared[];
-    unsigned int id = blockIdx.x;
-    unsigned int tid = threadIdx.y*blockDim.x + threadIdx.x;
 
     // weights are stored in shapes of (nLGN, nType, weight)
 	
-    Float convol;
 	Float LR_x0, LR_y0;
-	if (id < nLGN_L) {
+	if (blockIdx.x < nLGN_L) {
 		LR_x0 = L_x0;
 		LR_y0 = L_y0;
 	} else {
@@ -651,11 +687,12 @@ void LGN_convol_c1s(
 
     //TODO: Itau may take different value for different cone type
     // convolve center and update decayIn, lastF
-    sub_convol(coneType[id + blockIdx.y*gridDim.x], nsig, currentFrame, maxFrame, tPerFrame, framePhase, Itau, kernelSampleDt, nKernelSample, convol, spatial, decayIn, lastF, reduced, nSampleShared, SW_storage, SC_storage, TW_storage, LR_x0, LR_y0, normViewDistance, tid, 0, 2, dt);
+    Float convol;
+    sub_convol(coneType[blockIdx.x + blockIdx.y*gridDim.x], nsig, currentFrame, maxFrame, tPerFrame, framePhase, Itau, kernelSampleDt, nKernelSample, convol, spatial, decayIn, lastF, reduced, nSampleShared, SW_storage, SC_storage, TW_storage, LR_x0, LR_y0, normViewDistance, 0, 2, dt);
 
     // update convolution data, initialized in LGN_nonlinear
-    if (tid == 0) {
-        atomicAdd(current_convol+id, convol);
+    if (threadIdx.y*blockDim.x + threadIdx.x == 0) {
+        atomicAdd(current_convol+blockIdx.x, convol);
     }
 }
 

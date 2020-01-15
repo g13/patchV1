@@ -1,7 +1,7 @@
 #include <random>
 using Int = int;
 using Float = float;
-//#define SINGLE_PRECISION
+#define SINGLE_PRECISION
 using Double = float;
 //#define DOUBLE_PRECISION
 using Size = unsigned int;

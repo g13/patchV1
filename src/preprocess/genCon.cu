@@ -6,11 +6,12 @@
 #include <ctime>
 #include <cmath>
 #include <fenv.h>
-//#include <cuda.h>
-//#include <curand_kernel.h>
-//#include "cuda_runtime.h"
+#include "
 
 #include "connect.h"
+#include "../util/util.h"
+// TODO: polish the IO and file 
+// TODO: L, R separation
 
 template <typename T, typename I>
 void check_statistics(T* array, I n, T &max, T &min, T &mean, T &std) {

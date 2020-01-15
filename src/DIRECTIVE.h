@@ -19,6 +19,8 @@
 #define timeNow() std::chrono::high_resolution_clock::now()
 
 #ifdef DOUBLE_PRECISION
+    #define ceiling ceil
+    #define mod fmod
 	#define absb fabs 
     #define copymsb copysign
 	#define powerb pow
@@ -39,6 +41,8 @@
     #define normalb curand_normal_double
     #define log_normalb curand_log_normal_double
 #else
+    #define ceiling ceilf
+    #define mod fmodf
 	#define absb fabsf 
     #define copymsb copysignf
 	#define powerb powf
@@ -61,6 +65,8 @@
 #endif
 
 #ifdef SINGLE_PRECISION
+    #define ceiling ceilf
+    #define mod fmodf
 	#define abs fabsf 
     #define copyms copysignf
 	#define power powf
@@ -81,6 +87,8 @@
     #define normal curand_normal
     #define log_normal curand_log_normal
 #else
+    #define ceiling ceil
+    #define mod fmod
 	#define abs fabs 
     #define copyms copysign
 	#define power pow

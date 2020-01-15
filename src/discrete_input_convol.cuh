@@ -7,7 +7,6 @@
 #include <helper_functions.h>    // includes cuda.h and cuda_runtime_api.h
 #include <helper_cuda.h>         // helper functions for CUDA error check
 #include <tuple>
-#include <math_functions.h>         //
 #include "DIRECTIVE.h"
 #include "LGN_props.cuh"
 #include "types.h"
