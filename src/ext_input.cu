@@ -86,12 +86,12 @@ int main(int argc, char **argv) {
 
 	po::options_description generic_opt("Generic options");
 	generic_opt.add_options()
+		("seed,s", po::value<PosIntL>(&seed),"seed for trial")
 		("cfg_file,c", po::value<string>()->default_value("patchV1.cfg"), "filename for configuration file")
 		("help,h", "print usage");
 	po::options_description top_opt("top-level configuration");
 	// non-files
 	top_opt.add_options()
-		("seed,s", po::value<PosIntL>(&seed),"seed for trial")
 		("vFt,v", po::value<Float>(&vFt)->default_value(1.0),"variable for test")
 		("dt", po::value<Float>(&dt)->default_value(0.0625), "simulatoin time step in ms") 
 		("nt", po::value<Size>(&nt)->default_value(8000), "total simulatoin time in units of time step")

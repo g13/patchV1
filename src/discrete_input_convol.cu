@@ -462,17 +462,17 @@ void sub_convol(
 		convol = 0.0;
 	}
 
-    /* looping the following over (nPatch + 1) patches on nKernelSample samples points:
+    /* looping the following over (nPatch+1) patches on nKernelSample samples points:
         p - parallelized by all threads;
         n - needed by all threads;
         s - single thread 
     */
-    SmallSize nPatch = (nKernelSample+nSample-1)/nSample;
-    for (SmallSize iPatch=0; iPatch<nPatch; iPatch++) {
+    SmallSize nPatch = nKernelSample/nSample;
+    for (SmallSize iPatch=0; iPatch<nPatch+1; iPatch++) {
         Float temporalWeight;
         SmallSize nActive;
         // for p in time, active (for temporal samples) threads only,
-        if (iPatch == nPatch-1) { // no divergent branch
+        if (iPatch == nPatch) { // no divergent branch
             nActive = nKernelSample % nSample;
         } else {
             nActive = nSample;
@@ -559,7 +559,7 @@ void sub_convol(
             nSampleShared[tid] = lastDecayIn + F_1; //shared memory now used as spatiotemporal mean luminance
         }
         // broadcast [lastDecayIn, F_1] for the next convolution step if not the final patch: n
-        if (iPatch < nPatch-1) {
+        if (iPatch < nPatch) {
             if (tid == nSample-1) {
                 reduced[0] = lastDecayIn;
                 reduced[1] = F_1;
@@ -622,7 +622,7 @@ void sub_convol(
             convol += reduced[0];
         }
         //9. advance [currentFrame, framePhase] if not the final patch: n
-        if (iPatch < nPatch-1) {
+        if (iPatch < nPatch) {
             currentFrame += nFrame;
             if (iPatch == 0) {
                 framePhase = mod((nSample-0.5)*kernelSampleDt + framePhase, tPerFrame);

@@ -3,22 +3,27 @@
 
 #include <curand_kernel.h>
 #include "../MACRO.h"
+#include "../types.h"
 
 struct initialize_package {
-    _float radius[NTYPE][2];
-    _float neuron_type_acc_count[NTYPE+1];
-	_float den_axn[NTYPE];
-	_float den_den[NTYPE];
-    __host__ __device__ initialize_package() {};
-    __host__ __device__ initialize_package(_float _radius[][2], _float _neuron_type_acc_count[], _float _den_axn[], _float _den_den[]) {
-        for (unsigned int i=0; i<NTYPE; i++) {
+    Float* radius; //[NTYPE][2];
+    Float* neuron_type_acc_count; //[NTYPE+1];
+	Float* den_axn; //[NTYPE];
+	Float* den_den; //[NTYPE];
+    __host__ 
+    __device__ 
+    initialize_package() {};
+    __host__ 
+    __device__ 
+    initialize_package(Float _radius[][2], Float _neuron_type_acc_count[], Float _den_axn[], Float _den_den[]) {
+        for (Size i=0; i<NTYPE; i++) {
             radius[i][0] = _radius[i][0];
             radius[i][1] = _radius[i][1];
             den_axn[i] = _den_axn[i];
             den_den[i] = _den_den[i];
         }
         // NTYPE
-        for (unsigned int i=0; i<NTYPE+1; i++) {
+        for (Size i=0; i<NTYPE+1; i++) {
             neuron_type_acc_count[i] = _neuron_type_acc_count[i];
         }
 	}
@@ -27,57 +32,57 @@ struct initialize_package {
 __global__ 
 __launch_bounds__(blockSize, 1)
 void initialize(curandStateMRG32k3a* __restrict__ state,
-                           unsigned int* __restrict__ preType,
-                           _float* __restrict__ rden,
-                           _float* __restrict__ raxn,
-                           _float* __restrict__ dden,
-                           _float* __restrict__ daxn,
-                           _float*  __restrict__ sTypeMat,
-                           _float*  __restrict__ pTypeMat,
-                           unsigned int* __restrict__ nTypeMat,
-                           _float*  __restrict__ preTypeS,
-                           _float*  __restrict__ preTypeP,
-                           unsigned int* __restrict__ preTypeN,
-                           initialize_package init_pack, unsigned long long seed, unsigned int networkSize);
+                           Size* __restrict__ preType,
+                           Float* __restrict__ rden,
+                           Float* __restrict__ raxn,
+                           Float* __restrict__ dden,
+                           Float* __restrict__ daxn,
+                           Float*  __restrict__ sTypeMat,
+                           Float*  __restrict__ pTypeMat,
+                           Size* __restrict__ nTypeMat,
+                           Float*  __restrict__ preTypeS,
+                           Float*  __restrict__ preTypeP,
+                           Size* __restrict__ preTypeN,
+                           initialize_package init_pack, unsigned long long seed, Size networkSize);
 
 __global__ 
 __launch_bounds__(blockSize, 1)
-void cal_blockPos(_float* __restrict__ pos,
-                             _float* __restrict__ block_x,
-                             _float* __restrict__ block_y,
-                             unsigned int networkSize);
+void cal_blockPos(Float* __restrict__ pos,
+                             Float* __restrict__ block_x,
+                             Float* __restrict__ block_y,
+                             Size networkSize);
 
 __global__ 
 __launch_bounds__(blockSize, 1)
-void get_neighbor_blockId(_float* __restrict__ block_x,
-                                     _float* __restrict__ block_y,
-                                     unsigned int* __restrict__ neighborBlockId,
-                                     unsigned int* __restrict__ nNeighborBlock,
-                                     _float max_radius, unsigned int nPotentialNeighbor);
+void get_neighbor_blockId(Float* __restrict__ block_x,
+                                     Float* __restrict__ block_y,
+                                     Size* __restrict__ neighborBlockId,
+                                     Size* __restrict__ nNeighborBlock,
+                                     Float max_radius, Size nPotentialNeighbor);
 
 __global__ 
 __launch_bounds__(blockSize, 1)
-void generate_connections(_float* __restrict__ pos,
-						  _float* __restrict__ preTypeS,
-						  _float* __restrict__ preTypeP,
-						  unsigned int* __restrict__ preTypeN,
-                          unsigned int* __restrict__ neighborBlockId,
-                          unsigned int* __restrict__ nNeighborBlock,
-                          _float* __restrict__ rden,
-                          _float* __restrict__ raxn,
-                          _float* __restrict__ conMat, //within block connections
-                          _float* __restrict__ delayMat,
-                          _float* __restrict__ conVec, //for neighbor block connections
-                          _float* __restrict__ delayVec, //for neighbor block connections
-                          unsigned int* __restrict__ vecID,
-                          unsigned int* __restrict__ nVec,
-                          unsigned int* __restrict__ preTypeConnected,
-                          unsigned int* __restrict__ preTypeAvail,
-                          _float* __restrict__ preTypeStrSum,
-                          unsigned int* __restrict__ preType,
-                          _float* __restrict__ dden,
-                          _float* __restrict__ daxn,
+void generate_connections(Float* __restrict__ pos,
+						  Float* __restrict__ preTypeS,
+						  Float* __restrict__ preTypeP,
+						  Size* __restrict__ preTypeN,
+                          Size* __restrict__ neighborBlockId,
+                          Size* __restrict__ nNeighborBlock,
+                          Float* __restrict__ rden,
+                          Float* __restrict__ raxn,
+                          Float* __restrict__ conMat, //within block connections
+                          Float* __restrict__ delayMat,
+                          Float* __restrict__ conVec, //for neighbor block connections
+                          Float* __restrict__ delayVec, //for neighbor block connections
+                          Size* __restrict__ vecID,
+                          Size* __restrict__ nVec,
+                          Size* __restrict__ preTypeConnected,
+                          Size* __restrict__ preTypeAvail,
+                          Float* __restrict__ preTypeStrSum,
+                          Size* __restrict__ preType,
+                          Float* __restrict__ dden,
+                          Float* __restrict__ daxn,
                           curandStateMRG32k3a* __restrict__ state,
-                          unsigned int networkSize, unsigned int neighborSize, unsigned int nPotentialNeighbor, _float speedOfThought);
+                          Size networkSize, Size neighborSize, Size nPotentialNeighbor, Float speedOfThought);
 
 #endif
