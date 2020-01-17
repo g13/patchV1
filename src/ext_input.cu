@@ -647,6 +647,7 @@ int main(int argc, char **argv) {
     hLGN_parameter hLGN(nLGN, 2, hSpat, hTemp, hStat, coneType, covariant);
 
 	LGN_parameter dLGN(hLGN);
+    hLGN.freeMem();
 
 	Size nLGN_block, nLGN_thread; // for LGN_nonlinear
 	nLGN_block = (nLGN + blockSize - 1)/blockSize;
@@ -1068,7 +1069,6 @@ int main(int argc, char **argv) {
         fLuminanceAd.close();
 
         dLGN.freeMem();
-        hLGN.freeMem();
 	    checkCudaErrors(cudaStreamDestroy(s0));
         checkCudaErrors(cudaStreamDestroy(s1));
         checkCudaErrors(cudaStreamDestroy(s2));

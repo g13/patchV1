@@ -3,34 +3,32 @@
 #include "../util/cuda_util.h"
 #include "../types.h"
 
+// TODO: randomize neuronal attributes, strength x number of con. should be controlled
 __global__ void initialize(curandStateMRG32k3a* __restrict__ state,
-                           Size* __restrict__ preType,
+                           Size*  __restrict__ preType,
                            Float* __restrict__ rden,
                            Float* __restrict__ raxn,
                            Float* __restrict__ dden,
                            Float* __restrict__ daxn,
-                           Float* __restrict__ sTypeMat,
-                           Float* __restrict__ pTypeMat,
-                           Size* __restrict__ nTypeMat,
                            Float* __restrict__ preTypeS,
                            Float* __restrict__ preTypeP,
-                           Size* __restrict__ preTypeN,
-                           initialize_package init_pack, unsigned long long seed, Size networkSize) {
+                           Size*  __restrict__ preTypeN,
+                           initialize_package &init_pack, unsigned long long seed, Size networkSize, Size nType) {
     Size id = blockIdx.x * blockDim.x + threadIdx.x;
     curand_init(seed, id, 0, &state[id]);
     
 	#pragma unroll
-    for (Size itype=0; itype<NTYPE; itype++) {
-        if (threadIdx.x < init_pack.neuron_type_acc_count[itype+1]) {
-            preType[id] = itype;
-            rden[id] = init_pack.radius[itype][0];
-            raxn[id] = init_pack.radius[itype][1];
-            dden[id] = init_pack.den_den[itype];
-            daxn[id] = init_pack.den_axn[itype];
-            for (Size jtype=0; jtype<NTYPE; jtype++) {
-                preTypeS[jtype*networkSize+id] = sTypeMat[itype*NTYPE+jtype];
-                preTypeP[jtype*networkSize+id] = pTypeMat[itype*NTYPE+jtype];
-                preTypeN[jtype*networkSize+id] = nTypeMat[itype*NTYPE+jtype];
+    for (Size iType=0; iType<nType; iType++) {
+        if (init_pack.typeAccCount[iType] < threadIdx.x && threadIdx.x < init_pack.typeAccCount[iType+1]) {
+            preType[id] = iType;
+            rden[id] = init_pack.rden[iType];
+            raxn[id] = init_pack.raxn[iType];
+            dden[id] = init_pack.dden[iType];
+            daxn[id] = init_pack.daxn[iType];
+            for (Size jType=0; jtype<nType; jType++) {
+                preTypeS[jType*networkSize+id] = init_pack.sTypeMat[iType*nType+jType];
+                preTypeP[jType*networkSize+id] = init_pack.pTypeMat[iType*nType+jType];
+                preTypeN[jType*networkSize+id] = init_pack.nTypeMat[iType*nType+jType];
             }
             return;
         }
@@ -168,7 +166,7 @@ __global__ void generate_connections(Float* __restrict__ pos,
                                      Float* __restrict__ dden,
                                      Float* __restrict__ daxn,
                                      curandStateMRG32k3a* __restrict__ state,
-                                     Size networkSize, Size neighborSize, Size nPotentialNeighbor, Float speedOfThought) {
+                                     Size networkSize, Size neighborSize, Size nPotentialNeighbor, Float speedOfThought, Size nType) {
     __shared__ Float x1[blockSize];
     __shared__ Float y1[blockSize];
     __shared__ Size ipreType[blockSize];
@@ -181,10 +179,10 @@ __global__ void generate_connections(Float* __restrict__ pos,
         printf("#%u not allocated, requring %f Kb for %u units\n", id, nb*sizeof(Float)/1024.0, networkSize);
         return;
     }
-    Size sumConType[NTYPE];
-    Size sumType[NTYPE];
-    Float sumP[NTYPE];
-    Float sumStrType[NTYPE];
+    Size sumConType[nType];
+    Size sumType[nType];
+    Float sumP[nType];
+    Float sumStrType[nType];
     curandStateMRG32k3a localState = state[id];
     Size itype = preType[id];
     Float x0 = pos[id];
@@ -192,7 +190,7 @@ __global__ void generate_connections(Float* __restrict__ pos,
     ipreType[threadIdx.x] = itype;
     Float rd = rden[id];
     #pragma unroll
-    for (Size i=0; i<NTYPE; i++) {
+    for (Size i=0; i<nType; i++) {
         sumConType[i] = 0;
         sumStrType[i] = 0;
         sumType[i] = 0;
@@ -310,7 +308,7 @@ __global__ void generate_connections(Float* __restrict__ pos,
     }
     nVec[id] = nid;
     #pragma unroll
-    for (Size i=0; i<NTYPE; i++) {
+    for (Size i=0; i<nType; i++) {
         preTypeConnected[i*networkSize + id] = sumConType[i];
         preTypeAvail[i*networkSize + id] = sumType[i];
         preTypeStrSum[i*networkSize + id] = sumStrType[i];

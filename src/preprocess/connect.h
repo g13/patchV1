@@ -1,49 +1,110 @@
 #ifndef CONNECT_H
 #define CONNECT_H
 
+#include <vector>
+#include <cuda.h>
+#include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include "../MACRO.h"
 #include "../types.h"
 
+struct hInitialize_package {
+	Size* mem_block;
+    Size* typeAccCount; //[nType+1];
+	Float* daxn; //[nType];
+	Float* dden; //[nType];
+	Float* raxn; //[nType];
+	Float* rden; //[nType];
+	Float* sTypeMat; //[nType, nType]
+	Float* pTypeMat; //[nType, nType]
+	Size*  nTypeMat; //[nType, nType]
+
+    hInitialize_package() {};
+    hInitialize_package(Size nType,
+						std::vector<Size>  &_typeAccCount,
+						std::vector<Float> &_raxn,
+						std::vector<Float> &_rden,
+						std::vector<Float> &_daxn,
+						std::vector<Float> &_dden,
+						std::vector<Float> &_sTypeMat,
+						std::vector<Float> &_pTypeMat,
+						std::vector<Size>  &_nTypeMat) 
+	{
+		size_t memSize = (4*nType + 2*nType*nType)*sizeof(Float) + (nType*nType + nType+1) * sizeof(Size);
+		mem_block = new Size[memSize];
+		typeAccCount = mem_block;
+		daxn = (Float *) (typeAccCount + nType+1);
+		dden = daxn + nType;
+		raxn = dden + nType;
+		rden = raxn + nType;
+		sTypeMat = rden + nType;
+		pTypeMat = sTypeMat + nType*nType;
+		nTypeMat = (Size*) (pTypeMat + nType*nType);
+
+        for (Size i=0; i<nType; i++) {
+            daxn[i] = _daxn[i];
+            dden[i] = _dden[i];
+            raxn[i] = _raxn[i];
+            rden[i] = _rden[i];
+			for (Size j=0; j<nType; j++) {
+				sTypeMat[i*nType + j] = _sTypeMat[i*nType + j];
+				pTypeMat[i*nType + j] = _pTypeMat[i*nType + j];
+				nTypeMat[i*nType + j] = _nTypeMat[i*nType + j];
+			}
+        }
+        // nType
+        for (Size i=0; i<nType+1; i++) {
+            typeAccCount[i] = _typeAccCount[i];
+        }
+	}
+	void freeMem() {
+		delete []mem_block;
+	}
+};
+
 struct initialize_package {
-    Float* radius; //[NTYPE][2];
-    Float* neuron_type_acc_count; //[NTYPE+1];
-	Float* den_axn; //[NTYPE];
-	Float* den_den; //[NTYPE];
-    __host__ 
-    __device__ 
+	char* mem_block;
+    Size* typeAccCount; //[nType+1];
+	Float* daxn; //[nType];
+	Float* dden; //[nType];
+	Float* raxn; //[nType];
+	Float* rden; //[nType];
+	Float* sTypeMat; //[nType, nType]
+	Float* pTypeMat; //[nType, nType]
+	Size*  nTypeMat; //[nType, nType]
+
     initialize_package() {};
-    __host__ 
-    __device__ 
-    initialize_package(Float _radius[][2], Float _neuron_type_acc_count[], Float _den_axn[], Float _den_den[]) {
-        for (Size i=0; i<NTYPE; i++) {
-            radius[i][0] = _radius[i][0];
-            radius[i][1] = _radius[i][1];
-            den_axn[i] = _den_axn[i];
-            den_den[i] = _den_den[i];
-        }
-        // NTYPE
-        for (Size i=0; i<NTYPE+1; i++) {
-            neuron_type_acc_count[i] = _neuron_type_acc_count[i];
-        }
+    initialize_package(Size nType, hInitialize_package &host) {
+		size_t memSize = (4*nType + 2*nType*nType)*sizeof(Float) + (nType*nType + nType+1) * sizeof(Size);
+        checkCudaErrors(cudaMalloc((void**)&mem_block, memSize));
+		typeAccCount = (Size*) mem_block;
+		daxn = (Float *) (typeAccCount + nType+1);
+		dden = daxn + nType;
+		raxn = dden + nType;
+		rden = raxn + nType;
+		sTypeMat = rden + nType;
+		pTypeMat = sTypeMat + nType*nType;
+		nTypeMat = (Size*) (pTypeMat + nType*nType);
+
+        checkCudaErrors(cudaMemcpy(mem_block, host.mem_block, memSize, cudaMemcpyHostToDevice));
+	}
+	void freeMem() {
+		checkCudaErrors(cudaFree(mem_block));
 	}
 };
 
 __global__ 
 __launch_bounds__(blockSize, 1)
 void initialize(curandStateMRG32k3a* __restrict__ state,
-                           Size* __restrict__ preType,
-                           Float* __restrict__ rden,
-                           Float* __restrict__ raxn,
-                           Float* __restrict__ dden,
-                           Float* __restrict__ daxn,
-                           Float*  __restrict__ sTypeMat,
-                           Float*  __restrict__ pTypeMat,
-                           Size* __restrict__ nTypeMat,
-                           Float*  __restrict__ preTypeS,
-                           Float*  __restrict__ preTypeP,
-                           Size* __restrict__ preTypeN,
-                           initialize_package init_pack, unsigned long long seed, Size networkSize);
+                Size*  __restrict__ preType,
+                Float* __restrict__ rden,
+                Float* __restrict__ raxn,
+                Float* __restrict__ dden,
+                Float* __restrict__ daxn,
+                Float* __restrict__ preTypeS,
+                Float* __restrict__ preTypeP,
+                Size*  __restrict__ preTypeN,
+                initialize_package &init_pack, unsigned long long seed, Size networkSize, Size nType);
 
 __global__ 
 __launch_bounds__(blockSize, 1)
@@ -83,6 +144,6 @@ void generate_connections(Float* __restrict__ pos,
                           Float* __restrict__ dden,
                           Float* __restrict__ daxn,
                           curandStateMRG32k3a* __restrict__ state,
-                          Size networkSize, Size neighborSize, Size nPotentialNeighbor, Float speedOfThought);
+                          Size networkSize, Size neighborSize, Size nPotentialNeighbor, Float speedOfThought, Size nType);
 
 #endif

@@ -436,6 +436,6 @@ def plot_patch(a,b,k,ecc,softedge,total_target,ax=None,skip=602,s1=0.76,s2=0.182
     ax.set_ylim(-ylim,ylim)
     ax.set_xlim(0,xlim)
     if ret_fig:
-        return fig, pos
+        return fig, pos, xlim, ylim
     else:
-        return pos
+        return pos, xlim, ylim

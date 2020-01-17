@@ -101,11 +101,11 @@ Float transform(Float C50, Float K, Float A, Float B, Float input) {
 
 // collect all the components and send to device
 struct LGN_parameter {
-    // dev pointer to structs that contain dev pointer to data
+    // dev pointer of the host structs that contain dev pointer to data
     Spatial_component* spatial;
     Temporal_component* temporal;
     Static_nonlinear* logistic;
-    // dev pointer to data, may be needed for cudaFree(*);
+    // host struct that contain dev pointers to data, needed for cudaFree(*);
     Spatial_component hSpat;
     Temporal_component hTemp;
     Static_nonlinear hLogi;
