@@ -10,17 +10,19 @@
 
 struct hInitialize_package {
 	Size* mem_block;
-    Size* typeAccCount; //[nType+1];
-	Float* daxn; //[nType];
-	Float* dden; //[nType];
-	Float* raxn; //[nType];
-	Float* rden; //[nType];
+	Size* nTypeHierarchy; // [nHierarchy]
+    Size* typeAccCount; //[nArchtype+1];
+	Float* daxn; //[nArchtype];
+	Float* dden; //[nArchtype];
+	Float* raxn; //[nArchtype];
+	Float* rden; //[nArchtype];
 	Float* sTypeMat; //[nType, nType]
 	Float* pTypeMat; //[nType, nType]
-	Size*  nTypeMat; //[nType, nType]
+	Size* preTypeN; //[nArchtype]
 
     hInitialize_package() {};
-    hInitialize_package(Size nType,
+    hInitialize_package(Size nArchtype, Size nType, Size nHierarchy,
+						std::vector<Size>  &_nTypeHierarchy.
 						std::vector<Size>  &_typeAccCount,
 						std::vector<Float> &_raxn,
 						std::vector<Float> &_rden,
@@ -28,32 +30,35 @@ struct hInitialize_package {
 						std::vector<Float> &_dden,
 						std::vector<Float> &_sTypeMat,
 						std::vector<Float> &_pTypeMat,
-						std::vector<Size>  &_nTypeMat) 
+						std::vector<Size>  &_preTypeN) 
 	{
-		size_t memSize = (4*nType + 2*nType*nType)*sizeof(Float) + (nType*nType + nType+1) * sizeof(Size);
+		size_t memSize = (4*nArchtype + 2*nType*nType)*sizeof(Float) + (2*nArchtype + 1 + nHierarchy) * sizeof(Size);
 		mem_block = new Size[memSize];
-		typeAccCount = mem_block;
-		daxn = (Float *) (typeAccCount + nType+1);
-		dden = daxn + nType;
-		raxn = dden + nType;
-		rden = raxn + nType;
-		sTypeMat = rden + nType;
+		nTypeHierarchy = mem_block;
+		typeAccCount = nTypeHierarchy + nHierarchy;
+		daxn = (Float *) (typeAccCount + nTypeUni+1);
+		dden = daxn + nArchtype;
+		raxn = dden + nArchtype;
+		rden = raxn + nArchtype;
+		sTypeMat = rden + nArchtype;
 		pTypeMat = sTypeMat + nType*nType;
-		nTypeMat = (Size*) (pTypeMat + nType*nType);
+		preTypeN = (Size*) (pTypeMat + nType*nType);
 
-        for (Size i=0; i<nType; i++) {
+        for (Size i=0; i<nArchtype; i++) {
             daxn[i] = _daxn[i];
             dden[i] = _dden[i];
             raxn[i] = _raxn[i];
             rden[i] = _rden[i];
+			preTypeN[i] = _preTypeN[i];
+        }
+        for (Size i=0; i<nType; i++) {
 			for (Size j=0; j<nType; j++) {
 				sTypeMat[i*nType + j] = _sTypeMat[i*nType + j];
 				pTypeMat[i*nType + j] = _pTypeMat[i*nType + j];
-				nTypeMat[i*nType + j] = _nTypeMat[i*nType + j];
 			}
-        }
+		}
         // nType
-        for (Size i=0; i<nType+1; i++) {
+        for (Size i=0; i<nArchtype+1; i++) {
             typeAccCount[i] = _typeAccCount[i];
         }
 	}
@@ -64,27 +69,29 @@ struct hInitialize_package {
 
 struct initialize_package {
 	char* mem_block;
-    Size* typeAccCount; //[nType+1];
-	Float* daxn; //[nType];
-	Float* dden; //[nType];
-	Float* raxn; //[nType];
-	Float* rden; //[nType];
+	Size* nTypeHierarchy; // [nHierarchy]
+    Size* typeAccCount; //[nArchtype+1];
+	Float* daxn; //[nArchtype];
+	Float* dden; //[nArchtype];
+	Float* raxn; //[nArchtype];
+	Float* rden; //[nArchtype];
 	Float* sTypeMat; //[nType, nType]
 	Float* pTypeMat; //[nType, nType]
-	Size*  nTypeMat; //[nType, nType]
+	Size* preTypeN; //[nArchtype]
 
     initialize_package() {};
-    initialize_package(Size nType, hInitialize_package &host) {
-		size_t memSize = (4*nType + 2*nType*nType)*sizeof(Float) + (nType*nType + nType+1) * sizeof(Size);
+    initialize_package(Size nArchtype, Size nType, Size nHierarchy, hInitialize_package &host) {
+		size_t memSize = (4*nArchtype + 2*nType*nType)*sizeof(Float) + (2*nArchtype + 1 + nHierarchy) * sizeof(Size);
         checkCudaErrors(cudaMalloc((void**)&mem_block, memSize));
-		typeAccCount = (Size*) mem_block;
-		daxn = (Float *) (typeAccCount + nType+1);
-		dden = daxn + nType;
-		raxn = dden + nType;
-		rden = raxn + nType;
-		sTypeMat = rden + nType;
+		nTypeHierarchy = (Size*) mem_block;
+		typeAccCount = nTypeHierarchy + nHierarchy;
+		daxn = (Float *) (typeAccCount + nTypeUni+1);
+		dden = daxn + nArchtype;
+		raxn = dden + nArchtype;
+		rden = raxn + nArchtype;
+		sTypeMat = rden + nArchtype;
 		pTypeMat = sTypeMat + nType*nType;
-		nTypeMat = (Size*) (pTypeMat + nType*nType);
+		preTypeN = (Size*) (pTypeMat + nType*nType);
 
         checkCudaErrors(cudaMemcpy(mem_block, host.mem_block, memSize, cudaMemcpyHostToDevice));
 	}

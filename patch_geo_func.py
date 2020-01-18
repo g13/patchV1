@@ -243,6 +243,10 @@ def get_pos_3d(x,y,area,n,skip=602):
             break
     if count == max_trial and i < n:
         raise Exception(f'after {count} round of sobol rands still left {ntmp} points to be assigned')
+    # remove the orderness from sobol semi-pseudo-random number
+    shuffled_id = np.arange(n)
+    np.random.shuffle(shuffled_id)
+    pos = pos[:,shuffled_id]
     return pos
 
 def cut_blocks(pos,iblock,nblock,total_block,block_area,e0,e1,model_block,get_x,get_y,ax=None,skip=602,s1=0.76,s2=0.1821,blockSize=1024,block_tol=1e-10,max_it=10,bp=32):
