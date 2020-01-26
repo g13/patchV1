@@ -18,7 +18,7 @@
 % - Figure 9: orientation + OD (ORx,ORy,OD) in polar coordinates.        [SLOW]
 % - Figure 10: retinotopy + ORr (VFx,VFy,ORr) in Cartesian coordinates.  [SLOW]
 % - Figure 11: tension (not including the beta/2 factor).
-% - Figure 12: colorbar for fig. 11.
+% - Figure 12: (colorbar for fig. 11.
 %
 % * Figures 20-99 plot a relevant statistic (e.g. a histogram) for the
 %   current frame.

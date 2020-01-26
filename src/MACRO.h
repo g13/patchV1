@@ -3,6 +3,5 @@
 
 #include "CUDA_MACRO.h"
 #include "DIRECTIVE.h"
-#include "MODEL_CONST.h"
 
 #endif

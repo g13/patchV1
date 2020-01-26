@@ -303,6 +303,11 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
 		if saveLR
 			for i=1:iters
 				fID = fopen([ENfilename0,'/',ENfilename,'-LR_Pi',num2str(i),'.bin'],'w');
+                fwrite(fID, a, 'double');
+                fwrite(fID, b, 'double');
+                fwrite(fID, k, 'double');
+                fwrite(fID, ecc, 'double');
+                fwrite(fID, int32(G), 'int');
 				fwrite(fID, Pi, 'int');
 				fclose(fID);
 			end

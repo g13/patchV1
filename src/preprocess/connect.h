@@ -2,8 +2,9 @@
 #define CONNECT_H
 
 #include <vector>
-#include <cuda.h>
 #include <cuda_runtime.h>
+#include <helper_functions.h> // include cuda.h and cuda_runtime_api.h
+#include <helper_cuda.h>
 #include <curand_kernel.h>
 #include "../MACRO.h"
 #include "../types.h"
@@ -22,7 +23,7 @@ struct hInitialize_package {
 
     hInitialize_package() {};
     hInitialize_package(Size nArchtype, Size nType, Size nHierarchy,
-						std::vector<Size>  &_nTypeHierarchy.
+						std::vector<Size>  &_nTypeHierarchy,
 						std::vector<Size>  &_typeAccCount,
 						std::vector<Float> &_raxn,
 						std::vector<Float> &_rden,
@@ -36,7 +37,7 @@ struct hInitialize_package {
 		mem_block = new Size[memSize];
 		nTypeHierarchy = mem_block;
 		typeAccCount = nTypeHierarchy + nHierarchy;
-		daxn = (Float *) (typeAccCount + nTypeUni+1);
+		daxn = (Float *) (typeAccCount + nArchtype+1);
 		dden = daxn + nArchtype;
 		raxn = dden + nArchtype;
 		rden = raxn + nArchtype;
@@ -85,7 +86,7 @@ struct initialize_package {
         checkCudaErrors(cudaMalloc((void**)&mem_block, memSize));
 		nTypeHierarchy = (Size*) mem_block;
 		typeAccCount = nTypeHierarchy + nHierarchy;
-		daxn = (Float *) (typeAccCount + nTypeUni+1);
+		daxn = (Float *) (typeAccCount + nArchtype+1);
 		dden = daxn + nArchtype;
 		raxn = dden + nArchtype;
 		rden = raxn + nArchtype;
@@ -103,37 +104,38 @@ struct initialize_package {
 __global__ 
 __launch_bounds__(blockSize, 1)
 void initialize(curandStateMRG32k3a* __restrict__ state,
-                Size*  __restrict__ preType,
-                Float* __restrict__ rden,
-                Float* __restrict__ raxn,
-                Float* __restrict__ dden,
-                Float* __restrict__ daxn,
-                Float* __restrict__ preTypeS,
-                Float* __restrict__ preTypeP,
-                Size*  __restrict__ preTypeN,
-                initialize_package &init_pack, unsigned long long seed, Size networkSize, Size nType);
+                           Size*  __restrict__ preType,
+                           Float* __restrict__ rden,
+                           Float* __restrict__ raxn,
+                           Float* __restrict__ dden,
+                           Float* __restrict__ daxn,
+                           Float* __restrict__ preS_type,
+                           Float* __restrict__ preP_type,
+                           Size*  __restrict__ preN,
+						   Int* __restrict__ preFixType, // nHierarchy * networkSize
+                           initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nHierarchy); 
 
 __global__ 
 __launch_bounds__(blockSize, 1)
-void cal_blockPos(Float* __restrict__ pos,
-                             Float* __restrict__ block_x,
-                             Float* __restrict__ block_y,
-                             Size networkSize);
+void cal_blockPos(double* __restrict__ pos,
+                  Float* __restrict__ block_x,
+                  Float* __restrict__ block_y,
+                  Size networkSize);
 
 __global__ 
 __launch_bounds__(blockSize, 1)
 void get_neighbor_blockId(Float* __restrict__ block_x,
-                                     Float* __restrict__ block_y,
-                                     Size* __restrict__ neighborBlockId,
-                                     Size* __restrict__ nNeighborBlock,
-                                     Float max_radius, Size nPotentialNeighbor);
+                          Float* __restrict__ block_y,
+                          Size* __restrict__ neighborBlockId,
+                          Size* __restrict__ nNeighborBlock,
+                          Float max_radius, Size maxNeighborBlock);
 
 __global__ 
 __launch_bounds__(blockSize, 1)
-void generate_connections(Float* __restrict__ pos,
-						  Float* __restrict__ preTypeS,
-						  Float* __restrict__ preTypeP,
-						  Size* __restrict__ preTypeN,
+void generate_connections(double* __restrict__ pos,
+                          Float* __restrict__ preS_type,
+                          Float* __restrict__ preP_type,
+                          Size* __restrict__ preN_type,
                           Size* __restrict__ neighborBlockId,
                           Size* __restrict__ nNeighborBlock,
                           Float* __restrict__ rden,
@@ -151,6 +153,6 @@ void generate_connections(Float* __restrict__ pos,
                           Float* __restrict__ dden,
                           Float* __restrict__ daxn,
                           curandStateMRG32k3a* __restrict__ state,
-                          Size networkSize, Size neighborSize, Size nPotentialNeighbor, Float speedOfThought, Size nType);
+                          Size networkSize, Size maxDistantNeighbor, Size maxNeighborBlock, Float speedOfThought, Size nType, bool gaussian_profile);
 
 #endif

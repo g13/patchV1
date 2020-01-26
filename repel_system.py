@@ -5,7 +5,7 @@ import time
 py_compile.compile('repel_system.py')
 
 class repel_system:
-    def __init__(self, area, subgrid, initial_x, bp, btype, boundary_param = None, particle_param = None, initial_v = None, nlayer = 1, layer = None, soft_boundary = None, soft_btype = None,  enough_memory = False, p_scale = 2.0, b_scale = 1.0, fixed = None, b_cl = None, i_cl = None):
+    def __init__(self, area, subgrid, initial_x, bp, btype, boundary_param = None, particle_param = None, initial_v = None, nlayer = 1, layer = None, soft_boundary = None, soft_btype = None,  enough_memory = False, p_scale = 2.5, b_scale = 1.0, fixed = None, b_cl = None, i_cl = None):
         self.nn = initial_x.shape[1]
         self.nb = bp.shape[0]
         if fixed is None:
@@ -176,7 +176,8 @@ class repel_system:
             dr = np.linalg.norm(dpos, axis = 0)
             large_dpos = dr > self.limiting
             dpos[:,large_dpos] = self.limiting[large_dpos] * dpos[:,large_dpos]/dr[large_dpos]
-            dpos[:,self.fixList] = 0
+            if not self.fixList.size == 0:
+                dpos[:,self.fixList] = 0
             self.particle.pos = self.particle.pos + dpos
             dr[large_dpos] = self.limiting[large_dpos]
             nlimited = np.sum(large_dpos)

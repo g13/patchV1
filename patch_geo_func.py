@@ -10,7 +10,7 @@ os.environ['NUMBAPRO_CUDALIB']='C:/Users/gueux/Miniconda3/envs/py36_7/Library/bi
 np.seterr(all='raise')
 special.seterr(all='raise')
 sobol_set = True
-#sobol_set = False 
+#sobol_set = False
 
 # f-function related
 def fp(e,p,ab,s1=0.76,s2=0.1821):
