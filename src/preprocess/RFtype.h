@@ -8,6 +8,10 @@
 #include <type_traits>
 //#include <algorithm>
 
+#define nRFtype 5
+#define nOutputType 4
+#define nInputType 4
+
 enum class RFtype: Size {
 	nonOppopent_gabor = 0,  // different cone input correlates, i.e., have the same sign, in gabor form, find in V1
 	nonOppopent_cs = 1,  // different cone input correlates, i.e., have the same sign, in center surround form not necessarily concentric, find in V1
@@ -52,6 +56,7 @@ auto transform_coord_to_unitRF(Float x, Float y, const Float mx, const Float my,
     return std::make_pair(new_x, new_y);
 }
 
+// TODO: document type meanings
 inline Int match_OnOff(InputType iType, OutputType oType, Float &modulation) {
 	Int match;
    	switch (oType) {
@@ -166,7 +171,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 		prob.clear();
 	}
  
-    virtual Size construct_connection(std::vector<Float> &x, std::vector<Float> &y, std::vector<InputType> &iType, std::vector<Size> &idList, std::vector<Float> &strengthList, RandomEngine &rGen, Float percent) {
+    virtual Size construct_connection(std::vector<Float> &x, std::vector<Float> &y, std::vector<InputType> &iType, std::vector<Size> &idList, std::vector<Float> &strengthList, RandomEngine &rGen, Float fnLGNeff) {
         Size nConnected;
         if (n > 0) {
 		    prob.reserve(n);
@@ -195,7 +200,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                     }
                 } */
             }
-            normalize(percent);
+            normalize(fnLGNeff);
             // make connection and update ID and strength list
             nConnected = connect(idList, strengthList, rGen);
         }  else {
@@ -222,9 +227,9 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         return envelope * (1.0 + amp * opponent * modulation);
     }
     // normalize prob.
-    void normalize(Float percent) {
-	    // average connection probability is controlled at percent.
-        const Float norm = std::accumulate(prob.begin(), prob.end(), 0.0) / (percent * prob.size());
+    void normalize(Float fnLGNeff) {
+	    // average connection probability is controlled at fnLGNeff.
+        const Float norm = std::accumulate(prob.begin(), prob.end(), 0.0) / fnLGNeff;
 	    //std::cout << "norm = " << norm << "\n";
 	    //print_list<Float>(prob);
 	    assert(!isnan(norm));
@@ -233,7 +238,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
             prob[i] = prob[i] / norm;
             //sum += prob[i];
         }
-    //std::cout << percent*prob.size() << " ~ " << sum << "\n";
+    //std::cout << fnLGNeff*prob.size() << " ~ " << sum << "\n";
     }
     // make connections
     virtual Size connect(std::vector<Size> &idList, std::vector<Float> &strengthList, RandomEngine &rGen) {
@@ -245,11 +250,11 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 		for (Size i = 0; i < n; i++) {
 			if (uniform(rGen) < prob[i]) {
 				newList.push_back(idList[i]);
-				//if (prob[i] > 1) {
+				if (prob[i] > 1) {
 					strengthList.push_back(prob[i]);
-				//} else {
-					//strengthList.push_back(1);
-				//}
+				} else {
+					strengthList.push_back(1);
+				}
 			}
 		}
 		idList = newList;
@@ -267,7 +272,7 @@ struct SingleOpponent: LinearReceptiveField {
         this->n = n;
         this->sfreq = 0.0;
         this->phase = 0.0;
-        this->amp = amp;
+        this->amp = 0.5*amp;
         this->theta = theta;
         this->a = a;
         this->baRatio = baRatio;
@@ -276,7 +281,7 @@ struct SingleOpponent: LinearReceptiveField {
 	}
 
     Float modulate(Float x, Float y) override {
-        return 0.5;
+        return 1.0;
     }
 
     Float check_opponency(InputType iType, Float &modulation) override {
@@ -322,7 +327,7 @@ struct DoubleOpponent_CS: LinearReceptiveField {
         this->n = n;
         this->sfreq = 0.0;
         this->phase = 0.0;
-        this->amp = amp;
+        this->amp = 0.5*amp;
         this->theta = theta;
         this->a = a;
         this->baRatio = baRatio;
@@ -331,7 +336,7 @@ struct DoubleOpponent_CS: LinearReceptiveField {
 	}
 
     Float modulate(Float x, Float y) override {
-        return 0.5;
+        return 1.0;
     }
 
     Float check_opponency(InputType iType, Float &modulation) override {
@@ -352,7 +357,7 @@ struct NonOpponent_Gabor: LinearReceptiveField {
         this->n = n;
         this->sfreq = sfreq;
         this->phase = sfreq;
-        this->amp = 0.5;
+        this->amp = 0.5*amp;
         this->theta = theta;
         this->a = a;
         this->baRatio = baRatio;
@@ -388,7 +393,7 @@ struct NonOpponent_CS: LinearReceptiveField {
         this->n = n;
         this->sfreq = 0.0;
         this->phase = 0.0;
-        this->amp = amp;
+        this->amp = 0.5*amp;
         this->theta = theta;
         this->a = a;
         this->baRatio = baRatio;
@@ -397,7 +402,7 @@ struct NonOpponent_CS: LinearReceptiveField {
 	}
 
     Float modulate(Float x, Float y) override {
-        return 0.5;
+        return 1.0;
     }
 
     Float check_opponency(InputType iType, Float &modulation) override {

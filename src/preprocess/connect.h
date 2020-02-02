@@ -12,7 +12,7 @@
 struct hInitialize_package {
 	Size* mem_block;
 	Size* nTypeHierarchy; // [nHierarchy]
-    Size* typeAccCount; //[nArchtype+1];
+    Size* archtypeAccCount; //[nArchtype];
 	Float* daxn; //[nArchtype];
 	Float* dden; //[nArchtype];
 	Float* raxn; //[nArchtype];
@@ -24,7 +24,7 @@ struct hInitialize_package {
     hInitialize_package() {};
     hInitialize_package(Size nArchtype, Size nType, Size nHierarchy,
 						std::vector<Size>  &_nTypeHierarchy,
-						std::vector<Size>  &_typeAccCount,
+						std::vector<Size>  &_archtypeAccCount,
 						std::vector<Float> &_raxn,
 						std::vector<Float> &_rden,
 						std::vector<Float> &_daxn,
@@ -33,11 +33,11 @@ struct hInitialize_package {
 						std::vector<Float> &_pTypeMat,
 						std::vector<Size>  &_preTypeN) 
 	{
-		size_t memSize = (4*nArchtype + 2*nType*nType)*sizeof(Float) + (2*nArchtype + 1 + nHierarchy) * sizeof(Size);
+		size_t memSize = (4*nArchtype + 2*nType*nType)*sizeof(Float) + (2*nArchtype + nHierarchy) * sizeof(Size);
 		mem_block = new Size[memSize];
 		nTypeHierarchy = mem_block;
-		typeAccCount = nTypeHierarchy + nHierarchy;
-		daxn = (Float *) (typeAccCount + nArchtype+1);
+		archtypeAccCount = nTypeHierarchy + nHierarchy;
+		daxn = (Float *) (archtypeAccCount + nArchtype);
 		dden = daxn + nArchtype;
 		raxn = dden + nArchtype;
 		rden = raxn + nArchtype;
@@ -59,8 +59,12 @@ struct hInitialize_package {
 			}
 		}
         // nType
-        for (Size i=0; i<nArchtype+1; i++) {
-            typeAccCount[i] = _typeAccCount[i];
+        for (Size i=0; i<nArchtype; i++) {
+            archtypeAccCount[i] = _archtypeAccCount[i];
+        }
+        // nHierarchy
+        for (Size i=0; i<nHierarchy; i++) {
+            nTypeHierarchy[i] = _nTypeHierarchy[i];
         }
 	}
 	void freeMem() {
@@ -71,7 +75,7 @@ struct hInitialize_package {
 struct initialize_package {
 	char* mem_block;
 	Size* nTypeHierarchy; // [nHierarchy]
-    Size* typeAccCount; //[nArchtype+1];
+    Size* archtypeAccCount; //[nArchtype];
 	Float* daxn; //[nArchtype];
 	Float* dden; //[nArchtype];
 	Float* raxn; //[nArchtype];
@@ -82,11 +86,11 @@ struct initialize_package {
 
     initialize_package() {};
     initialize_package(Size nArchtype, Size nType, Size nHierarchy, hInitialize_package &host) {
-		size_t memSize = (4*nArchtype + 2*nType*nType)*sizeof(Float) + (2*nArchtype + 1 + nHierarchy) * sizeof(Size);
+		size_t memSize = (4*nArchtype + 2*nType*nType)*sizeof(Float) + (2*nArchtype + nHierarchy) * sizeof(Size);
         checkCudaErrors(cudaMalloc((void**)&mem_block, memSize));
 		nTypeHierarchy = (Size*) mem_block;
-		typeAccCount = nTypeHierarchy + nHierarchy;
-		daxn = (Float *) (typeAccCount + nArchtype+1);
+		archtypeAccCount = nTypeHierarchy + nHierarchy;
+		daxn = (Float *) (archtypeAccCount + nArchtype);
 		dden = daxn + nArchtype;
 		raxn = dden + nArchtype;
 		rden = raxn + nArchtype;
@@ -112,7 +116,7 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
                            Float* __restrict__ preS_type,
                            Float* __restrict__ preP_type,
                            Size*  __restrict__ preN,
-						   Int* __restrict__ preFixType, // nHierarchy * networkSize
+						   Size* __restrict__ preFixType, // nSubHierarchy * networkSize
                            initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nHierarchy); 
 
 __global__ 
@@ -150,9 +154,10 @@ void generate_connections(double* __restrict__ pos,
                           Size* __restrict__ preTypeAvail,
                           Float* __restrict__ preTypeStrSum,
                           Size* __restrict__ preType,
+                          Float* __restrict__ feature,
                           Float* __restrict__ dden,
                           Float* __restrict__ daxn,
                           curandStateMRG32k3a* __restrict__ state,
-                          Size networkSize, Size maxDistantNeighbor, Size maxNeighborBlock, Float speedOfThought, Size nType, bool gaussian_profile);
+                          Size networkSize, Size maxDistantNeighbor, Size maxNeighborBlock, Float speedOfThought, Size nType, Size nFeature, bool gaussian_profile);
 
 #endif

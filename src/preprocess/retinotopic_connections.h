@@ -14,8 +14,12 @@
 #include <functional>
 #include <cuda.h>
 #include <helper_cuda.h>
+#include <curand_kernel.h>
+#include <boost/program_options.hpp>
+#include "../util/po.h"
 #include "../types.h"
 #include "../util/util.h"
+#include "../MACRO.h"
 #include "Dow_et_al_1981.h"
 #include "RFtype.h"
 

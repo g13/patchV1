@@ -72,6 +72,7 @@ class macroMap:
 
         if VF_file is not None:
             with open(VF_file,'r') as f:
+                np.fromfile(f, 'u4', count = 1)
                 self.vpos = np.reshape(np.fromfile(f, 'f8', count = self.networkSize*2),self.pos.shape)
 
         if OD_file is not None:
@@ -645,14 +646,14 @@ class macroMap:
             pick = np.random.choice(nLR, nsLR, replace = False)
             #pick = np.arange(nLR)
 
-        final = True 
-        if not final:
+        continuous = True 
+        if continuous:
             spreaded = False # at least one time
             ip = 0
             ppos = None
             starting = True
             while spreaded is False:
-                self.vpos[:, LRpick], LR, spreaded, ppos, ip, OD_bound = self.spread(dt, self.vpos[:, LRpick], LR, particle_param, boundary_param, ax, pick, ppos, ip, starting, p_scale = p_scale, b_scale = b_scale)
+                self.vpos[:, LRpick], LR, spreaded, ratio, ppos, ip, OD_bound = self.spread(dt, self.vpos[:, LRpick], LR, particle_param, boundary_param, ax, pick, ppos, ip, starting, p_scale = p_scale, b_scale = b_scale)
                 starting = False
                 print(f'{np.sum(LR).astype(int)}/{ngrid}')
                 with open(vpfile,'wb') as f:
@@ -660,7 +661,7 @@ class macroMap:
                 with open(lrfile,'wb') as f:
                     LR.tofile(f)
         else:
-            self.vpos[:, LRpick], _, _, OD_bound = self.spread(dt, self.vpos[:, LRpick], LR, particle_param, boundary_param, ax = None, pick = None, p_scale = p_scale, b_scale = b_scale)
+            self.vpos[:, LRpick], LR, _, _, OD_bound = self.spread(dt, self.vpos[:, LRpick], LR, particle_param, boundary_param, ax = None, pick = None, p_scale = p_scale, b_scale = b_scale)
             with open(vpfile,'wb') as f:
                 self.vpos[:, LRpick].tofile(f)
             with open(lrfile,'wb') as f:
@@ -670,11 +671,11 @@ class macroMap:
             ax.plot(OD_bound[:,0,[0,2]].squeeze(), OD_bound[:,1,[0,2]].squeeze(), ',r')
             # grid centers
             ax.plot(OD_bound[:,0,1].squeeze(), OD_bound[:,1,1].squeeze(), ',g')
-            if final:
+            #if not continuous:
                 # plot all displacement
-                ax.plot(np.vstack((self.pos[0,LRpick], self.vpos[0,LRpick])), np.vstack((self.pos[1,LRpick], self.vpos[1,LRpick])),'-,c', lw =0.01)
+            ax.plot(np.vstack((self.pos[0,LRpick], self.vpos[0,LRpick])), np.vstack((self.pos[1,LRpick], self.vpos[1,LRpick])),'-,c', lw =0.01)
             # final positions
-            ax.plot(self.vpos[0,LRpick], self.vpos[1,LRpick], ',k')
+            #ax.plot(self.vpos[0,LRpick], self.vpos[1,LRpick], ',k')
 
         # check only the relevant boundary
         if LRlabel == 'L':
@@ -700,7 +701,8 @@ class macroMap:
         n = pos.shape[1]
         LR, spreaded = self.diffuse_bound(LR)
         area = subarea * np.sum(LR == 1)
-        print(f'area increases {area/old_area}%')
+        ratio = area/old_area
+        print(f'area increases {ratio*100}%')
         
         OD_bound, btype = self.define_bound(LR)
 
@@ -716,9 +718,9 @@ class macroMap:
             ppos[ip%2,:,:] = pos[:,pick].copy()
             ax.plot(ppos[:,0,:].squeeze(), ppos[:,1,:].squeeze(), '-,c', lw = 0.01)
 
-            return pos, LR, spreaded, ppos, ip, OD_bound
+            return pos, LR, spreaded, ratio, ppos, ip, OD_bound
         else:
-            return pos, LR, spreaded, OD_bound
+            return pos, LR, spreaded, ratio, OD_bound
 
     def get_ij_grid(self, get_d2 = True, get_coord = True):
         print('get the index of the nearest vertex for each neuron in its own grid')
@@ -796,7 +798,6 @@ class macroMap:
                 ax1.scatter(self.pos[0,pick], self.pos[1,pick], s = (2*72/dpi)**2, linewidths=0.0, marker = '.', c = hsv(self.op[pick]))
                 #for i in np.arange(sum(pick)):
                 #    ax1.plot(self.pos[0,pick][i], self.pos[1,pick][i], markersize = 1/dpi, marker = ',', c = hsv(self.op[pick][i]))
-                print('50% done')
                 pick = self.ODlabel<0 
                 hsv_val = np.asarray(hsv(self.op[pick]), dtype = float)
                 hsv_val[0,:] = 0.75
@@ -844,7 +845,7 @@ class macroMap:
                         plt.polar(self.p_range, self.e_range[ie]+np.zeros(self.npolar),':',c='0.5', lw = 0.1)
 
 
-    def save(self, pos_file = None, OD_file = None, OP_file = None, VF_file = None):
+    def save(self, pos_file = None, OD_file = None, OP_file = None, VF_file = None, Feature_file = None, fp = 'f4'):
         if pos_file is not None:
             with open(pos_file,'wb') as f:
                 np.array([self.nblock, self.blockSize, self.dataDim]).astype('u4').tofile(f)        
@@ -854,9 +855,11 @@ class macroMap:
                 if self.dataDim == 3:
                     pos[:,2,:] = self.zpos
                 pos.tofile(f)
+
         if OD_file is not None:
             with open(OD_file,'wb') as f:
                 self.ODlabel.tofile(f)
+
         if OP_file is not None:
             if not self.pOPready:
                 if not self.assign_pos_OP() is None:
@@ -865,7 +868,14 @@ class macroMap:
 
         if VF_file is not None:
             with open(VF_file,'wb') as f:
+                np.array([self.networkSize]).astype('u4').tofile(f)
                 self.vpos.tofile(f)
+
+        if Feature_file is not None:
+            with open(Feature_file,'wb') as f:
+                np.array([2]).astype('u4').tofile(f)
+                self.ODlabel.astype(fp).tofile(f)
+                self.op.astype(fp).tofile(f)
 
 ######## rarely-used functions ##############
     #

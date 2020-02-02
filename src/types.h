@@ -8,11 +8,13 @@ typedef float Float;
 typedef float Double;
 //#define DOUBLE_PRECISION
 typedef unsigned int Size;
-typedef unsigned int BigSize;
+typedef long unsigned int BigSize;
 typedef unsigned int SmallSize;
 typedef unsigned int PosInt;
 typedef long unsigned int PosIntL;
 typedef std::default_random_engine RandomEngine;
+typedef Float (*pFeature) (Float, Float);
+
 #define M_PI 3.14159265358979323846  /* pi */
 
 #endif
