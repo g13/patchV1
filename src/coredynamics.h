@@ -3,104 +3,109 @@
 
 #include <curand_kernel.h>
 #include <cassert>
-#include "DIRECTIVE.h"
-#include "CUDA_MACRO.h"
+#include "MACRO.h"
+#include "CONST.h"
 #include "condShape.h"
+#include "util/cuda_util.h"
+#include "types.h"
+#include "rk2.h"
 
-__global__ void logRand_init(_float *logRand, curandStateMRG32k3a *state, unsigned long long seed, _float *lTR, _float dInput, unsigned int offset);
+__global__ 
+void logRand_init(Float *logRand,
+                  curandStateMRG32k3a *state,
+                  BigSize seed,
+                  Float *lTR,
+                  Float dInput,
+                  Size offset);
 
-__global__ void preMatRandInit(_float* __restrict__ preMat, 
-						       _float* __restrict__ v, 
-						       curandStateMRG32k3a* __restrict__ state,
-_float sEE, _float sIE, _float sEI, _float sII, unsigned int networkSize, unsigned int nE, unsigned long long seed);
+__global__ 
+void preMatRandInit(Float* __restrict__ preMat, 
+					Float* __restrict__ v, 
+					curandStateMRG32k3a* __restrict__ state,
+                    Float sEE, Float sIE, Float sEI, Float sII,
+                    Size networkSize, Size nE, BigSize seed);
 
-__global__ void f_init(_float* __restrict__ f, unsigned networkSize, unsigned int nE, unsigned int ngType, _float Ef, _float If);
+__global__ 
+void f_init(Float* __restrict__ f,
+            Size networkSize, Size nE, Size ngType,
+            Float Ef, Float If);
 
-#if SCHEME < 2
-    #ifdef SPIKE_CORRECTION
+__launch_bounds__(blockSize, 1)
+__global__ 
+void compute_V_without_ssc(Float* __restrict__ v,
+                           Float* __restrict__ gE,
+                           Float* __restrict__ gI,
+                           Float* __restrict__ hE,
+                           Float* __restrict__ hI,
+                           Float* __restrict__ preMat,
+                           Float* __restrict__ inputRateE,
+                           Float* __restrict__ inputRateI,
+                           Int* __restrict__ eventRateE,
+                           Int* __restrict__ eventRateI,
+                           Float* __restrict__ spikeTrain,
+                           Size* __restrict__ nSpike,
+                           Float* __restrict__ tBack,
+                           Float* __restrict__ fE,
+                           Float* __restrict__ fI,
+                           Float* __restrict__ leftTimeRateE,
+                           Float* __restrict__ leftTimeRateI,
+                           Float* __restrict__ lastNegLogRandE,
+                           Float* __restrict__ lastNegLogRandI,
+                           curandStateMRG32k3a* __restrict__ stateE,
+                           curandStateMRG32k3a* __restrict__ stateI,
+                           ConductanceShape condE, ConductanceShape condI, Float dt, Size networkSize, Size nE, BigSize seed, Float dInputE, Float dInputI, Float t);
 
-        __global__ void
-        __launch_bounds__(blockSize, 1)
-        compute_V(_float* __restrict__ v,
-                  _float* __restrict__ gE,
-                  _float* __restrict__ gI,
-                  _float* __restrict__ hE,
-                  _float* __restrict__ hI,
-                  _float* __restrict__ preMat,
-                  _float* __restrict__ inputRateE,
-                  _float* __restrict__ inputRateI,
-                  int* __restrict__ eventRateE,
-                  int* __restrict__ eventRateI,
-                  _float* __restrict__ spikeTrain,
-                  unsigned int* __restrict__ nSpike,
-                  _float* __restrict__ tBack,
-                  _float* __restrict__ fE,
-                  _float* __restrict__ fI,
-                  _float* __restrict__ leftTimeRateE,
-                  _float* __restrict__ leftTimeRateI,
-                  _float* __restrict__ lastNegLogRandE,
-                  _float* __restrict__ lastNegLogRandI,
-                  curandStateMRG32k3a* __restrict__ stateE,
-                  curandStateMRG32k3a* __restrict__ stateI,
-                  ConductanceShape condE, ConductanceShape condI, _float dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, _float dInputE, _float dInputI, _float t);
-
-    #else
-
-        __global__ void
-        __launch_bounds__(blockSize, 1)
-        compute_V_without_ssc(_float* __restrict__ v,
-                              _float* __restrict__ gE,
-                              _float* __restrict__ gI,
-                              _float* __restrict__ hE,
-                              _float* __restrict__ hI,
-                              _float* __restrict__ preMat,
-                              _float* __restrict__ inputRateE,
-                              _float* __restrict__ inputRateI,
-                              int* __restrict__ eventRateE,
-                              int* __restrict__ eventRateI,
-                              _float* __restrict__ spikeTrain,
-                              unsigned int* __restrict__ nSpike,
-                              _float* __restrict__ tBack,
-                              _float* __restrict__ fE,
-                              _float* __restrict__ fI,
-                              _float* __restrict__ leftTimeRateE,
-                              _float* __restrict__ leftTimeRateI,
-                              _float* __restrict__ lastNegLogRandE,
-                              _float* __restrict__ lastNegLogRandI,
-                              curandStateMRG32k3a* __restrict__ stateE,
-                              curandStateMRG32k3a* __restrict__ stateI,
-                              ConductanceShape condE, ConductanceShape condI, _float dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, _float dInputE, _float dInputI, _float t);
-
-    #endif
-#else
-
-
+/*
     __global__ void
     __launch_bounds__(blockSize, 1)
-    int_V(_float* __restrict__ v,
-    	  _float* __restrict__ dVs,
-          _float* __restrict__ gE,
-          _float* __restrict__ gI,
-          _float* __restrict__ hE,
-          _float* __restrict__ hI,
-          _float* __restrict__ preMat,
-          _float* __restrict__ inputRateE,
-          _float* __restrict__ inputRateI,
+    int_V(Float* __restrict__ v,
+    	  Float* __restrict__ dVs,
+          Float* __restrict__ gE,
+          Float* __restrict__ gI,
+          Float* __restrict__ hE,
+          Float* __restrict__ hI,
+          Float* __restrict__ preMat,
+          Float* __restrict__ inputRateE,
+          Float* __restrict__ inputRateI,
           int* __restrict__ eventRateE,
           int* __restrict__ eventRateI,
-          _float* __restrict__ spikeTrain,
-          unsigned int* __restrict__ nSpike,
-          _float* __restrict__ tBack,
-          _float* __restrict__ fE,
-          _float* __restrict__ fI,
-          _float* __restrict__ leftTimeRateE,
-          _float* __restrict__ leftTimeRateI,
-          _float* __restrict__ lastNegLogRandE,
-          _float* __restrict__ lastNegLogRandI,
+          Float* __restrict__ spikeTrain,
+          Size* __restrict__ nSpike,
+          Float* __restrict__ tBack,
+          Float* __restrict__ fE,
+          Float* __restrict__ fI,
+          Float* __restrict__ leftTimeRateE,
+          Float* __restrict__ leftTimeRateI,
+          Float* __restrict__ lastNegLogRandE,
+          Float* __restrict__ lastNegLogRandI,
           curandStateMRG32k3a* __restrict__ stateE,
           curandStateMRG32k3a* __restrict__ stateI,
-          ConductanceShape condE, ConductanceShape condI, _float dt, unsigned int networkSize, unsigned int nE, unsigned long long seed, _float dInputE, _float dInputI, _float t);
+          ConductanceShape condE, ConductanceShape condI, Float dt, Size networkSize, Size nE, BigSize seed, Float dInputE, Float dInputI, Float t);
 
-#endif
+        __global__ void
+        __launch_bounds__(blockSize, 1)
+        compute_V(Float* __restrict__ v,
+                  Float* __restrict__ gE,
+                  Float* __restrict__ gI,
+                  Float* __restrict__ hE,
+                  Float* __restrict__ hI,
+                  Float* __restrict__ preMat,
+                  Float* __restrict__ inputRateE,
+                  Float* __restrict__ inputRateI,
+                  int* __restrict__ eventRateE,
+                  int* __restrict__ eventRateI,
+                  Float* __restrict__ spikeTrain,
+                  Size* __restrict__ nSpike,
+                  Float* __restrict__ tBack,
+                  Float* __restrict__ fE,
+                  Float* __restrict__ fI,
+                  Float* __restrict__ leftTimeRateE,
+                  Float* __restrict__ leftTimeRateI,
+                  Float* __restrict__ lastNegLogRandE,
+                  Float* __restrict__ lastNegLogRandI,
+                  curandStateMRG32k3a* __restrict__ stateE,
+                  curandStateMRG32k3a* __restrict__ stateI,
+                  ConductanceShape condE, ConductanceShape condI, Float dt, Size networkSize, Size nE, BigSize seed, Float dInputE, Float dInputI, Float t);
+*/
 
 #endif
