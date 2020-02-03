@@ -4,9 +4,35 @@
 #include <vector>
 #include <iostream>
 #include <utility>
+#include <cuda.h>
+#include <curand_kernel.h>
 #include "../util/util.h"
 #include "../types.h"
 std::vector<Float> generate_sfreq(const Size n, RandomEngine &rGen);
 std::vector<Float> generate_baRatio(const Size n, RandomEngine &rGen);
-Float mapping_rule(const Float ecc, const Float normalRand, RandomEngine &rGen);
+Float mapping_rule(const Float ecc, const Float normalRand, RandomEngine &rGen, Float LGN_V1_RFratio);
+
+// map ecc to radius
+__device__
+__forceinline__
+Float mapping_rule_CUDA(Float ecc, curandStateMRG32k3a rGen, Float LGN_V1_RFratio) {
+	// *** set LGN contribution of the total RF size
+	const Float ratio = sqrt(LGN_V1_RFratio / M_PI);
+	// Dow et al., 1981 Fig. 7 TODO: consider generalized extreme value distribution
+	const Float a = 13.32f; //13.32f;
+	const Float b = 0.037f;
+	const Float mean = a + b * ecc;
+	const Float std = 3.0; // it is NOT the scatter in the paper, which means the VF center's scatter around an electrode
+	const Float lower_bound = 3.0; // TODO: look for the min(LGN RF size, V1 neuron RF size)
+    // R = sqrt(area)
+	Float R = mean + curand_normal(&rGen)*std;
+	
+	if (R < lower_bound) {
+		// rarely rethrow
+		do {
+			R = mean + curand_normal(&rGen)*std;
+		} while (R < lower_bound);
+	}
+	return ratio*R;
+}
 #endif

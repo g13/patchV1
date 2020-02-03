@@ -171,7 +171,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 		prob.clear();
 	}
  
-    virtual Size construct_connection(std::vector<Float> &x, std::vector<Float> &y, std::vector<InputType> &iType, std::vector<Size> &idList, std::vector<Float> &strengthList, RandomEngine &rGen, Float fnLGNeff) {
+    virtual Size construct_connection(std::vector<Float> &x, std::vector<Float> &y, std::vector<InputType> &iType, std::vector<Size> &idList, std::vector<Float> &strengthList, RandomEngine &rGen, Float fnLGNeff, bool p_n) {
         Size nConnected;
         if (n > 0) {
 		    prob.reserve(n);
@@ -200,7 +200,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                     }
                 } */
             }
-            normalize(fnLGNeff);
+            normalize(fnLGNeff, p_n);
             // make connection and update ID and strength list
             nConnected = connect(idList, strengthList, rGen);
         }  else {
@@ -227,9 +227,14 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         return envelope * (1.0 + amp * opponent * modulation);
     }
     // normalize prob.
-    void normalize(Float fnLGNeff) {
+    void normalize(Float fnLGNeff, bool p_n) {
 	    // average connection probability is controlled at fnLGNeff.
-        const Float norm = std::accumulate(prob.begin(), prob.end(), 0.0) / fnLGNeff;
+		Float norm;
+        if (p_n) { // if percentage
+            norm = std::accumulate(prob.begin(), prob.end(), 0.0) / (fnLGNeff*prob.size());
+        } else { // number restriction
+            norm = std::accumulate(prob.begin(), prob.end(), 0.0) / fnLGNeff;
+        }
 	    //std::cout << "norm = " << norm << "\n";
 	    //print_list<Float>(prob);
 	    assert(!isnan(norm));

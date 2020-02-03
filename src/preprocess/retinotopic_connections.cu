@@ -73,7 +73,7 @@ void LR2original(vector<T> &seqByLR, vector<T> &original, vector<Int> LR, Size n
 vector<vector<Float>> retinotopic_connection(
         vector<vector<Size>> &poolList,
         RandomEngine &rGen,
-        const Size nLGNeff,
+        const Float p_n_LGNeff,
         const Size n,
 		const pair<vector<Float>, vector<Float>> &cart, // V1 VF position (tentative)
         const pair<vector<Float>,vector<Float>> &cart0, // LGN VF position
@@ -144,14 +144,14 @@ vector<vector<Float>> retinotopic_connection(
 					break;
 				default: throw "no such type of receptive field for V1 so defined (./src/preprocess/RFtype.h";
 			}
+			// construct pooled LGN neurons' connection to the V1 neuron
 			vector<Float> strengthList;
             if (SimpleComplex == 0) {
 			    RF->setup_param(m, sfreq[i], phase[i], modAmp_nCon[i], theta[i], a[i], baRatio[i], RefType[i]);
-			    // construct pooled LGN neurons' connection to the V1 neuron
-			    m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen, nLGNeff*1.0);
+			    m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen, p_n_LGNeff*1.0, p_n_LGNeff < 0);
             } else {
 			    RF->setup_param(m, sfreq[i], phase[i], 1.0, theta[i], a[i], baRatio[i], RefType[i]);
-			    m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen, nLGNeff*modAmp_nCon[i]);
+			    m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen, p_n_LGNeff*modAmp_nCon[i], p_n_LGNeff < 0);
             }
 			srList.push_back(strengthList);
 			if (m > 0) { 
@@ -192,8 +192,8 @@ vector<Size> draw_from_radius(
         const Float radius) {
     vector<Size> index;
 
-    Float mx = 0.0f;
-    Float my = 0.0f;
+    //Float mx = 0.0f;
+    //Float my = 0.0f;
 	//Float min_dis;
 	//Size min_id;
     for (Size i=start; i<end; i++) {
@@ -208,8 +208,8 @@ vector<Size> draw_from_radius(
 		}*/
         if (dis < radius) {
             index.push_back(i);
-            mx = mx + cart.first[i];
-            my = my + cart.second[i];
+			//mx = mx + cart.first[i];
+			//my = my + cart.second[i];
         }
     }
 	/*
@@ -222,6 +222,13 @@ vector<Size> draw_from_radius(
     return index;
 }
 
+__device__
+__forceinline__
+Float get_distance(Float x, Float y) {
+	return square_root(x*x + y*y);
+}
+
+__launch_bounds__(1024,2)
 __global__
 void vf_pool_CUDA( // for each eye
 	Float* __restrict__ x,
@@ -231,32 +238,62 @@ void vf_pool_CUDA( // for each eye
     Float* __restrict__ VFposEcc,
     Float* __restrict__ baRatio,
     Float* __restrict__ a,
+    Size* __restrict__ poolList,
+    Size* __restrict__ nPool,
     Size i0, Size n,
     Size j0, Size m,
-    Size maxLGNpoolPerV1, // total LGN size to the eye
+    BigSize seed,
+    Float LGN_V1_RFratio,
+    Size maxLGNperV1pool // total LGN size to the eye
 ) {
     __shared__ Float sx[blockSize]; 
     __shared__ Float sy[blockSize]; 
     Size V1_id = i0 + blockDim.x*blockIdx.x + threadIdx.x;
-    // load LGN pos to __shared__
-    nPatch = (m + blockSize - 1)/blockSize;
-    remain = m%blockSize;
+    Size nPatch = (m + blockSize - 1)/blockSize;
+    Size nRemain = m%blockSize;
     curandStateMRG32k3a rGen;
-    Float V1_x, V1_y;
-    if (V1_id < n) {
-        Float V1_x = x[i0 + V1_id];
-        Float V1_y = y[i0 + V1_id];
-        curand_init(seed + V1_id, 0, 0, &rGen)
+    Float V1_x, V1_y, r;
+    if (V1_id < n) { // get radius
+        Float ecc = VFposEcc[V1_id];
+        Float baR = baRatio[V1_id];
+        V1_x = x[V1_id];
+        V1_y = y[V1_id];
+		curand_init(seed + V1_id, 0, 0, &rGen);
+        Float R = mapping_rule_CUDA(ecc*60.0, rGen, LGN_V1_RFratio)/60.0;
+        // R = sqrt(area)
+        Float sqr = square_root(M_PI*baR);
+		Float local_a = R/sqr;
+        a[V1_id] = local_a;
+        Float b = R*sqr/M_PI;
+        r = (local_a > b)? local_a: b;
     }
+    // scan and pooling LGN
+    Size iPool = 0;
     for (Size iPatch = 0; iPatch < nPatch; iPatch++) {
-        if (iPatch < nPatch - 1 || threadIdx.x < remain) {
-            Size LGN_id = j0 + iPatch*blockSize + threadIdx.x;  
+        // load LGN pos to __shared__
+        Size nLGN;
+        if (iPatch < nPatch - 1 || threadIdx.x < nRemain) {
+            Size LGN_id = j0 + iPatch*blockSize + threadIdx.x;
             sx[threadIdx.x] = x0[LGN_id];
             sy[threadIdx.x] = y0[LGN_id];
+            if (iPatch < nPatch - 1) {
+                nLGN = blockSize;
+            } else {
+                nLGN = nRemain;
+            }
         }
         __syncthreads();
-        //
+        // check for distance
+        for (Size i = 0; i < nLGN; i++) {
+            Size iLGN = (threadIdx.x + i)%nLGN;
+            Float dis = get_distance(sx[iLGN]-V1_x, sy[iLGN]-V1_y);
+            if (dis < r) {
+                poolList[V1_id*maxLGNperV1pool + iPool] = j0 + iPatch*blockSize + iLGN;
+                iPool++;
+            }
+        }
     }
+    nPool[V1_id] = iPool;
 }
 
 /* 
@@ -289,10 +326,10 @@ void vf_pool_CUDA( // for each eye
 */
 
 vector<vector<Size>> retinotopic_vf_pool(
-        const pair<vector<Float>,vector<Float>> &cart,
-        const pair<vector<Float>,vector<Float>> &cart0,
-        const vector<Float> &VFposEcc,
-        const bool use_cuda,
+        pair<vector<Float>,vector<Float>> &cart,
+        pair<vector<Float>,vector<Float>> &cart0,
+        vector<Float> &VFposEcc,
+        bool useCuda,
         RandomEngine &rGen,
         vector<Float> &baRatio,
         vector<Float> &a,
@@ -300,62 +337,70 @@ vector<vector<Size>> retinotopic_vf_pool(
         Size nL,
         Size mL,
         Size m,
-        Size maxLGNpoolPerV1
+        Size maxLGNperV1pool,
+		BigSize seed,
+		Float LGN_V1_RFratio
 ) {
     vector<vector<Size>> poolList;
     const Size n = cart.first.size();
-    vector<Float> xLR, yLR, baRatioLR, aLR, VFposEccLR;
-    original2LR(cart.first[0], xLR, LR, nL);
-    original2LR(cart.second[0], yLR, LR, nL);
-    original2LR(baRatio, baRatioLR, LR, nL);
-    original2LR(a, aLR, LR, nL);
-    original2LR(VFposEcc, VFposEccLR, LR, nL);
         
     poolList.reserve(n);
-    if (use_cuda) {
+    if (useCuda) {
+		vector<Float> xLR, yLR, baRatioLR, VFposEccLR;
+		original2LR(cart.first, xLR, LR, nL);
+		original2LR(cart.second, yLR, LR, nL);
+		original2LR(baRatio, baRatioLR, LR, nL);
+		original2LR(VFposEcc, VFposEccLR, LR, nL);
         Float *d_memblock;
-        Size d_memSize = ((2+3)*n + 2*m)*sizeof(Float) + (n*maxLGNpoolPerV1 + n)*sizeof(Size);
+        Size d_memSize = ((2+3)*n + 2*m)*sizeof(Float) + (n*maxLGNperV1pool + n)*sizeof(Size);
         checkCudaErrors(cudaMalloc((void **) &d_memblock, d_memSize));
+		cout << "need global memory of " << d_memSize / 1024.0 / 1024.0 / 4.0 << "mb\n";
         Float* d_x = d_memblock;
         Float* d_y = d_x + n;
         Float* d_x0 = d_y + n;
         Float* d_y0 = d_x0 + m;
         Float* d_baRatio = d_y0 + m;
-        Float* d_a = d_baRatio + n;
+        Float* d_a = d_baRatio + n; // to be filled
         Float* d_VFposEcc = d_baRatio + n;
+		// to be filled
         Size* d_poolList = (Size*) (d_VFposEcc + n);
-        Size* d_nPool = d_poolList + n*maxLGNpoolPerV1;
+        Size* d_nPool = d_poolList + n*maxLGNperV1pool;
 
         checkCudaErrors(cudaMemcpy(d_x, &(yLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpy(d_y, &(xLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpy(d_x0, &(cart0.first[0]), m*sizeof(Float), cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpy(d_y0, &(cart0.second[0]), m*sizeof(Float), cudaMemcpyHostToDevice));
-        checkCudaErrors(cudaMemcpy(d_a, &(aLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpy(d_baRatio, &(baRatioLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpy(d_VFposEcc, &(VFposEccLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
 
-        Size nblock = (nL+blockSize-1)/blockSize;
-        vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, 0, nL, 0, mL, maxLGNpoolPerV1);
+        Size nblock = (nL + blockSize-1)/blockSize;
+        cout <<  "<<<" << nblock << ", " << blockSize << ">>>\n";
+        vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_poolList, d_nPool, 0, nL, 0, mL, seed, LGN_V1_RFratio, maxLGNperV1pool);
         getLastCudaError("vf_pool for the left eye failed");
 
-        nblock = (nR+blockSize-1)/blockSize;
-        vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, nL, n, mL, m, maxLGNpoolPerV1);
-
+		nblock = (n-nL + blockSize-1) / blockSize;
+        cout <<  "<<<" << nblock << ", " << blockSize << ">>>\n";
+        vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_poolList, d_nPool, nL, n-nL, mL, m-mL, seed, LGN_V1_RFratio, maxLGNperV1pool);
         getLastCudaError("vf_pool for the right eye failed");
-        Size* poolListArray = new Size[n*maxLGNpoolPerV1];
-        Size* nPool = new Size[n*maxLGNpoolPerV1];
-        checkCudaErrors(cudaMemcpy(poolListArray, d_poolList, n*maxLGNpoolPerV1*sizeof(Size), cudaMemcpyDeviceToHost));
+		vector<vector<Size>> poolListLR;
+        Size* poolListArray = new Size[n*maxLGNperV1pool];
+        Size* nPool = new Size[n*maxLGNperV1pool];
+		vector<Float> aLR(n);
+        checkCudaErrors(cudaMemcpy(&aLR[0], d_a, n*sizeof(Float), cudaMemcpyDeviceToHost));
+        checkCudaErrors(cudaMemcpy(poolListArray, d_poolList, n*maxLGNperV1pool*sizeof(Size), cudaMemcpyDeviceToHost));
         checkCudaErrors(cudaMemcpy(nPool, d_nPool, n*sizeof(Size), cudaMemcpyDeviceToHost));
         for (Size i=0; i<n; i++) {
             vector<Size> iPool;
             iPool.reserve(nPool[i]);
             for (Size j=0; j<nPool[i]; j++) {
-                iPool[j].push_back(poolListArray[i*maxLGNpoolPerV1 + j]);
+                iPool.push_back(poolListArray[i*maxLGNperV1pool + j]);
             }
-            poolList.push_back(iPool);
+            poolListLR.push_back(iPool);
         }
         delete []poolListArray;
         delete []nPool;
+		LR2original(poolListLR, poolList, LR, nL);
+		LR2original(aLR, a, LR, nL);
     } else {
         vector<Float> normRand;
         vector<Float> rMap;
@@ -371,7 +416,7 @@ vector<vector<Size>> retinotopic_vf_pool(
         // find radius from mapping rule at (e,p)
         for (Size i=0; i<n; i++) {
 			// convert input eccentricity to mins and convert output back to degrees.
-            Float R = mapping_rule(VFposEcc[i]*60, normRand[i], rGen)/60.0;
+            Float R = mapping_rule(VFposEcc[i]*60, normRand[i], rGen, LGN_V1_RFratio)/60.0;
             a.push_back(R/sqrt(M_PI*baRatio[i]));
             Float b = R*R/M_PI/a[i];
             if (a[i] > b) {
@@ -394,9 +439,29 @@ vector<vector<Size>> retinotopic_vf_pool(
  
 // unit test
 int main(int argc, char *argv[]) {
+
+    cudaDeviceProp deviceProps;
+    checkCudaErrors(cudaGetDeviceProperties(&deviceProps, 0));
+    printf("CUDA device [%s] has %d Multi-Processors ", deviceProps.name, deviceProps.multiProcessorCount);
+    printf("SM %d.%d\n", deviceProps.major, deviceProps.minor);
+    printf("total global memory: %f Mb.\n", deviceProps.totalGlobalMem/1024.0/1024.0);
+
+#ifdef SINGLE_PRECISION
+    cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeFourByte);
+#else
+    cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
+#endif
+    printf("maximum threads per MP: %d.\n", deviceProps.maxThreadsPerMultiProcessor);
+    printf("shared memory per block: %zu bytes.\n", deviceProps.sharedMemPerBlock);
+    printf("registers per block: %d.\n", deviceProps.regsPerBlock);
+    cout << "\n";
+    
 	namespace po = boost::program_options;
-    Size nLGNeff;
+    bool readFromFile, useCuda;
+	Float p_n_LGNeff;
+	Size maxLGNperV1pool;
     Int SimpleComplex;
+    Float LGN_V1_RFratio;
     BigSize seed;
     vector<Size> nRefTypeV1_RF, V1_RefTypeID;
     vector<Float> V1_RFtypeAccDist, V1_RefTypeDist;
@@ -406,18 +471,22 @@ int main(int argc, char *argv[]) {
 	generic.add_options()
 		("help,h", "print usage")
 		("seed,s", po::value<BigSize>(&seed)->default_value(1885124), "random seed")
+		("readFromFile,f", po::value<bool>(&readFromFile)->default_value(false), "whether to read V1 RF properties from file")
+		("useCuda,u", po::value<bool>(&useCuda)->default_value(false), "whether to use cuda")
 		("cfg_file,c", po::value<string>()->default_value("LGN_V1.cfg"), "filename for configuration file");
 
 	po::options_description input_opt("input options");
 	input_opt.add_options()
-		("nLGNeff", po::value<Size>(&nLGNeff)->default_value(10), "LGN conneciton probability")
+		("p_n_LGNeff", po::value<Float>(&p_n_LGNeff)->default_value(10), "LGN conneciton probability")
+		("LGN_V1_RFratio,r", po::value<Float>(&LGN_V1_RFratio)->default_value(0.5), "LGN's contribution to the total RF size")
+		("maxLGNperV1pool,m", po::value<Size>(&maxLGNperV1pool)->default_value(100), "maximum pooling of LGN neurons per V1 neuron")
 		("SimpleComplex", po::value<Int>(&SimpleComplex), "determine how simple complex is implemented, through modulation modAmp_nConlitude(0) or number of LGN connection(1)")
 		("V1_RFtypeAccDist", po::value<vector<Float>>(&V1_RFtypeAccDist), "determine the relative portion of each V1 RF type")
 		("nRefTypeV1_RF", po::value<vector<Size>>(&nRefTypeV1_RF), "determine the number of cone/ON-OFF combinations for each V1 RF type")
 		("V1_RefTypeID", po::value<vector<Size>>(&V1_RefTypeID), "determine the ID of the available cone/ON-OFF combinations in each V1 RF type")
 		("V1_RefTypeDist", po::value<vector<Float>>(&V1_RefTypeDist), "determine the relative portion of the available cone/ON-OFF combinations in each V1 RF type")
 		("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file that stores V1 neurons' parameters")
-		("fV1_RFprop", po::value<string>(&V1_RFprop_filename)->default_value(""), "file that stores V1 neurons' parameters")
+		("fV1_RFprop", po::value<string>(&V1_RFprop_filename)->default_value("V1_RFprop.bin"), "file that stores V1 neurons' parameters")
 		("fLGN", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"), "file that stores LGN position in visual field (and on-cell off-cell label)")
 		("fV1_vpos", po::value<string>(&V1_vpos_filename)->default_value("V1_vpos.bin"), "file that stores V1 position in visual field)");
 
@@ -461,19 +530,29 @@ int main(int argc, char *argv[]) {
 	fV1_vpos.read(reinterpret_cast<char*>(size_pointer), sizeof(Size));
     cout << n << " post-synaptic neurons\n";
 	//temporary vectors to get coordinate pairs
-	vector<double> dx(n);
-	vector<double> dy(n);
-	fV1_vpos.read(reinterpret_cast<char*>(&dx[0]), n * sizeof(double));
-	fV1_vpos.read(reinterpret_cast<char*>(&dy[0]), n * sizeof(double));
+	vector<double> decc(n);
+	vector<double> dpolar(n);
+	// ecc first, polar second; opposite to LGN
+	fV1_vpos.read(reinterpret_cast<char*>(&decc[0]), n * sizeof(double)); 
+	fV1_vpos.read(reinterpret_cast<char*>(&dpolar[0]), n * sizeof(double));
     auto double2Float = [](double x) {
         return static_cast<Float>(x);
 	};
+
+	vector<Float> VFposEcc(n);
+    transform(decc.begin(), decc.end(), VFposEcc.begin(), double2Float);
 	vector<Float> x(n);
 	vector<Float> y(n);
-    transform(dx.begin(), dx.end(), x.begin(), double2Float);
-    transform(dy.begin(), dy.end(), y.begin(), double2Float);
-	dx.swap(vector<double>()); // release memory from temporary vectors
-	dy.swap(vector<double>());
+	auto polar2xD2F = [] (double ecc, double polar) {
+		return static_cast<Float>(ecc*cos(polar));
+	};
+	auto polar2yD2F = [] (double ecc, double polar) {
+		return static_cast<Float>(ecc*sin(polar));
+	};
+	transform(decc.begin(), decc.end(), dpolar.begin(), x.begin(), polar2xD2F);
+	transform(decc.begin(), decc.end(), dpolar.begin(), y.begin(), polar2yD2F);
+	decc.swap(vector<double>()); // release memory from temporary vectors
+	dpolar.swap(vector<double>());
 
 	auto cart = make_pair(x, y);
 	x.swap(vector<Float>()); // release memory from temporary vectors
@@ -522,6 +601,7 @@ int main(int argc, char *argv[]) {
 	x0.swap(vector<Float>());
 	y0.swap(vector<Float>()); 
 	polar0.swap(vector<Float>());
+	ecc0.swap(vector<Float>());
 	fLGN.close();
 
 	cout << "carts ready\n";
@@ -558,9 +638,9 @@ int main(int argc, char *argv[]) {
     cout << "left eye: " << nL << " V1 neurons\n";
     cout << "right eye: " << nR << " V1 neurons\n";
 
-    vector<Float> a; // radius of the VF
+    vector<Float> a; // radius of the VF, to be filled
 	vector<Float> baRatio = generate_baRatio(n, rGen);
-    vector<vector<Size>> poolList = retinotopic_vf_pool(cart, cart0, ecc0, false, rGen, baRatio, a, LR, mL, m);
+    vector<vector<Size>> poolList = retinotopic_vf_pool(cart, cart0, VFposEcc, useCuda, rGen, baRatio, a, LR, nL, mL, m, maxLGNperV1pool, seed, LGN_V1_RFratio);
 	cout << "poolList and R ready\n";
 
 	vector<RFtype> V1Type(n); // defined in RFtype.h [0..4], RF shapes
@@ -568,7 +648,7 @@ int main(int argc, char *argv[]) {
 	vector<Float> phase(n); // [0, 2*pi], control the phase
     // theta is read from fV1_feature
 	vector<Float> modAmp_nCon(n); // [0,1] controls simple complex ratio, through subregion overlap ratio (modulation modAmp_nConlitude), or number of LGN connected.
-    if (!V1_RFprop_filename.empty()) {
+    if (readFromFile) {
         ifstream fV1_RFprop(V1_RFprop_filename, fstream::in | fstream::binary);
 	    if (!fV1_RFprop) {
 	    	cout << "Cannot open or find " << V1_RFprop_filename <<"\n";
@@ -634,15 +714,26 @@ int main(int argc, char *argv[]) {
             return uniform_01(rGen);
         };
         generate(modAmp_nCon.begin(), modAmp_nCon.end(), genModAmp_nCon);
+
+        ofstream fV1_RFprop(V1_RFprop_filename, fstream::out | fstream::binary);
+	    if (!fV1_RFprop) {
+	    	cout << "Cannot open or find " << V1_RFprop_filename <<"\n";
+	    	return EXIT_FAILURE;
+	    }
+	    fV1_RFprop.write((char*)&V1Type[0], n * sizeof(RFtype_t));
+	    fV1_RFprop.write((char*)&RefType[0], n * sizeof(OutputType_t));
+	    fV1_RFprop.write((char*)&phase[0], n * sizeof(Float));
+	    fV1_RFprop.write((char*)&modAmp_nCon[0], n * sizeof(Float));
+        fV1_RFprop.close();
     }
 	cout << "V1 RF properties ready.\n";
 
-    assert(nLGNeff > 0);
+    assert(p_n_LGNeff > 0);
 
 	vector<Float> sfreq = generate_sfreq(n, rGen);
 	vector<Float> cx(n);
 	vector<Float> cy(n);
-    vector<vector<Float>> srList = retinotopic_connection(poolList, rGen, nLGNeff, n, cart, cart0, V1Type, theta, phase, sfreq, modAmp_nCon, baRatio, a, RefType, LGNtype, cx, cy, SimpleComplex);
+    vector<vector<Float>> srList = retinotopic_connection(poolList, rGen, p_n_LGNeff, n, cart, cart0, V1Type, theta, phase, sfreq, modAmp_nCon, baRatio, a, RefType, LGNtype, cx, cy, SimpleComplex);
 
 	ofstream fV1(V1_filename, fstream::out | fstream::binary);
 	if (!fV1) {
@@ -650,16 +741,11 @@ int main(int argc, char *argv[]) {
 		return EXIT_FAILURE;
 	}
     fV1.write((char*)&n, sizeof(Size));
-	fV1.write((char*)&modAmp_nCon[0], n * sizeof(Float));
-	fV1.write((char*)&phase[0], n * sizeof(Float));
-	fV1.write((char*)&sfreq[0], n * sizeof(Float));
     fV1.write((char*)&cx[0], n * sizeof(Float));
 	fV1.write((char*)&cy[0], n * sizeof(Float));
-	fV1.write((char*)&theta[0], n * sizeof(Float));
-	fV1.write((char*)&V1Type[0], n * sizeof(RFtype_t));
-	fV1.write((char*)&RefType[0], n * sizeof(OutputType_t));
     fV1.write((char*)&a[0], n * sizeof(Float));
     fV1.write((char*)&baRatio[0], n * sizeof(Float));
+	fV1.write((char*)&sfreq[0], n * sizeof(Float));
     fV1.close();
 
     // write poolList to disk

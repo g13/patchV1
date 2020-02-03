@@ -106,7 +106,9 @@ int main(int argc, char **argv) {
 		("useNewLGN", po::value<bool>(&useNewLGN)->default_value(true), "regenerate the a new ensemble of LGN parameters according to their distribution");
 
     // files
-	string stimulus_filename, V1_filename, LGN_filename, LGN_V1_s_filename, LGN_V1_ID_filename; // inputs
+	string stimulus_filename;
+    string V1_RF_filename, V1_feature;
+    string LGN_filename, LGN_V1_s_filename, LGN_V1_ID_filename; // inputs
     string LGN_fr_filename; // outputs
 	string LGN_convol_filename, max_convol_filename, storage_filename, luminanceAd_filename;
 	top_opt.add_options()
@@ -115,6 +117,8 @@ int main(int argc, char **argv) {
 		("fLGN_fr", po::value<string>(&LGN_fr_filename)->default_value("LGN_fr.bin"),"file stores LGN firing rates")
 		("fLGN_V1_ID", po::value<string>(&LGN_V1_ID_filename)->default_value("LGN_V1_idList.bin"),"file stores LGN to V1 connections")
 		("fLGN_V1_s", po::value<string>(&LGN_V1_s_filename)->default_value("LGN_V1_sList.bin"),"file stores LGN to V1 connection strengths")
+        ("fV1_RF", po::value<string>(&V1_RF_filename)->default_value("V1_RF.bin"), "file that stores V1 RF properties, (orientation info is in fV1_feature)")
+        ("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file to read spatially predetermined functional features of neurons")
         ("fV1_conMat", po::value<string>(&V1_conMat_filename)->default_value("V1_conMat.bin"), "file that stores V1 to V1 connection within the neighboring blocks")
         ("fV1_delayMat", po::value<string>(&V1_delayMat_filename)->default_value("V1_delayMat.bin"), "file that stores V1 to V1 transmission delay within the neighboring blocks")
         ("fV1_vec", po::value<string>(&V1_vec_filename)->default_value("V1_vec.bin"), "file that stores V1 to V1 connection ID, strength and transmission delay outside the neighboring blocks")
@@ -155,8 +159,9 @@ int main(int argc, char **argv) {
     Float init_luminance = 2.0/6.0; //1.0/6.0;
 
     // from the retina facing out
-	ifstream fStimulus; // inputs
-    fstream fLGN, fV1; 
+	ifstream fStimulus; // ext. inputs
+    ifstream fV1_RF, fV1_feature; // V1 related
+    fstream fLGN; // LGN properties
 	ofstream fLGN_fr; // outputs
 	ofstream fLGN_convol, fmax_convol, fStorage, fLuminanceAd;
 
@@ -216,7 +221,7 @@ int main(int argc, char **argv) {
 	Float max_ecc, L_x0, L_y0, R_x0, R_y0, normViewDistance;
     fLGN.open(LGN_filename, fstream::in | fstream::binary);
     if (!fLGN) {
-		cout << "Cannot open or find " << V1_filename <<" to read in LGN properties.\n";
+		cout << "Cannot open or find " << LGN_filename <<" to read in LGN properties.\n";
         return EXIT_FAILURE;
     } else {
 	    fLGN.read(reinterpret_cast<char*>(&nLGN_L), sizeof(Size));
@@ -660,42 +665,56 @@ int main(int argc, char **argv) {
 	vector<vector<Size>> LGN_V1_ID = read_listOfList<Size>(LGN_V1_ID_filename, false);
 	vector<vector<Float>> LGN_V1_s = read_listOfList<Float>(LGN_V1_s_filename, false);
 
-    Size nV1;
+    Size nV1 = LGN_V1_ID.size();
 
-	// read nV1
-    fV1.open(V1_filename, fstream::in | fstream::binary);
-    if (!fV1) {
-		cout << "Cannot open or find " << V1_filename <<" to read in V1 properties.\n";
-		return EXIT_FAILURE;
-    } else {
-        fV1.read(reinterpret_cast<char*>(&nV1), sizeof(Size));
-        cout << nV1 << " V1 neurons\n";
-    }
-	vector<Float> V1_x(nV1);
-    vector<Float> V1_y(nV1);
-    vector<Float> a(nV1);
-	vector<Float> baRatio(nV1);
-	vector<Float> sfreq(nV1);
-	vector<Float> theta(nV1);
-	vector<Float> phase(nV1);
-	vector<Float> amp(nV1);
-	vector<Float> sig(nV1);
-	vector<RFtype> V1Type(nV1);
-	vector<OutputType> RefType(nV1);
-	{ // read V1 properties
-    	fV1.read(reinterpret_cast<char*>(&V1_x[0]), nV1 * sizeof(Float));
-		fV1.read(reinterpret_cast<char*>(&V1_y[0]), nV1 * sizeof(Float));
-    	fV1.read(reinterpret_cast<char*>(&a[0]), nV1 * sizeof(Float));
-    	fV1.read(reinterpret_cast<char*>(&baRatio[0]), nV1 * sizeof(Float));
-		fV1.read(reinterpret_cast<char*>(&sfreq[0]), nV1 * sizeof(Float));
-		fV1.read(reinterpret_cast<char*>(&theta[0]), nV1 * sizeof(Float));
-		fV1.read(reinterpret_cast<char*>(&phase[0]), nV1 * sizeof(Float));
-		fV1.read(reinterpret_cast<char*>(&amp[0]), nV1 * sizeof(Float));
-		fV1.read(reinterpret_cast<char*>(&sig[0]), nV1 * sizeof(Float));
-		fV1.read(reinterpret_cast<char*>(&V1Type[0]), nV1 * sizeof(RFtype_t));
-		fV1.read(reinterpret_cast<char*>(&RefType[0]), nV1 * sizeof(OutputType_t));
-    	fV1.close();
-	}
+
+	/* read V1_RF
+        fV1_RF.open(V1_RF_filename, fstream::in | fstream::binary);
+        if (!fV1_RF) {
+	    	cout << "Cannot open or find " << V1_RF_filename <<" to read in V1 properties.\n";
+	    	return EXIT_FAILURE;
+        } else {
+            fV1_RF.read(reinterpret_cast<char*>(&nV1), sizeof(Size));
+            cout << nV1 << " V1 neurons\n";
+        }
+	    vector<Float> V1_x(nV1);
+        vector<Float> V1_y(nV1);
+        vector<Float> a(nV1);
+	    vector<Float> baRatio(nV1);
+	    vector<Float> sfreq(nV1);
+	    vector<Float> theta(nV1);
+	    vector<Float> phase(nV1);
+	    vector<Float> amp(nV1);
+	    vector<Float> sig(nV1);
+	    vector<RFtype> V1Type(nV1);
+	    vector<OutputType> RefType(nV1);
+	    { // read V1 properties
+        	fV1_RF.read(reinterpret_cast<char*>(&V1_x[0]), nV1 * sizeof(Float));
+	    	fV1_RF.read(reinterpret_cast<char*>(&V1_y[0]), nV1 * sizeof(Float));
+        	fV1_RF.read(reinterpret_cast<char*>(&a[0]), nV1 * sizeof(Float));
+        	fV1_RF.read(reinterpret_cast<char*>(&baRatio[0]), nV1 * sizeof(Float));
+	    	fV1_RF.read(reinterpret_cast<char*>(&sfreq[0]), nV1 * sizeof(Float));
+	    	fV1_RF.read(reinterpret_cast<char*>(&theta[0]), nV1 * sizeof(Float));
+	    	fV1_RF.read(reinterpret_cast<char*>(&phase[0]), nV1 * sizeof(Float));
+	    	fV1_RF.read(reinterpret_cast<char*>(&amp[0]), nV1 * sizeof(Float));
+	    	fV1_RF.read(reinterpret_cast<char*>(&sig[0]), nV1 * sizeof(Float));
+	    	fV1_RF.read(reinterpret_cast<char*>(&V1Type[0]), nV1 * sizeof(RFtype_t));
+	    	fV1_RF.read(reinterpret_cast<char*>(&RefType[0]), nV1 * sizeof(OutputType_t));
+        	fV1_RF.close();
+	    }
+    */
+    /* read V1_feature
+        fV1_feature.open(V1_feature_filename, ios::in|ios::binary);
+	    if (!fV1_feature) {
+	    	cout << "failed to open pos file:" << V1_feature_filename << "\n";
+	    	return EXIT_FAILURE;
+	    }
+	    Size nFeature;
+        fV1_feature.read(reinterpret_cast<char*>(&nFeature), sizeof(Size));
+	    vector<Float> featureValue(nFeature*networkSize); // [OD, OP, ..]
+        fV1_feature.read(reinterpret_cast<char*>(&featureValue[0]), sizeof(Float)*nFeature*networkSize);
+	    fV1_feature.close();
+    */
 
 	{ // output file tests
     	fLGN_fr.open(LGN_fr_filename, fstream::out | fstream::binary);
@@ -1009,29 +1028,17 @@ int main(int argc, char **argv) {
         convolGrid.y = 2;
 		//cout << "LGN_convol_c1s<<<" << convolGrid.x  << "x" << convolGrid.y  << "x" << convolGrid.z << ", " << convolBlock.x  << "x" << convolBlock.y  << "x" << convolBlock.z << ", " << sizeof(Float)*2*convolBlock.x*convolBlock.y << ">>>\n";
         LGN_convol_c1s<<<convolGrid, convolBlock, sizeof(Float)*nSample>>>(
-        //LGN_convol_c1s<<<convolGrid, convolBlock>>>(
-                decayIn,
-                lastF,
-                SW_storage,
-                SC_storage,
-                TW_storage,
+                decayIn, lastF,
+                SW_storage, SC_storage, TW_storage,
                 current_convol,
-                dLGN.coneType,
-                *dLGN.spatial,
+                dLGN.coneType, *dLGN.spatial,
                 nsig,
 				nLGN_L,
-		 		L_x0,
-		 		L_y0,
-		 		R_x0,
-				R_y0,
+		 		L_x0, L_y0, R_x0, R_y0,
 				normViewDistance,
-                iFrame,
-				maxFrame,
-				tPerFrame,
-                framePhase,
+                iFrame, maxFrame, tPerFrame, framePhase,
                 Itau,
-                kernelSampleDt,
-                nKernelSample,
+                kernelSampleDt, nKernelSample,
                 dt);
 
 		getLastCudaError("LGN_convol_c1s failed");

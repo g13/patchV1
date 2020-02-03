@@ -10,7 +10,7 @@ import py_compile
 py_compile.compile('assign_attr.py')
 
 class macroMap:
-    def __init__(self, LR_Pi_file, pos_file, posUniform = False, OP_file = None, OD_file = None, VF_file = None):
+    def __init__(self, LR_Pi_file, pos_file, posUniform = False, OPgrid_file = None, OD_file = None, OP_file = None, VFxy_file = None):
         with open(pos_file,'r') as f:
             self.nblock = np.fromfile(f,'u4', count=1)[0]
             self.blockSize = np.fromfile(f,'u4', count=1)[0]
@@ -65,13 +65,17 @@ class macroMap:
             self.vy[:,ip] = [y_ep(e,self.p_range[ip],self.k,self.a,self.b) for e in self.e_range]
         
         # read preset orientation preferences
-        if OP_file is not None:
+        if OPgrid_file is not None:
             with open(OP_file,'r') as f:
                 self.OPgrid = np.reshape(np.fromfile(f, 'f8', count = self.nx*self.ny),(self.ny,self.nx))
                 assert(np.max(self.OPgrid[self.Pi>0]) <= np.pi/2 and np.min(self.OPgrid[self.Pi>0]) >= -np.pi/2)
 
-        if VF_file is not None:
-            with open(VF_file,'r') as f:
+        if OP_file is not None:
+            with open(OP_file,'r') as f:
+                self.op = np.reshape(np.fromfile(f, 'f8', count = self.nx*self.ny),(self.ny,self.nx))
+
+        if VFxy_file is not None:
+            with open(VFxy_file,'r') as f:
                 np.fromfile(f, 'u4', count = 1)
                 self.vpos = np.reshape(np.fromfile(f, 'f8', count = self.networkSize*2),self.pos.shape)
 
@@ -81,11 +85,11 @@ class macroMap:
         
         self.layer = None
         self.pODready = OD_file is not None
-        self.pOPready = False
+        self.pOPready = OP_file is not None 
         self.LR_boundary_defined = False 
-        self.pVFready = VF_file is not None 
-        self.vposLready = VF_file is not None
-        self.vposRready = VF_file is not None
+        self.pVFready = VFxy_file is not None 
+        self.vposLready = VFxy_file is not None
+        self.vposRready = VFxy_file is not None
         self.posUniform = posUniform
         # not used
         self.OD_VF_reconciled = False 
@@ -845,7 +849,7 @@ class macroMap:
                         plt.polar(self.p_range, self.e_range[ie]+np.zeros(self.npolar),':',c='0.5', lw = 0.1)
 
 
-    def save(self, pos_file = None, OD_file = None, OP_file = None, VF_file = None, Feature_file = None, fp = 'f4'):
+    def save(self, pos_file = None, OD_file = None, OP_file = None, VFxy_file = None, VFpolar_file = None, Feature_file = None, fp = 'f4'):
         if pos_file is not None:
             with open(pos_file,'wb') as f:
                 np.array([self.nblock, self.blockSize, self.dataDim]).astype('u4').tofile(f)        
@@ -866,10 +870,16 @@ class macroMap:
                     with open(OP_file,'wb') as f:
                         self.op.tofile(f)
 
-        if VF_file is not None:
-            with open(VF_file,'wb') as f:
+        if VFxy_file is not None:
+            with open(VFxy_file,'wb') as f:
                 np.array([self.networkSize]).astype('u4').tofile(f)
                 self.vpos.tofile(f)
+
+        if VFpolar_file is not None:
+            vpos = self.assign_pos_VF()
+            with open(VFpolar_file,'wb') as f:
+                np.array([self.networkSize]).astype('u4').tofile(f)
+                vpos.tofile(f)
 
         if Feature_file is not None:
             with open(Feature_file,'wb') as f:
