@@ -13,7 +13,15 @@
 #include "types.h"
 #include "util/cuda_util.cuh"
 
+// block_reduce works fine when block is not fully occupied
 // assuming viewing distance is a single unit length
+
+__global__ 
+void testTexture(Float L, Float M, Float S);
+    
+__global__
+void cudaMemsetNonzero(Float* array, Size n, Float value);
+
 __global__ 
 void LGN_nonlinear(
         Size nLGN,

@@ -45,3 +45,5 @@ __device__ void find_min(Float array[], Float data, PosInt id[]) {
     }
     __syncthreads();
 }
+
+

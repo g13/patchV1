@@ -5,6 +5,21 @@ extern texture<float, cudaTextureType2DLayered> M_retinaConSig;
 extern texture<float, cudaTextureType2DLayered> S_retinaConSig;
 extern __device__ __constant__ float sqrt2;
 
+__global__
+void cudaMemsetNonzero(
+        Float* array,
+        Size n,
+        Float value) 
+{
+    Size id =  blockDim.x * blockDim.y * (gridDim.x*blockIdx.y + blockIdx.x) + blockDim.x*threadIdx.y + threadIdx.x;
+    if (id == 0) {
+        printf("array initialized to %f\n", value);
+    }
+    if (id < n) {
+        array[id] = value;
+    }
+}
+
 __device__ 
 __forceinline__ 
 Float spatialKernel(Float x, Float y, Float rx, Float ry) {
@@ -71,7 +86,7 @@ Float get_intensity(SmallSize coneType, float x, float y, unsigned int iLayer) {
             break;
         */
     }
-    if (contrast <= 0) {
+    if (contrast <= 0 && threadIdx.y*blockDim.x + threadIdx.x == 0) {
         printf("(%f,%f) = %f, L:%f, M:%f, S: %f\n", x, y, contrast
                 , static_cast<Float>(tex2DLayered(L_retinaConSig, x, y, iLayer))
                 , static_cast<Float>(tex2DLayered(M_retinaConSig, x, y, iLayer))
@@ -81,6 +96,21 @@ Float get_intensity(SmallSize coneType, float x, float y, unsigned int iLayer) {
     return contrast;
 }
 
+
+__global__ 
+void testTexture(Float L, Float M, Float S) {
+    float x = (blockIdx.x*blockDim.x + threadIdx.x+0.5)/(gridDim.x*blockDim.x);
+    float y = (blockIdx.y*blockDim.y + threadIdx.y+0.5)/(gridDim.y*blockDim.y);
+    Float LMS[3] = {L, M, S};
+    unsigned int iLayer = gridDim.z;
+    for (SmallSize iType = 0; iType < 3; iType ++) {
+        Float read = get_intensity(iType, x, y , iLayer);
+        if (read != LMS[iType]) {
+            printf("val = %f\n", read);
+            assert(read == LMS[iType]);
+        }
+    }
+}
 // for 2 cone-types LGN only, can be generalized for more cone-types
 // gridSize: (nLGN, nType) blocks for store 1-D nLGN for convol
 // blockSize: spatialSample1D x spatialSample1D (npixel_1D)

@@ -5,7 +5,6 @@
 #include "../CUDA_MACRO.h"
 #include "../types.h"
 
-// block_reduce works fine when block is not fully occupied
 // 1D
 template <typename T>
 __global__ void init(T *array, T value, PosInt nData) {

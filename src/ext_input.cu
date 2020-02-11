@@ -167,7 +167,7 @@ int main(int argc, char **argv) {
 	ofstream fLGN_fr; // outputs
 	ofstream fLGN_convol, fmax_convol, fStorage, fLuminanceAd;
 
-    Float init_luminance;
+    Float init_L, init_M, init_S;
     Size width;
     Size height;
 	Size nFrame;
@@ -184,7 +184,9 @@ int main(int argc, char **argv) {
         height = stimulus_dimensions[1];
         width = stimulus_dimensions[2];
         cout << "stimulus: " << nFrame << " frames of " << width << "x" << height << "\n";
-		fStimulus.read(reinterpret_cast<char*>(&init_luminance), sizeof(float));
+		fStimulus.read(reinterpret_cast<char*>(&init_L), sizeof(float));
+		fStimulus.read(reinterpret_cast<char*>(&init_M), sizeof(float));
+		fStimulus.read(reinterpret_cast<char*>(&init_S), sizeof(float));
     }
     nPixelPerFrame = width*height;
     vector<float> domain(2, 0); 
@@ -891,9 +893,10 @@ int main(int argc, char **argv) {
 	// max frame need to be stored in texture for temporal convolution with the LGN kernel.
     //  |---|--------|--|
     printf("temporal kernel retrace (tau): %f ms, frame rate: %d Hz needs at most %u frames\n", tau, frameRate, maxFrame);
-    printf("=== texture memory required: %dx%dx%d = %fMB\n", maxFrame,width,height, maxFrame*width*height*sizeof(float)/1024.0/1024.0);
-
     unsigned int nChannel = 3; // L, M, S
+    Size texture_nElem = nPixelPerFrame*nChannel*maxFrame;
+    printf("=== texture memory required: %dx%dx%d = %fMB\n", maxFrame,width,height, texture_nElem*sizeof(float)/1024.0/1024.0);
+
     // one cudaArray per channel
     cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 0, 0, 0, cudaChannelFormatKindFloat);
     cudaArray *cuArr_L;
@@ -956,28 +959,35 @@ int main(int argc, char **argv) {
     checkCudaErrors(cudaMalloc((void **) &SW_storage, nLGN*nType*nSample*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &SC_storage, 2*nLGN*nType*nSample*sizeof(float)));
 
-    checkCudaErrors(cudaMemset(luminance, 0, nLGN*sizeof(Float)));
+    //checkCudaErrors(cudaMemset(luminance, 0, nLGN*sizeof(Float)));
     // initialize average to normalized mean luminance
     cudaStream_t s0, s1, s2;
     checkCudaErrors(cudaStreamCreate(&s0));
     checkCudaErrors(cudaStreamCreate(&s1));
     checkCudaErrors(cudaStreamCreate(&s2));
 
-    dim3 initBlock(blockSize, 1, 1);
-    dim3 initGrid((nPixelPerFrame + blockSize-1) / blockSize, 1, 1);
-
     {// initialize texture to 0
         float* tLMS;
         float* __restrict__ tL;
         float* __restrict__ tM;
         float* __restrict__ tS;
-        checkCudaErrors(cudaMalloc((void **) &tLMS, nPixelPerFrame*sizeof(float)*3*maxFrame));
+        checkCudaErrors(cudaMalloc((void **) &tLMS, texture_nElem*sizeof(float)));
         tL = tLMS;
         tM = tL + nPixelPerFrame*maxFrame;
         tS = tM + nPixelPerFrame*maxFrame;
-        checkCudaErrors(cudaMemset(tLMS, init_luminance, nPixelPerFrame*sizeof(float)*3*maxFrame));
+        Size nGrid = (nPixelPerFrame*maxFrame + blockSize-1)/blockSize;
+        cudaMemsetNonzero<<<nGrid, blockSize>>> (tL, nPixelPerFrame*maxFrame, init_L);
+        cudaMemsetNonzero<<<nGrid, blockSize>>> (tM, nPixelPerFrame*maxFrame, init_M);
+        cudaMemsetNonzero<<<nGrid, blockSize>>> (tS, nPixelPerFrame*maxFrame, init_S);
+	    getLastCudaError("memset failed");
+
+        dim3 fb(16,16,1);
+        dim3 fg(16,16,maxFrame);
+        testTexture<<<fg, fb>>> (init_L, init_M, init_S);
+	    getLastCudaError("texture read test failed");
         prep_sample(0, width, height, tL, tM, tS, cuArr_L, cuArr_M, cuArr_S, maxFrame, cudaMemcpyDeviceToDevice);
         checkCudaErrors(cudaFree(tLMS));
+        cout << "all pixels in texture memory (frame buffers) initialized to " << init_L << ", " << init_M << ", " << init_S << " \n";
     }
 
     cudaEvent_t i0, i1, i2;
