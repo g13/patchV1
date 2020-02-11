@@ -26,11 +26,9 @@ __device__ void find_min(Float array[], Float data, PosInt id[]);
 template <typename T>
 __device__ void warps_reduce(T array[], T data) {
     PosInt tid = blockDim.x*threadIdx.y + threadIdx.x;
+	T old_data = data;
     for (int offset = warpSize/2; offset > 0; offset /= 2) {
         data += __shfl_down_sync(FULL_MASK, data, offset);
-        //if (tid % warpSize == 0) {
-        //    printf("#%i at %i: %f\n", tid, offset, data);
-        //}
     }
     __syncthreads();
     if (tid % warpSize == 0) {
@@ -41,23 +39,23 @@ __device__ void warps_reduce(T array[], T data) {
 template <typename T>
 __device__ void warp0_reduce(T array[]) {
     PosInt tid = blockDim.x*threadIdx.y + threadIdx.x;
-    T data = array[tid];
-    for (int offset = warpSize/2; offset > 0; offset /= 2) {
-        data += __shfl_down_sync(FULL_MASK, data, offset);
-        //if (tid == 0) {
-        //    printf("##%i at %i: %f\n", tid, offset, data);
-        //}
-    }
-    if (tid == 0) {
-        array[0] = data;
-    }
+	Size n = (blockDim.x * blockDim.y * blockDim.z + warpSize - 1)/warpSize; // may not be a full warp, avoid access uninitialized shared memory
+	if (tid < n) {
+		T data = array[tid];
+		T old_data = data;
+		for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+			data += __shfl_down_sync(FULL_MASK, data, offset);
+		}
+		if (tid == 0) {
+			array[0] = data;
+		}
+	}
 }
 
 template <typename T>
 __device__ void block_reduce(T array[], T data) {
 	warps_reduce<T>(array, data);
     __syncthreads();
-    //if (blockDim.x*threadIdx.y + threadIdx.x < nWarp) {
     if (blockDim.x*threadIdx.y + threadIdx.x < warpSize) {
         warp0_reduce<T>(array);
     }

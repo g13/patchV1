@@ -3,7 +3,7 @@ import cv2 as cv
 import functools
 from ext_signal import *
 
-def generate_grating(spatialFrequency, temporalFrequency, direction, npixel, c1, c2, fname, time = 1, phase = 0, sharpness = 0, frameRate = 120, ecc = 2.5, buffer_ecc = 0.25):
+def generate_grating(spatialFrequency, temporalFrequency, direction, npixel, c1, c2, fname, time = 1, phase = 0, sharpness = 0, frameRate = 120, ecc = 2.5, buffer_ecc = 0.25, gtype = 'drifting'):
     """
     spatialFrequency: cycle per degree
     temporalFrequency: Hz
@@ -30,6 +30,8 @@ def generate_grating(spatialFrequency, temporalFrequency, direction, npixel, c1,
     print(f'{nstep} frames in total')
     radTF = temporalFrequency*2*np.pi
     radSF = spatialFrequency*180/np.pi*2*np.pi
+    ########### VIDEO encodes as BGR: 
+    # rgb->bgr
     c1 = np.reshape(c1[::-1],(1,3))
     c2 = np.reshape(c2[::-1],(1,3))
 
@@ -44,14 +46,25 @@ def generate_grating(spatialFrequency, temporalFrequency, direction, npixel, c1,
     dl = np.linspace(0,np.pi/4,half)
     dr = np.linspace(0,np.pi/4,half)
     dd = np.hstack((dl, np.flip(dr)))
+        
     dt = 1.0/frameRate
     #for it in range(1):
+    if gtype not in ('drifting','rotating'):
+        raise Exception(f'gtype {gtype} not implemented')
+    LMS = np.empty((nstep,)+(3, b, 2*a), dtype=float)
     for it in range(nstep):
         t = it * dt
-        dataL = grating(radTF, radSF, direction-dd[it], a, b, c1, c2, phase, t, X, Y)
-        dataR = grating(radTF, radSF, direction+dd[it], a, b, c1, c2, phase, t, X, Y)
+        if gtype == 'rotating':
+            dataL = grating(radTF, radSF, direction-dd[it], a, b, c1, c2, phase, t, X, Y)
+            dataR = grating(radTF, radSF, direction+dd[it], a, b, c1, c2, phase, t, X, Y)
+        if gtype == 'drifting':
+            dataL = grating(radTF, radSF, direction, a, b, c1, c2, phase, t, X, Y)
+            dataR = grating(radTF, radSF, direction, a, b, c1, c2, phase, t, X, Y)
+
         data = np.concatenate((dataL,dataR), axis = 1)
         pixelData = np.reshape(np.round(data*255), (b,2*a,3)).astype('uint8')
+        # bgr->lms
+        LMS[it,:,:,:] = data[:,:,::-1].reshape((b*2*a,3)).T.reshape((3,b,2*a))
         #pixelData = np.reshape(np.round(data*255), (b,a,3))
         #cv.imshow('linear', pixelData)
         #cv.waitKey(0)
@@ -62,6 +75,7 @@ def generate_grating(spatialFrequency, temporalFrequency, direction, npixel, c1,
     
     output.release()
     cv.destroyAllWindows()
+    return LMS
 
 def adjust_gamma(image, gamma=1.0):
     # build a lookup table mapping the pixel values [0, 255] to

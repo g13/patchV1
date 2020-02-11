@@ -6,6 +6,7 @@
 #include <cuda_runtime.h>
 #include <helper_functions.h>    // includes cuda.h and cuda_runtime_api.h
 #include <helper_cuda.h>         // helper functions for CUDA error check
+#include <device_launch_parameters.h>
 #include <tuple>
 #include "DIRECTIVE.h"
 #include "LGN_props.cuh"
@@ -46,29 +47,26 @@ void store(// weights and max convolution
 
 __global__ 
 void LGN_convol_c1s(
-        Float* __restrict__ decayIn,
-        Float* __restrict__ lastF,
+        Float* __restrict__ luminance,
         Float* __restrict__ SW_storage,
         float* __restrict__ SC_storage,
         Float* __restrict__ TW_storage,
         Float* __restrict__ current_convol,
+        Float* __restrict__ contrast,
         SmallSize* __restrict__ coneType,
         Spatial_component &spatial,
-        Float nsig,
 		Size nLGN_L,
-		Float L_x0,
-		Float L_y0,
-		Float R_x0,
-		Float R_y0,
 		Float normViewDistance,
-        SmallSize currentFrame,
-        SmallSize maxFrame,
-		Float tPerFrame,
-        Float framePhase,
+        PosInt currentFrame,
+        Size maxFrame,
+		Size ntPerFrame,
+        PosInt iFramePhase,
         Float Itau,
-        Float kernelSampleDt,
+        Size iKernelSampleT0,
+        Size kernelSampleInterval,
         Size nKernelSample,
-        Float dt
+        Float dt,
+        Size denorm
 );
 
 __host__
@@ -104,11 +102,12 @@ void orthPhiRotate3D(Float theta0, Float phi0, Float eta, Float &cost, Float &si
     double dcos = cos(static_cast<double>(eta));
 	double cosPhi_d = cos(static_cast<double>(phi0)) * dcos;
     double sinPhi_d = sqrt(1.0 - cosPhi_d*cosPhi_d);
+	/* DEBUG
     if (abs(sinPhi_d) == 0 || abs(dcos) == 0) {
         printf("cosPhi = %e, sinPhi = %e, cos0(%f) = %e, dcos(%f) = %e\n", cosPhi_d, sinPhi_d, phi0, cos(static_cast<double>(phi0)), eta, cos(static_cast<double>(eta)));
         assert(abs(dcos) > 0);
         assert(abs(sinPhi_d) > 0);
-    }
+    }*/
 
 	cosPhi = static_cast<Float>(cosPhi_d);
     sinPhi = static_cast<Float>(sinPhi_d);
@@ -124,6 +123,7 @@ void orthPhiRotate3D(Float theta0, Float phi0, Float eta, Float &cost, Float &si
         assert(abs(sint1) < 1.0);
         cost1 = copyms(square_root(1-sint1*sint1), cost1);
     }
+	/* DEBUG
     if (isnan(cost1) || isnan(sint1) || abs(cost1)>1.0 || abs(sint1) > 1.0) {
         printf("sinPhi = %f\n", sinPhi);
         printf("cost1 = %f, sint1 = %f\n", cost1, sint1);
@@ -134,17 +134,18 @@ void orthPhiRotate3D(Float theta0, Float phi0, Float eta, Float &cost, Float &si
         assert(abs(sint1)<=1.0);
         assert(!isnan(cost1));
         assert(!isnan(sint1));
-    }
+    }*/
 
     Float cost0 = cosine(theta0);
     Float sint0 = sine(theta0);
+	/* DEBUG
     if (isnan(cost0) || isnan(sint0) || abs(cost0)>1.0 || abs(sint0) > 1.0) {
         printf("cos(%f) = %f, sin(%f) = %f\n", theta0, cost0, theta0, sint0);
         assert(abs(cost0)<=1.0);
         assert(abs(sint0)<=1.0);
         assert(!isnan(cost0));
         assert(!isnan(sint0));
-    }
+    }*/
     cost = cost0*cost1 - sint0*sint1;
     sint = sint0*cost1 + cost0*sint1;
     if (abs(sint) > 1.0) {
@@ -155,6 +156,7 @@ void orthPhiRotate3D(Float theta0, Float phi0, Float eta, Float &cost, Float &si
         assert(abs(sint) < 1.0);
         cost = copyms(square_root(1-sint*sint), cost);
     }
+	/* DEBUG
     if (isnan(cost) || isnan(sint) || abs(cost)>1.0 || abs(sint) > 1.0) {
         printf("cost = %f, sint = %f\n", cost, sint);
         printf("cost0 = %f, sint0 = %f\n", cost0, sint0);
@@ -163,7 +165,7 @@ void orthPhiRotate3D(Float theta0, Float phi0, Float eta, Float &cost, Float &si
         assert(abs(sint)<=1.0);
         assert(!isnan(cost));
         assert(!isnan(sint));
-    }
+    }*/
 }
 
 __host__

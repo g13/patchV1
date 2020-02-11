@@ -66,7 +66,7 @@ class macroMap:
         
         # read preset orientation preferences
         if OPgrid_file is not None:
-            with open(OP_file,'r') as f:
+            with open(OPgrid_file,'r') as f:
                 self.OPgrid = np.reshape(np.fromfile(f, 'f8', count = self.nx*self.ny),(self.ny,self.nx))
                 assert(np.max(self.OPgrid[self.Pi>0]) <= np.pi/2 and np.min(self.OPgrid[self.Pi>0]) >= -np.pi/2)
 
@@ -478,6 +478,8 @@ class macroMap:
             #assert(vpos[1,i] >= self.p_range[0] and vpos[1,i] <= self.p_range[-1])
             stdout.write(f'\rassgining visual field: {(i+1)/self.networkSize*100:.3f}%')
         stdout.write('\n')
+        vpos[1,:] = -vpos[1,:]
+        print('dorsal-ventral flipped\n')
         self.pVFready = True
         return vpos
 
@@ -797,19 +799,12 @@ class macroMap:
                 pick = np.logical_not(np.isnan(self.OPgrid))
                                                                                                                     # theta to ratio
                 ax1.scatter(self.xx[pick], self.yy[pick], s = (2*72/dpi)**2, linewidths=0.0, marker = '^', c= hsv((self.OPgrid[pick]/np.pi+0.5).flatten()))
-                #print('matplotlib \'plot\' is inefficient so will take a long time (\'scatter\' is buggy)')
                 pick = self.ODlabel>0 
                 ax1.scatter(self.pos[0,pick], self.pos[1,pick], s = (2*72/dpi)**2, linewidths=0.0, marker = '.', c = hsv(self.op[pick]))
-                #for i in np.arange(sum(pick)):
-                #    ax1.plot(self.pos[0,pick][i], self.pos[1,pick][i], markersize = 1/dpi, marker = ',', c = hsv(self.op[pick][i]))
                 pick = self.ODlabel<0 
                 hsv_val = np.asarray(hsv(self.op[pick]), dtype = float)
                 hsv_val[0,:] = 0.75
                 ax1.scatter(self.pos[0,pick], self.pos[1,pick], s = (2*72/dpi)**2, linewidths=0.0, marker = '.', c =  hsv_val)
-                #for i in np.arange(sum(pick)):
-                #    hsv_val = np.asarray(hsv(self.op[pick][i]), dtype = float)
-                #    hsv_val[0] = 0.75
-                #    ax1.plot(self.pos[0,pick][i], self.pos[1,pick][i], markersize = 1/dpi, marker = ',', c =  hsv_val)
             else:
                 #ax1.plot(self.pos[0,:], self.pos[1,:],',k')
                 #ax1.plot(self.xx[self.Pi<=0], self.yy[self.Pi<=0],',r')

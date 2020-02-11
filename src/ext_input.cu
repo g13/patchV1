@@ -31,6 +31,7 @@ void prep_sample(unsigned int iSample, unsigned int width, unsigned int height, 
     cudaMemcpy3DParms params = {0};
     params.srcPos = make_cudaPos(0, 0, 0);
     params.dstPos = make_cudaPos(0, 0, iSample);
+    // if a cudaArray is involved width is element not byte size
     params.extent = make_cudaExtent(width, height, nSample);
     params.kind = cpyKind;
 
@@ -107,13 +108,15 @@ int main(int argc, char **argv) {
 
     // files
 	string stimulus_filename;
-    string V1_RF_filename, V1_feature;
-    string LGN_filename, LGN_V1_s_filename, LGN_V1_ID_filename; // inputs
+    string V1_RF_filename, V1_feature_filename;
+    string V1_vec_filename, V1_delayMat_filename, V1_conMat_filename;
+    string LGN_filename, LGN_vpos_filename, LGN_V1_s_filename, LGN_V1_ID_filename; // inputs
     string LGN_fr_filename; // outputs
 	string LGN_convol_filename, max_convol_filename, storage_filename, luminanceAd_filename;
 	top_opt.add_options()
 		("fStimulus", po::value<string>(&stimulus_filename)->default_value("stimulus.bin"),"file that stores LGN firing rates, array of size (nframes,width,height,3)")
-		("fLGN", po::value<string>(&LGN_filename)->default_value("LGN(vpos).bin"),"file that stores LGN neurons information")
+		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"),"file that stores LGN neurons information")
+		("fLGN", po::value<string>(&LGN_filename)->default_value("LGN.bin"),"file that stores all the information of LGN neurons")
 		("fLGN_fr", po::value<string>(&LGN_fr_filename)->default_value("LGN_fr.bin"),"file stores LGN firing rates")
 		("fLGN_V1_ID", po::value<string>(&LGN_V1_ID_filename)->default_value("LGN_V1_idList.bin"),"file stores LGN to V1 connections")
 		("fLGN_V1_s", po::value<string>(&LGN_V1_s_filename)->default_value("LGN_V1_sList.bin"),"file stores LGN to V1 connection strengths")
@@ -122,7 +125,7 @@ int main(int argc, char **argv) {
         ("fV1_conMat", po::value<string>(&V1_conMat_filename)->default_value("V1_conMat.bin"), "file that stores V1 to V1 connection within the neighboring blocks")
         ("fV1_delayMat", po::value<string>(&V1_delayMat_filename)->default_value("V1_delayMat.bin"), "file that stores V1 to V1 transmission delay within the neighboring blocks")
         ("fV1_vec", po::value<string>(&V1_vec_filename)->default_value("V1_vec.bin"), "file that stores V1 to V1 connection ID, strength and transmission delay outside the neighboring blocks")
-		("fLuminanceAd", po::value<string>(&luminanceAd_filename)->default_value("apdated_luminance.bin"),"file that stores adapted luminance values, mimicking cones' response") // TEST 
+		("fLuminanceAd", po::value<string>(&luminanceAd_filename)->default_value("adapted_luminance.bin"),"file that stores adapted luminance values, mimicking cones' response") // TEST 
 		("fLGN_convol", po::value<string>(&LGN_convol_filename)->default_value("LGN_convol.bin"),"file that stores LGN convolution values") // TEST 
 		("fStorage", po::value<string>(&storage_filename)->default_value("storage.bin"),"file that stores spatial and temporal convolution parameters") // TEST 
 		("fLGN_max", po::value<string>(&max_convol_filename)->default_value("max_convol.bin"),"file that stores LGN maximum values of convolution"); // TEST
@@ -156,15 +159,15 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    Float init_luminance = 2.0/6.0; //1.0/6.0;
-
     // from the retina facing out
 	ifstream fStimulus; // ext. inputs
     ifstream fV1_RF, fV1_feature; // V1 related
+    ifstream fLGN_vpos; // LGN VF pos 
     fstream fLGN; // LGN properties
 	ofstream fLGN_fr; // outputs
 	ofstream fLGN_convol, fmax_convol, fStorage, fLuminanceAd;
 
+    Float init_luminance;
     Size width;
     Size height;
 	Size nFrame;
@@ -180,7 +183,8 @@ int main(int argc, char **argv) {
         nFrame = stimulus_dimensions[0];
         height = stimulus_dimensions[1];
         width = stimulus_dimensions[2];
-        cout << "stimulus: " << nFrame << " frames of " << height << "x" << height << "\n";
+        cout << "stimulus: " << nFrame << " frames of " << width << "x" << height << "\n";
+		fStimulus.read(reinterpret_cast<char*>(&init_luminance), sizeof(float));
     }
     nPixelPerFrame = width*height;
     vector<float> domain(2, 0); 
@@ -219,14 +223,14 @@ int main(int argc, char **argv) {
     Float rad2deg = 180.0/M_PI;
     Size nLGN_L, nLGN_R, nLGN;
 	Float max_ecc, L_x0, L_y0, R_x0, R_y0, normViewDistance;
-    fLGN.open(LGN_filename, fstream::in | fstream::binary);
-    if (!fLGN) {
-		cout << "Cannot open or find " << LGN_filename <<" to read in LGN properties.\n";
+    fLGN_vpos.open(LGN_vpos_filename, fstream::in | fstream::binary);
+    if (!fLGN_vpos) {
+		cout << "Cannot open or find " << LGN_vpos_filename <<" to read in LGN properties.\n";
         return EXIT_FAILURE;
     } else {
-	    fLGN.read(reinterpret_cast<char*>(&nLGN_L), sizeof(Size));
-	    fLGN.read(reinterpret_cast<char*>(&nLGN_R), sizeof(Size));
-	    fLGN.read(reinterpret_cast<char*>(&max_ecc), sizeof(Float)); // in rad
+	    fLGN_vpos.read(reinterpret_cast<char*>(&nLGN_L), sizeof(Size));
+	    fLGN_vpos.read(reinterpret_cast<char*>(&nLGN_R), sizeof(Size));
+	    fLGN_vpos.read(reinterpret_cast<char*>(&max_ecc), sizeof(Float)); // in rad
     }
     nLGN = nLGN_L + nLGN_R;
 	Float stimulus_extent = stimulus_range + stimulus_buffer;
@@ -254,9 +258,9 @@ int main(int argc, char **argv) {
 
     // vectors to initialize LGN
 	// center surround, thus the x2
+	vector<InputType> LGNtype(nLGN);
 	vector<Float> LGN_polar(nLGN*2);
 	vector<Float> LGN_ecc(nLGN*2);
-	vector<InputType> LGNtype(nLGN);
     vector<Float> LGN_rw(nLGN*2);
     vector<Float> LGN_rh(nLGN*2);
     vector<Float> LGN_orient(nLGN*2);
@@ -269,32 +273,24 @@ int main(int argc, char **argv) {
     vector<Float> nD(nLGN*2);
     vector<Float> delay(nLGN*2);
 
-    vector<Float> c50(nLGN*2);
-    vector<Float> sharpness(nLGN*2);
-    vector<Float> spont(nLGN*2);
+    vector<Float> c50(nLGN);
+    vector<Float> sharpness(nLGN);
+    vector<Float> spont(nLGN);
 	vector<PosInt> coneType(nLGN*2);
     vector<Float> covariant(nLGN);
 
-	fLGN.read(reinterpret_cast<char*>(&LGNtype[0]), nLGN*sizeof(InputType_t));
-	fLGN.read(reinterpret_cast<char*>(&LGN_polar[0]), nLGN*sizeof(Float));
-    // polar is in rad
-	fLGN.read(reinterpret_cast<char*>(&LGN_ecc[0]), nLGN*sizeof(Float));
-    // ecc of center is in deg [0, nLGN), surround in rad [nLGN, 2*nLGN)
-    for (Size i = 0; i <nLGN; i++) {
-        assert(!isnan(LGN_ecc[i]));
-    }
-    auto transform_deg2rad = [deg2rad] (Float ecc) {return ecc*deg2rad;};
-    transform(LGN_ecc.begin(), LGN_ecc.begin()+nLGN, LGN_ecc.begin(), transform_deg2rad);
-    for (Size i = 0; i <nLGN; i++) {
-        assert(!isnan(LGN_ecc[i]));
-    }
-	streampos eofLGN = fLGN.tellg();
-	fLGN.seekg(0, fLGN.end);
-	streampos true_eof = fLGN.tellg();
-	if (eofLGN == true_eof || useNewLGN) { // Setup LGN here 
+	fLGN_vpos.read(reinterpret_cast<char*>(&LGNtype[0]), nLGN*sizeof(InputType_t));
+	if (useNewLGN) { // Setup LGN here 
 		cout << "initializing LGN spatial parameters...\n";
-		fLGN.close();
     	// TODO: k, rx, ry, surround_x, surround_y or their distribution parameters readable from file
+
+	    fLGN_vpos.read(reinterpret_cast<char*>(&LGN_polar[0]), nLGN*sizeof(Float));
+        // polar is in rad
+	    fLGN_vpos.read(reinterpret_cast<char*>(&LGN_ecc[0]), nLGN*sizeof(Float));
+        // ecc of center is in deg [0, nLGN), surround in rad [nLGN, 2*nLGN)
+        auto transform_deg2rad = [deg2rad] (Float ecc) {return ecc*deg2rad;};
+        transform(LGN_ecc.begin(), LGN_ecc.begin()+nLGN, LGN_ecc.begin(), transform_deg2rad);
+	    fLGN_vpos.close();
     	default_random_engine rGen_LGNsetup(seed);
     	seed++; // so that next random_engine use a different seed;
     	// lambda to return a function that generates random numbers from a given distribution
@@ -374,10 +370,36 @@ int main(int argc, char **argv) {
 			orthPhiRotate3D_arc(LGN_polar[i], intermediateEcc, eta, LGN_polar[i+nLGN], LGN_ecc[i+nLGN]);
 		}
 
+        auto get_rand_from_clipped_gauss = [](Float param[2], Float lb, Float ub) {
+            assert(lb < 1);
+            assert(ub > 1);
+            function<Float(RandomEngine)> get_rand = [param, lb, ub](RandomEngine &rGen) {
+                static normal_distribution<Float> norm(0.0, 1.0);
+	            Size count = 0;
+                Float v;
+                do {
+                    v = norm(rGen)*param[1] + param[0];
+		            count++;
+		            if (count > 10) {
+		                std::cout << "mean: " << param[0] << ", std: " << param[1] << "\n";
+		                std::cout << "lb: " << lb << ", ub: " << ub << "\n";
+		                std::cout << count << ": " << v << "\n";
+		            }
+		            if (count > 20) {
+                        assert(lb < 1);
+                        assert(ub > 1);
+		            	assert(count <= 20);
+                    }
+                } while (v < lb*param[0] || v > ub*param[0]);
+                return v; 
+            };
+            return get_rand;
+        };
+
     	// TODO: Group the same cone-specific types together for warp performance
     	// set test param for LGN subregion RF temporal kernel, also the K_c and K_s
     	// Benardete and Kaplan 1997 (source fitted by LGN_kernel.ipynb (mean)
-		
+	    // empirical value
         auto tspD_dist = [](Float n, Float tau) {
             Float tsp = (n-1)*tau;
             Float stride = n*tau/logrithm(n);
@@ -391,6 +413,8 @@ int main(int argc, char **argv) {
     	Float ratio_onC[2] = {0.56882181, 0.18*0.11/0.13}; //Hs
 
     	Float nR_onC[2] = {23.20564706, 0.28*0.18/0.23};
+        Float nR_onClowBound = 1-(1-20/36.8)*0.28/0.23;
+        Float nR_onCupBound =  1+(46/36.8-1)*0.28/0.23;
     	Float tauR_onC = 1.89874285; // controlled by tspR/(nR_onC-1)
         Float tspR_onC[2]; 
         tspR_onC[0] = (nR_onC[0]-1) * tauR_onC;
@@ -401,10 +425,12 @@ int main(int argc, char **argv) {
     	//Float nD_onC[2] = {12.56210526, 0.28*0.18/0.23}; //NL
 
     	// OFF-CENTER temporal mu and c.v.
-    	Float K_offC[2] = {22.71914498, 0.60*0.37/0.48}; // A
+    	Float K_offC[2] = {22.71914498, 0.60*0.37/0.48}; // A [Hz per unit contrast (100% or 1%?)]
     	Float ratio_offC[2] = {0.60905210, 0.18*0.14/0.13}; //Hs
 
     	Float nR_offC[2] = {16.70023529, 0.28*0.20/0.23};
+        Float nR_offClowBound = 1-(1-21/27.64)*0.28/0.23;
+        Float nR_offCupBound =  1+(41/27.64-1)*0.28/0.23;
     	Float tauR_offC = 2.78125714;
 		Float tspR_offC[2]; 	
         tspR_offC[0] = (nR_offC[0]-1) * tauR_offC;
@@ -423,8 +449,10 @@ int main(int argc, char **argv) {
     	Float ratio_onS[2] = {0.36090931, 0.57*0.74/0.64}; //Hs
 
     	Float nR_onS[2] = {50.29602888, 0.35*0.12/0.38};
+        Float nR_onSlowBound = 1-(1-98/111.5)*0.35/0.38;
+        Float nR_onSupBound = 1+(133/111.5-1)*0.35/0.38;
     	Float tauR_onS = 0.90455076;
-        Float tspR_onS[2]; 
+        Float tspR_onS[2];
         tspR_onS[0] = (nR_onS[0]-1) * tauR_onS;
         tspR_onS[1] = 0.09*0.10/0.08; // NL*TauL, table2, table 5
 
@@ -436,6 +464,8 @@ int main(int argc, char **argv) {
     	Float ratio_offS[2] = {0.33004402, 0.57*0.59/0.64}; //Hs
 
     	Float nR_offS[2] = {26.23465704, 0.35*0.53/0.38};
+        Float nR_offSlowBound = 1-(1-45/78.88)*0.35/0.38;
+        Float nR_offSupBound = 1+(168/78.88-1)*0.35/0.38;
     	Float tauR_offS = 1.83570595;
         Float tspR_offS[2]; 
         tspR_offS[0] = (nR_offS[0]-1) * tauR_offS;
@@ -470,24 +500,23 @@ int main(int argc, char **argv) {
     	    tspR_offS[1] = tspR_offS[0] * tspR_offS[1];
     	    tauD_offS[1] = tauD_offS[0] * tauD_offS[1];
     	}
+        auto get_nRonC = get_rand_from_clipped_gauss(nR_onC, nR_onClowBound, nR_onCupBound);
+        auto get_nRoffC = get_rand_from_clipped_gauss(nR_offC, nR_offClowBound, nR_offCupBound);
+        auto get_nRonS = get_rand_from_clipped_gauss(nR_onS, nR_onSlowBound, nR_onSupBound);
+        auto get_nRoffS = get_rand_from_clipped_gauss(nR_offS, nR_offSlowBound, nR_offSupBound);
     	// tauR and nR anti-correlates for stable peak time
     	Float rho_Kc_Ks = 0.5;
     	Float rho_Kc_Ks_comp = sqrt(1.0-rho_Kc_Ks*rho_Kc_Ks);
-    	Float rho_tau_n = -0.5;
-    	Float rho_tau_n_comp = sqrt(1.0-rho_tau_n*rho_tau_n);
     	// reset norm to standard normal distribution
     	norm = normal_distribution<Float>(0.0, 1.0);
 
-		/* unused, boundary data not available
-    	auto get_bounds = [](Float floor, Float ceiling) {
-    	    function<bool(Float)> outOfBound = [floor, ceiling] (Float value) {
-    	        return (floor <= value && value <= ceiling);
-    	    };
-    	    return outOfBound;
-		}; */
 		cout << "initializing LGN temporal parameters...\n";
 		Float pTspD[2];
 		Float tspR, tspD;
+        // for spontaneous firing rate
+    	Float log_mean, log_std;
+        Float spontPercent = 0.3;
+    	std::tie(log_mean, log_std) = lognstats<Float>(0.06, 0.01);
     	for (unsigned int i=0; i<nLGN; i++) {
     	    // using median from table 2,3  (on,off)/all * table 5,6 with matching c.v.# Benardete and Kaplan 1997
     	    // fit with difference of exponentials in LGN_kernel.ipynb
@@ -500,22 +529,22 @@ int main(int argc, char **argv) {
 					LGN_k[i+nLGN] *= -1; //off-surround !!!IMPORTANT sign change here
 
     	            // centers' tau, n 
-    	            nR[i] = get_rand_from_gauss(nR_onC, rGen_LGNsetup, unityExcBound);
+    	            nR[i] = get_nRonC(rGen_LGNsetup);
 					tspR = get_rand_from_gauss(tspR_onC, rGen_LGNsetup, positiveBound);
 					tauR[i] = tspR/(nR[i]-1);
 
         			tie(pTspD[0], pTspD[1]) = tspD_dist(nR[i], tauR[i]);
-					tauD[i] = get_rand_from_gauss(tauD_onC, rGen_LGNsetup, positiveBound);
+					tauD[i] = get_rand_from_gauss(tauD_onC, rGen_LGNsetup, get_excLowBound(tauR[i]));
 					tspD = get_rand_from_gauss(pTspD, rGen_LGNsetup, positiveBound);
-    	            nD[i] = tspD/tauD[i];
+    	            nD[i] = tspD/tauD[i]+1;
 
     	            // surround' tau, n 
-    	            nR[i+nLGN] = get_rand_from_gauss(nR_offS, rGen_LGNsetup, unityExcBound);
+    	            nR[i+nLGN] = get_nRoffS(rGen_LGNsetup);
 					tspR = get_rand_from_gauss(tspR_offS, rGen_LGNsetup, positiveBound);
 					tauR[i+nLGN] = tspR/(nR[i+nLGN]-1);
 
         			tie(pTspD[0], pTspD[1]) = tspD_dist(nR[i+nLGN], tauR[i+nLGN]);
-					tauD[i+nLGN] = get_rand_from_gauss(tauD_offS, rGen_LGNsetup, positiveBound);
+					tauD[i+nLGN] = get_rand_from_gauss(tauD_offS, rGen_LGNsetup, get_excLowBound(tauR[i+nLGN]));
 					tspD = get_rand_from_gauss(pTspD, rGen_LGNsetup, positiveBound);
     	            nD[i+nLGN] = tspD/tauD[i+nLGN];
 
@@ -533,22 +562,22 @@ int main(int argc, char **argv) {
 					LGN_k[i] *= -1; //off-center
 
     	            // centers' tau, n 
-    	            nR[i] = get_rand_from_gauss(nR_offC, rGen_LGNsetup, unityExcBound);
+    	            nR[i] = get_nRoffC(rGen_LGNsetup);
 					tspR = get_rand_from_gauss(tspR_offC, rGen_LGNsetup, positiveBound);
 					tauR[i] = tspR/(nR[i]-1);
 
         			tie(pTspD[0], pTspD[1]) = tspD_dist(nR[i], tauR[i]);
-					tauD[i] = get_rand_from_gauss(tauD_offC, rGen_LGNsetup, positiveBound);
+					tauD[i] = get_rand_from_gauss(tauD_offC, rGen_LGNsetup, get_excLowBound(tauR[i]));
 					tspD = get_rand_from_gauss(pTspD, rGen_LGNsetup, positiveBound);
     	            nD[i] = tspD/tauD[i];
 
     	            // surround' tau, n 
-    	            nR[i+nLGN] = get_rand_from_gauss(nR_onS, rGen_LGNsetup, unityExcBound);
+    	            nR[i+nLGN] = get_nRonS(rGen_LGNsetup);
 					tspR = get_rand_from_gauss(tspR_onS, rGen_LGNsetup, positiveBound);
 					tauR[i+nLGN] = tspR/(nR[i+nLGN]-1);
 
         			tie(pTspD[0], pTspD[1]) = tspD_dist(nR[i+nLGN], tauR[i+nLGN]);
-					tauD[i+nLGN] = get_rand_from_gauss(tauD_onS, rGen_LGNsetup, positiveBound);
+					tauD[i+nLGN] = get_rand_from_gauss(tauD_onS, rGen_LGNsetup, get_excLowBound(tauR[i+nLGN]));
 					tspD = get_rand_from_gauss(pTspD, rGen_LGNsetup, positiveBound);
     	            nD[i+nLGN] = tspD/tauD[i+nLGN];
 
@@ -574,36 +603,46 @@ int main(int argc, char **argv) {
    		        default: throw("There's no implementation of such RF for parvo LGN");
 			}
     	    // non-linearity
-    	    Float log_mean, log_std;
-    	    std::tie(log_mean, log_std) = lognstats<Float>(0.1, 1);
-    	    spont[i] = exp(log_mean + norm(rGen_LGNsetup) * log_std); // non-zero so no lambda for boundary check and stuff
+            Float spontTmp = exp(log_mean + norm(rGen_LGNsetup) * log_std);
+            while (spontTmp > spontPercent) {
+                spontTmp = exp(log_mean + norm(rGen_LGNsetup) * log_std);
+            }
+    	    spont[i] =  spontTmp;
     	    // NOTE: proportion between L and M, significantly overlap in cone response curve, not implemented to calculate max_convol
     	    covariant[i] = 0.53753461391295254; 
 			//cout << "\rLGN #" << i;
     	}
-		//cout << "\n";
+		//cout << "\r";
 
-        norm = normal_distribution<Float>(0.25, 0.1);
+        norm = normal_distribution<Float>(0.25, 0.03);
     	auto get_c50 = get_rand_from_gauss0(rGen_LGNsetup, norm, nonNegativeBound);
     	generate(c50.begin(), c50.end(), get_c50);
+        for (Size j = 0; j<nLGN; j++) {
+            assert(c50[j] < 1.0);
+        }
 
         norm = normal_distribution<Float>(10.0, 1.0);
     	auto get_sharpness = get_rand_from_gauss0(rGen_LGNsetup, norm, unityIncBound);
     	generate(sharpness.begin(), sharpness.end(), get_sharpness);
+        for (Size j = 0; j<nLGN; j++) {
+            assert(sharpness[j] >= 1.0);
+        }
 
-    	fLGN.open(LGN_filename, fstream::out | fstream::app | fstream::binary);
+    	fLGN.open(LGN_filename, fstream::out | fstream::binary);
     	// append to LGN_polar and LGN_ecc positions
-		fLGN.seekp(eofLGN);
 		// surround origin is changed
-    	fLGN.write((char*)&LGN_polar[nLGN], nLGN*sizeof(Float));
-    	fLGN.write((char*)&LGN_ecc[nLGN], nLGN*sizeof(Float));
+        if (!fLGN) {
+			cout << "Cannot open or find " << LGN_filename <<" for LGN receptive field properties\n";
+			return EXIT_FAILURE;
+        }
+	    fLGN.write((char*)&LGNtype[0], nLGN*sizeof(InputType_t));
+    	fLGN.write((char*)&LGN_polar[0], 2*nLGN*sizeof(Float));
+    	fLGN.write((char*)&LGN_ecc[0], 2*nLGN*sizeof(Float));
 		// new props
     	fLGN.write((char*)&LGN_rw[0], 2*nLGN*sizeof(Float));
     	fLGN.write((char*)&LGN_rh[0], 2*nLGN*sizeof(Float));
     	fLGN.write((char*)&LGN_orient[0], 2*nLGN*sizeof(Float));
 
-    	fLGN.write((char*)&LGN_k[0], 2*nLGN*sizeof(Float));
-    	fLGN.write((char*)&ratio[0], 2*nLGN*sizeof(Float));
     	fLGN.write((char*)&LGN_k[0], 2*nLGN*sizeof(Float));
     	fLGN.write((char*)&ratio[0], 2*nLGN*sizeof(Float));
     	fLGN.write((char*)&tauR[0], 2*nLGN*sizeof(Float));
@@ -612,24 +651,29 @@ int main(int argc, char **argv) {
     	fLGN.write((char*)&nD[0], 2*nLGN*sizeof(Float));
     	fLGN.write((char*)&delay[0], 2*nLGN*sizeof(Float));
 
-    	fLGN.write((char*)&spont[0], 2*nLGN*sizeof(Float));
-    	fLGN.write((char*)&c50[0], 2*nLGN*sizeof(Float));
-    	fLGN.write((char*)&sharpness[0], 2*nLGN*sizeof(Float));
+    	fLGN.write((char*)&spont[0], nLGN*sizeof(Float));
+    	fLGN.write((char*)&c50[0], nLGN*sizeof(Float));
+    	fLGN.write((char*)&sharpness[0], nLGN*sizeof(Float));
 
     	fLGN.write((char*)&coneType[0], 2*nLGN*sizeof(PosInt));
     	fLGN.write((char*)&covariant[0], nLGN*sizeof(Float));
     	fLGN.close();
 	} else { // Use old setup
-		cout << "reading LGN parameters\n";
-		fLGN.seekg(eofLGN);
-		fLGN.read(reinterpret_cast<char*>(&LGN_polar[nLGN]), nLGN*sizeof(Float));
-		fLGN.read(reinterpret_cast<char*>(&LGN_ecc[nLGN]), nLGN*sizeof(Float));
+	    fLGN_vpos.close();
+    	fLGN.open(LGN_filename, fstream::in | fstream::binary);
+        if (!fLGN) {
+			cout << "Cannot open or find " << LGN_filename <<" for LGN receptive field properties\n";
+			return EXIT_FAILURE;
+        } else {
+		    cout << "reading LGN parameters\n";
+        }
+	    fLGN.read(reinterpret_cast<char*>(&LGNtype[0]), nLGN*sizeof(InputType_t));
+		fLGN.read(reinterpret_cast<char*>(&LGN_polar[0]), 2*nLGN*sizeof(Float));
+		fLGN.read(reinterpret_cast<char*>(&LGN_ecc[0]), 2*nLGN*sizeof(Float));
     	fLGN.read(reinterpret_cast<char*>(&LGN_rw[0]), 2*nLGN*sizeof(Float));
     	fLGN.read(reinterpret_cast<char*>(&LGN_rh[0]), 2*nLGN*sizeof(Float));
     	fLGN.read(reinterpret_cast<char*>(&LGN_orient[0]), 2*nLGN*sizeof(Float));
 
-    	fLGN.read(reinterpret_cast<char*>(&LGN_k[0]), 2*nLGN*sizeof(Float));
-    	fLGN.read(reinterpret_cast<char*>(&ratio[0]), 2*nLGN*sizeof(Float));
     	fLGN.read(reinterpret_cast<char*>(&LGN_k[0]), 2*nLGN*sizeof(Float));
     	fLGN.read(reinterpret_cast<char*>(&ratio[0]), 2*nLGN*sizeof(Float));
     	fLGN.read(reinterpret_cast<char*>(&tauR[0]), 2*nLGN*sizeof(Float));
@@ -638,9 +682,9 @@ int main(int argc, char **argv) {
     	fLGN.read(reinterpret_cast<char*>(&nD[0]), 2*nLGN*sizeof(Float));
     	fLGN.read(reinterpret_cast<char*>(&delay[0]), 2*nLGN*sizeof(Float));
 
-    	fLGN.read(reinterpret_cast<char*>(&spont[0]), 2*nLGN*sizeof(Float));
-    	fLGN.read(reinterpret_cast<char*>(&c50[0]), 2*nLGN*sizeof(Float));
-    	fLGN.read(reinterpret_cast<char*>(&sharpness[0]), 2*nLGN*sizeof(Float));
+    	fLGN.read(reinterpret_cast<char*>(&spont[0]), nLGN*sizeof(Float));
+    	fLGN.read(reinterpret_cast<char*>(&c50[0]), nLGN*sizeof(Float));
+    	fLGN.read(reinterpret_cast<char*>(&sharpness[0]), nLGN*sizeof(Float));
 
     	fLGN.read(reinterpret_cast<char*>(&coneType[0]), 2*nLGN*sizeof(PosInt));
     	fLGN.read(reinterpret_cast<char*>(&covariant[0]), nLGN*sizeof(Float));
@@ -759,7 +803,7 @@ int main(int argc, char **argv) {
 	        	cout << "Cannot open or find " << storage_filename <<" for storage check.\n";
 	        	return EXIT_FAILURE;
             } else {
-                Size sizeTmp = 2;
+                Size sizeTmp = 3;
                 fLuminanceAd.write((char*)&nt, sizeof(Size));
                 fLuminanceAd.write((char*)&sizeTmp, sizeof(Size));
                 fLuminanceAd.write((char*)&nLGN, sizeof(Size));
@@ -769,7 +813,7 @@ int main(int argc, char **argv) {
 	}
 
     bool simpleContrast = true; // TODO : implement this for comparison no cone adaptation if set to true
-    PosInt stepRate = round(1000/dt);
+    Size stepRate = round(1000/dt);
     if (round(1000/dt) != 1000/dt) {
         cout << "stepRate = " << 1000/dt << "Hz, but it has to be a integer.\n";
         return EXIT_FAILURE;
@@ -788,23 +832,22 @@ int main(int argc, char **argv) {
         cout << "tau in #dt should be divisible by nKernelSample.\n"; 
         return EXIT_FAILURE;
     }
-    Float kernelSampleRate = static_cast<PosInt>(nKernelSample/tau*1000);
 
+    Size iKernelSampleT0;
     PosInt kernelSampleInterval = nRetrace/nKernelSample;
-    Float kernelSampleT0 = (kernelSampleInterval/2)*dt; 
-    Float kernelSampleDt = kernelSampleInterval*dt;
+    if (kernelSampleInterval%2 == 0) {
+        iKernelSampleT0 = kernelSampleInterval/2;
+    } else {
+        iKernelSampleT0 = 0;
+        if (kernelSampleInterval > 1) {
+            cout << "make sample interval (" << kernelSampleInterval << ") even in the units of dt\n";
+        }
+    }
     // |--*--|--*--|--*--|, e.g., nKernelSample = 3->*
-
-    printf("temporal kernel retraces %f ms, samples %u points, sample rate = %f Hz\n", tau, nKernelSample, kernelSampleRate);
-
-    PosInt maxFrame = static_cast<PosInt>(ceil(tau/1000 * frameRate)) + 1; 
-	// max frame need to be stored in texture for temporal convolution with the LGN kernel.
-    //  |---|--------|--|
-    
-    printf("temporal kernel retrace (tau): %f ms, frame rate: %d Hz needs at most %u frames\n", tau, frameRate, maxFrame);
-	Float tPerFrame = 1000.0f / frameRate; //ms
-    printf("~ %f plusminus 1 kernel sample per frame\n", tPerFrame/kernelSampleDt);
-    printf("=== texture memory required: %dx%dx%d = %fMB\n", maxFrame,width,height, maxFrame*width*height*sizeof(float)/1024.0/1024.0);
+    Float kernelSampleDt = kernelSampleInterval*dt;
+    Float kernelSampleT0 = iKernelSampleT0*dt;
+    Size kernelSampleRate = stepRate/kernelSampleInterval; 
+    printf("temporal kernel retraces %f ms, samples %u points, sample rate = %u Hz\n", tau, nKernelSample, kernelSampleRate);
 
     // calculate phase difference between sampling point and next-frame point  
     bool moreDt = true;
@@ -836,11 +879,19 @@ int main(int argc, char **argv) {
     PosInt *exact_it = new PosInt[denorm];
     for (PosInt i=0; i<denorm; i++) {
         exact_it[i] = (i*stepRate)/frameRate; // => quotient of "i*Tframe/Tdt"
+        cout << exact_it[i] << " + " << exact_norm[i] << " / " << denorm << "\n";
     }
-    // i frames' length in steps = exact_it[i] + exact_norm[i]/denorm
+    // the first i frames' accumulated length in steps = exact_it[i] + exact_norm[i]/denorm
     assert((stepRate*denorm) % frameRate == 0);
-    unsigned int co_product = (stepRate*denorm)/frameRate; 
+    Size co_product = (stepRate*denorm)/frameRate; 
     // the number of non-zero minimum steps to meet frameLength * denorm with 0 phase
+    Size ntPerFrame = co_product; // tPerFrame in the units of dt/denorm
+
+    Size maxFrame = (nRetrace*denorm + ntPerFrame-1)/ntPerFrame + 1; 
+	// max frame need to be stored in texture for temporal convolution with the LGN kernel.
+    //  |---|--------|--|
+    printf("temporal kernel retrace (tau): %f ms, frame rate: %d Hz needs at most %u frames\n", tau, frameRate, maxFrame);
+    printf("=== texture memory required: %dx%dx%d = %fMB\n", maxFrame,width,height, maxFrame*width*height*sizeof(float)/1024.0/1024.0);
 
     unsigned int nChannel = 3; // L, M, S
     // one cudaArray per channel
@@ -849,10 +900,13 @@ int main(int argc, char **argv) {
     cudaArray *cuArr_M;
     cudaArray *cuArr_S;
     // allocate cudaArrays on the device
+    //checkCudaErrors(cudaMalloc3DArray(&cuArr_L, &channelDesc, make_cudaExtent(width*sizeof(float), height, maxFrame), cudaArrayLayered));
+    //checkCudaErrors(cudaMalloc3DArray(&cuArr_M, &channelDesc, make_cudaExtent(width*sizeof(float), height, maxFrame), cudaArrayLayered));
+    //checkCudaErrors(cudaMalloc3DArray(&cuArr_S, &channelDesc, make_cudaExtent(width*sizeof(float), height, maxFrame), cudaArrayLayered));
+
     checkCudaErrors(cudaMalloc3DArray(&cuArr_L, &channelDesc, make_cudaExtent(width, height, maxFrame), cudaArrayLayered));
     checkCudaErrors(cudaMalloc3DArray(&cuArr_M, &channelDesc, make_cudaExtent(width, height, maxFrame), cudaArrayLayered));
     checkCudaErrors(cudaMalloc3DArray(&cuArr_S, &channelDesc, make_cudaExtent(width, height, maxFrame), cudaArrayLayered));
-
     // set params for layerd texture memory
     init_layer(L_retinaConSig);
     init_layer(M_retinaConSig);
@@ -879,9 +933,11 @@ int main(int argc, char **argv) {
     Float* __restrict__ dLGN_fr;
     Float* __restrict__ current_convol;
     Float* __restrict__ max_convol;
+    Float* __restrict__ contrast;
     checkCudaErrors(cudaMalloc((void **) &dLGN_fr, nLGN*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &current_convol, nLGN*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &max_convol, nLGN*sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void **) &contrast, 2*nLGN*sizeof(Float)));
     checkCudaErrors(cudaMemset(max_convol, 0, nLGN*sizeof(Float)));
 	
 	size_t maxStorageSize;
@@ -891,19 +947,16 @@ int main(int argc, char **argv) {
 		maxStorageSize = nType*nKernelSample*nLGN;
 	}
 	Float* arrayOf_2nType_nSample_nLGN = new Float[maxStorageSize]; // host array for storages
-    Float* decayIn;
-    Float* lastF;
+    Float* luminance;
     Float* TW_storage;
     Float* SW_storage;
     float* SC_storage;
-    checkCudaErrors(cudaMalloc((void **) &decayIn, nType*nLGN*sizeof(Float)));
-    checkCudaErrors(cudaMalloc((void **) &lastF, nType*nLGN*sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void **) &luminance, nLGN*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &TW_storage, nLGN*nType*nKernelSample*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &SW_storage, nLGN*nType*nSample*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &SC_storage, 2*nLGN*nType*nSample*sizeof(float)));
 
-    checkCudaErrors(cudaMemset(decayIn, 0, nType*nLGN*sizeof(Float)));
-    checkCudaErrors(cudaMemset(lastF, 0, nType*nLGN*sizeof(Float)));
+    checkCudaErrors(cudaMemset(luminance, 0, nLGN*sizeof(Float)));
     // initialize average to normalized mean luminance
     cudaStream_t s0, s1, s2;
     checkCudaErrors(cudaStreamCreate(&s0));
@@ -961,6 +1014,7 @@ int main(int argc, char **argv) {
     checkCudaErrors(cudaMemcpy(arrayOfnLGN, max_convol, nLGN*sizeof(Float), cudaMemcpyDeviceToHost));
     fmax_convol.write((char*)arrayOfnLGN, nLGN*sizeof(Float));
     fmax_convol.close();
+	cout << "convol weights stored\n";
 	if (testStorage) {// storage check output
         fStorage.write((char*)&nLGN, sizeof(Size));
         Size _nType = static_cast<Size>(nType);
@@ -978,25 +1032,34 @@ int main(int argc, char **argv) {
 		fStorage.write((char*)arrayOf_2nType_nSample_nLGN, 2*nLGN*nType*nSample*sizeof(float));
 
 		fStorage.close();
+	    cout << "convol weights written.\n";
 	}
     // calc LGN firing rate at the end of current dt
-    unsigned int currentFrame = 0; // current frame number from stimulus
-    unsigned int iFrame = 0; //latest frame inserted into the dL dM dS,  initialization not necessary
-    unsigned int iPhase = 0;
-    Float framePhase = tPerFrame;
+    PosInt currentFrame = 0; // current frame number from stimulus
     PosInt oldFrame = currentFrame;
-	cout << "convol weights stored\n";
+    // framePhase is fractionalized by denorm to fit frame duration with integer units.
+    PosInt iFramePhaseHead = 0;
+    PosInt iFramePhaseTail = (ntPerFrame - (nRetrace*denorm % ntPerFrame)) % ntPerFrame;
+
+    PosInt iFrameHead = 0;
+    PosInt oldFrameHead = iFrameHead;
+    PosInt iFrameTail;
+    //PosInt iPhase = 0;
+
 	cout << "simulation starts: \n";
     for (unsigned int it = 0; it < nt; it++) {
         Float t = it*dt;
         // next frame comes between (t, t+dt), read and store frame to texture memory
-        if (it+1 > (currentFrame/denorm)*co_product + exact_it[iPhase]) {
-            iFrame = currentFrame % maxFrame;
-			//cout << "processing frame #" << iFrame << "\n";
+        if ((it+1)*denorm >= currentFrame*ntPerFrame) {
+            // back insert frame into texture memory
             // TODO: realtime video stimulus control
             if (fStimulus) {
                 fStimulus.read(reinterpret_cast<char*>(LMS), nChannel*nPixelPerFrame*sizeof(float));
-                //printf("frame #%i is read LMS\n", currentFrame);
+                Float sum = 0;
+                for (Size i=0; i<nChannel*nPixelPerFrame; i++) {
+                    sum += LMS[i];
+                }
+                printf("sum(LMS) = %f\n", sum);
                 streampos current_fpos = fStimulus.tellg();
                 if (current_fpos == eofStimulus) { // if at the end of input file loop back to the beginning of frame data
                     fStimulus.seekg(sofStimulus);
@@ -1007,17 +1070,26 @@ int main(int argc, char **argv) {
                 return EXIT_FAILURE;
             }
             //cp to texture mem in device
-            prep_sample(iFrame, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, cudaMemcpyHostToDevice);
-            /*{ // DEBUG printout
-                printf("frame #%i prepared at t = %f, in (%f,%f) ~ %.3f%%.\n", currentFrame, currentFrame*tPerFrame, t, t+dt, exact_norm[iPhase]*100.0f/denorm);
-            }*/
-            currentFrame++;
-            iPhase = (iPhase + 1) % denorm;
-        }
+            prep_sample(iFrameHead, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, cudaMemcpyHostToDevice);
 
-        framePhase -= dt;
-        if (framePhase < 0) framePhase += tPerFrame;
-        framePhase = fmod(framePhase, tPerFrame);
+            //iPhase = (iPhase + 1) % denorm;
+            currentFrame++;
+            oldFrameHead = iFrameHead;
+            iFrameHead = (iFrameHead+1) % maxFrame;
+
+	        printf("\rsimulating@t = %f -> %f, frame %d#%d-%d, %.1f%%", t, t+dt, currentFrame/nFrame, currentFrame%nFrame, nFrame, 100*static_cast<float>(it+1)/nt);
+        }
+        // update frame for head and tail for convolution at t=(it + 1)*dt
+        iFramePhaseTail = (iFramePhaseTail + denorm) % ntPerFrame;
+        //if (iFramePhaseTail == 0) iFramePhaseTail = ntPerFrame;
+        iFramePhaseHead = (iFramePhaseHead + denorm) % ntPerFrame;
+
+        //if (iFramePhaseHead == 0 || iFramePhaseTail == 0) iFrameTail = oldFrameHead + 2;  // t-tau and t are {maxFrame-1} frames apart
+        //else iFrameTail = oldFrameHead + 1; // t-tau and t are {maxFrame} frames apart
+        // point frametail to the tail of the LGN temporal convolution at t-tau
+        iFrameTail = oldFrameHead + 1; // t-tau and t are {maxFrame} frames apart
+        cout << "it = " << it << ", head at " << oldFrameHead << "\n";
+
 		/* if it < nRetrace, padded zero-valued frames for t<0
             -->|        |<-- framePhase
             |--|------frame------|
@@ -1025,29 +1097,29 @@ int main(int argc, char **argv) {
             jt-2, jt-1, jt ...nRetrace... it
         */// perform kernel convolution with built-in texture interpolation
         convolGrid.x = nLGN;
-        convolGrid.y = 2;
-		//cout << "LGN_convol_c1s<<<" << convolGrid.x  << "x" << convolGrid.y  << "x" << convolGrid.z << ", " << convolBlock.x  << "x" << convolBlock.y  << "x" << convolBlock.z << ", " << sizeof(Float)*2*convolBlock.x*convolBlock.y << ">>>\n";
+        convolGrid.y = 1;
         LGN_convol_c1s<<<convolGrid, convolBlock, sizeof(Float)*nSample>>>(
-                decayIn, lastF,
+                luminance,
                 SW_storage, SC_storage, TW_storage,
-                current_convol,
+                current_convol, contrast,
                 dLGN.coneType, *dLGN.spatial,
-                nsig,
 				nLGN_L,
-		 		L_x0, L_y0, R_x0, R_y0,
 				normViewDistance,
-                iFrame, maxFrame, tPerFrame, framePhase,
+                iFrameTail, maxFrame, ntPerFrame, iFramePhaseTail,
                 Itau,
-                kernelSampleDt, nKernelSample,
-                dt);
+                iKernelSampleT0, kernelSampleInterval, nKernelSample,
+                dt, denorm);
 
 		getLastCudaError("LGN_convol_c1s failed");
         checkCudaErrors(cudaMemcpy(arrayOfnLGN, current_convol, nLGN*sizeof(Float), cudaMemcpyDeviceToHost));
+
         fLGN_convol.write((char*)arrayOfnLGN, nLGN*sizeof(Float));
         if (testLuminanceAd) { // only test the center luminance
-            checkCudaErrors(cudaMemcpy(arrayOfnLGN, decayIn, nLGN*sizeof(Float), cudaMemcpyDeviceToHost));
+            checkCudaErrors(cudaMemcpy(arrayOfnLGN, luminance, nLGN*sizeof(Float), cudaMemcpyDeviceToHost));
             fLuminanceAd.write((char*)arrayOfnLGN, nLGN*sizeof(Float));
-            checkCudaErrors(cudaMemcpy(arrayOfnLGN, lastF, nLGN*sizeof(Float), cudaMemcpyDeviceToHost));
+            checkCudaErrors(cudaMemcpy(arrayOfnLGN, contrast, nLGN*sizeof(Float), cudaMemcpyDeviceToHost));
+            fLuminanceAd.write((char*)arrayOfnLGN, nLGN*sizeof(Float));
+            checkCudaErrors(cudaMemcpy(arrayOfnLGN, contrast+nLGN, nLGN*sizeof(Float), cudaMemcpyDeviceToHost));
             fLuminanceAd.write((char*)arrayOfnLGN, nLGN*sizeof(Float));
         }
 
@@ -1056,7 +1128,7 @@ int main(int argc, char **argv) {
 		getLastCudaError("LGN_nonlinear failed");
         checkCudaErrors(cudaMemcpy(LGN_fr, dLGN_fr, nLGN*sizeof(Float), cudaMemcpyDeviceToHost));
         fLGN_fr.write((char*)LGN_fr, nLGN*sizeof(Float));
-        if (currentFrame > oldFrame || it == nt-1) {
+        if (it == nt-1) {
 	        printf("\r@t = %f -> %f simulated, frame %d#%d-%d, %.1f%%", t, t+dt, currentFrame/nFrame, currentFrame%nFrame, nFrame, 100*static_cast<float>(it+1)/nt);
             oldFrame = currentFrame;
         }

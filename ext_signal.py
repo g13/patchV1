@@ -56,10 +56,13 @@ def video_to_LMS_time_series(vid, start, end):
         ret, frame = cap.read()
         if ret:
             if i==start:
-                LMS = np.empty((end-start,)+frame.shape, dtype=float)
+                # rotate axis of frame so that the shape is [frame, LMS, height, width]
+                LMS = np.empty((end-start,)+(frame.shape[2],frame.shape[0],frame.shape[1]), dtype=float)
 
-            LMS[i-start] = img_to_LMS(frame)
-            output.write((LMS[i-start]*255).astype('uint8'))
+            frameToVid = img_to_LMS(frame)
+            output.write((frameToVid*255).astype('uint8'))
+            # video data is BGR, thus covert to RGB
+            LMS[i-start] = frameToVid[:,:,::-1].reshape((height*width,3)).T.reshape(3,height,width)
             i += 1
         else:
             raise Exception('video file corrupted')
