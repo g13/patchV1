@@ -1,8 +1,8 @@
 #include "discrete_input_convol.cuh"
 
-extern texture<float, cudaTextureType2DLayered> L_retinaConSig;
-extern texture<float, cudaTextureType2DLayered> M_retinaConSig;
-extern texture<float, cudaTextureType2DLayered> S_retinaConSig;
+extern texture<float, cudaTextureType2DLayered> L_retinaInput;
+extern texture<float, cudaTextureType2DLayered> M_retinaInput;
+extern texture<float, cudaTextureType2DLayered> S_retinaInput;
 extern __device__ __constant__ float sqrt2;
 
 __global__
@@ -58,22 +58,22 @@ Float get_intensity(SmallSize coneType, float x, float y, unsigned int iLayer) {
     Float contrast;
     switch (coneType) {
         case 0:
-            contrast = static_cast<Float>(tex2DLayered(L_retinaConSig, x, y, iLayer));
+            contrast = static_cast<Float>(tex2DLayered(L_retinaInput, x, y, iLayer));
             break;
         case 1:
-            contrast = static_cast<Float>(tex2DLayered(M_retinaConSig, x, y, iLayer));
+            contrast = static_cast<Float>(tex2DLayered(M_retinaInput, x, y, iLayer));
             break;
         case 2:
-            contrast = static_cast<Float>(tex2DLayered(S_retinaConSig, x, y, iLayer));
+            contrast = static_cast<Float>(tex2DLayered(S_retinaInput, x, y, iLayer));
             break;
         case 3:
-            contrast = static_cast<Float>(tex2DLayered(L_retinaConSig, x, y, iLayer) 
-                                        + tex2DLayered(M_retinaConSig, x, y, iLayer))/2.0; 
+            contrast = static_cast<Float>(tex2DLayered(L_retinaInput, x, y, iLayer) 
+                                        + tex2DLayered(M_retinaInput, x, y, iLayer))/2.0; 
             break;
         case 4:
-            contrast = static_cast<Float>(tex2DLayered(L_retinaConSig, x, y, iLayer) 
-                                        + tex2DLayered(M_retinaConSig, x, y, iLayer) 
-                                        + tex2DLayered(S_retinaConSig, x, y, iLayer))/3.0;
+            contrast = static_cast<Float>(tex2DLayered(L_retinaInput, x, y, iLayer) 
+                                        + tex2DLayered(M_retinaInput, x, y, iLayer) 
+                                        + tex2DLayered(S_retinaInput, x, y, iLayer))/3.0;
             break;
         default:
             printf("unrecognized cone type");
@@ -86,13 +86,12 @@ Float get_intensity(SmallSize coneType, float x, float y, unsigned int iLayer) {
             break;
         */
     }
-    if (contrast <= 0 && threadIdx.y*blockDim.x + threadIdx.x == 0) {
-        printf("(%f,%f) = %f, L:%f, M:%f, S: %f\n", x, y, contrast
-                , static_cast<Float>(tex2DLayered(L_retinaConSig, x, y, iLayer))
-                , static_cast<Float>(tex2DLayered(M_retinaConSig, x, y, iLayer))
-                , static_cast<Float>(tex2DLayered(S_retinaConSig, x, y, iLayer)));
-        assert(contrast > 0);
-    }
+    //if (contrast <= 0 && threadIdx.y*blockDim.x + threadIdx.x == 0) {
+    //    printf("(%f,%f) = %f, L:%f, M:%f, S: %f\n", x, y, contrast
+    //            , static_cast<Float>(tex2DLayered(L_retinaInput, x, y, iLayer))
+    //            , static_cast<Float>(tex2DLayered(M_retinaInput, x, y, iLayer))
+    //            , static_cast<Float>(tex2DLayered(S_retinaInput, x, y, iLayer)));
+    //}
     return contrast;
 }
 
@@ -348,12 +347,12 @@ void store(
 
     Float temporalWeight;
     store_temporalWeight(temporal, TW_storage, reduced, temporalWeight, nKernelSample, kernelSampleDt, kernelSampleT0, id, tid, lid, iType, nType);
-    /* DEBUG
-	if ((lid ==0 || lid == gridDim.x) && tid == 0) {
+    // DEBUG
+    __syncthreads();
+	if (id == 0 && blockIdx.y == 0 && tid == 0) {
         printf("temporalWeights stored\n");
         assert(!isnan(temporalWeight));
-    }*/
-    __syncthreads();
+    }//
     //
 	Float LR_x0, LR_y0;
     bool LR = id < nLGN_L;
@@ -395,16 +394,13 @@ void store(
         // load from shared mem
         store_spatialWeight(reduced, shared_spat[0], shared_spat[1], shared_spat[2], shared_spat[3], shared_spat[4], shared_spat[5], shared_spat[6], shared_spat[7], shared_spat[8], shared_spat[9], normViewDistance, LR_x0, LR_y0, LR, SW_storage, SC_storage, offset*nSample+tid, nSample);
     } 
+    __syncthreads();
     //spatialWeight = abs(spatialWeight); // get absolute values ready for max_convol, always positive, not necessary
-    /* DEBUG
-	if ((lid ==0 || lid == gridDim.x) && tid == 0) {
+    // DEBUG
+	if (id == 0 || blockIdx.y == 0 && tid == 0) {
         printf("spatialWeights stored\n");
-        assert(!isnan(spatialWeight));
-	    if (lid ==0 && tid == 0) {
-            assert(max_convol[id] == 0.0);
-        }
     }
-    */
+    //
     // k is now integrated amplitude over space 
     if (tid == 0) { // add center surround together, iType = 0, 1
         atomicAdd(max_convol+id, temporalWeight * abs(k) * kernelSampleDt);
@@ -448,7 +444,6 @@ void LGN_convol_c1s(
     //TODO: Itau may take different value for different cone type
     // convolve center and update luminance
     Float convolS, convolC;
-    Float contrastS, contrastC;
 	if (tid == 0) {
 		convolS = 0.0;
 		convolC = 0.0;

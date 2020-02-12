@@ -46,7 +46,7 @@ typedef std::underlying_type<InputType>::type InputType_t;
 typedef std::underlying_type<OutputType>::type OutputType_t;
 
 // normalize x to [-1,1], y to baRatio*[-1,1]
-auto transform_coord_to_unitRF(Float x, Float y, const Float mx, const Float my, const Float theta, const Float a) {
+std::pair<Float, Float> transform_coord_to_unitRF(Float x, Float y, const Float mx, const Float my, const Float theta, const Float a) {
     // a is half-width at the x-axis
     x = (x - mx)/a;
     y = (y - my)/a;

@@ -25,7 +25,7 @@ __device__ void find_min(Float array[], Float data, PosInt id[]);
 template <typename T>
 __device__ void warps_reduce(T array[], T data) {
     PosInt tid = blockDim.x*threadIdx.y + threadIdx.x;
-	T old_data = data;
+	//T old_data = data;
     for (int offset = warpSize/2; offset > 0; offset /= 2) {
         data += __shfl_down_sync(FULL_MASK, data, offset);
     }
@@ -41,7 +41,7 @@ __device__ void warp0_reduce(T array[]) {
 	Size n = (blockDim.x * blockDim.y * blockDim.z + warpSize - 1)/warpSize; // may not be a full warp, avoid access uninitialized shared memory
 	if (tid < n) {
 		T data = array[tid];
-		T old_data = data;
+		//T old_data = data;
 		for (int offset = warpSize / 2; offset > 0; offset /= 2) {
 			data += __shfl_down_sync(FULL_MASK, data, offset);
 		}

@@ -19,7 +19,7 @@
 #include "CUDA_MACRO.h"
 
 // the retinal discrete x, y as cone receptors id
-void init_layer(texture<float, cudaTextureType2DLayered> &layer) {
+inline void init_layer(texture<float, cudaTextureType2DLayered> &layer) {
     layer.addressMode[0] = cudaAddressModeBorder;
     layer.addressMode[1] = cudaAddressModeBorder; 
     layer.filterMode = cudaFilterModeLinear;
@@ -375,7 +375,8 @@ int main(int argc, char **argv) {
         auto get_rand_from_clipped_gauss = [](Float param[2], Float lb, Float ub) {
             assert(lb < 1);
             assert(ub > 1);
-            function<Float(RandomEngine)> get_rand = [param, lb, ub](RandomEngine &rGen) {
+            //function<Float(RandomEngine)> get_rand = [param, lb, ub](RandomEngine &rGen) {
+            auto get_rand = [param, lb, ub](RandomEngine &rGen) {
                 static normal_distribution<Float> norm(0.0, 1.0);
 	            Size count = 0;
                 Float v;
@@ -523,64 +524,67 @@ int main(int argc, char **argv) {
     	    // using median from table 2,3  (on,off)/all * table 5,6 with matching c.v.# Benardete and Kaplan 1997
     	    // fit with difference of exponentials in LGN_kernel.ipynb
     	    // cones' differences are not differentiated
-    	    switch (LGNtype[i]) {
+            if (LGNtype[i] == InputType::MonLoff || LGNtype[i] == InputType::LonMoff) {
     	        // on-center, off-surround
-    	        case InputType::MonLoff: case InputType::LonMoff:
+    	        // k
+    			tie(LGN_k[i], LGN_k[i+nLGN]) = get_rands_from_correlated_gauss(K_onC, K_offS, rho_Kc_Ks, rho_Kc_Ks_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, nonNegativeBound);
+				LGN_k[i+nLGN] *= -1; //off-surround !!!IMPORTANT sign change here
+
+    	        // centers' tau, n 
+    	        nR[i] = get_nRonC(rGen_LGNsetup);
+				tspR = get_rand_from_gauss(tspR_onC, rGen_LGNsetup, positiveBound);
+				tauR[i] = tspR/(nR[i]-1);
+
+        		tie(pTspD[0], pTspD[1]) = tspD_dist(nR[i], tauR[i]);
+                auto tauD_Cbound = get_excLowBound(tauR[i]);
+				tauD[i] = get_rand_from_gauss(tauD_onC, rGen_LGNsetup, tauD_Cbound);
+				tspD = get_rand_from_gauss(pTspD, rGen_LGNsetup, positiveBound);
+    	        nD[i] = tspD/tauD[i]+1;
+
+    	        // surround' tau, n 
+    	        nR[i+nLGN] = get_nRoffS(rGen_LGNsetup);
+				tspR = get_rand_from_gauss(tspR_offS, rGen_LGNsetup, positiveBound);
+				tauR[i+nLGN] = tspR/(nR[i+nLGN]-1);
+
+        		tie(pTspD[0], pTspD[1]) = tspD_dist(nR[i+nLGN], tauR[i+nLGN]);
+                auto tauD_Sbound = get_excLowBound(tauR[i+nLGN]);
+				tauD[i+nLGN] = get_rand_from_gauss(tauD_offS, rGen_LGNsetup, tauD_Sbound);
+				tspD = get_rand_from_gauss(pTspD, rGen_LGNsetup, positiveBound);
+    	        nD[i+nLGN] = tspD/tauD[i+nLGN];
+
+    	        // ratio
+    	        ratio[i] = get_rand_from_gauss(ratio_onC, rGen_LGNsetup, nonNegativeBound);
+    	        ratio[i+nLGN] = get_rand_from_gauss(ratio_offS, rGen_LGNsetup, nonNegativeBound);
+    	        // delay
+    	        delay[i] = get_rand_from_gauss(delay_onC, rGen_LGNsetup, nonNegativeBound);
+    	        delay[i+nLGN] = get_rand_from_gauss(delay_offS, rGen_LGNsetup, nonNegativeBound);
+            } else {
+                if (LGNtype[i] == InputType::MoffLon || LGNtype[i] == InputType::LoffMon) {
+    	            // off-centers
     	            // k
-    				tie(LGN_k[i], LGN_k[i+nLGN]) = get_rands_from_correlated_gauss(K_onC, K_offS, rho_Kc_Ks, rho_Kc_Ks_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, nonNegativeBound);
-					LGN_k[i+nLGN] *= -1; //off-surround !!!IMPORTANT sign change here
-
-    	            // centers' tau, n 
-    	            nR[i] = get_nRonC(rGen_LGNsetup);
-					tspR = get_rand_from_gauss(tspR_onC, rGen_LGNsetup, positiveBound);
-					tauR[i] = tspR/(nR[i]-1);
-
-        			tie(pTspD[0], pTspD[1]) = tspD_dist(nR[i], tauR[i]);
-					tauD[i] = get_rand_from_gauss(tauD_onC, rGen_LGNsetup, get_excLowBound(tauR[i]));
-					tspD = get_rand_from_gauss(pTspD, rGen_LGNsetup, positiveBound);
-    	            nD[i] = tspD/tauD[i]+1;
-
-    	            // surround' tau, n 
-    	            nR[i+nLGN] = get_nRoffS(rGen_LGNsetup);
-					tspR = get_rand_from_gauss(tspR_offS, rGen_LGNsetup, positiveBound);
-					tauR[i+nLGN] = tspR/(nR[i+nLGN]-1);
-
-        			tie(pTspD[0], pTspD[1]) = tspD_dist(nR[i+nLGN], tauR[i+nLGN]);
-					tauD[i+nLGN] = get_rand_from_gauss(tauD_offS, rGen_LGNsetup, get_excLowBound(tauR[i+nLGN]));
-					tspD = get_rand_from_gauss(pTspD, rGen_LGNsetup, positiveBound);
-    	            nD[i+nLGN] = tspD/tauD[i+nLGN];
-
-    	            // ratio
-    	            ratio[i] = get_rand_from_gauss(ratio_onC, rGen_LGNsetup, nonNegativeBound);
-    	            ratio[i+nLGN] = get_rand_from_gauss(ratio_offS, rGen_LGNsetup, nonNegativeBound);
-    	            // delay
-    	            delay[i] = get_rand_from_gauss(delay_onC, rGen_LGNsetup, nonNegativeBound);
-    	            delay[i+nLGN] = get_rand_from_gauss(delay_offS, rGen_LGNsetup, nonNegativeBound);
-    	            break;
-    	        // off-centers
-    	        case InputType::MoffLon: case InputType::LoffMon:
-    	            // k
-    				tie(LGN_k[i], LGN_k[i+nLGN]) = get_rands_from_correlated_gauss(K_offC, K_onS, rho_Kc_Ks, rho_Kc_Ks_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, nonNegativeBound);
-					LGN_k[i] *= -1; //off-center
+    		    	tie(LGN_k[i], LGN_k[i+nLGN]) = get_rands_from_correlated_gauss(K_offC, K_onS, rho_Kc_Ks, rho_Kc_Ks_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, nonNegativeBound);
+			    	LGN_k[i] *= -1; //off-center
 
     	            // centers' tau, n 
     	            nR[i] = get_nRoffC(rGen_LGNsetup);
-					tspR = get_rand_from_gauss(tspR_offC, rGen_LGNsetup, positiveBound);
-					tauR[i] = tspR/(nR[i]-1);
+			    	tspR = get_rand_from_gauss(tspR_offC, rGen_LGNsetup, positiveBound);
+			    	tauR[i] = tspR/(nR[i]-1);
 
-        			tie(pTspD[0], pTspD[1]) = tspD_dist(nR[i], tauR[i]);
-					tauD[i] = get_rand_from_gauss(tauD_offC, rGen_LGNsetup, get_excLowBound(tauR[i]));
-					tspD = get_rand_from_gauss(pTspD, rGen_LGNsetup, positiveBound);
+        	    	tie(pTspD[0], pTspD[1]) = tspD_dist(nR[i], tauR[i]);
+                    auto tauD_Cbound = get_excLowBound(tauR[i]);
+			    	tauD[i] = get_rand_from_gauss(tauD_offC, rGen_LGNsetup, tauD_Cbound);
+			    	tspD = get_rand_from_gauss(pTspD, rGen_LGNsetup, positiveBound);
     	            nD[i] = tspD/tauD[i];
 
     	            // surround' tau, n 
     	            nR[i+nLGN] = get_nRonS(rGen_LGNsetup);
-					tspR = get_rand_from_gauss(tspR_onS, rGen_LGNsetup, positiveBound);
-					tauR[i+nLGN] = tspR/(nR[i+nLGN]-1);
+			    	tspR = get_rand_from_gauss(tspR_onS, rGen_LGNsetup, positiveBound);
+			    	tauR[i+nLGN] = tspR/(nR[i+nLGN]-1);
 
-        			tie(pTspD[0], pTspD[1]) = tspD_dist(nR[i+nLGN], tauR[i+nLGN]);
-					tauD[i+nLGN] = get_rand_from_gauss(tauD_onS, rGen_LGNsetup, get_excLowBound(tauR[i+nLGN]));
-					tspD = get_rand_from_gauss(pTspD, rGen_LGNsetup, positiveBound);
+        	    	tie(pTspD[0], pTspD[1]) = tspD_dist(nR[i+nLGN], tauR[i+nLGN]);
+                    auto tauD_Sbound = get_excLowBound(tauR[i+nLGN]);
+			    	tauD[i+nLGN] = get_rand_from_gauss(tauD_onS, rGen_LGNsetup, tauD_Sbound);
+			    	tspD = get_rand_from_gauss(pTspD, rGen_LGNsetup, positiveBound);
     	            nD[i+nLGN] = tspD/tauD[i+nLGN];
 
     	            // ratio
@@ -589,9 +593,10 @@ int main(int argc, char **argv) {
     	            // delay
     	            delay[i] = get_rand_from_gauss(delay_offC, rGen_LGNsetup, nonNegativeBound);
     	            delay[i+nLGN] = get_rand_from_gauss(delay_onS, rGen_LGNsetup, nonNegativeBound);
-    	            break;
-   		        default: throw("There's no implementation of such RF for parvo LGN");
-    	    }
+    	        } else {
+   		            throw("There's no implementation of such RF for parvo LGN");
+                }
+            }
 			// c-s coneType, LGN_props.h
 			switch (LGNtype[i]) {
 				case InputType::MonLoff: case InputType::MoffLon:
@@ -815,8 +820,8 @@ int main(int argc, char **argv) {
 	}
 
     bool simpleContrast = true; // TODO : implement this for comparison no cone adaptation if set to true
-    Size stepRate = round(1000/dt);
-    if (round(1000/dt) != 1000/dt) {
+    Size stepRate = std::round(1000/dt);
+    if (std::round(1000/dt) != 1000/dt) {
         cout << "stepRate = " << 1000/dt << "Hz, but it has to be a integer.\n";
         return EXIT_FAILURE;
     }
@@ -825,8 +830,8 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    Size nRetrace = static_cast<Size>(round(tau/dt));
-    if (round(tau/dt) != tau/dt) {
+    Size nRetrace = static_cast<Size>(std::round(tau/dt));
+    if (std::round(tau/dt) != tau/dt) {
         cout << "tau should be divisible by dt.\n"; 
         return EXIT_FAILURE;
     }
@@ -902,23 +907,19 @@ int main(int argc, char **argv) {
     cudaArray *cuArr_L;
     cudaArray *cuArr_M;
     cudaArray *cuArr_S;
-    // allocate cudaArrays on the device
-    //checkCudaErrors(cudaMalloc3DArray(&cuArr_L, &channelDesc, make_cudaExtent(width*sizeof(float), height, maxFrame), cudaArrayLayered));
-    //checkCudaErrors(cudaMalloc3DArray(&cuArr_M, &channelDesc, make_cudaExtent(width*sizeof(float), height, maxFrame), cudaArrayLayered));
-    //checkCudaErrors(cudaMalloc3DArray(&cuArr_S, &channelDesc, make_cudaExtent(width*sizeof(float), height, maxFrame), cudaArrayLayered));
 
     checkCudaErrors(cudaMalloc3DArray(&cuArr_L, &channelDesc, make_cudaExtent(width, height, maxFrame), cudaArrayLayered));
     checkCudaErrors(cudaMalloc3DArray(&cuArr_M, &channelDesc, make_cudaExtent(width, height, maxFrame), cudaArrayLayered));
     checkCudaErrors(cudaMalloc3DArray(&cuArr_S, &channelDesc, make_cudaExtent(width, height, maxFrame), cudaArrayLayered));
     // set params for layerd texture memory
-    init_layer(L_retinaConSig);
-    init_layer(M_retinaConSig);
-    init_layer(S_retinaConSig);
+    init_layer(L_retinaInput);
+    init_layer(M_retinaInput);
+    init_layer(S_retinaInput);
 
     // bind texture to cudaArrays
-    checkCudaErrors(cudaBindTextureToArray(L_retinaConSig,  cuArr_L, channelDesc));
-    checkCudaErrors(cudaBindTextureToArray(M_retinaConSig,  cuArr_M, channelDesc));
-    checkCudaErrors(cudaBindTextureToArray(S_retinaConSig,  cuArr_S, channelDesc));
+    checkCudaErrors(cudaBindTextureToArray(L_retinaInput, cuArr_L, channelDesc));
+    checkCudaErrors(cudaBindTextureToArray(M_retinaInput, cuArr_M, channelDesc));
+    checkCudaErrors(cudaBindTextureToArray(S_retinaInput, cuArr_S, channelDesc));
 
     float* LMS = new float[nPixelPerFrame*sizeof(float)*nChannel]; // memory head
 
@@ -977,15 +978,17 @@ int main(int argc, char **argv) {
         tS = tM + nPixelPerFrame*maxFrame;
         Size nGrid = (nPixelPerFrame*maxFrame + blockSize-1)/blockSize;
         cudaMemsetNonzero<<<nGrid, blockSize>>> (tL, nPixelPerFrame*maxFrame, init_L);
+	    getLastCudaError("memset failed");
         cudaMemsetNonzero<<<nGrid, blockSize>>> (tM, nPixelPerFrame*maxFrame, init_M);
+	    getLastCudaError("memset failed");
         cudaMemsetNonzero<<<nGrid, blockSize>>> (tS, nPixelPerFrame*maxFrame, init_S);
 	    getLastCudaError("memset failed");
 
+        prep_sample(0, width, height, tL, tM, tS, cuArr_L, cuArr_M, cuArr_S, maxFrame, cudaMemcpyDeviceToDevice);
         dim3 fb(16,16,1);
         dim3 fg(16,16,maxFrame);
         testTexture<<<fg, fb>>> (init_L, init_M, init_S);
 	    getLastCudaError("texture read test failed");
-        prep_sample(0, width, height, tL, tM, tS, cuArr_L, cuArr_M, cuArr_S, maxFrame, cudaMemcpyDeviceToDevice);
         checkCudaErrors(cudaFree(tLMS));
         cout << "all pixels in texture memory (frame buffers) initialized to " << init_L << ", " << init_M << ", " << init_S << " \n";
     }
