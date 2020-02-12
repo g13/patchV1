@@ -12,9 +12,10 @@ void cudaMemsetNonzero(
         Float value) 
 {
     Size id =  blockDim.x * blockDim.y * (gridDim.x*blockIdx.y + blockIdx.x) + blockDim.x*threadIdx.y + threadIdx.x;
+	/*
     if (id == 0) {
         printf("array initialized to %f\n", value);
-    }
+    }*/
     if (id < n) {
         array[id] = value;
     }
@@ -237,6 +238,9 @@ void store_temporalWeight(
         assert(!isnan(tw));
         __syncthreads();
         block_reduce<Float>(reduced, tw);
+		if (id == 0 && blockIdx.y == 0 && tid == 0) {
+			printf("but not here4");
+		}
         if (tid == 0) {
             temporalWeight += reduced[0];
         }
@@ -344,16 +348,17 @@ void store(
     SmallSize nType = gridDim.y;
     Size tid = threadIdx.y*blockDim.x + threadIdx.x;
     SmallSize nSample = blockDim.x * blockDim.y;
+    __syncthreads();
 
     Float temporalWeight;
     store_temporalWeight(temporal, TW_storage, reduced, temporalWeight, nKernelSample, kernelSampleDt, kernelSampleT0, id, tid, lid, iType, nType);
-    // DEBUG
+    /* DEBUG
     __syncthreads();
 	if (id == 0 && blockIdx.y == 0 && tid == 0) {
         printf("temporalWeights stored\n");
         assert(!isnan(temporalWeight));
-    }//
-    //
+    }*/
+
 	Float LR_x0, LR_y0;
     bool LR = id < nLGN_L;
 	if (LR) {
@@ -396,11 +401,11 @@ void store(
     } 
     __syncthreads();
     //spatialWeight = abs(spatialWeight); // get absolute values ready for max_convol, always positive, not necessary
-    // DEBUG
+    /* DEBUG
 	if (id == 0 || blockIdx.y == 0 && tid == 0) {
         printf("spatialWeights stored\n");
     }
-    //
+    */
     // k is now integrated amplitude over space 
     if (tid == 0) { // add center surround together, iType = 0, 1
         atomicAdd(max_convol+id, temporalWeight * abs(k) * kernelSampleDt);
