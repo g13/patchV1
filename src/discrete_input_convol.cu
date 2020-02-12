@@ -12,9 +12,10 @@ void cudaMemsetNonzero(
         Float value) 
 {
     Size id =  blockDim.x * blockDim.y * (gridDim.x*blockIdx.y + blockIdx.x) + blockDim.x*threadIdx.y + threadIdx.x;
+	/*
     if (id == 0) {
         printf("array initialized to %f\n", value);
-    }
+    }*/
     if (id < n) {
         array[id] = value;
     }
@@ -232,6 +233,9 @@ void store_temporalWeight(
         }
         assert(!isnan(tw));
         block_reduce<Float>(reduced, tw);
+		if (id == 0 && blockIdx.y == 0 && tid == 0) {
+			printf("but not here4");
+		}
         if (tid == 0) {
             temporalWeight += reduced[0];
         }
@@ -339,6 +343,7 @@ void store(
     SmallSize nType = gridDim.y;
     Size tid = threadIdx.y*blockDim.x + threadIdx.x;
     SmallSize nSample = blockDim.x * blockDim.y;
+    __syncthreads();
 
     Float temporalWeight;
     store_temporalWeight(temporal, TW_storage, reduced, temporalWeight, nKernelSample, kernelSampleDt, kernelSampleT0, id, tid, lid, iType, nType);
@@ -348,7 +353,6 @@ void store(
         printf("temporalWeights stored\n");
         assert(!isnan(temporalWeight));
     }*/
-    //
 	Float LR_x0, LR_y0;
     bool LR = id < nLGN_L;
 	if (LR) {

@@ -39,11 +39,12 @@ template <typename T>
 __device__ void warp0_reduce(T array[]) {
     PosInt tid = blockDim.x*threadIdx.y + threadIdx.x;
 	Size n = (blockDim.x * blockDim.y * blockDim.z + warpSize - 1)/warpSize; // may not be a full warp, avoid access uninitialized shared memory
+	unsigned MASK = __ballot_sync(FULL_MASK, tid < n);
 	if (tid < n) {
 		T data = array[tid];
 		//T old_data = data;
 		for (int offset = warpSize / 2; offset > 0; offset /= 2) {
-			data += __shfl_down_sync(FULL_MASK, data, offset);
+			data += __shfl_down_sync(MASK, data, offset);
 		}
 		if (tid == 0) {
 			array[0] = data;
