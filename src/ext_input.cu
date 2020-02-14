@@ -100,7 +100,7 @@ int main(int argc, char **argv) {
 		("tau", po::value<Float>(&tau)->default_value(250.0), "the backward time interval that a LGN temporal RF should cover")
 		("Itau", po::value<Float>(&Itau)->default_value(300.0), "the light intensity adaptation time-scale of a cone")
 		("nKernelSample", po::value<Size>(&nKernelSample)->default_value(500), "number of samples per temporal kernel")
-		("frameRate", po::value<PosInt>(&frameRate)->default_value(60), "frame rate of the input stimulus")
+		("frameRate", po::value<PosInt>(&frameRate)->default_value(50), "frame rate of the input stimulus")
 		("testStorage", po::value<bool>(&testStorage)->default_value(true), "check storage values, write data to disk, filename specified by storage_filename")
 		("testLuminanceAd", po::value<bool>(&testLuminanceAd)->default_value(true), "check adapted luminance values, write data to disk, filename specified by luminanceAd_filename")
 		("checkConvol", po::value<bool>(&checkConvol)->default_value(true), "check convolution values, write data to disk, filename specified by LGN_convol_filename")
@@ -844,6 +844,7 @@ int main(int argc, char **argv) {
     PosInt kernelSampleInterval = nRetrace/nKernelSample;
     if (kernelSampleInterval%2 == 0) {
         iKernelSampleT0 = kernelSampleInterval/2;
+		cout << "sample in intervals of " << kernelSampleInterval << " starting with " << iKernelSampleT0 << " in units of dt\n";
     } else {
         iKernelSampleT0 = 0;
         if (kernelSampleInterval > 1) {
@@ -1068,11 +1069,6 @@ int main(int argc, char **argv) {
             // TODO: realtime video stimulus control
             if (fStimulus) {
                 fStimulus.read(reinterpret_cast<char*>(LMS), nChannel*nPixelPerFrame*sizeof(float));
-                Float sum = 0;
-                for (Size i=0; i<nChannel*nPixelPerFrame; i++) {
-                    sum += LMS[i];
-                }
-                printf("sum(LMS) = %f\n", sum);
                 streampos current_fpos = fStimulus.tellg();
                 if (current_fpos == eofStimulus) { // if at the end of input file loop back to the beginning of frame data
                     fStimulus.seekg(sofStimulus);
@@ -1090,7 +1086,7 @@ int main(int argc, char **argv) {
             oldFrameHead = iFrameHead;
             iFrameHead = (iFrameHead+1) % maxFrame;
 
-	        printf("\rsimulating@t = %f -> %f, frame %d#%d-%d, %.1f%%", t, t+dt, currentFrame/nFrame, currentFrame%nFrame, nFrame, 100*static_cast<float>(it+1)/nt);
+	        printf("\rsimulating@t = %f -> %f, frame %d#%d-%d, %.1f%%\n", t, t+dt, currentFrame/nFrame, currentFrame%nFrame, nFrame, 100*static_cast<float>(it+1)/nt);
         }
         // update frame for head and tail for convolution at t=(it + 1)*dt
         iFramePhaseTail = (iFramePhaseTail + denorm) % ntPerFrame;
@@ -1101,7 +1097,7 @@ int main(int argc, char **argv) {
         //else iFrameTail = oldFrameHead + 1; // t-tau and t are {maxFrame} frames apart
         // point frametail to the tail of the LGN temporal convolution at t-tau
         iFrameTail = oldFrameHead + 1; // t-tau and t are {maxFrame} frames apart
-        cout << "it = " << it << ", head at " << oldFrameHead << "\n";
+        //cout << "it = " << it << ", head at " << oldFrameHead << "\n";
 
 		/* if it < nRetrace, padded zero-valued frames for t<0
             -->|        |<-- framePhase

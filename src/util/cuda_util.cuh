@@ -39,6 +39,9 @@ template <typename T>
 __device__ void warp0_reduce(T array[]) {
     PosInt tid = blockDim.x*threadIdx.y + threadIdx.x;
 	Size n = (blockDim.x * blockDim.y * blockDim.z + warpSize - 1)/warpSize; // may not be a full warp, avoid access uninitialized shared memory
+	//if (tid == 0){
+	//	printf("sum the sum of %u warps\n", n);
+	//}
 	unsigned MASK = __ballot_sync(FULL_MASK, tid < n);
 	if (tid < n) {
 		T data = array[tid];

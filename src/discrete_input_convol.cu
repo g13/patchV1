@@ -197,7 +197,9 @@ void store_temporalWeight(
     // account for the delay into T0
     kernelSampleT0 -= temp.delay;
     // initialize the sum of temporalWeights to 0
-    temporalWeight = 0;
+	if (tid == 0) {
+    	temporalWeight = 0;
+	}
     for (Size iPatch = 0; iPatch < nPatch+1; iPatch++) {
         Float tw;
         if (iPatch < nPatch || tid < remain) {
@@ -211,7 +213,7 @@ void store_temporalWeight(
 
             /*DEBUG
 			if ((lid ==0 || lid == gridDim.x) && tid == 0) {
-              printf("lid = %d, tid = %d, t = %f\n", lid, tid, t);
+            	printf("lid = %d, tid = %d, t = %f\n", lid, tid, t);
             }
             */
             if (t < 0) {
@@ -221,7 +223,7 @@ void store_temporalWeight(
             }
             /*DEBUG
 			if ((lid ==0 || lid == gridDim.x) && tid == 0) {
-              printf("lid = %d, tid = %d, tw = %f\n", lid, tid, tw);
+            	printf("lid = %d, tid = %d, tw = %f\n", lid, tid, tw);
             }
             */
 			
@@ -233,9 +235,6 @@ void store_temporalWeight(
         }
         assert(!isnan(tw));
         block_reduce<Float>(reduced, tw);
-		if (id == 0 && blockIdx.y == 0 && tid == 0) {
-			printf("but not here4");
-		}
         if (tid == 0) {
             temporalWeight += reduced[0];
         }
@@ -315,25 +314,24 @@ void store_spatialWeight(
 //__launch_bounds__(MAX_THREADS_PER_BLOCK, MIN_BLOCKS_PER_MP)
 __launch_bounds__(1024, 2)
 __global__
-void store(
-        Float* __restrict__ max_convol,
+void store(Float* __restrict__ max_convol,
 
-        Temporal_component &temporal,
-        Float* __restrict__ TW_storage,
-        SmallSize nKernelSample,
-        Float kernelSampleDt,
-        Float kernelSampleT0,
+    	   Temporal_component &temporal,
+           Float* __restrict__ TW_storage,
+           SmallSize nKernelSample,
+           Float kernelSampleDt,
+           Float kernelSampleT0,
 
-        Spatial_component &spatial,
-        Float* __restrict__ SW_storage,
-        float* __restrict__ SC_storage,
-		Size nLGN_L,
-		Float L_x0,
-		Float L_y0,
-		Float R_x0,
-		Float R_y0,
-		Float normViewDistance,
-        Float nsig // span of spatialRF sample in units of std
+           Spatial_component &spatial,
+           Float* __restrict__ SW_storage,
+           float* __restrict__ SC_storage,
+	       Size nLGN_L,
+	       Float L_x0,
+	       Float L_y0,
+	       Float R_x0,
+	       Float R_y0,
+	       Float normViewDistance,
+           Float nsig // span of spatialRF sample in units of std
 ) {
     __shared__ Float reduced[warpSize];
     __shared__ Float shared_spat[10]; // centerPolar, centerEcc, coso, sino, wSpan, hSpan, dw, dh, wSigSqrt2, hSigSqrt2
@@ -402,6 +400,7 @@ void store(
     */
     // k is now integrated amplitude over space 
     if (tid == 0) { // add center surround together, iType = 0, 1
+		// max_convol should be initialized elsewhere 
         atomicAdd(max_convol+id, temporalWeight * abs(k) * kernelSampleDt);
     }
 }
@@ -520,22 +519,48 @@ void LGN_convol_c1s(
         // forward in time, stored reversed in TW_storage
         // i.e., last in storage-> t-0 -^v-- t-tau <-first in storage,   
         // convolution time start at t-tau; first sample point: t-tau+kernelSampleT0;
-        Size temporalWeightS = TW_storage[offsetS*nKernelSample + iPatch*nSample + tid] * (tid<nActive);  // tid < nActive, 0 otherwise
-        Size temporalWeightC = TW_storage[offsetC*nKernelSample + iPatch*nSample + tid] * (tid<nActive);  // tid < nActive, 0 otherwise
+        Float temporalWeightS, temporalWeightC;
+		if (tid < nActive) {
+			temporalWeightS = TW_storage[offsetS*nKernelSample + iPatch*nSample + tid];
+			temporalWeightC = TW_storage[offsetC*nKernelSample + iPatch*nSample + tid];
+			//if (blockIdx.x == 0) {
+			//	printf("tw[%u*%u + %u*%u + %u = %u] = %f\n", offsetC, nKernelSample, iPatch, nSample, tid, offsetC*nKernelSample + iPatch*nSample + tid, temporalWeightC);
+			//}
+		} 
+		/*
+		__syncthreads();
+		if (blockIdx.x == 0 && tid == 0) {
+			printf("tw: ");
+			for (Size i = 0; i < nActive; i++) {
+				printf("%f, ", TW_storage[offsetC*nKernelSample + iPatch*nSample + i]);
+			}
+			printf("\n");
+			printf("id: ");
+			for (Size i = 0; i < nActive; i++) {
+				printf("%u, ", offsetC*nKernelSample + iPatch*nSample + i);
+			}
+			printf("\n");
+		}
+		__syncthreads();
+		*/
         //2. Find new frames - n, usually just 1
-        PosInt itFrames = (nActive-1)*kernelSampleInterval;
+        PosInt itFrames;
         if (iPatch == 0) {
-            itFrames += iKernelSampleT0; // iKernelSampleT0 = 0 or kernelSampleInterval/2
-        }
+            itFrames = (nActive-1)*kernelSampleInterval + iKernelSampleT0; // iKernelSampleT0 = 0 or kernelSampleInterval/2
+        } else {
+            itFrames = nActive*kernelSampleInterval; // iKernelSampleT0 = 0 or kernelSampleInterval/2
+		}
         // number of frames in one patch
         //Size nFrame = (itFrames*denorm + iFramePhase + (ntPerFrame-1)) / ntPerFrame - 1; // exclude the currentFrame within the framePhase, already in F_1
-        Size nFrame = (itFrames*denorm + iFramePhase) / ntPerFrame + 1;
-        //
-        if (blockIdx.x==0 && tid == 0) {
+		itFrames *= denorm;
+		itFrames += iFramePhase;
+        Size nFrame = itFrames / ntPerFrame + 1;
+        //DEBUG
+        if (blockIdx.x==457 && tid == 0) {
             if (iPatch == 0) {
-                printf("nFrame: %u, maxFrame = %u\n", nFrame, maxFrame);
+                printf("itFrames = %u, denorm = %u, nFrame: %u = (%u + %u - 1 )/ %u, maxFrame = %u\n", itFrames, denorm, nFrame, itFrames, ntPerFrame, ntPerFrame, maxFrame);
             }
-            printf("framePhase = %u/%u\n", iFramePhase, ntPerFrame);
+            printf("patch #%u, iframePhase = %u/%u\n", iPatch, iFramePhase, ntPerFrame);
             //printf("itFrames = %u, nActive = %u, denorm = %u, iKernelSampleT0 = %u, kernelSampleInterval\n", iFramePhase, nActive, denorm, iKernelSampleT0, kernelSampleInterval);
             //assert(nFrame == maxFrame);
         }//
@@ -614,21 +639,31 @@ void LGN_convol_c1s(
         */
         //5. For each sample point in time: 
         //  Get weighted contrast sum from local_I(ntensity) and mean_I(ntensity): p in space 
-        Float filteredC, filteredS;
+        Float tempFilteredC, tempFilteredS;
         // initialize with the first frame in the patch
         PosInt it = 0;
         if (iPatch == 0) {
             it = iKernelSampleT0;
-        }
-        PosInt iFrame = 0;
+        } else {
+            it = kernelSampleInterval;
+		}
+		PosInt iFrame = 0;
         Int preFrame = currentFrame-1;
         for (PosInt iSample = 0; iSample < nActive; iSample++) {
             PosInt frameNow = currentFrame + (it*denorm + iFramePhase)/ntPerFrame;
             if (frameNow > preFrame) { // advance frame
                 //Load mean luminance from shared memory first
-                Float mean_I = nSampleShared[iFrame];
-                iFrame++;
+                Float mean_I = nSampleShared[frameNow - currentFrame];
+				// DEBUG
+					__syncthreads();
+                	iFrame = frameNow - currentFrame;
+					if (blockIdx.x == 457 && tid == 0) {
+						printf("iFrame: %u/%u, frameNow: %u, iSample: %u\n", iFrame, nFrame, frameNow, iSample);
+					}
+					__syncthreads();
+				//
                 preFrame = frameNow;
+				
                 // surround 
                 Float local_I = get_intensity(typeS, x0S, y0S, frameNow % maxFrame);
                 Float local_contrast;
@@ -641,12 +676,18 @@ void LGN_convol_c1s(
                     local_contrast = copyms(1.0, local_contrast); // copyms is copysign(value, sign);
                 }
 
-                filteredS = spatialWeightS*local_contrast;
+                Float filteredS = spatialWeightS*local_contrast;
                 block_reduce<Float>(reducedS, filteredS);
-                if (iPatch == nPatch && iFrame == nFrame && tid ==0) {
+                if (iPatch == nPatch && iFrame == nFrame-1 && tid ==0) {
                     contrast[gridDim.x*1+blockIdx.x] = reducedS[0];
                     luminance[lidC] = mean_I;
+					/*DEBUG
+						if (blockIdx.x == 457) {
+							printf("contrastS = %e, mean_I = %e, local_I = %e -> lc = %e\n", reducedS[0], mean_I, local_I, local_contrast);
+						}
+					*/
                 }
+
                 // center
                 local_I = get_intensity(typeC, x0C, y0C, frameNow % maxFrame);
                 if (mean_I > 0) {
@@ -657,43 +698,96 @@ void LGN_convol_c1s(
                 if (abs(local_contrast) > 1.0) {
                     local_contrast = copyms(1.0, local_contrast); // copyms is copysign(value, sign);
                 }
-                filteredC = spatialWeightC*local_contrast;
+
+                Float filteredC = spatialWeightC*local_contrast;
                 block_reduce<Float>(reducedC, filteredC);
-                if (iPatch == nPatch && iFrame == nFrame && tid == 0) {
+                if (iPatch == nPatch && iFrame == nFrame-1 && tid == 0) {
                     contrast[gridDim.x*0+blockIdx.x] = reducedC[0];
+					// DEBUG
+						if (blockIdx.x == 457) {
+							printf("contrastC = %e, mean_I = %e, local_I = %e -> lc = %e\n", reducedC[0], mean_I, local_I, local_contrast);
+						}
+					//
                 }
+				//__syncthreads();
             }
             if (tid == iSample) {
-                filteredS = reducedS[0]*temporalWeightS; // shared memory have spatially convolved values 
-                filteredC = reducedC[0]*temporalWeightC; // shared memory have spatially convolved values 
+                tempFilteredS = reducedS[0]*temporalWeightS; // spatially contrast convolve with temporalWeight 
+                tempFilteredC = reducedC[0]*temporalWeightC;
+				// DEBUG
+					if (blockIdx.x == 457) {
+						printf("%u#%u, wspC*tw: %e*%e = %e\n", iPatch, tid, reducedC[0], temporalWeightC, tempFilteredC);
+					}
+				//
             }
+			__syncthreads();
             // advance time
             it += kernelSampleInterval;
         }
-        assert(iFrame == nFrame);
+		/*DEBUG
+			if (iFrame != nFrame-1 && tid == 0) {
+				printf("iFrame end with %u, nFrame = %u", iFrame, nFrame);
+			}
+		*/
+		if (blockIdx.x == 457 && tid == 0) {
+			printf("final Frame: %u, nFrame = %u \n", iFrame, nFrame);
+        	assert(iFrame == nFrame-1);
+		}
+		__syncthreads();
         if (tid >= nActive) {
-            filteredS = 0.0;
-            filteredC = 0.0;
+            tempFilteredS = 0.0;
+            tempFilteredC = 0.0;
         }
         //6. reduce sum with temporal weights: p in time
-        block_reduce<Float>(reducedS, filteredS);
+        block_reduce<Float>(reducedS, tempFilteredS);
         //7. add to convol: s
         if (tid == 0) {
             convolS += reducedS[0];
         }
-        
-        block_reduce<Float>(reducedC, filteredC);
+		/*DEBUG
+			__syncthreads();
+			reducedS[0] = 0.0;
+			if (blockIdx.x == 457) {
+				if (tid == 0) {
+					printf("%u possible nonzeros, tempFilteredC = ", nActive);
+				}
+				for (Size i = 0; i < nSample; i++ ) {
+					if (tid == i) {
+						printf("%e, ", tempFilteredC);
+						reducedS[0] += tempFilteredC;
+					}
+					__syncthreads();
+				}
+				if (tid == 0) {
+					printf("\n");
+				}
+			}
+		*/
+        block_reduce<Float>(reducedC, tempFilteredC);
         if (tid == 0) {
+			//Float old_convol = convolC;
             convolC += reducedC[0];
+			/* DEBUG
+				if (blockIdx.x == 457) {
+					printf("%e + patchSum #%u: %e = %e\n", old_convol, iPatch, reducedC[0], convolC);
+					//if (reducedC[0] != reducedS[0]) {
+					//	printf("reduce sum %e != loop sum %e\n", reducedC[0], reducedS[0]);
+					//	assert(reducedC[0] == reducedS[0]);
+					//}
+				}
+			*/
         }
+		//__syncthreads();
         //9. advance [currentFrame, framePhase] if not the final patch: n
         if (iPatch < nPatch) {
-            Size iPhaseIncrement = (nSample-1)*kernelSampleInterval;
-            if (iPatch == 0) {
-                iPhaseIncrement += iKernelSampleT0;
-            }
-            currentFrame += nFrame-1;
-            iFramePhase = (iPhaseIncrement*denorm + iFramePhase) % ntPerFrame;
+			// itFrames =  [0... nSample-1]
+			// fullLength =  [0... nSample-1...]
+            iFramePhase = itFrames % ntPerFrame;
+			PosInt old_Frame = currentFrame;
+            currentFrame += itFrames / ntPerFrame;
+			if (blockIdx.x == 457 && tid == 0)  {
+				printf("this patch starts with %u -> %u, next patch starts with %u", old_Frame, old_Frame + iFrame, currentFrame);
+			}
         }
     }
     if (tid == 0) {
@@ -701,6 +795,11 @@ void LGN_convol_c1s(
         convolC *= kC;
         convolS *= kS;
         convol[blockIdx.x] = (convolC + convolS)*kernelSampleInterval*dt;
+		/*DEBUG
+			if (blockIdx.x == 457) {
+				printf("convol: %e*%e = %e\n", (convolC + convolS), kernelSampleInterval*dt, (convolC + convolS)*kernelSampleInterval*dt);
+			}
+		*/
     }
 }
 
@@ -730,10 +829,11 @@ void LGN_nonlinear(
         }
         __syncwarp(MASK);
         Float fr = max * transform(C50, K, A, B, current/max);
+		/* DEBUG
         if (fr < 0) {
             printf("convol = %f, fr = %f, K=%f, A= %f, B= %f, C50 =%f, max = %f\n", convol, fr, K, A, B, C50, max);
             assert(fr >= 0);
-        }
+        }*/
         LGN_fr[id] = fr;
         //LGN_fr[id] = max * transform(C50, K, A, B, current/max);
     }

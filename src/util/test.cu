@@ -38,21 +38,29 @@ __global__ void test_sum(curandStateMRG32k3a *state, PosInt seed, PosInt nThread
     curandStateMRG32k3a localState = state[tid];
     curand_init(seed, tid, 0, &localState);
 	Float data = curand_uniform_double(&localState);
-	//double data = 1.0;
     serial[tid] = data;
-    //if (tid < warpSize) {
-    //    array[tid] = 0;
-    //}
-    __syncthreads();
     if (tid == 0) {
         printf("data generated\n");
     }
 
-    __syncwarp();
     block_reduce<Float>(array, data);
 
     if (tid == 0) {
-        printf("reduce: %f\n", array[0]);
+        printf("reduce1: %f\n", array[0]);
+        data = 0.0;
+        for (Size i=0; i<nThreads; i++) {
+            //printf("d[%i]: %f\n", i, serial[i]);
+            data += serial[i];
+        }
+        printf("sum: %f\n", data);
+    }
+
+	data = curand_uniform_double(&localState);
+    serial[tid] = data;
+    block_reduce<Float>(array, data);
+
+    if (tid == 0) {
+        printf("reduce2: %f\n", array[0]);
         data = 0.0;
         for (Size i=0; i<nThreads; i++) {
             //printf("d[%i]: %f\n", i, serial[i]);
@@ -77,5 +85,6 @@ int main(int argc, char *argv[]) {
     PosInt nThreads = block.x * block.y;
     test_sum<<<grid, block>>>(state, seed, nThreads);
     getLastCudaError("sum failed");
+	cudaDeviceSynchronize();
     return EXIT_SUCCESS;
 }
