@@ -253,6 +253,10 @@ int main(int argc, char **argv) {
 
     const SmallSize nType = 2;
     Size nSample = nSpatialSample1D * nSpatialSample1D;
+    if (nKernelSample == 0) {
+        cout << "kernel sampling points: " << nKernelSample << " must be positive integer.\n"; 
+        return EXIT_FAILURE;
+    }
     printf("=== temporal storage memory required: %dx%dx%d = %fMB\n", nKernelSample,nLGN,nType,nKernelSample*nLGN*nType*sizeof(Float)/1024.0/1024.0);
     printf("=== spatial storage memory required: %dx%dx%d = %fMB\n", nSample, nLGN, nType, nSample*nType*nLGN*sizeof(Float)/1024.0/1024.0);
 
@@ -812,6 +816,7 @@ int main(int argc, char **argv) {
             } else {
                 Size sizeTmp = 3;
                 fLuminanceAd.write((char*)&nt, sizeof(Size));
+                fLuminanceAd.write((char*)&dt, sizeof(Float));
                 fLuminanceAd.write((char*)&sizeTmp, sizeof(Size));
                 fLuminanceAd.write((char*)&nLGN, sizeof(Size));
             }
@@ -1053,16 +1058,29 @@ int main(int argc, char **argv) {
     PosInt oldFrame = currentFrame;
     // framePhase is fractionalized by denorm to fit frame duration with integer units.
     PosInt iFramePhaseHead = 0;
-    PosInt iFramePhaseTail = (ntPerFrame - (nRetrace*denorm % ntPerFrame)) % ntPerFrame;
+    PosInt remain = (nRetrace*denorm) % ntPerFrame;
+    PosInt comp = (ntPerFrame - remain) % ntPerFrame;
+    PosInt iFramePhaseTail = comp;
 
-    PosInt iFrameHead = 0;
-    PosInt oldFrameHead = iFrameHead;
-    PosInt iFrameTail;
+    PosInt iFrameHead = currentFrame % maxFrame;
     //PosInt iPhase = 0;
+    auto getTail = [comp](PosInt phaseTail, PosInt phaseHead, PosInt head) {
+        // point frametail to the tail of the LGN temporal convolution at t-tau
+        PosInt tail;
+        if (phaseTail < comp) {
+            tail = head + 2;
+            assert(phaseHead > phaseTail);
+        } else {
+            tail = head + 1;
+            assert(phaseHead <= phaseTail);
+        }
+        return tail;
+    };
 
 	cout << "simulation starts: \n";
     for (unsigned int it = 0; it < nt; it++) {
         Float t = it*dt;
+        PosInt oldFrameHead;
         // next frame comes between (t, t+dt), read and store frame to texture memory
         if ((it+1)*denorm >= currentFrame*ntPerFrame) {
             // back insert frame into texture memory
@@ -1092,12 +1110,9 @@ int main(int argc, char **argv) {
         iFramePhaseTail = (iFramePhaseTail + denorm) % ntPerFrame;
         //if (iFramePhaseTail == 0) iFramePhaseTail = ntPerFrame;
         iFramePhaseHead = (iFramePhaseHead + denorm) % ntPerFrame;
-
-        //if (iFramePhaseHead == 0 || iFramePhaseTail == 0) iFrameTail = oldFrameHead + 2;  // t-tau and t are {maxFrame-1} frames apart
-        //else iFrameTail = oldFrameHead + 1; // t-tau and t are {maxFrame} frames apart
         // point frametail to the tail of the LGN temporal convolution at t-tau
-        iFrameTail = oldFrameHead + 1; // t-tau and t are {maxFrame} frames apart
-        //cout << "it = " << it << ", head at " << oldFrameHead << "\n";
+        PosInt iFrameTail = getTail(iFramePhaseTail, iFramePhaseHead, oldFrameHead);
+        cout << "it = " << it << ", head at " << oldFrameHead << "\n";
 
 		/* if it < nRetrace, padded zero-valued frames for t<0
             -->|        |<-- framePhase

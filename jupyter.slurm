@@ -2,9 +2,9 @@
 #SBATCH -p serial 
 #SBATCH --job-name=jupyterServer
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=8GB
-#SBATCH --time=12:00:00
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=16GB
+#SBATCH --time=08:00:00
 #SBATCH -o log/jS_%J.out
 #SBATCH --mail-user=wd554@nyu.edu
 #SBATCH --mail-type=END
@@ -27,7 +27,8 @@ unset __conda_setup
 conda activate general
 # <<< conda initialize <<<
 
-port=$(shuf -i 6000-9999 -n 1)
+#port=$(shuf -i 6000-9999 -n 1)
+port=6217
 echo port: $port
 
 ssh -N -f -R $port:localhost:$port login-0-1
