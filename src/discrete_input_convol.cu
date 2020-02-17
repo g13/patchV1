@@ -820,6 +820,37 @@ void LGN_convol_c1s(
     }
 }
 
+__inline__
+__device__
+get_spike(Float &nSpike,
+         Float &leftTimeRate,
+         Float &lastNegLogRand,
+         Float dt,
+         Float rate,
+         curandStateMRG32k3a &state) 
+{
+    nSpike = 0;
+    Float tau, dTau, negLogRand;
+    // ith spike, jth dt
+    // t_{i+1}*r_{j+1} + (T_{j}-t_{i})*r_{j} = -log(rand);
+    tau = (lastNegLogRand - leftTimeRate)/rate; // the first spike time
+    if (tau > dt) { // spike time is larger than dt.
+        leftTimeRate += (dt * rate);
+        nSpike = -1;
+        return;
+    } else do { // at least one spike during current time step
+        negLogRand = -logrithm(uniform(state));
+        dTau = negLogRand/rate;
+        tau += dTau;
+        nSpike += 1;
+    } while (tau <= dt);
+    if (nSpike == 1) {
+        nSpike = tau;// nSpike now serve as spike time
+    }
+    lastNegLogRand = negLogRand;
+    leftTimeRate = (dt - (tau-dTau)) * rate;
+}
+
 __launch_bounds__(1024, 2)
 __global__ 
 void LGN_nonlinear(
@@ -827,18 +858,27 @@ void LGN_nonlinear(
         Static_nonlinear &logistic,
         Float* __restrict__ max_convol,
         Float* __restrict__ current_convol,
-        Float* __restrict__ LGN_fr
+        Float* __restrict__ LGN_fr,
+        Float* __restrict__ x,
+        Float* __restrict__ y,
+        Float* __restrict__ leftTimeRate,
+        Float* __restrict__ lastNegLogRand,
+		curandStateMRG32k3a* __restrict__ state
 ) {
 	unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
-    Float max, current;
-    Float C50, K, A, B;
     bool engaging = id<nLGN;
     unsigned int MASK = __ballot_sync(FULL_MASK, static_cast<int>(engaging));
     if (engaging) {
-        current = current_convol[id];
+        Float C50, K, A, B;
+        // load in sequence
+        Float current = current_convol[id];
+		Float max = max_convol[id];
+        Float lTR = leftTimeRate[id];
+        Float lNL = lastNegLogRand[id]
+
 		// initialize for next time step
 		current_convol[id] = 0.0;
-		max = max_convol[id];
+        // get firing rate
         logistic.load_first(id, C50, K, A, B);
         Float convol = current;
         if (current < 0) {
@@ -853,5 +893,13 @@ void LGN_nonlinear(
         }*/
         LGN_fr[id] = fr;
         //LGN_fr[id] = max * transform(C50, K, A, B, current/max);
+        Float nSpike; // must be float
+        get_spike(nSpike, lTR, lNL, dt, fr, state);
+        if (nSpike != -1.0) {
+            leftTimeRate[id] = lTR;
+            lastNegLogRand[id] = lNL;
+        }
+        // write to surface memory 
+        surf2Dwrite(nSpike, LGNspikeSurface, x, y);
     }
 }

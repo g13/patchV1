@@ -575,7 +575,10 @@ class macroMap:
         A[self.Pi > 0] = 1
         OD_bound, btype = self.define_bound(A)
 
-        nfixed = fixed.size
+        if fixed is None:
+            nfixed = 0
+        else:
+            nfixed = fixed.size
         per_unit_area = 2*np.sqrt(3) # in cl^2
         i_cl = np.sqrt(area/per_unit_area/(self.networkSize - ratio*nfixed*np.power(b_scale/p_scale,2)))
         b_cl = b_scale/p_scale * i_cl
@@ -736,10 +739,10 @@ class macroMap:
         y0 = self.y[:-1]
         y1 = self.y[1:]
         # index in y-dimension
-        i = np.nonzero(np.logical_and(np.tile(self.pos[1,:],(self.ny-1,1))-y0.reshape(self.ny-1,1) > 0, np.tile(self.pos[1,:],(self.ny-1,1))-y1.reshape(self.ny-1,1) < 0).T)[1]
+        i = np.nonzero(np.logical_and(np.tile(self.pos[1,:],(self.ny-1,1))-y0.reshape(self.ny-1,1) > 0, np.tile(self.pos[1,:],(self.ny-1,1))-y1.reshape(self.ny-1,1) <= 0).T)[1]
         assert(i.size == self.networkSize)
         # index in x-dimension
-        j = np.nonzero(np.logical_and(np.tile(self.pos[0,:],(self.nx-1,1))-x0.reshape(self.nx-1,1) > 0, np.tile(self.pos[0,:],(self.nx-1,1))-x1.reshape(self.nx-1,1) < 0).T)[1]
+        j = np.nonzero(np.logical_and(np.tile(self.pos[0,:],(self.nx-1,1))-x0.reshape(self.nx-1,1) > 0, np.tile(self.pos[0,:],(self.nx-1,1))-x1.reshape(self.nx-1,1) <= 0).T)[1]
         assert(j.size == self.networkSize)
         if not get_d2 and not get_coord:
             return i, j

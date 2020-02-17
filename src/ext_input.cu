@@ -184,6 +184,10 @@ int main(int argc, char **argv) {
         height = stimulus_dimensions[1];
         width = stimulus_dimensions[2];
         cout << "stimulus: " << nFrame << " frames of " << width << "x" << height << "\n";
+        if (width > 16384 || height > 16384) {
+            cout << "a single layered texture object is limited to 16384x16384\n";
+            return EXIT_FAILURE;
+        }
 		fStimulus.read(reinterpret_cast<char*>(&init_L), sizeof(float));
 		fStimulus.read(reinterpret_cast<char*>(&init_M), sizeof(float));
 		fStimulus.read(reinterpret_cast<char*>(&init_S), sizeof(float));
@@ -285,6 +289,15 @@ int main(int argc, char **argv) {
 	vector<PosInt> coneType(nLGN*2);
     vector<Float> covariant(nLGN);
 
+    // 
+    vector<Float> sx(nLGN);
+    vector<Float> sy(nLGN);
+    Size nsx, nsy;
+	fLGN_vpos.read(reinterpret_cast<char*>(&nsx), sizeof(Size));
+	fLGN_vpos.read(reinterpret_cast<char*>(&nsy), sizeof(Size));
+	fLGN_vpos.read(reinterpret_cast<char*>(&sx[0]), nLGN*sizeof(Float));
+	fLGN_vpos.read(reinterpret_cast<char*>(&sy[0]), nLGN*sizeof(Float));
+
 	fLGN_vpos.read(reinterpret_cast<char*>(&LGNtype[0]), nLGN*sizeof(InputType_t));
 	if (useNewLGN) { // Setup LGN here 
 		cout << "initializing LGN spatial parameters...\n";
@@ -297,6 +310,8 @@ int main(int argc, char **argv) {
         auto transform_deg2rad = [deg2rad] (Float ecc) {return ecc*deg2rad;};
         transform(LGN_ecc.begin(), LGN_ecc.begin()+nLGN, LGN_ecc.begin(), transform_deg2rad);
 	    fLGN_vpos.close();
+
+
     	default_random_engine rGen_LGNsetup(seed);
     	seed++; // so that next random_engine use a different seed;
     	// lambda to return a function that generates random numbers from a given distribution
@@ -670,7 +685,6 @@ int main(int argc, char **argv) {
     	fLGN.write((char*)&covariant[0], nLGN*sizeof(Float));
     	fLGN.close();
 	} else { // Use old setup
-	    fLGN_vpos.close();
     	fLGN.open(LGN_filename, fstream::in | fstream::binary);
         if (!fLGN) {
 			cout << "Cannot open or find " << LGN_filename <<" for LGN receptive field properties\n";
@@ -710,6 +724,30 @@ int main(int argc, char **argv) {
 
 	LGN_parameter dLGN(hLGN);
     hLGN.freeMem();
+
+    // CUDA memory for LGN spike generation
+    Float *d_sx;
+    Float *d_sy;
+    checkCudaErrors(cudaMalloc((void **)&d_sx, nLGN * sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void **)&d_sy, nLGN * sizeof(Float)));
+
+    Float* leftTimeRate;
+    Float* lastNegLogRand;
+    checkCudaErrors(cudaMalloc((void **)&leftTimeRate, nLGN * sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void **)&lastNegLogRand, nLGN * sizeof(Float)));
+    curandStateMRG32k3a *randState;
+    checkCudaErrors(cudaMalloc((void **)&randState, nLGN * sizeof(curandStateMRG32k3a)));
+
+    seed++;
+    dim3 gridLGN((nLGN + blockSize-1)/blockSize, 1, 1);
+    dim3 blockLGN(blockSize, 1, 1);
+    logRand_init<<<gridLGN, blockLGN>>>(lastNegLogRand, leftTimeRate, randState, seed);
+    getLastCudaError("logRand_init");
+
+    cudaChannelFormatDesc surfaceDesc = cudaCreateChannelDesc(32, 0, 0, 0, cudaChannelFormatKindFloat);
+    cudaArray* cuSurfArray;
+    checkCudaErrors(cudaMallocArray(&cuSurfArray, &surfaceDesc, nsx, nsy, cudaArraySurfaceLoadStore));
+    cudaBindSurfaceToArray(LGNspikeSurface, cuSurfArray);
 
 	Size nLGN_block, nLGN_thread; // for LGN_nonlinear
 	nLGN_block = (nLGN + blockSize - 1)/blockSize;
@@ -901,6 +939,10 @@ int main(int argc, char **argv) {
     Size ntPerFrame = co_product; // tPerFrame in the units of dt/denorm
 
     Size maxFrame = (nRetrace*denorm + ntPerFrame-1)/ntPerFrame + 1; 
+    if (maxFrame > 2048) {
+        cout << "a single layered texture object only allows 2048 layers < " << maxFrame << "\n";
+        return EXIT_FAILURE;
+    }
 	// max frame need to be stored in texture for temporal convolution with the LGN kernel.
     //  |---|--------|--|
     printf("temporal kernel retrace (tau): %f ms, frame rate: %d Hz needs at most %u frames\n", tau, frameRate, maxFrame);
@@ -965,6 +1007,9 @@ int main(int argc, char **argv) {
     checkCudaErrors(cudaMalloc((void **) &TW_storage, nLGN*nType*nKernelSample*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &SW_storage, nLGN*nType*nSample*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void **) &SC_storage, 2*nLGN*nType*nSample*sizeof(float)));
+
+    // V1 related memory
+
 
     //checkCudaErrors(cudaMemset(luminance, 0, nLGN*sizeof(Float)));
     // initialize average to normalized mean luminance
@@ -1148,7 +1193,7 @@ int main(int argc, char **argv) {
         }
 
 		// generate LGN fr with logistic function
-        LGN_nonlinear<<<nLGN_block, nLGN_thread>>>(nLGN, *dLGN.logistic, max_convol, current_convol, dLGN_fr);
+        LGN_nonlinear<<<nLGN_block, nLGN_thread>>>(nLGN, *dLGN.logistic, max_convol, current_convol, dLGN_fr, d_sx, d_sy, leftTimeRate, lastNegLogRand, randState);
 		getLastCudaError("LGN_nonlinear failed");
         checkCudaErrors(cudaMemcpy(LGN_fr, dLGN_fr, nLGN*sizeof(Float), cudaMemcpyDeviceToHost));
         fLGN_fr.write((char*)LGN_fr, nLGN*sizeof(Float));
@@ -1183,6 +1228,7 @@ int main(int argc, char **argv) {
         checkCudaErrors(cudaFreeArray(cuArr_L));
         checkCudaErrors(cudaFreeArray(cuArr_M));
         checkCudaErrors(cudaFreeArray(cuArr_S));
+        checkCudaErrors(cudaFreeArray(cuSurfArray));
         checkCudaErrors(cudaDeviceReset());
         cout << "memory trace cleaned\n";
     }
