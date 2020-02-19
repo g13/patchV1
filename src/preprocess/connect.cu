@@ -133,19 +133,17 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
                           Float* __restrict__ block_y,
                           Size* __restrict__ neighborBlockId,
                           Size* __restrict__ nNeighborBlock,
-                          Float max_radius, Size maxNeighborBlock) 
+						  Size nblock, Float max_radius, Size maxNeighborBlock) 
 {
     __shared__ PosInt id[warpSize];
     __shared__ Float min[warpSize];
-    __shared__ PosInt bid[nblock];
-    __shared__ Float distance[nblock];
-
+    extern __shared__ PosInt bid[];
+	Float* distance = (Float*) (bid + nblock);
 
     Float bx = block_x[blockIdx.x]; // center of the target block
     Float by = block_y[blockIdx.x];
     Size tid = threadIdx.y*blockDim.x + threadIdx.x;
 
-    Size nblock = gridDim.x;
     Size nPatch = (nblock + blockDim.x-1)/blockDim.x - 1;
     Size remain = nblock%blockDim.x;
 
@@ -177,7 +175,7 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
     }
     if (nid > maxNeighborBlock) {
         printf("actual nNeighbor = %d > %d (preserved)\n", nid, maxNeighborBlock);
-        assert(nid <= maxNeighborBlock)
+        assert(nid <= maxNeighborBlock);
     }
     __syncthreads();
     // reassign bid and distance to threads
@@ -201,7 +199,7 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
         __syncwarp();
     }
     if (tid < nid) {
-        neighborBlockId[maxNeighborBlock*blockIdx.x + i] = final_bid;
+        neighborBlockId[maxNeighborBlock*blockIdx.x + tid] = final_bid;
     }
     if (tid == 0) {
         nNeighborBlock[blockIdx.x] = nid;
@@ -241,9 +239,9 @@ void generate_connections(double* __restrict__ pos,
     Size id = offset + threadIdx.x;
     // number of potential presynaptic connections outsied nearNeighbors, to be stored in vector.
     Size nb = 0; 
-    if (nn > nearNeighbors) {
-        nb = nn - nearNeighbors;
-        nn = nearNeighbors;// nearNeighbors 
+    if (nn > nearNeighborBlock) {
+        nb = nn - nearNeighborBlock;
+        nn = nearNeighborBlock;// nearNeighbors 
     } 
     Float* tempNeighbor;
     if (nb > 0) {
@@ -253,6 +251,11 @@ void generate_connections(double* __restrict__ pos,
     Float rd = rden[id];
     Float dd = dden[id];
 
+    Size* sumType = new Size[nType]; // avail
+    #pragma unroll
+    for (Size i=0; i<nType; i++) {
+        sumType[i] = 0;
+	}
     Float sumP = 0.0;
     //============= collect p of all ==========
     // withhin block and nearNeighbor
@@ -305,9 +308,9 @@ void generate_connections(double* __restrict__ pos,
                 double y = y1 - y0;
                 Float distance = static_cast<Float>(square_root(x*x + y*y));
                 Float p = connect(distance, ra, rd, gaussian_profile);
+                Size tid = (nn-in)*blockDim.x + i; // only ofr tempNeighbor, which is local, no need to coalease memory
                 if (p > 0) {
                     Size ip = preType[ipre];
-                    Size tid = (nn-in)*blockDim.x + i; // only ofr tempNeighbor, which is local, no need to coalease memory
                     sumType[ip] += 1;
                     p *= daxn[ipre] * dden[id] * preP_type[ip*networkSize+id];
                     for (Size iFeature = 0; iFeature < nFeature; iFeature ++) {
@@ -324,14 +327,12 @@ void generate_connections(double* __restrict__ pos,
     __syncwarp();
     // initialize stats
     Size* sumConType = new Size[nType];
-    Size* sumType = new Size[nType]; // avail
     Float* sumStrType = new Float[nType];
     // initialize  for stats collection
     #pragma unroll
     for (Size i=0; i<nType; i++) {
         sumConType[i] = 0;
         sumStrType[i] = 0;
-        sumType[i] = 0;
     }
     curandStateMRG32k3a localState = state[id];
     Size pN = preN[id];
@@ -343,10 +344,10 @@ void generate_connections(double* __restrict__ pos,
             Size ii = (i + threadIdx.x) % blockDim.x; // pre-id in block
             PosIntL mid = (offset*nearNeighborBlock + in*blockDim.x + ii)*blockDim.x + threadIdx.x;
             Float p = conMat[mid]/sumP*pN;
-            Float xrand = uniform(&localState);
-            Float str = preS_type[ip*networkSize+id];
             Size ipre = bid + i;
             Size ip = preType[ipre];
+            Float xrand = uniform(&localState);
+            Float str = preS_type[ip*networkSize+id];
             if (xrand < p) {
                 if (p > 1) {
                     str = str*p;

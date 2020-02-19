@@ -132,14 +132,14 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
                           Float* __restrict__ block_y,
                           Size* __restrict__ neighborBlockId,
                           Size* __restrict__ nNeighborBlock,
-                          Float max_radius, Size maxNeighborBlock);
+                          Size nblock, Float max_radius, Size maxNeighborBlock);
 
 __global__ 
 __launch_bounds__(blockSize, 1)
 void generate_connections(double* __restrict__ pos,
                           Float* __restrict__ preS_type,
                           Float* __restrict__ preP_type,
-                          Size* __restrict__ preN_type,
+                          Size* __restrict__ preN,
                           Size* __restrict__ neighborBlockId,
                           Size* __restrict__ nNeighborBlock,
                           Float* __restrict__ rden,
@@ -158,6 +158,6 @@ void generate_connections(double* __restrict__ pos,
                           Float* __restrict__ dden,
                           Float* __restrict__ daxn,
                           curandStateMRG32k3a* __restrict__ state,
-                          PosInt offset, Size networkSize, Size maxDistantNeighbor, Size maxNeighborBlock, Float speedOfThought, Size nType, Size nFeature, bool gaussian_profile);
+                          PosInt block_offset, Size networkSize, Size maxDistantNeighbor, Size nearNeighborBlock, Size maxNeighborBlock, Float speedOfThought, Size nType, Size nFeature, bool gaussian_profile);
 
 #endif

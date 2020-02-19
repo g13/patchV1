@@ -13,7 +13,8 @@ int main(int argc, char *argv[])
     printf("total global memory: %f Mb.\n", deviceProps.totalGlobalMem/1024.0/1024.0);
 
 	BigSize seed;
-    Size maxNeighborBlock, maxDistantNeighbor;
+    Size maxNeighborBlock, nearNeighborBlock;
+	Size maxDistantNeighbor;
 	vector<Size> nTypeHierarchy;
     vector<Size> preTypeN;
     string V1_type_filename, V1_feature_filename, V1_pos_filename, theme;
@@ -299,13 +300,12 @@ int main(int argc, char *argv[])
                                networkSize*sizeof(Size) + // preType
          					   networkSize*sizeof(curandStateMRG32k3a); //state
 
-    size_t statSize = 2*nType*neuronPerBlock*maxChunkSize*sizeof(Size) + // preTypeConnected and *Avail
-        	          nType*neuronPerBlock*maxChunkSize*sizeof(Float); // preTypeStrSum
+    size_t statSize = 2*nType*networkSize*sizeof(Size) + // preTypeConnected and *Avail
+        	          nType*networkSize*sizeof(Float); // preTypeStrSum
     size_t vecSize = 2*maxDistantNeighbor*networkSize*sizeof(Float) + // con and delayVec
-        		     maxDistantNeighbor*neuronPerBlock*maxChunkSize*sizeof(Size) + // vecID
-        		     neuronPerBlock*maxChunkSize*sizeof(Size); // nVec
+        		     maxDistantNeighbor*networkSize*sizeof(Size) + // vecID
+        		     networkSize*sizeof(Size); // nVec
 	void *cpu_chunk;
-    Size *block_chunk;
     Int half = 1;
     Size maxChunkSize = nblock;
 	do { 
@@ -325,8 +325,7 @@ int main(int argc, char *argv[])
 
         half *= 2;
 	    cpu_chunk = malloc(memorySize);
-    } while ((cpu_chunk == NULL || d_memorySize > deviceProp.totalGlobalMem*0.8) && nblock > 1);
-    Size maxChunkSize = maxChunkSize;
+    } while ((cpu_chunk == NULL || d_memorySize > deviceProps.totalGlobalMem*0.8) && nblock > 1);
     Size nChunk = (nblock + maxChunkSize-1) /maxChunkSize - 1;
     Size remainChunkSize = nblock%maxChunkSize;
 	printf("need to allocate %f MB memory on host\n", static_cast<float>(memorySize)/1024/1024);
@@ -334,11 +333,10 @@ int main(int argc, char *argv[])
     void* __restrict__ gpu_chunk;
 	printf("need to allocate %f MB memory on device\n", static_cast<float>(d_memorySize) / 1024 / 1024);
     checkCudaErrors(cudaMalloc((void**)&gpu_chunk, d_memorySize));
-    if (nChunk >= 0) {
+    if (nChunk > 0) {
         cout << "due to memory limit, connection matrix, vectors and their statistics will come in "<< nChunk << " chunks of " << maxChunkSize << " blocks and a single chunk of " << remainChunkSize << " blocks.\n";
     } else {
-        cout << "nblock " << nblock << " == 0 ?\n";
-        return EXIT_FAILURE;
+        cout << "the connectome will be  generated in whole\n";
     }
 
     // ============ CPU MEM ============
@@ -437,10 +435,10 @@ int main(int argc, char *argv[])
 	getLastCudaError("cal_blockPos failed");
     printf("block centers calculated\n");
 	//shared_mem = sizeof(Size);
-    get_neighbor_blockId<<<nblock, neuronPerBlock>>>(
+    get_neighbor_blockId<<<nblock, neuronPerBlock, nblock*(sizeof(PosInt)+sizeof(Float))>>>(
         d_block_x, d_block_y, 
 		d_neighborBlockId, d_nNeighborBlock, 
-		blockROI, maxNeighborBlock);
+		nblock, blockROI, maxNeighborBlock);
 	getLastCudaError("get_neighbor_blockId failed");
     printf("neighbor blocks acquired\n");
 
@@ -476,7 +474,7 @@ int main(int argc, char *argv[])
 	    	d_preType, d_feature,
 	    	dden, daxn,
 	    	state,
-	    	offset, networkSize, maxDistantNeighbor, maxNeighborBlock, speedOfThought, nType, nFeature, gaussian_profile);
+	    	offset, networkSize, nearNeighborBlock, maxDistantNeighbor, maxNeighborBlock, speedOfThought, nType, nFeature, gaussian_profile);
 	    getLastCudaError("generate_connections failed");
         offset += current_nblock*neuronPerBlock;
 
