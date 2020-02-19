@@ -18,13 +18,13 @@ void logRand_init(Float *logRand,
 
 __global__ 
 void recal_G(Float* __restrict__ g,
-                        Float* __restrict__ h,
-                        Float* __restrict__ preMat,
-                        Float* __restrict__ gactVec,
-                        Float* __restrict__ hactVec,
-                        Float* __restrict__ g_b1x,
-                        Float* __restrict__ h_b1x,
-                        Size n, PosInt offset, Size ngType, Size ns, Int m) 
+             Float* __restrict__ h,
+             Float* __restrict__ preMat,
+             Float* __restrict__ gactVec,
+             Float* __restrict__ hactVec,
+             Float* __restrict__ g_b1x,
+             Float* __restrict__ h_b1x,
+             Size n, PosInt offset, Size ngType, Size ns, Int m) 
 {
     // 2D blockGrid
     // -> D-1 pieces of actVec 
@@ -79,10 +79,10 @@ void recal_G(Float* __restrict__ g,
 
 __global__ 
 void reduce_G(Float* __restrict__ g,
-                         Float* __restrict__ h,
-                         Float* __restrict__ g_b1x, 
-                         Float* __restrict__ h_b1x,
-                         Size ngType, int n) 
+              Float* __restrict__ h,
+              Float* __restrict__ g_b1x, 
+              Float* __restrict__ h_b1x,
+              Size ngType, Size n) 
 { 
     // b1x = Float[ngType, n/ns(gridDim.x), n]
     // n x #(ns)
@@ -92,7 +92,7 @@ void reduce_G(Float* __restrict__ g,
     for (int ig=0; ig<ngType; ig++) {
         PosInt gid = ig*blockDim.x*gridDim.x + threadIdx.x*gridDim.x + blockIdx.x;
         if (gid < n) {
-            // can do coalesce read optimization here (transpose in shared mem)
+            // TODO: can do coalesce read optimization here (transpose in shared mem)
             g_blk[threadIdx.x] = g_b1x[gid];
             h_blk[threadIdx.x] = g_b1x[gid];
         } else {
@@ -123,7 +123,18 @@ void reduce_G(Float* __restrict__ g,
     }
 }
 
-__device__  Float one(LIF* lif, Float dt, Float tRef, PosInt id, Float gE, Float gI, Float tsp[]) {
+__device__
+__forceinline__
+void evolve_gLGN(ConductanceShape &cond, Float &g, Float &h, Float sInfo, Float dt, PosInt ig) {
+    Size nsp = static_cast<Size>(flooring(sInfo)); // integer part: #spikes - 1
+    Float tsp = sInfo - nsp; // decimal part: normalized mean tsp
+    nsp += 1;
+    cond.compute_single_input_conductance(g, h, sLGN*nsp, dt*(1.0-tsp), ig);
+}
+
+__device__
+__forceinline__
+Float one(LIF* lif, Float dt, Float tRef, PosInt id, Float gE, Float gI, Float tsp[]) {
     lif->tsp = dt;
     lif->spikeCount = 0;
     // not in refractory period
@@ -168,15 +179,21 @@ __device__  Float one(LIF* lif, Float dt, Float tRef, PosInt id, Float gE, Float
     return lif->tsp;
 }
 
-__device__ void LIF::implicit_rk2(Float dt) {
+__device__
+__forceinline__
+void LIF::implicit_rk2(Float dt) {
     v = impl_rk2(dt, a0, b0, a1, b1, v0);
 }
 
-__device__ void LIF::compute_spike_time(Float dt, Float t0) {
+__device__
+__forceinline__
+void LIF::compute_spike_time(Float dt, Float t0) {
     tsp = comp_spike_time(v, v0, dt, t0);
 }
 
-__device__ void LIF::recompute(Float dt, Float t0) {
+__device__
+__forceinline__
+void LIF::recompute(Float dt, Float t0) {
     Float rB = dt/(tBack-t0) - 1; 
     Float denorm = 2 + a1*dt;
     Float A = (2 - a0*dt)/denorm;
@@ -185,7 +202,9 @@ __device__ void LIF::recompute(Float dt, Float t0) {
     v = A*v0 + B;
 }
 
-__device__ void LIF::recompute_v(Float dt, Float t0) {
+__device__ 
+__forceinline__
+void LIF::recompute_v(Float dt, Float t0) {
     Float rB = dt/(tBack-t0) - 1; 
     Float denorm = 2 + a1*dt;
     Float A = (2 - a0*dt)/denorm;
@@ -193,7 +212,9 @@ __device__ void LIF::recompute_v(Float dt, Float t0) {
     v = recomp_v(A, B, rB);
 }
 
-__device__ void LIF::recompute_v0(Float dt, Float t0) {
+__device__ 
+__forceinline__
+void LIF::recompute_v0(Float dt, Float t0) {
     Float rB = dt/(tBack-t0) - 1; 
     Float denorm = 2 + a1*dt;
     Float A = (2 - a0*dt)/denorm;
@@ -201,32 +222,24 @@ __device__ void LIF::recompute_v0(Float dt, Float t0) {
     v0 = recomp_v0(A, B, rB);
 }
 
-__device__ void LIF::set_p0(Float gE, Float gI, Float gL) {
+__device__ 
+__forceinline__
+void LIF::set_p0(Float gE, Float gI, Float gL) {
     a0 = get_a(gE, gI, gL);
     b0 = get_b(gE, gI, gL); 
 }
 
-__device__ void LIF::set_p1(Float gE, Float gI, Float gL) {
+__device__ 
+__forceinline__
+void LIF::set_p1(Float gE, Float gI, Float gL) {
     a1 = get_a(gE, gI, gL);
     b1 = get_b(gE, gI, gL); 
 }
 
-__device__ void LIF::reset_v() {
-    v = vL;
-}
-
 __device__ 
-void evolve_g(ConductanceShape &cond,
-              Float* g, 
-              Float* h, 
-              Float* f,
-              Float inputTime[],
-              Int nInput, Float dt, unsigned int ig)
-{
-    cond.decay_conductance(g, h, dt, ig); 
-    for (int i=0; i<nInput; i++) {
-        cond.compute_single_input_conductance(g, h, *f, dt-inputTime[i], ig);
-    }
+__forceinline__
+void LIF::reset_v() {
+    v = vL;
 }
 
 __global__ 
@@ -245,7 +258,7 @@ void compute_V(Float* __restrict__ v,
                Float* __restrict__ hactVec,
                curandStateMRG32k3a* __restrict__ stateE,
                curandStateMRG32k3a* __restrict__ stateI,
-               Size ngTypeE, Size ngTypeI, Size ngType, ConductanceShape condE, ConductanceShape condI, Float dt, Size networkSize, Size nE, PosIntL seed)
+               Size max_nLGN, Size ngTypeE, Size ngTypeI, Size ngType, ConductanceShape condE, ConductanceShape condI, Float dt, Size networkSize, Size nE, PosIntL seed)
 {
     PosInt id = blockIdx.x * blockDim.x + threadIdx.x;
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
@@ -275,36 +288,35 @@ void compute_V(Float* __restrict__ v,
         gI_t += gI[networkSize*ig + id];
     }
     lif.set_p0(gE_t, gI_t, gL);
-    // Get LGN input
-    for (Size iLGN = 0; i<nLGN; i++) {
-        Float spikeInfo;
-        surf2Dread(&spikeInfo, LGNspikeSurface, x, y);
-        if (spikeInfo >= 0.0) {
-            // evolve g to t+dt with ff input only
-            gE_t = prep_cond(condE, gE_local, hE_local, fE_local, inputTimeE, nInputE, ngTypeE, dt, dt); 
-            gI_t = prep_cond(condI, gI_local, hI_local, fI_local, inputTimeI, nInputI, ngTypeI, dt, dt); 
-            // update_g(spikeInfo)
-            //  get_tsp_nsp(spikeInfo)
-        } else {
-
-        }
-    }
     /* evolve g to t+dt with ff input only */
     unsigned int gid;
     gE_t = 0.0f;
+    // m nLGN
+    // n networkSize
+    Size m = nLGN[id];
     #pragma unroll
-    for (int ig=0; ig<ngTypeE; ig++) {
+    for (PosInt ig=0; ig<ngTypeE; ig++) {
         gid = networkSize*ig + id;
-        Float g_i = gE[gid];
-        Float h_i = hE[gid];
-        Float f_i = fE[gid];
-        evolve_g(condE, &g_i, &h_i, &f_i, inputTimeE, nInputE, dt, ig);
-        //__syncwarp();
-        gE_t += g_i;
-        gE[gid] = g_i;
-        hE[gid] = h_i;
-        // for learning
-        //fE[gid] = f_i;
+        Float g = gE[gid];
+        Float h = hE[gid];
+        // conductance of the end of the last time step
+        condE.decay_conductance(g, h, dt, ig); //  decayed to the end of the current step
+        // Get LGN input
+        for (Size i = 0; i<m; i++) {
+            PosInt lid = id*max_nLGN + i;
+            PosInt LGN_id = LGN_V1_id[lid];
+            Float sInfo = spikeInfo[LGN_id];
+            if (sInfo >= 0.0) {
+                Float sLGN = LGN_V1_s[lid];
+                Float x = LGN_idx[LGN_id];
+                Float y = LGN_idy[LGN_id];
+                surf2Dread(&sInfo, LGNspikeSurface, x, y);
+                evolve_gLGN(g, h, sInfo, dt, ig);
+            }
+        }
+        gE_t += g;
+        gE[gid] = g;
+        hE[gid] = h;
     }
     gI_t = 0.0f;
     #pragma unroll
@@ -312,14 +324,10 @@ void compute_V(Float* __restrict__ v,
         gid = networkSize*ig + id;
         Float g_i = gI[gid];
         Float h_i = hI[gid];
-        Float f_i = fI[gid];
-        evolve_g(condI, &g_i, &h_i, &f_i, inputTimeI, nInputI, dt, ig);
-        //__syncwarp();
-        gI_t += g_i;
-        gI[gid] = g_i;
-        hI[gid] = h_i;
-        // for learning
-        //fI[gid] = f_i;
+        condI.decay_conductance(g, h, dt, ig); 
+        gI_t += g;
+        gI[gid] = g;
+        hI[gid] = h;
     }
     lif.set_p1(gE_t, gI_t, gL);
     // step
@@ -355,7 +363,7 @@ void compute_V(Float* __restrict__ v,
             for (int i=0; i<lif.spikeCount; i++) {
                 g_end = 0.0f;
                 h_end = 0.0f;
-                cond->compute_single_input_conductance(&g_end, &h_end, 1.0f, dt-tsp[i], ig);
+                cond->compute_single_input_conductance(g_end, h_end, 1.0f, dt-tsp[i], ig);
                 gactVec[gid] += g_end;
                 hactVec[gid] += h_end;
             }

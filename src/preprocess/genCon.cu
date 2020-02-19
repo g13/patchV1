@@ -49,7 +49,8 @@ int main(int argc, char *argv[])
         ("blockROI", po::value<Float>(&blockROI), "max radius (center to center) to include neighboring blocks in mm")
     	("usingPosDim", po::value<Size>(&usingPosDim)->default_value(2), "using <2>D coord. or <3>D coord. when calculating distance between neurons, influencing how the position data is read") 
         ("maxDistantNeighbor", po::value<Size>(&maxDistantNeighbor), "the preserved size of the array that store the presynaptic neurons' ID, who are not in the neighboring blocks")
-        ("maxNeighborBlock", po::value<Size>(&maxNeighborBlock), "the preserved size of the array that store the neighboring blocks ID")
+        ("maxNeighborBlock", po::value<Size>(&maxNeighborBlock)->default_value(12), "the preserved size (minus the nearNeighborBlock) of the array that store the neighboring blocks ID that goes into conVec")
+        ("nearNeighborBlock", po::value<Size>(&nearNeighborBlock)->default_value(8), "the preserved size of the array that store the neighboring blocks ID that goes into conMat, excluding the self block")
 		("fV1_typeMat", po::value<string>(&typeMat_filename)->default_value(""), "read nTypeHierarchy, pTypeMat, sTypeMat from this file, not implemented")
         ("fV1_type", po::value<string>(&V1_type_filename)->default_value("V1_type.bin"), "file to read predetermined neuronal types based on nTypeHierarchy")
         ("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file to read spatially predetermined functional features of neurons")
@@ -285,53 +286,85 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 
-	size_t memorySize = 2*nblock*sizeof(Float) + // block_x and y
-        				networkSize*sizeof(Size) + // preType
-        				2*neuronPerBlock*neuronPerBlock*nblock*sizeof(Float) + // con and delayMat
-        				2*networkSize*maxDistantNeighbor*sizeof(Float) + // con and delayVec
-        				networkSize*maxDistantNeighbor*sizeof(Size) + // vecID
-        				networkSize*sizeof(Size) + // nVec
-        				(maxNeighborBlock + 1)*nblock*sizeof(Size) + // neighborBlockId and nNeighborBlock
-        				2*nType*networkSize*sizeof(Size) + // preTypeConnected and *Avail
-        				nType*networkSize*sizeof(Float); // preTypeStrSum
-
-	// to receive from device
-    size_t outputSize = memorySize;
-	printf("need to allocate %f MB memory on host\n", static_cast<float>(memorySize)/1024/1024);
-	void *cpu_chunk = malloc(memorySize);
-	assert(cpu_chunk);
-
-    Float* block_x = (Float*) cpu_chunk;
-    Float* block_y = block_x + nblock;
-    Size* preType = (Size*) (block_y + nblock);
-    Float* conMat = (Float*) (preType + networkSize); 
-    Float* delayMat = conMat + neuronPerBlock*neuronPerBlock*nblock;
-    Float* conVec = delayMat + neuronPerBlock*neuronPerBlock*nblock; 
-    Float* delayVec = conVec + networkSize*maxDistantNeighbor;
-    Size* vecID = (Size*) (delayVec + networkSize*maxDistantNeighbor);
-    Size* nVec = vecID + networkSize*maxDistantNeighbor;
-    Size* neighborBlockId = nVec + networkSize;
-    Size* nNeighborBlock = neighborBlockId + maxNeighborBlock*nblock;
-    Size* preTypeConnected = nNeighborBlock + nblock; 
-    Size* preTypeAvail = preTypeConnected + nType*networkSize;
-    Float* preTypeStrSum = (Float*) (preTypeAvail + nType*networkSize);
-
-	assert(static_cast<void*>((char*)cpu_chunk + memorySize) == static_cast<void*>(preTypeStrSum + nType * networkSize));
-
-    // ========== GPU mem ============
+    nearNeighborBlock += 1; // including self
+    // check memory availability
+    size_t memorySize, d_memorySize, matSize;
+    size_t neighborSize = 2*nblock*sizeof(Float) + // block_x and y
+        			      (maxNeighborBlock + 1)*nblock*sizeof(Size); // neighborBlockId and nNeighborBlock
 	size_t deviceOnlyMemSize = 2*networkSize*sizeof(Float) + // rden and raxn
-     						   2*networkSize*sizeof(Float) + // dden and daxn
-     						   nType*networkSize*sizeof(Float) + // preS_type
-     						   nType*networkSize*sizeof(Float) + // preP_type
-     						   networkSize*sizeof(Size) + // preN
-     						   networkSize*sizeof(curandStateMRG32k3a); //state
-    size_t d_memorySize = memorySize + nSubHierarchy*networkSize*sizeof(Size) + nFeature*networkSize*sizeof(Float) + usingPosDim*networkSize*sizeof(double) + deviceOnlyMemSize;
+         					   2*networkSize*sizeof(Float) + // dden and daxn
+         					   nType*networkSize*sizeof(Float) + // preS_type
+         					   nType*networkSize*sizeof(Float) + // preP_type
+         					   networkSize*sizeof(Size) + // preN
+                               networkSize*sizeof(Size) + // preType
+         					   networkSize*sizeof(curandStateMRG32k3a); //state
+
+    size_t statSize = 2*nType*neuronPerBlock*maxChunkSize*sizeof(Size) + // preTypeConnected and *Avail
+        	          nType*neuronPerBlock*maxChunkSize*sizeof(Float); // preTypeStrSum
+    size_t vecSize = 2*maxDistantNeighbor*networkSize*sizeof(Float) + // con and delayVec
+        		     maxDistantNeighbor*neuronPerBlock*maxChunkSize*sizeof(Size) + // vecID
+        		     neuronPerBlock*maxChunkSize*sizeof(Size); // nVec
+	void *cpu_chunk;
+    Size *block_chunk;
+    Int half = 1;
+    Size maxChunkSize = nblock;
+	do { 
+        if (half > 1) {
+            Size half0 = maxChunkSize/half;
+            Size half1 = maxChunkSize - half0;
+            maxChunkSize = (half0 > half1)? half0: half1;
+        }
+        matSize = 2*nearNeighborBlock*neuronPerBlock*neuronPerBlock*maxChunkSize*sizeof(Float); // con and delayMat
+
+        memorySize = matSize + vecSize + statSize + neighborSize;
+
+        d_memorySize = memorySize + deviceOnlyMemSize + neighborSize +
+                       nSubHierarchy*networkSize*sizeof(Size) + 
+                       nFeature*networkSize*sizeof(Float) + 
+                       usingPosDim*networkSize*sizeof(double); 
+
+        half *= 2;
+	    cpu_chunk = malloc(memorySize);
+    } while ((cpu_chunk == NULL || d_memorySize > deviceProp.totalGlobalMem*0.8) && nblock > 1);
+    Size maxChunkSize = maxChunkSize;
+    Size nChunk = (nblock + maxChunkSize-1) /maxChunkSize - 1;
+    Size remainChunkSize = nblock%maxChunkSize;
+	printf("need to allocate %f MB memory on host\n", static_cast<float>(memorySize)/1024/1024);
+	// to receive from device
     void* __restrict__ gpu_chunk;
 	printf("need to allocate %f MB memory on device\n", static_cast<float>(d_memorySize) / 1024 / 1024);
     checkCudaErrors(cudaMalloc((void**)&gpu_chunk, d_memorySize));
+    if (nChunk >= 0) {
+        cout << "due to memory limit, connection matrix, vectors and their statistics will come in "<< nChunk << " chunks of " << maxChunkSize << " blocks and a single chunk of " << remainChunkSize << " blocks.\n";
+    } else {
+        cout << "nblock " << nblock << " == 0 ?\n";
+        return EXIT_FAILURE;
+    }
 
+    // ============ CPU MEM ============
+    // blocks
+    Float* block_x = (Float*) cpu_chunk;
+    Float* block_y = block_x + nblock;
+    Size* neighborBlockId = (Size*) (block_y + nblock);
+    Size* nNeighborBlock = neighborBlockId + maxNeighborBlock*nblock;
+
+    // connectome
+    Float* conMat = (Float*) (nNeighborBlock + nblock);
+    Float* delayMat = conMat + nearNeighborBlock*neuronPerBlock*neuronPerBlock*maxChunkSize;
+    Float* conVec = delayMat + nearNeighborBlock*neuronPerBlock*neuronPerBlock*maxChunkSize; 
+    Float* delayVec = conVec + maxDistantNeighbor*networkSize;
+    Size* vecID = (Size*) (delayVec + maxDistantNeighbor*networkSize);
+    Size* nVec = vecID + maxDistantNeighbor*networkSize;
+
+    // stats
+    Size* preTypeConnected = nVec + neuronPerBlock*maxChunkSize; 
+    Size* preTypeAvail = preTypeConnected + nType*neuronPerBlock*maxChunkSize;
+    Float* preTypeStrSum = (Float*) (preTypeAvail + nType*neuronPerBlock*maxChunkSize);
+
+	assert(static_cast<void*>((char*)cpu_chunk + memorySize) == static_cast<void*>(preTypeStrSum + nType * neuronPerBlock*maxChunkSize));
+
+    // ========== GPU mem ============
     // init by kernel, reside on device only
-	// copy and init by the whole chunk from host to device
     Float* __restrict__ rden = (Float*) gpu_chunk; 
     Float* __restrict__ raxn = rden + networkSize;
 	Float* __restrict__ dden = raxn + networkSize;
@@ -339,7 +372,9 @@ int main(int argc, char *argv[])
     Float* __restrict__ preS_type = daxn + networkSize;
     Float* __restrict__ preP_type = preS_type + nType*networkSize;
     Size*  __restrict__ preN = (Size*) (preP_type + nType*networkSize);
-    curandStateMRG32k3a* __restrict__ state = (curandStateMRG32k3a*) (preN + networkSize);
+    Size*  __restrict__ d_preType = preN + networkSize;
+    curandStateMRG32k3a* __restrict__ state = (curandStateMRG32k3a*) (d_preType + networkSize);
+
 	// copy from host to device indivdual chunk
     Size* __restrict__ d_preFixType = (Size*) (state + networkSize);
     Float* __restrict__ d_feature = (Float*) (d_preFixType + nSubHierarchy*networkSize);
@@ -348,107 +383,68 @@ int main(int argc, char *argv[])
     // device to host
     Float* __restrict__ d_block_x = (Float*) (d_pos + usingPosDim*networkSize); 
     Float* __restrict__ d_block_y = d_block_x + nblock;
-    Size*  __restrict__ d_preType = (Size*) (d_block_y + nblock);
-    Float* __restrict__ d_conMat = (Float*) (d_preType + networkSize); 
-    Float* __restrict__ d_delayMat = d_conMat + neuronPerBlock*neuronPerBlock*nblock;
-    Float* __restrict__ d_conVec = d_delayMat + neuronPerBlock*neuronPerBlock*nblock; 
-    Float* __restrict__ d_delayVec = d_conVec + networkSize*maxDistantNeighbor;
-    Size*  __restrict__ d_vecID = (Size*) (d_delayVec + networkSize*maxDistantNeighbor);
-    Size*  __restrict__ d_nVec = d_vecID + networkSize*maxDistantNeighbor;
-    Size*  __restrict__ d_neighborBlockId = d_nVec + networkSize;
+    Size*  __restrict__ d_neighborBlockId = (Size*) (d_block_y + nblock);
     Size*  __restrict__ d_nNeighborBlock = d_neighborBlockId + maxNeighborBlock*nblock;
-    Size*  __restrict__ d_preTypeConnected = d_nNeighborBlock + nblock;
-    Size*  __restrict__ d_preTypeAvail = d_preTypeConnected + nType*networkSize;
-    Float* __restrict__ d_preTypeStrSum = (Float*) (d_preTypeAvail + nType*networkSize);
+
+    Float* __restrict__ d_conMat = (Float*) (d_nNeighborBlock + nblock);
+    Float* __restrict__ d_delayMat = d_conMat + nearNeighborBlock*neuronPerBlock*neuronPerBlock*maxChunkSize;
+    Float* __restrict__ d_conVec = d_delayMat + nearNeighborBlock*neuronPerBlock*neuronPerBlock*maxChunkSize; 
+    Float* __restrict__ d_delayVec = d_conVec + neuronPerBlock*maxChunkSize*maxDistantNeighbor;
+    Size*  __restrict__ d_vecID = (Size*) (d_delayVec + neuronPerBlock*maxChunkSize*maxDistantNeighbor);
+    Size*  __restrict__ d_nVec = d_vecID + neuronPerBlock*maxChunkSize*maxDistantNeighbor;
+
+    // stats
+    Size*  __restrict__ d_preTypeConnected = d_nVec + neuronPerBlock*maxChunkSize;
+    Size*  __restrict__ d_preTypeAvail = d_preTypeConnected + nType*neuronPerBlock*maxChunkSize;
+    Float* __restrict__ d_preTypeStrSum = (Float*) (d_preTypeAvail + nType*neuronPerBlock*maxChunkSize);
 
 	// check memory address consistency
-	assert(static_cast<void*>((char*)gpu_chunk + d_memorySize) == static_cast<void*>(d_preTypeStrSum + nType * networkSize));
+	assert(static_cast<void*>((char*)gpu_chunk + d_memorySize) == static_cast<void*>(d_preTypeStrSum + nType * neuronPerBlock*maxChunkSize));
 
     // for array usage on the device in function "generate_connections"
     Size localHeapSize = (sizeof(Float)*maxNeighborBlock*neuronPerBlock + sizeof(Size)*nType*3)*neuronPerBlock*deviceProps.multiProcessorCount;
     cudaDeviceSetLimit(cudaLimitMallocHeapSize, localHeapSize);
     printf("heap size preserved %f Mb\n", localHeapSize*1.5/1024/1024);
 
-    cudaStream_t s0, s1, s2;
-    cudaEvent_t i0, i1, i2;
-    cudaEventCreate(&i0);
-    cudaEventCreate(&i1);
-    cudaEventCreate(&i2);
-    checkCudaErrors(cudaStreamCreate(&s0));
-    checkCudaErrors(cudaStreamCreate(&s1));
-    checkCudaErrors(cudaStreamCreate(&s2));
+    //cudaStream_t s0, s1, s2;
+    //cudaEvent_t i0, i1, i2;
+    //cudaEventCreate(&i0);
+    //cudaEventCreate(&i1);
+    //cudaEventCreate(&i2);
+    //checkCudaErrors(cudaStreamCreate(&s0));
+    //checkCudaErrors(cudaStreamCreate(&s1));
+    //checkCudaErrors(cudaStreamCreate(&s2));
     if (nSubHierarchy > 0) {
         checkCudaErrors(cudaMemcpy(d_preFixType, &preFixType[0], nSubHierarchy*networkSize*sizeof(Size), cudaMemcpyHostToDevice));
     }
     checkCudaErrors(cudaMemcpy(d_feature, &featureValue[0], nFeature*networkSize*sizeof(Float), cudaMemcpyHostToDevice));
     checkCudaErrors(cudaMemcpy(d_pos, &pos[0], usingPosDim*networkSize*sizeof(double), cudaMemcpyHostToDevice));
-    initialize<<<nblock, neuronPerBlock, 0, s0>>>(state,
-											      d_preType,
-											 	  rden, raxn, dden, daxn,
-											 	  preS_type, preP_type, preN, d_preFixType,
-											 	  init_pack, seed, networkSize, nType, nArchtype, nSubHierarchy);
+    initialize<<<nblock, neuronPerBlock>>>(
+        state,
+	    d_preType,
+		rden, raxn, dden, daxn,
+		preS_type, preP_type, preN, d_preFixType,
+		init_pack, seed, networkSize, nType, nArchtype, nSubHierarchy);
 	getLastCudaError("initialize failed");
-	//checkCudaErrors(cudaEventSynchronizeudaEventRecord(i1, s1));
-	//checkCudaErrors(cudaEventSynchronize(i1));
+	checkCudaErrors(cudaDeviceSynchronize());
     init_pack.freeMem();
     printf("initialzied\n");
     //Size shared_mem;
-    cal_blockPos<<<nblock, neuronPerBlock, 0, s1>>>(d_pos, 
-											        d_block_x,
-                                                    d_block_y, 
-											        networkSize);
+    cal_blockPos<<<nblock, neuronPerBlock>>>(
+        d_pos, 
+		d_block_x, d_block_y, 
+		networkSize);
 	getLastCudaError("cal_blockPos failed");
-	checkCudaErrors(cudaEventRecord(i1, s1));
-	checkCudaErrors(cudaEventSynchronize(i1));
     printf("block centers calculated\n");
 	//shared_mem = sizeof(Size);
-    get_neighbor_blockId<<<nblock, neuronPerBlock, 0, s0>>>(d_block_x, d_block_y, 
-																d_neighborBlockId, d_nNeighborBlock, 
-																blockROI, maxNeighborBlock);
+    get_neighbor_blockId<<<nblock, neuronPerBlock>>>(
+        d_block_x, d_block_y, 
+		d_neighborBlockId, d_nNeighborBlock, 
+		blockROI, maxNeighborBlock);
 	getLastCudaError("get_neighbor_blockId failed");
-	checkCudaErrors(cudaEventRecord(i1, s1));
-	checkCudaErrors(cudaEventSynchronize(i1));
     printf("neighbor blocks acquired\n");
-	//checkCudaErrors(cudaEventRecord(i0, s0));
-	//checkCudaErrors(cudaEventSynchronize(i0));
-	//checkCudaErrors(cudaEventSynchronize(i1));
-	//checkCudaErrors(cudaEventSynchronize(i2));
-    //shared_mem = neuronPerBlock*sizeof(Float) + neuronPerBlock*sizeof(Float) + neuronPerBlock*sizeof(Size);
-    generate_connections<<<nblock, neuronPerBlock, 0, s0>>>(d_pos,
-																	 preS_type, preP_type, preN,
-																	 d_neighborBlockId, d_nNeighborBlock,
-																	 rden, raxn,
-																	 d_conMat, d_delayMat,
-																	 d_conVec, d_delayVec,
-																	 d_vecID, d_nVec,
-																	 d_preTypeConnected, d_preTypeAvail, d_preTypeStrSum,
-																	 d_preType, d_feature,
-																	 dden, daxn,
-																	 state,
-																	 networkSize, maxDistantNeighbor, maxNeighborBlock, speedOfThought, nType, nFeature, gaussian_profile);
-	getLastCudaError("generate_connections failed");
-	checkCudaErrors(cudaEventRecord(i0, s0));
-	checkCudaErrors(cudaEventSynchronize(i0));
-    printf("connectivity constructed\n");
-	// the whole chunk of output
-	checkCudaErrors(cudaMemcpy(block_x, d_block_x, outputSize, cudaMemcpyDeviceToHost)); 	
-	checkCudaErrors(cudaStreamDestroy(s0));
-    checkCudaErrors(cudaStreamDestroy(s1));
-    checkCudaErrors(cudaStreamDestroy(s2));
-    // output to binary data files
-    fV1_conMat.write((char*)conMat, nblock*neuronPerBlock*neuronPerBlock*sizeof(Float));
-    fV1_conMat.close();
-    fV1_delayMat.write((char*)delayMat, nblock*neuronPerBlock*neuronPerBlock*sizeof(Float));
-    fV1_delayMat.close();
-    
-    fV1_vec.write((char*)nVec, networkSize*sizeof(Size));
-    for (Size i=0; i<networkSize; i++) {
-        fV1_vec.write((char*)&(vecID[i*maxDistantNeighbor]), nVec[i]*sizeof(Size));
-        fV1_vec.write((char*)&(conVec[i*maxDistantNeighbor]), nVec[i]*sizeof(Float));
-        fV1_vec.write((char*)&(delayVec[i*maxDistantNeighbor]), nVec[i]*sizeof(Float));
-    }
-    fV1_vec.close();
 
+	checkCudaErrors(cudaMemcpy(block_x, d_block_x, neighborSize, cudaMemcpyDeviceToHost)); 	
     fBlock_pos.write((char*)block_x, nblock*sizeof(Float));
     fBlock_pos.write((char*)block_y, nblock*sizeof(Float));
     fBlock_pos.close();
@@ -462,6 +458,50 @@ int main(int argc, char *argv[])
     //cout << "\n";
     fNeighborBlock.close();
 
+    //shared_mem = neuronPerBlock*sizeof(Float) + neuronPerBlock*sizeof(Float) + neuronPerBlock*sizeof(Size);
+    Size current_nblock;
+    PosInt offset = 0; // memory offset
+    for (PosInt iChunk = 0; iChunk < nChunk+1; iChunk++) {
+        if (iChunk < nChunk) current_nblock = maxChunkSize;
+        else current_nblock = remainChunkSize;
+        generate_connections<<<current_nblock, neuronPerBlock>>>(
+            d_pos,
+	    	preS_type, preP_type, preN,
+	    	d_neighborBlockId, d_nNeighborBlock,
+	    	rden, raxn,
+	    	d_conMat, d_delayMat,
+	    	d_conVec, d_delayVec,
+	    	d_vecID, d_nVec,
+	    	d_preTypeConnected, d_preTypeAvail, d_preTypeStrSum,
+	    	d_preType, d_feature,
+	    	dden, daxn,
+	    	state,
+	    	offset, networkSize, maxDistantNeighbor, maxNeighborBlock, speedOfThought, nType, nFeature, gaussian_profile);
+	    getLastCudaError("generate_connections failed");
+        offset += current_nblock*neuronPerBlock;
+
+        size_t current_matSize =  nearNeighborBlock*neuronPerBlock*neuronPerBlock*current_nblock*sizeof(Float);
+	    checkCudaErrors(cudaMemcpy(conMat, d_conMat, current_matSize, cudaMemcpyDeviceToHost)); 	
+        // output connectome data
+        fV1_conMat.write((char*)conMat, current_matSize);
+        fV1_delayMat.write((char*)delayMat, current_matSize);
+    }
+    fV1_conMat.close();
+    fV1_delayMat.close();
+    printf("connectivity constructed\n");
+	//checkCudaErrors(cudaStreamDestroy(s0));
+    //checkCudaErrors(cudaStreamDestroy(s1));
+    //checkCudaErrors(cudaStreamDestroy(s2));
+	checkCudaErrors(cudaMemcpy(conVec, d_conVec, vecSize+statSize, cudaMemcpyDeviceToHost)); 	
+    
+    fV1_vec.write((char*)nVec, networkSize*sizeof(Size));
+    for (Size i=0; i<networkSize; i++) {
+        fV1_vec.write((char*)&(vecID[i*maxDistantNeighbor]), nVec[i]*sizeof(Size));
+        fV1_vec.write((char*)&(conVec[i*maxDistantNeighbor]), nVec[i]*sizeof(Float));
+        fV1_vec.write((char*)&(delayVec[i*maxDistantNeighbor]), nVec[i]*sizeof(Float));
+    }
+    fV1_vec.close();
+
     fStats.write((char*)&nType,sizeof(Size));
     fStats.write((char*)&networkSize,sizeof(Size));
     fStats.write((char*)preTypeConnected, nType*networkSize*sizeof(Size));
@@ -469,6 +509,7 @@ int main(int argc, char *argv[])
     fStats.write((char*)preTypeStrSum, nType*networkSize*sizeof(Float));
     fStats.close();
 
+	checkCudaErrors(cudaDeviceSynchronize());
     checkCudaErrors(cudaFree(gpu_chunk));
 	free(cpu_chunk);
     return 0;

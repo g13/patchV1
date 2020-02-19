@@ -1,7 +1,10 @@
 from scipy import integrate
-from scipy import special
 import numpy as np
 from cmath import *
+
+import matplotlib
+matplotlib.use('Agg')
+
 import matplotlib.pyplot as plt
 from IPython.display import display, Math, Latex
 from patch_geo_func import x_ep, y_ep
@@ -41,13 +44,24 @@ print([np.min(y), np.max(y)])
 
 pos_file = 'temp_pos.bin'
 LGN_surfaceL = surface(shape_file, pos_file, 2.525)
-LGN_surfaceL.prep_pos()
+old_pos = LGN_surfaceL.prep_pos()
 
 fig = plt.figure('vf_pos', dpi = 900)
 ax = fig.add_subplot(111)
-dt0 = np.power(2.0,-np.arange(7,8)).reshape(1,1)
-dt1 = np.power(2.0,-np.arange(7,8)).reshape(1,1)
-dt = np.hstack((np.tile(dt0,(100,1)).flatten(), np.tile(dt1,(100,1)).flatten()))
-LGN_surfaceL.make_pos_uniform(dt, ax = ax, b_scale = 1.0, p_scale = 2.5)
+dt0 = np.power(2.0,-np.arange(5,6)).reshape(1,1)
+dt1 = np.power(2.0,-np.arange(5,6)).reshape(1,1)
+dt = np.hstack((np.tile(dt0,(100,1)).flatten(), np.tile(dt1,(50,1)).flatten()))
+LGN_surfaceL.make_pos_uniform(dt, ax = ax, b_scale = 1.5, p_scale = 2.5)
 
-LGN_surfaceL.save_pos('temp_pos.bin')
+LGN_surfaceL.save_pos('temp_pos6.bin')
+fig.savefig('LGN_surface.png')
+
+fig = plt.figure('final', dpi = 900)
+ax = fig.add_subplot(111)
+LGN_surfaceL.gen_surface(ax)
+fig.savefig('LGN_surface_final.png')
+
+with open('p2p-6.bin', 'wb') as f:
+    np.array([LGN_surfaceL.nLGN]).tofile(f)
+    old_pos.tofile(f)
+    LGN_surfaceL.pos.tofile(f)
