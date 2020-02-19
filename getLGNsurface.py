@@ -42,7 +42,7 @@ with open(shape_file, 'wb') as f:
 print([np.min(x), np.max(x)])
 print([np.min(y), np.max(y)])
 
-pos_file = 'temp_pos.bin'
+pos_file = 'temp_pos6.bin'
 LGN_surfaceL = surface(shape_file, pos_file, 2.525)
 old_pos = LGN_surfaceL.prep_pos()
 
@@ -53,7 +53,7 @@ dt1 = np.power(2.0,-np.arange(6,7)).reshape(1,1)
 dt = np.hstack((np.tile(dt0,(100,1)).flatten(), np.tile(dt1,(50,1)).flatten()))
 LGN_surfaceL.make_pos_uniform(dt, ax = ax, b_scale = 1.5, p_scale = 2.5)
 
-LGN_surfaceL.save_pos('temp_pos6.bin')
+LGN_surfaceL.save_pos('temp_pos7.bin')
 fig.savefig('LGN_surface.png')
 
 fig = plt.figure('final', dpi = 900)
@@ -61,7 +61,7 @@ ax = fig.add_subplot(111)
 LGN_surfaceL.gen_surface(ax)
 fig.savefig('LGN_surface_final.png')
 
-with open('p2p-6.bin', 'wb') as f:
+with open('p2p-7.bin', 'wb') as f:
     np.array([LGN_surfaceL.nLGN]).tofile(f)
     old_pos.tofile(f)
     LGN_surfaceL.pos.tofile(f)
