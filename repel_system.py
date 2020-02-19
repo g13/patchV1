@@ -597,6 +597,11 @@ def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = Non
     # test with default bound potential param
     system = repel_system(area, subgrid, pos, boundary, btype, boundary_param, particle_param, initial_v, nlayer = nlayer, layer = layer, soft_boundary = soft_boundary, soft_btype = soft_btype, p_scale = p_scale, b_scale = b_scale, fixed = fixed, b_cl = b_cl, i_cl = i_cl)
     system.initialize()
+
+    full_trace = True 
+    if ns == pos.shape[1]:
+        full_trace = False
+
     if dt is not None:
         convergence = np.empty((dt.size,2))
         nlimited = np.zeros(dt.size, dtype=int)
@@ -604,8 +609,17 @@ def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = Non
             pos, convergence[i,:], nlimited[i], nfreeze = system.next(dt[i], layer_seq)
             stdout.write(f'\r{(i+1)/dt.size*100:.3f}%, {nlimited[i]} particles\' displacement are limited, {nfreeze} particles freezed')
             if ax is not None and ns > 0:
-                spos[(i+1)%2,:,:] =  pos[:,spick]
-                ax.plot(spos[:,0,:].squeeze(), spos[:,1,:].squeeze(),'-,c', lw = 0.01)
+                if full_trace:
+                    spos[(i+1)%2,:,:] =  pos[:,spick]
+                    ax.plot(spos[:,0,:].squeeze(), spos[:,1,:].squeeze(),'-,c', lw = 0.01)
+                else:
+                    if i==0:
+                        spos[0,:,:] =  pos[:,spick]
+                    else:
+                        spos[1,:,:] =  pos[:,spick]
+    if not full_trace:
+        ax.plot(spos[:,0,:].squeeze(), spos[:,1,:].squeeze(),'-,c', lw = 0.01)
+
     else:
         convergence = -1
         nlimited = -1

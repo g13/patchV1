@@ -85,6 +85,7 @@ class surface:
             if duplicate > 0:
                 print(f'after pos adjustment: {duplicate} points have duplicate(s)')
                 assert(duplicate == 0)
+        return self.pos
         
     # boundary define by 4 corners
     def define_bound(self, grid):
