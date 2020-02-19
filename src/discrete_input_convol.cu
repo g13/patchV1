@@ -3,6 +3,7 @@
 extern texture<float, cudaTextureType2DLayered> L_retinaInput;
 extern texture<float, cudaTextureType2DLayered> M_retinaInput;
 extern texture<float, cudaTextureType2DLayered> S_retinaInput;
+extern surface<void, cudaSurfaceType2D> LGNspikeSurface;
 extern __device__ __constant__ float sqrt2;
 
 __global__
@@ -822,33 +823,31 @@ void LGN_convol_c1s(
 
 __inline__
 __device__
-get_spike(Float &nSpike,
-         Float &leftTimeRate,
-         Float &lastNegLogRand,
-         Float dt,
-         Float rate,
-         curandStateMRG32k3a &state) 
+get_spike(Float &spikeInfo,
+          Float &leftTimeRate,
+          Float &lastNegLogRand,
+          Float dt,
+          Float rate,
+          curandStateMRG32k3a &state) 
 {
-    nSpike = 0;
+    spikeInfo = 0;
     Float tau, dTau, negLogRand;
     // ith spike, jth dt
     // t_{i+1}*r_{j+1} + (T_{j}-t_{i})*r_{j} = -log(rand);
-    tau = (lastNegLogRand - leftTimeRate)/rate; // the first spike time
-    if (tau > dt) { // spike time is larger than dt.
-        leftTimeRate += (dt * rate);
-        nSpike = -1;
+    Float rT = dt*rate;
+    Float n_rt = lastNegLogRand - leftTimeRate; // tsp = n_rt/rate
+    if (n_rt > rT) { // spike time is larger than dt.
+        leftTimeRate += rT;
+        spikeInfo = -1; // no spike
         return;
     } else do { // at least one spike during current time step
-        negLogRand = -logrithm(uniform(state));
-        dTau = negLogRand/rate;
-        tau += dTau;
-        nSpike += 1;
-    } while (tau <= dt);
-    if (nSpike == 1) {
-        nSpike = tau;// nSpike now serve as spike time
-    }
-    lastNegLogRand = negLogRand;
-    leftTimeRate = (dt - (tau-dTau)) * rate;
+        lastNegLogRand = -logrithm(uniform(state));
+        n_rt += lastNegLogRand;
+        spikeInfo += 1;
+    } while (n_rt <= rT);
+    //  integer part:#spike-1,  decimal part normalized mean tsp
+    spikeInfo = spikeInfo + n_rt/(rate*dt*(spikeInfo+1));
+    leftTimeRate = (rT - (n_rt-lastNegLogRand));
 }
 
 __launch_bounds__(1024, 2)
@@ -859,8 +858,8 @@ void LGN_nonlinear(
         Float* __restrict__ max_convol,
         Float* __restrict__ current_convol,
         Float* __restrict__ LGN_fr,
-        Float* __restrict__ x,
-        Float* __restrict__ y,
+        Float* __restrict__ sx,
+        Float* __restrict__ sy,
         Float* __restrict__ leftTimeRate,
         Float* __restrict__ lastNegLogRand,
 		curandStateMRG32k3a* __restrict__ state
@@ -875,6 +874,8 @@ void LGN_nonlinear(
 		Float max = max_convol[id];
         Float lTR = leftTimeRate[id];
         Float lNL = lastNegLogRand[id]
+        Float x = sx[id];
+        Float y = sy[id];
 
 		// initialize for next time step
 		current_convol[id] = 0.0;
@@ -893,13 +894,13 @@ void LGN_nonlinear(
         }*/
         LGN_fr[id] = fr;
         //LGN_fr[id] = max * transform(C50, K, A, B, current/max);
-        Float nSpike; // must be float
-        get_spike(nSpike, lTR, lNL, dt, fr, state);
-        if (nSpike != -1.0) {
-            leftTimeRate[id] = lTR;
+        Float spikeInfo; // must be float, integer part = #spikes decimals: mean tsp
+        get_spike(spikeInfo, lTR, lNL, dt, fr, state);
+        if (nSpike > -1.0) {
             lastNegLogRand[id] = lNL;
         }
+        leftTimeRate[id] = lTR;
         // write to surface memory 
-        surf2Dwrite(nSpike, LGNspikeSurface, x, y);
+        surf2Dwrite(spikeInfo, LGNspikeSurface, 4*sx, sy);
     }
 }

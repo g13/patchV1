@@ -19,6 +19,7 @@
 #define timeNow() std::chrono::high_resolution_clock::now()
 
 #ifdef DOUBLE_PRECISION
+    #define flooring floor 
     #define ceiling ceil
     #define mod fmod
 	#define absb fabs 
@@ -41,6 +42,7 @@
     #define normalb curand_normal_double
     #define log_normalb curand_log_normal_double
 #else
+    #define flooring floorf 
     #define ceiling ceilf
     #define mod fmodf
 	#define absb fabsf 
@@ -65,6 +67,7 @@
 #endif
 
 #ifdef SINGLE_PRECISION
+    #define flooring floorf
     #define ceiling ceilf
     #define mod fmodf
 	#define abs fabsf 
@@ -87,6 +90,7 @@
     #define normal curand_normal
     #define log_normal curand_log_normal
 #else
+    #define flooring floor
     #define ceiling ceil
     #define mod fmod
 	#define abs fabs 
