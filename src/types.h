@@ -5,7 +5,7 @@
 typedef int Int;
 typedef float Float;
 #define SINGLE_PRECISION
-typedef float Double;
+typedef double Double;
 //#define DOUBLE_PRECISION
 typedef unsigned int Size;
 typedef long unsigned int BigSize;

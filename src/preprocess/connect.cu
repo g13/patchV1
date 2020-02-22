@@ -137,8 +137,11 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
 {
     __shared__ PosInt id[warpSize];
     __shared__ Float min[warpSize];
-    extern __shared__ PosInt bid[];
-	Float* distance = (Float*) (bid + nblock);
+    __shared__ Int bid[blockSize];
+	__shared__ Float distance[blockSize];
+
+	extern __shared__ Float final_distance[];
+	PosInt* final_bid = (PosInt*) (final_distance + maxNeighborBlock);
 
     Float bx = block_x[blockIdx.x]; // center of the target block
     Float by = block_y[blockIdx.x];
@@ -146,66 +149,102 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
 
     Size nPatch = (nblock + blockDim.x-1)/blockDim.x - 1;
     Size remain = nblock%blockDim.x;
+	if (remain == 0) {
+		remain = blockDim.x;
+	}
 
     Size offset = 0;
-    Size nid = 0;
-    Float dis;
-    Size blockId;
+    if (tid == 0) {
+        id[0] = 0;
+    }
+    bid[tid] = -1;
+    __syncthreads();
     for (Size iPatch = 0; iPatch < nPatch+1; iPatch++) {
         if (iPatch < nPatch || tid < remain) {
-            blockId = offset + threadIdx.x;
+            PosInt blockId = offset + threadIdx.x;
             Float x = block_x[blockId] - bx;
             Float y = block_y[blockId] - by;
-            dis = square_root(x*x + y*y);
-            if (dis <= max_radius) { // get blocks inside radius
-                if (tid == 0) {
-                    if (nid >= nblock) {
-                        printf("nearby block > %u\n", blockSize);
-                        assert(nid <= nblock);
-                    }
-                    distance[nid] = dis;
-                    bid[nid] = blockId;
-                }
-                nid++;
+            Float dis = square_root(x*x + y*y);
+            if (dis < max_radius) {
+                distance[tid] = dis;
+                bid[tid] = blockId;
             }
         }
+        if (tid == 0) { // rearrange
+            PosInt current_id = id[0];
+            for (PosInt i=0; i<blockDim.x; i++) {
+                if (bid[i] != -1) {
+                    final_distance[current_id] = distance[i]; 
+                    final_bid[current_id] = bid[i]; 
+                    bid[i] = -1; 
+                    current_id++;
+                    if (current_id > maxNeighborBlock) {
+                        printf("actual nNeighbor = %d > %d (preserved)\n", current_id, maxNeighborBlock);
+                        assert(current_id <= maxNeighborBlock);
+                    }
+                }
+            }
+            id[0] = current_id;
+        }
+        __syncthreads();
         if (iPatch < nPatch) {
             offset += blockDim.x;
         }
     }
-    if (nid > maxNeighborBlock) {
-        printf("actual nNeighbor = %d > %d (preserved)\n", nid, maxNeighborBlock);
-        assert(nid <= maxNeighborBlock);
+    Size nb = id[0];
+    if (tid == 0) {
+        nNeighborBlock[blockIdx.x] = nb;
+	    //printf("%u: %u blocks in total\n", blockIdx.x, nb);
     }
-    __syncthreads();
-    // reassign bid and distance to threads
-    if (tid < nid) {
-        dis = distance[tid];
-        blockId =  bid[tid];
-    } else {
-        dis = max_radius + 1; // to be excluded
+    Float dis;
+    PosInt local_bid;
+    if (tid < nb) {
+        dis = final_distance[tid];
+        /*DEBUG
+            if (blockIdx.x == 2) {
+                printf("preSort#%u:%u, %e\n", tid, final_bid[tid], dis);
+            }
+        */
     }
     // sorting
-    PosInt final_bid;
-    for (Size i=0; i<nid;  i++) {
-        find_min(min, dis, id);
+    for (Size i=0; i<nb;  i++) {
+        find_min(min, dis, id, nb);
         PosInt min_id = id[0];
         if (tid == min_id) {
             dis = max_radius + 1; // to be excluded for next min
         }
         if (tid == i) { // get read for global store
-            final_bid = min_id;
+            local_bid = final_bid[min_id];
         }
-        __syncwarp();
+		/* DEBUG
+            if (blockIdx.x == 2 && tid < nb) {
+                printf("%u#%u:%u, %e\n",i, tid, final_bid[tid], dis);
+            }
+            __syncthreads();
+        */
     }
-    if (tid < nid) {
-        neighborBlockId[maxNeighborBlock*blockIdx.x + tid] = final_bid;
+    if (tid < nb) {
+        neighborBlockId[maxNeighborBlock*blockIdx.x + tid] = local_bid;
     }
-    if (tid == 0) {
-        nNeighborBlock[blockIdx.x] = nid;
-    }
+	/* DEBUG
+        if (blockIdx.x == 2) {
+	        for (PosInt j = 0; j<nb; j++) {
+	        	if (tid == j) {
+	        		if (j == 0) {
+	        			printf("block %u, %u neighbors in total\n", blockIdx.x, nb);
+	        		}
+	        		printf("#%u, %u: %f -> %f,", j, local_bid, final_distance[j], dis);
+	        		if (j == nb-1) {
+	        			printf("\n");
+	        		}
+	        	}
+	        	__syncwarp();
+	        }
+        }
+	*/
 }
 
+__launch_bounds__(1024,2)
 __global__ 
 void generate_connections(double* __restrict__ pos,
                           Float* __restrict__ preS_type,
@@ -231,6 +270,10 @@ void generate_connections(double* __restrict__ pos,
                           curandStateMRG32k3a* __restrict__ state,
                           PosInt block_offset, Size networkSize, Size maxDistantNeighbor, Size nearNeighborBlock, Size maxNeighborBlock, Float speedOfThought, Size nType, Size nFeature, bool gaussian_profile) 
 {
+    // TODO: load with warps but more, e.g., raxn, daxn, preType
+    __shared__ double x1[blockSize];
+    __shared__ double y1[blockSize];
+    //__shared__ Float ra[blockDim.x];
     Size blockId = blockIdx.x + block_offset;
     Size nn = nNeighborBlock[blockId];
     Size offset = blockId*blockDim.x;
@@ -261,16 +304,21 @@ void generate_connections(double* __restrict__ pos,
     // withhin block and nearNeighbor
     for (Size in=0; in<nn; in++) {
         Size bid = neighborBlockId[maxNeighborBlock*blockId + in] * blockDim.x;
+        x1[threadIdx.x] = pos[bid*2 + threadIdx.x];
+        y1[threadIdx.x] = pos[bid*2 + blockDim.x + threadIdx.x];
+        //DEBUG
+        if (blockIdx.x == 2 && threadIdx.x == 0) {
+            printf("iNear = %u, blockId = %u\n", in, bid/blockDim.x);
+        }
+        //
+        __syncthreads();
         #pragma unroll
         for (Size i=0; i<blockDim.x; i++) {
             // blockwise load from gmem the (potential) presynaptic neurons' properties
-            Size ii = (i + threadIdx.x) % blockDim.x; // pre-id in block
-            Size ipre = bid + ii; // pre-id in network
-            double x1 = pos[bid*2 + ii];
-            double y1 = pos[bid*2 + blockDim.x + ii];
+            Size ipre = bid + i; // pre-id in network
             Float ra = raxn[ipre];
-            double x = x1 - x0;
-            double y = y1 - y0;
+            Float x = static_cast<Float>(x1[i] - x0);
+            Float y = static_cast<Float>(y1[i] - y0);
             //type vector, indexed across the network
             Float distance = static_cast<Float>(square_root(x*x + y*y));
 	    	// weight from area
@@ -279,7 +327,14 @@ void generate_connections(double* __restrict__ pos,
             if (p > 0) {
                 Size ip = preType[ipre];
                 // id in the conMat [nblock,nearNeighborBlock,blockDim.x,blockDim.x] loop in the second axis, (last dim is the post-id)
-                PosIntL mid = (offset*nearNeighborBlock + in*blockDim.x + ii)*blockDim.x + threadIdx.x;
+                PosIntL mid = ((blockIdx.x*nearNeighborBlock + in)*blockDim.x + i)*blockDim.x + threadIdx.x;
+                //DEBUG
+                BigSize matSize = blockDim.x*blockDim.x*nearNeighborBlock*gridDim.x;
+                if (mid >= matSize) {
+                    printf("(%ux%ux%ux%u) = %u\n", gridDim.x, nearNeighborBlock, blockDim.x, blockDim.x, matSize);
+                    assert(mid < matSize);
+                }
+                //
                 sumType[ip] += 1;
 	    		// update weight with density of axon dendrites and preference over type
                 p *= daxn[ipre] * dd * preP_type[ip*networkSize + id];
@@ -291,21 +346,27 @@ void generate_connections(double* __restrict__ pos,
                 delayMat[mid] = distance/speedOfThought;
             }
         }
+        if (blockIdx.x == 2 && threadIdx.x == 0) {
+            printf("accumulated sumP for %uth neuron = %e\n", threadIdx.x, sumP);
+        }
     }
     // the remaining neighbors
     if (nb > 0) {
         for (Size in=nn; in<nNeighborBlock[blockIdx.x]; in++) {
             Size bid = neighborBlockId[maxNeighborBlock*blockId + in] * blockDim.x;
+            x1[threadIdx.x] = pos[bid*2 + threadIdx.x];
+            y1[threadIdx.x] = pos[bid*2 + blockDim.x + threadIdx.x];
+            if (blockIdx.x == 2 && threadIdx.x == 0) {
+                printf("iFar = %u, blockId = %u\n", in, bid/blockDim.x);
+            }
+            __syncthreads();
             #pragma unroll
             for (Size i=0; i<blockDim.x; i++) {
                 // blockwise load from gmem the (potential) presynaptic neurons' properties
-                Size j = (i+threadIdx.x) % blockDim.x;
-                Size ipre = bid + j; // pre-id in the network
-                double x1 = pos[bid*2 + j];
-                double y1 = pos[bid*2 + blockDim.x + j];
+                Size ipre = bid + i; // pre-id in the network
                 Float ra = raxn[ipre];
-                double x = x1 - x0;
-                double y = y1 - y0;
+                double x = x1[threadIdx.x] - x0;
+                double y = y1[threadIdx.x] - y0;
                 Float distance = static_cast<Float>(square_root(x*x + y*y));
                 Float p = connect(distance, ra, rd, gaussian_profile);
                 Size tid = (nn-in)*blockDim.x + i; // only ofr tempNeighbor, which is local, no need to coalease memory
@@ -323,8 +384,12 @@ void generate_connections(double* __restrict__ pos,
 	    		}
             }
         }
+        if (blockIdx.x == 2 && threadIdx.x == 0) {
+            printf("accumulated sumP for %uth neuron = %e\n", threadIdx.x, sumP);
+        }
     }
     __syncwarp();
+    //============= redistribute p of all ==========
     // initialize stats
     Size* sumConType = new Size[nType];
     Float* sumStrType = new Float[nType];
@@ -336,13 +401,11 @@ void generate_connections(double* __restrict__ pos,
     }
     curandStateMRG32k3a localState = state[id];
     Size pN = preN[id];
-    //============= redistribute p of all ==========
     for (Size in=0; in<nn; in++) {
         Size bid = neighborBlockId[maxNeighborBlock*blockId + in] * blockDim.x;
         #pragma unroll
         for (Size i=0; i<blockDim.x; i++) {
-            Size ii = (i + threadIdx.x) % blockDim.x; // pre-id in block
-            PosIntL mid = (offset*nearNeighborBlock + in*blockDim.x + ii)*blockDim.x + threadIdx.x;
+            PosIntL mid = ((blockIdx.x*nearNeighborBlock + in)*blockDim.x + i)*blockDim.x + threadIdx.x;
             Float p = conMat[mid]/sumP*pN;
             Size ipre = bid + i;
             Size ip = preType[ipre];
@@ -366,10 +429,12 @@ void generate_connections(double* __restrict__ pos,
     if (nb > 0) {
         for (Size in=nn; in<nNeighborBlock[blockIdx.x]; in++) {
             Size bid = neighborBlockId[maxNeighborBlock*blockId + in];
+            x1[threadIdx.x] = pos[bid*2 + threadIdx.x];
+            y1[threadIdx.x] = pos[bid*2 + blockDim.x + threadIdx.x];
+            __syncthreads();
             #pragma unroll
             for (Size i=0; i<blockDim.x; i++) {
-                Size j = (i+threadIdx.x) % blockDim.x;
-                Size ipre = bid + j;
+                Size ipre = bid + i;
                 Size tid = (nn-in)*blockDim.x + i;
                 Float p = tempNeighbor[tid]/sumP*preN[id];
                 Float xrand = uniform(&localState);
@@ -383,9 +448,9 @@ void generate_connections(double* __restrict__ pos,
                     sumStrType[ip] += str;
                     vecID[maxDistantNeighbor*id + nid] = ipre;
                     conVec[maxDistantNeighbor*id + nid] = str;
-                    double x = pos[bid*2 + j] - x0;
-                    double y = pos[bid*2 + blockDim.x + j] - y0;
-	    			Float distance = static_cast<Float>(square_root(x*x + y*y));
+                    Float x = static_cast<Float>(x1[threadIdx.x] - x0);
+                    Float y = static_cast<Float>(y1[threadIdx.x] - y0);
+	    			Float distance = square_root(x*x + y*y);
                     delayVec[maxDistantNeighbor*id + nid] = distance/speedOfThought;
                     nid += 1;
                     if (nid > maxDistantNeighbor) {

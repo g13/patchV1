@@ -1,4 +1,5 @@
 #include "genCon.h"
+// TODO: check preType, V1_type.bin
 
 int main(int argc, char *argv[])
 {
@@ -127,6 +128,9 @@ int main(int argc, char *argv[])
 		if (!fV1_typeMat) {
 			cout << "failed to open neurnal type file:" << typeMat_filename << "\n";
 			return EXIT_FAILURE;
+		} else {
+			cout << "not implemented\n";
+			return EXIT_FAILURE;
 		}
 	    // TODO: implement reading type conn. matrices from file
 	}
@@ -206,9 +210,6 @@ int main(int argc, char *argv[])
 			cout << "failed to open pos file:" << V1_type_filename << ", note if nHierarchy: " << nHierarchy << " > 1.\n";
 			return EXIT_FAILURE;
 		}
-		//auto check_max = [](Int a, Int b) {
-		//	return b > a? b: a;
-		//};
 		fV1_type.read(reinterpret_cast<char*>(&nSubHierarchy), sizeof(Size));
 		if (nSubHierarchy != nHierarchy - 1) {
 			cout << "inconsistent nSubHierarchy: " << nSubHierarchy << " should be " << nHierarchy - 1 << "\n";
@@ -228,6 +229,7 @@ int main(int argc, char *argv[])
 		fV1_type.close();
 	} else {
         nSubHierarchy = 0;
+		cout << "no subtypes\n";
     }
 	// read predetermined functional response features of neurons (use as starting seed if involve learning).
     fV1_feature.open(V1_feature_filename, ios::in|ios::binary);
@@ -256,16 +258,21 @@ int main(int argc, char *argv[])
     if (!theme.empty()) {
         theme = theme + '-';
     }
+    nearNeighborBlock += 1; // including self
     fV1_conMat.open(theme + V1_conMat_filename, ios::out | ios::binary);
 	if (!fV1_conMat) {
 		cout << "cannot open " << theme + V1_conMat_filename << " to write.\n";
 		return EXIT_FAILURE;
-	}
+	} else {
+        fV1_conMat.write((char*) &nearNeighborBlock, sizeof(Size));
+    }
     fV1_delayMat.open(theme + V1_delayMat_filename, ios::out | ios::binary);
 	if (!fV1_delayMat) {
 		cout << "cannot open " << theme + V1_delayMat_filename << " to write.\n";
 		return EXIT_FAILURE;
-	}
+	} else {
+        fV1_delayMat.write((char*) &nearNeighborBlock, sizeof(Size));
+    }
     fV1_vec.open(theme + V1_vec_filename, ios::out | ios::binary);
 	if (!fV1_vec) {
 		cout << "cannot open " << theme + V1_vec_filename << " to write.\n";
@@ -287,11 +294,19 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 
-    nearNeighborBlock += 1; // including self
+    maxNeighborBlock += 1; // including self
     // check memory availability
     size_t memorySize, d_memorySize, matSize;
+
     size_t neighborSize = 2*nblock*sizeof(Float) + // block_x and y
         			      (maxNeighborBlock + 1)*nblock*sizeof(Size); // neighborBlockId and nNeighborBlock
+
+    size_t statSize = 2*nType*networkSize*sizeof(Size) + // preTypeConnected and *Avail
+        	          nType*networkSize*sizeof(Float); // preTypeStrSum
+    size_t vecSize = 2*maxDistantNeighbor*networkSize*sizeof(Float) + // con and delayVec
+        		     maxDistantNeighbor*networkSize*sizeof(Size) + // vecID
+        		     networkSize*sizeof(Size); // nVec
+
 	size_t deviceOnlyMemSize = 2*networkSize*sizeof(Float) + // rden and raxn
          					   2*networkSize*sizeof(Float) + // dden and daxn
          					   nType*networkSize*sizeof(Float) + // preS_type
@@ -299,12 +314,6 @@ int main(int argc, char *argv[])
          					   networkSize*sizeof(Size) + // preN
                                networkSize*sizeof(Size) + // preType
          					   networkSize*sizeof(curandStateMRG32k3a); //state
-
-    size_t statSize = 2*nType*networkSize*sizeof(Size) + // preTypeConnected and *Avail
-        	          nType*networkSize*sizeof(Float); // preTypeStrSum
-    size_t vecSize = 2*maxDistantNeighbor*networkSize*sizeof(Float) + // con and delayVec
-        		     maxDistantNeighbor*networkSize*sizeof(Size) + // vecID
-        		     networkSize*sizeof(Size); // nVec
 	void *cpu_chunk;
     Int half = 1;
     Size maxChunkSize = nblock;
@@ -318,7 +327,7 @@ int main(int argc, char *argv[])
 
         memorySize = matSize + vecSize + statSize + neighborSize;
 
-        d_memorySize = memorySize + deviceOnlyMemSize + neighborSize +
+        d_memorySize = memorySize + deviceOnlyMemSize +
                        nSubHierarchy*networkSize*sizeof(Size) + 
                        nFeature*networkSize*sizeof(Float) + 
                        usingPosDim*networkSize*sizeof(double); 
@@ -328,6 +337,9 @@ int main(int argc, char *argv[])
     } while ((cpu_chunk == NULL || d_memorySize > deviceProps.totalGlobalMem*0.8) && nblock > 1);
     Size nChunk = (nblock + maxChunkSize-1) /maxChunkSize - 1;
     Size remainChunkSize = nblock%maxChunkSize;
+	if (remainChunkSize == 0) {
+		remainChunkSize = maxChunkSize;
+	}
 	printf("need to allocate %f MB memory on host\n", static_cast<float>(memorySize)/1024/1024);
 	// to receive from device
     void* __restrict__ gpu_chunk;
@@ -355,11 +367,11 @@ int main(int argc, char *argv[])
     Size* nVec = vecID + maxDistantNeighbor*networkSize;
 
     // stats
-    Size* preTypeConnected = nVec + neuronPerBlock*maxChunkSize; 
-    Size* preTypeAvail = preTypeConnected + nType*neuronPerBlock*maxChunkSize;
-    Float* preTypeStrSum = (Float*) (preTypeAvail + nType*neuronPerBlock*maxChunkSize);
+    Size* preTypeConnected = nVec + networkSize; 
+    Size* preTypeAvail = preTypeConnected + nType*networkSize;
+    Float* preTypeStrSum = (Float*) (preTypeAvail + nType*networkSize);
 
-	assert(static_cast<void*>((char*)cpu_chunk + memorySize) == static_cast<void*>(preTypeStrSum + nType * neuronPerBlock*maxChunkSize));
+	assert(static_cast<void*>((char*)cpu_chunk + memorySize) == static_cast<void*>(preTypeStrSum + nType * networkSize));
 
     // ========== GPU mem ============
     // init by kernel, reside on device only
@@ -387,17 +399,17 @@ int main(int argc, char *argv[])
     Float* __restrict__ d_conMat = (Float*) (d_nNeighborBlock + nblock);
     Float* __restrict__ d_delayMat = d_conMat + nearNeighborBlock*neuronPerBlock*neuronPerBlock*maxChunkSize;
     Float* __restrict__ d_conVec = d_delayMat + nearNeighborBlock*neuronPerBlock*neuronPerBlock*maxChunkSize; 
-    Float* __restrict__ d_delayVec = d_conVec + neuronPerBlock*maxChunkSize*maxDistantNeighbor;
-    Size*  __restrict__ d_vecID = (Size*) (d_delayVec + neuronPerBlock*maxChunkSize*maxDistantNeighbor);
-    Size*  __restrict__ d_nVec = d_vecID + neuronPerBlock*maxChunkSize*maxDistantNeighbor;
+    Float* __restrict__ d_delayVec = d_conVec + networkSize*maxDistantNeighbor;
+    Size*  __restrict__ d_vecID = (Size*) (d_delayVec + networkSize*maxDistantNeighbor);
+    Size*  __restrict__ d_nVec = d_vecID + networkSize*maxDistantNeighbor;
 
     // stats
-    Size*  __restrict__ d_preTypeConnected = d_nVec + neuronPerBlock*maxChunkSize;
-    Size*  __restrict__ d_preTypeAvail = d_preTypeConnected + nType*neuronPerBlock*maxChunkSize;
-    Float* __restrict__ d_preTypeStrSum = (Float*) (d_preTypeAvail + nType*neuronPerBlock*maxChunkSize);
+    Size*  __restrict__ d_preTypeConnected = d_nVec + networkSize;
+    Size*  __restrict__ d_preTypeAvail = d_preTypeConnected + nType*networkSize;
+    Float* __restrict__ d_preTypeStrSum = (Float*) (d_preTypeAvail + nType*networkSize);
 
 	// check memory address consistency
-	assert(static_cast<void*>((char*)gpu_chunk + d_memorySize) == static_cast<void*>(d_preTypeStrSum + nType * neuronPerBlock*maxChunkSize));
+	assert(static_cast<void*>((char*)gpu_chunk + d_memorySize) == static_cast<void*>(d_preTypeStrSum + nType * networkSize));
 
     // for array usage on the device in function "generate_connections"
     Size localHeapSize = (sizeof(Float)*maxNeighborBlock*neuronPerBlock + sizeof(Size)*nType*3)*neuronPerBlock*deviceProps.multiProcessorCount;
@@ -435,7 +447,7 @@ int main(int argc, char *argv[])
 	getLastCudaError("cal_blockPos failed");
     printf("block centers calculated\n");
 	//shared_mem = sizeof(Size);
-    get_neighbor_blockId<<<nblock, neuronPerBlock, nblock*(sizeof(PosInt)+sizeof(Float))>>>(
+    get_neighbor_blockId<<<nblock, neuronPerBlock, maxNeighborBlock*(sizeof(PosInt)+sizeof(Float))>>>(
         d_block_x, d_block_y, 
 		d_neighborBlockId, d_nNeighborBlock, 
 		nblock, blockROI, maxNeighborBlock);
@@ -462,6 +474,7 @@ int main(int argc, char *argv[])
     for (PosInt iChunk = 0; iChunk < nChunk+1; iChunk++) {
         if (iChunk < nChunk) current_nblock = maxChunkSize;
         else current_nblock = remainChunkSize;
+		cout << "generate_connections<<<" << current_nblock << ", " << neuronPerBlock << ">>>\n";
         generate_connections<<<current_nblock, neuronPerBlock>>>(
             d_pos,
 	    	preS_type, preP_type, preN,
@@ -474,11 +487,11 @@ int main(int argc, char *argv[])
 	    	d_preType, d_feature,
 	    	dden, daxn,
 	    	state,
-	    	offset, networkSize, nearNeighborBlock, maxDistantNeighbor, maxNeighborBlock, speedOfThought, nType, nFeature, gaussian_profile);
+	    	offset, networkSize, maxDistantNeighbor, nearNeighborBlock, maxNeighborBlock, speedOfThought, nType, nFeature, gaussian_profile);
 	    getLastCudaError("generate_connections failed");
         offset += current_nblock*neuronPerBlock;
 
-        size_t current_matSize =  nearNeighborBlock*neuronPerBlock*neuronPerBlock*current_nblock*sizeof(Float);
+        size_t current_matSize = current_nblock*nearNeighborBlock*neuronPerBlock*neuronPerBlock*sizeof(Float);
 	    checkCudaErrors(cudaMemcpy(conMat, d_conMat, current_matSize, cudaMemcpyDeviceToHost)); 	
         // output connectome data
         fV1_conMat.write((char*)conMat, current_matSize);
