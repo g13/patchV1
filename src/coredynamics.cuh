@@ -29,22 +29,17 @@ struct LIF {
     __device__ virtual void reset_v();
 };
 
-__global__ 
-void recal_G(Float* __restrict__ g,
-             Float* __restrict__ h,
-             Float* __restrict__ preMat,
-             Float* __restrict__ gactVec,
-             Float* __restrict__ hactVec,
-             Float* __restrict__ g_b1x,
-             Float* __restrict__ h_b1x,
-             Size n, PosInt offset, Size ngType, Size ns, Int m);
-
-__global__ 
-void reduce_G(Float* __restrict__ g,
-              Float* __restrict__ h,
-              Float* __restrict__ g_b1x,
-              Float* __restrict__ h_b1x,
-              Size ngType, Int n);
+__global__  // <<< nblock[partial], blockSize >>>
+void recal_G(
+        Float* __restrict__ spikeTrain, // [depth, nblock, blockSize]
+        Float* __restrict__ preMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
+        Float* __restrict__ delayMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
+        Float* __restrict__ gE, // [ngTypeE, networkSize]
+        Float* __restrict__ gI, // [ngTypeI, networkSize] 
+        Float* __restrict__ hE,
+        Float* __restrict__ hI,
+        PosInt* __restrict__ blockGready,
+        ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, Size trainDepth, Size nearNeighborBlock, Size networkSize, Size mE, Float speedOfThought);
 
 __global__ void logRand_init(Float *logRand, Float *lTR, curandStateMRG32k3a *state, PosIntL seed);
 
@@ -57,21 +52,20 @@ __global__ void init(T *array,
 }
 
 __global__ 
-void compute_V(Float* __restrict__ v,
-               Float* __restrict__ gE,
-               Float* __restrict__ gI,
-               Float* __restrict__ hE,
-               Float* __restrict__ hI,
-               Float* __restrict__ spikeTrain,
-               Size* __restrict__ nSpike,
-               Float* __restrict__ tBack,
-               Float* __restrict__ sLGN,
-               Float* __restrict__ LGN_idx,
-               Float* __restrict__ LGN_idy,
-               Float* __restrict__ gactVec,
-               Float* __restrict__ hactVec,
-               curandStateMRG32k3a* __restrict__ stateE,
-               curandStateMRG32k3a* __restrict__ stateI,
-               Size ngTypeE, Size ngTypeI, Size ngType, ConductanceShape condE, ConductanceShape condI, Float dt, Size networkSize, Size nE, PosIntL seed);
+void compute_V_collect_spike(
+        Float* __restrict__ v,
+        Float* __restrict__ gE,
+        Float* __restrict__ gI,
+        Float* __restrict__ hE,
+        Float* __restrict__ hI,
+        Float* __restrict__ spikeTrain, // [depth, nblock, blockSize]
+        Float* __restrict__ tBack,
+        Float* __restrict__ sLGN,
+        Float* __restrict__ LGN_idx,
+        Float* __restrict__ LGN_idy,
+        PosInt* __restrict__ blockVready,
+        curandStateMRG32k3a* __restrict__ stateE,
+        curandStateMRG32k3a* __restrict__ stateI,
+        PosInt current_slot, Size trainDepth, Size max_nLGN, Size ngTypeE, Size ngTypeI, Size ngType, ConductanceShape condE, ConductanceShape condI, Float dt, Size networkSize, Size mE, PosIntL seed);
 
 #endif

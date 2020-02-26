@@ -59,8 +59,8 @@ class surface:
         # retain neurons inside the discrete ragged boundary
         outsideRaggedBound = ((self.Pi[i,j] <= 0) + (self.Pi[i+1,j] <= 0) + (self.Pi[i,j+1] <= 0) + (self.Pi[i+1,j+1] <= 0)).astype(bool)
         print(f'adjust {np.sum(outsideRaggedBound)} positions near the boundary')
-        print(self.pos[:,733])
-        print(self.pos[:,776])
+        #print(self.pos[:,733])
+        #print(self.pos[:,776])
         x = np.mod(ipick[outsideRaggedBound],2)
         y = ipick[outsideRaggedBound]//2
         bx = self.xx[i[outsideRaggedBound] + x , j[outsideRaggedBound] + y]

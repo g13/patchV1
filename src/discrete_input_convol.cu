@@ -858,8 +858,8 @@ void LGN_nonlinear(
         Float* __restrict__ max_convol,
         Float* __restrict__ current_convol,
         Float* __restrict__ LGN_fr,
-        Float* __restrict__ sx,
-        Float* __restrict__ sy,
+        PosInt* __restrict__ sx,
+        PosInt* __restrict__ sy,
         Float* __restrict__ leftTimeRate,
         Float* __restrict__ lastNegLogRand,
 		curandStateMRG32k3a* __restrict__ state
@@ -874,8 +874,8 @@ void LGN_nonlinear(
 		Float max = max_convol[id];
         Float lTR = leftTimeRate[id];
         Float lNL = lastNegLogRand[id]
-        Float x = sx[id];
-        Float y = sy[id];
+        PosInt x = sx[id];
+        PosInt y = sy[id];
 
 		// initialize for next time step
 		current_convol[id] = 0.0;
@@ -901,6 +901,6 @@ void LGN_nonlinear(
         }
         leftTimeRate[id] = lTR;
         // write to surface memory 
-        surf2Dwrite(spikeInfo, LGNspikeSurface, 4*sx, sy);
+        surf2Dwrite(spikeInfo, LGNspikeSurface, 4*x, y);
     }
 }

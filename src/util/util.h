@@ -157,6 +157,58 @@ std::vector<std::vector<T>> read_listOfList(std::string filename, bool print = f
 	return data;
 } 
 
+template <typename T>
+void write_listOfListForArray(std::string filename, std::vector<std::vector<T>> data, bool append=false) {
+	std::ofstream output_file;
+	if (append) {
+		output_file.open(filename, std::fstream::out|std::fstream::app|std::fstream::binary);
+	} else {
+		output_file.open(filename, std::fstream::out|std::fstream::binary);
+	}
+	if (!output_file) {
+		std::string errMsg{ "Cannot open or find " + filename + "\n" };
+		throw errMsg;
+	}
+    Size nList = data.size();
+    output_file.write((char*)&nList, sizeof(Size));
+    Size maxList = 0;
+	for (Size i=0; i<nList; i++) {
+        if (data[i].size() > maxList) {
+            maxList = data[i].size();
+        }
+    }
+    output_file.write((char*)&maxList, sizeof(Size));
+	for (Size i=0; i<nList; i++) {
+        Size listSize = data[i].size();
+        output_file.write((char*)&listSize, sizeof(Size));
+		if (listSize > 0) {
+			output_file.write((char*)&data[i][0], listSize * sizeof(T));
+		}
+    }
+	output_file.close();
+}
+
+template <typename T>
+void read_listOfListToArray(std::string filename, T *&array, Size &maxList, bool print = false) {
+	std::ifstream input_file;
+	input_file.open(filename, std::fstream::in | std::fstream::binary);
+	if (!input_file) {
+		std::string errMsg{ "Cannot open or find " + filename + "\n" };
+		throw errMsg;
+	}
+    Size nList;
+    input_file.read(reinterpret_cast<char*>(&nList), sizeof(Size));
+    input_file.read(reinterpret_cast<char*>(&maxList), sizeof(Size));
+    size_t arraySize = nList*maxList;
+    array = new T[arraySize];
+    for (PosInt i=0; i<nList; i++) {
+        Size listSize;
+        input_file.read(reinterpret_cast<char*>(&listSize), sizeof(Size));
+		input_file.read(reinterpret_cast<char*>(&array[i*maxList]), listSize * sizeof(T));
+    } 
+	input_file.close();
+} 
+
 // denorm is the min number of advance made in u1 such that u1 and u2 has no phase difference.
 inline
 PosInt find_denorm(PosInt u1, PosInt u2, bool MorN, PosInt &norm) { 
@@ -188,11 +240,41 @@ PosInt find_denorm(PosInt u1, PosInt u2, bool MorN, PosInt &norm) {
     return m;
 } 
 
-
 template <typename T>
 std::pair<T, T> average2D(std::vector<T> x, std::vector<T> y) {
     Float mx = std::accumulate(x.begin(), x.end(), 0.0f)/x.size();
     Float my = std::accumulate(y.begin(), y.end(), 0.0f)/y.size();
     return std::make_pair(mx,my);
+}
+
+template <typename T>
+std::pair<T, T> array_minmax(T* v, size_t n) {
+    T min, max;
+    assert(n>0);
+    min = v[0];
+    max = v[0];
+    for (PosInt i=1; i<n; i++) {
+        if (v[i] < min) {
+            min = v[i];
+        } else {
+            if (v[i] > max) {
+                max =  v[i];
+            }
+        }
+    }
+    return std::make_pair(min, max);
+}
+
+template <typename T>
+T array_max(T* v, size_t n) {
+    T max;
+    assert(n>0);
+    max = v[0];
+    for (PosInt i=1; i<n; i++) {
+        if (v[i] > max) {
+            max =  v[i];
+        }
+    }
+    return max;
 }
 #endif

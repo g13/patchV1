@@ -8,7 +8,7 @@
 // 1D
 template <typename T>
 __global__ void init(T *array, T value, PosInt nData) {
-    unsigned long id = blockIdx.x * blockDim.x + threadIdx.x;
+    PosIntL id = blockIdx.x * blockDim.x + threadIdx.x;
     if (id < nData) {
         array[id] = value;
     }

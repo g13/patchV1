@@ -15,7 +15,7 @@ class repel_system:
         if b_cl is None:
             per_unit_area = 2*np.sqrt(3) # in cl^2
             self.cl = np.sqrt((area/self.nn)/per_unit_area)
-            print(f'characteristic length (inter-particle-distance)')
+            print(f'characteristic length (inter-particle-distance) = {self.cl}')
             a_particle = self.cl*p_scale
             a_boundary = self.cl*b_scale
         else:
