@@ -152,12 +152,18 @@ void compute_V_collect_spike(
         PosInt* __restrict__ blockVready,
         curandStateMRG32k3a* __restrict__ stateE,
         curandStateMRG32k3a* __restrict__ stateI,
-        PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeE, Size ngTypeI, Size ngType, ConductanceShape condE, ConductanceShape condI, Float dt, Size networkSize, Size mE, PosIntL seed)
+        PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeE, Size ngTypeI, Size ngType, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, Size nChunk, Size mE, PosIntL seed)
 {
-    PosInt id = blockIdx.x * blockDim.x + threadIdx.x;
+	//assert(blockDim.x == blockSize);
+    PosInt tid = blockIdx.x * blockDim.x + threadIdx.x;
+	PosInt iChunk = tid/(nChunk*blockDim.x);
+	Size chunkSize = maxChunkSize;
+	if (iChunk == nChunk-1) chunkSize = remainChunkSize;
+	chunkSize *= blockSize;
+	PosInt id = tid % (chunkSize*blockDim.x);
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
     // TODO: load individual gl, tref
-    LIF lif(v[id], tBack[id]);
+    LIF lif(v[tid], tBack[tid]);
     Float gL, tRef;
     if (threadIdx.x < mE) {
         tRef = tRef_E;
@@ -166,88 +172,78 @@ void compute_V_collect_spike(
         tRef = tRef_I;
         gL = gL_I;
     }
-    /* set a0 b0 for the first step */
-    Float gI_t;
-    Float gE_t;
-    // init cond E 
-    gE_t = 0.0f;
-    #pragma unroll
-    for (unsigned int ig=0; ig<ngTypeE; ig++) {
-        gE_t += gE[networkSize*ig + id];
-    }
-    //  cond I 
-    gI_t = 0.0f;
-    #pragma unroll
-    for (unsigned int ig=0; ig<ngTypeI; ig++) {
-        gI_t += gI[networkSize*ig + id];
-    }
-    lif.set_p0(gE_t, gI_t, gL);
-    /* evolve g to t+dt with ff input only */
-    unsigned int gid;
-    gE_t = 0.0f;
-    // m nLGN
-    // n networkSize
-    Size m = nLGN[id];
+    /* set a0 b0 and a1 b1 */
+    // cond E 
+    Float gE_t0 = 0.0;
+	Float gE_t1 = 0.0;
     #pragma unroll
     for (PosInt ig=0; ig<ngTypeE; ig++) {
-        gid = networkSize*ig + id;
+        PosInt gid = chunkSize*ig + id;
         Float g = gE[gid];
         Float h = hE[gid];
+        gE_t0 += g;
         // conductance of the end of the last time step
         condE.decay_conductance(g, h, dt, ig); //  decayed to the end of the current step
         // Get LGN input
+    	Size m = nLGN[tid];
         for (Size i = 0; i<m; i++) {
-            PosInt lid = id*max_nLGN + i;
+            PosInt lid = tid*max_nLGN + i;
             Float sLGN = LGN_V1_s[lid];
-            PosInt x = LGN_V1_surface[lid];
-            PosInt y = LGN_V1_surface[id*max_nLGN + lid];
+            PosInt x = LGN_idx[lid];
+            PosInt y = LGN_idy[lid];
             Float sInfo;
             surf2Dread(&sInfo, LGNspikeSurface, 4*x, y);
             if (sInfo >= 0.0) {
                 evolve_gLGN(g, h, sInfo, dt, ig);
             }
         }
-        gE_t += g;
+        gE_t1 += g;
         gE[gid] = g;
         hE[gid] = h;
     }
-    gI_t = 0.0f;
+    // cond I 
+    Float gI_t0 = 0.0;
+	Float gI_t1 = 0.0;
     #pragma unroll
-    for (int ig=0; ig<ngTypeI; ig++) {
-        gid = networkSize*ig + id;
-        Float g_i = gI[gid];
-        Float h_i = hI[gid];
+    for (PosInt ig=0; ig<ngTypeI; ig++) {
+        PosInt gid = chunkSize*ig + id;
+        Float g = gI[gid];
+        Float h = hI[gid];
+        gI_t0 += g;
         condI.decay_conductance(g, h, dt, ig); 
-        gI_t += g;
+        gI_t1 += g;
         gI[gid] = g;
         hI[gid] = h;
     }
-    lif.set_p1(gE_t, gI_t, gL);
+    lif.set_p0(gE_t0, gI_t0, gL);
+    lif.set_p1(gE_t1, gI_t1, gL);
+    /* evolve g to t+dt with ff input only */
     // step
-    step(&lif, dt, tRef, spikeTrain+id*trainDepth+currentTimeSlot /*the last 2 args are for deugging*/ id, gE_t, gI_t);
+    step(&lif, dt, tRef, spikeTrain+tid*trainDepth+currentTimeSlot /*the last 2 args are for deugging*/ tid, gE_t, gI_t);
     if (lif.v < vI) {
 #ifdef DEBUG
-		printf("#%i something is off gE = %f, gI = %f, v = %f\n", id, gE_t, gI_t, lif.v);
+		printf("#%i something is off gE = %f, gI = %f, v = %f\n", tid, gE_t, gI_t, lif.v);
 #endif
         lif.v = vI;
     }   
-	v[id] = lif.v;
-    tBack[id] = lif.tBack;
+	v[tid] = lif.v;
+    tBack[tid] = lif.tBack;
 }
 
 __launch_bounds__(1024, 2)
 __global__  // <<< nblock[partial], blockSize >>>
-void recal_G(
+void recal_G_mat(
         Float* __restrict__ spikeTrain, // [depth, nblock, blockSize]
-        Float* __restrict__ preMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
+        Float* __restrict__ conMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
         Float* __restrict__ delayMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
         Size* __restrict__ nNeighborBlock,
-        Float* __restrict__ gE, // [ngTypeE, networkSize]
-        Float* __restrict__ gI, // [ngTypeI, networkSize] 
+        PosInt* __restrict__ neighborBlockId,
+        Float* __restrict__ gE, // [ngTypeE, nV1]
+        Float* __restrict__ gI, // [ngTypeI, nV1] 
         Float* __restrict__ hE,
         Float* __restrict__ hI,
         PosInt* __restrict__ blockGready,
-        ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size networkSize, Size mE, Float speedOfThought) 
+        ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nV1, Size mE, Float speedOfThought) 
 {
     // each thread is the post neuron that collects its presynaptic input conductances
     // initialize
@@ -265,11 +261,14 @@ void recal_G(
     }
 
     for (PosInt ib = 0; ib < nNeighborBlock[blockIdx.x]; ib++) {
+		PosInt local_bid = blockIdx.x*nearNeighborBlock + ib;
+		PosIntL bid = neighborBlockId[local_bid];
         // check for old spikes
         for (PosInt i=0; i<blockSize; i++) {
+			PosIntL ipre = bid*blockSize + i;
             // access each presynaptic neurons in stride
-            PosIntL mid = ((blockIdx.x*nearNeighborBlock + ib)*blockSize + i)*blockSize + threadIdx.x;
-            Float strength = preMat[mid];
+            PosIntL mid = (local_bid*blockSize + i)*blockSize + threadIdx.x;
+            Float strength = conMat[mid];
             Float distance = delayMat[mid];
             Float *local_g;
             Size ngType;
@@ -318,11 +317,11 @@ void recal_G(
     delete [] local_hI;
 }
 
-void recal_Gvec(
+void recal_G_vec(
         Float spikeTrain[],
         vector<Size> &nVec,  vector<PosInt> &vecID, vector<Float> &conVec, vector<Float> &delayVec,
         Float gE[], Float gI[], Float hE[], Float hI[],
-        ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size networkSize, Size mE, Float speedOfThought, Size chunkSize, Size maxChunkSize) 
+        ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nV1, Size mE, Float speedOfThought, Size chunkSize, Size maxChunkSize) 
 {
     Float *local_gE = new Float[ngTypeE];
     Float *local_hE = new Float[ngTypeE];
@@ -348,7 +347,7 @@ void recal_Gvec(
             Float *local_g;
             Size ngType;
             ConductanceShape *cond;
-            // TODO direct output
+            // TODO direct output to g and h
             if (tid > mE) {
                 local_g = gI;
                 ngType = ngTypeI;
@@ -402,14 +401,17 @@ sum_G(
         Float* __restrict__ hEt,
         Float* __restrict__ hE,
         Float* __restrict__ hIt,
-        Float* __restrict__ hI)
+        Float* __restrict__ hI,
+		PosInt block_offset)
 {
-    PosInt id = blockIdx.x*blockDim.x + threadIdx.x;
+    PosInt tid = blockIdx.x*blockDim.x + threadIdx.x;
+    PosInt id = (block_offset+blockIdx.x)*blockDim.x + threadIdx.x;
     if (nVec[id] > 0) {
-        gE[id] += gEt[id];
-        hE[id] += hEt[id];
-        gI[id] += gIt[id];
-        hI[id] += hIt[id];
+		// sum
+        gE[tid] += gEt[tid];
+        gI[tid] += gIt[tid];
+        hE[tid] += hEt[tid];
+        hI[tid] += hIt[tid];
     }
 }
 

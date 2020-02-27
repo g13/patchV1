@@ -30,16 +30,18 @@ struct LIF {
 };
 
 __global__  // <<< nblock[partial], blockSize >>>
-void recal_G(
+void recal_G_mat(
         Float* __restrict__ spikeTrain, // [depth, nblock, blockSize]
-        Float* __restrict__ preMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
+        Float* __restrict__ conMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
         Float* __restrict__ delayMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
-        Float* __restrict__ gE, // [ngTypeE, networkSize]
-        Float* __restrict__ gI, // [ngTypeI, networkSize] 
+        Size* __restrict__ nNeighborBlock,
+        PosInt* __restrict__ neighborBlockId,
+        Float* __restrict__ gE, // [ngTypeE, nV1]
+        Float* __restrict__ gI, // [ngTypeI, nV1] 
         Float* __restrict__ hE,
         Float* __restrict__ hI,
         PosInt* __restrict__ blockGready,
-        ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, Size trainDepth, Size nearNeighborBlock, Size networkSize, Size mE, Float speedOfThought);
+        ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nV1, Size mE, Float speedOfThought);
 
 __global__ void logRand_init(Float *logRand, Float *lTR, curandStateMRG32k3a *state, PosIntL seed);
 
@@ -66,6 +68,25 @@ void compute_V_collect_spike(
         PosInt* __restrict__ blockVready,
         curandStateMRG32k3a* __restrict__ stateE,
         curandStateMRG32k3a* __restrict__ stateI,
-        PosInt current_slot, Size trainDepth, Size max_nLGN, Size ngTypeE, Size ngTypeI, Size ngType, ConductanceShape condE, ConductanceShape condI, Float dt, Size networkSize, Size mE, PosIntL seed);
+        PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeE, Size ngTypeI, Size ngType, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, Size nChunk, Size mE, PosIntL seed);
+
+__global__
+sum_G(
+        Size* __restrict__ nVec,
+        Float* __restrict__ gEt,
+        Float* __restrict__ gE,
+        Float* __restrict__ gIt,
+        Float* __restrict__ gI,
+        Float* __restrict__ hEt,
+        Float* __restrict__ hE,
+        Float* __restrict__ hIt,
+        Float* __restrict__ hI,
+		PosInt block_offset);
+
+void recal_G_vec(
+        Float spikeTrain[],
+        vector<Size> &nVec,  vector<PosInt> &vecID, vector<Float> &conVec, vector<Float> &delayVec,
+        Float gE[], Float gI[], Float hE[], Float hI[],
+        ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nV1, Size mE, Float speedOfThought, Size chunkSize, Size maxChunkSize);
 
 #endif
