@@ -6,6 +6,8 @@
 #include <utility>
 #include <cuda.h>
 #include <curand_kernel.h>
+#include <random>
+#include <algorithm>
 #include "../util/util.h"
 #include "../types.h"
 std::vector<Float> generate_sfreq(const Size n, RandomEngine &rGen);

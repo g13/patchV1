@@ -555,8 +555,8 @@ int main(int argc, char *argv[]) {
 	vector<double>().swap(dpolar);
 
 	auto cart = make_pair(x, y);
-	x.swap(vector<Float>()); // release memory from temporary vectors
-	y.swap(vector<Float>());
+	vector<Float>().swap(x); // release memory from temporary vectors
+	vector<Float>().swap(y);
 	fV1_vpos.close();
 
 
@@ -598,10 +598,10 @@ int main(int argc, char *argv[]) {
 	transform(polar0.begin(), polar0.end(), ecc0.begin(), y0.begin(), polar2y);
 	auto cart0 = make_pair(x0, y0);
 	// release memory from temporary vectors
-	x0.swap(vector<Float>());
-	y0.swap(vector<Float>()); 
-	polar0.swap(vector<Float>());
-	ecc0.swap(vector<Float>());
+	vector<Float>().swap(x0);
+	vector<Float>().swap(y0); 
+	vector<Float>().swap(polar0);
+	vector<Float>().swap(ecc0);
 	fLGN.close();
 
 	cout << "carts ready\n";

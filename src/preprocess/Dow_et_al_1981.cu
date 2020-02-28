@@ -36,7 +36,7 @@ vector<Float> generate_sfreq(Size n, RandomEngine &rGen) {
 		sfreq.push_back(lognormal(rGen)/2.0);
 	}
 	// mix the two distribution
-	random_shuffle(sfreq.begin(), sfreq.end());
+	shuffle(sfreq.begin(), sfreq.end(), rGen);
 	return vector<Float>(n, 1.0);
 }
 
@@ -77,7 +77,7 @@ vector<Float> generate_baRatio(Size n, RandomEngine &rGen) {
 		}
 	}
 	// mix the two distribution
-	random_shuffle(baRatio.begin(), baRatio.end());
+	shuffle(baRatio.begin(), baRatio.end(), rGen);
 	return baRatio;
 }
 
