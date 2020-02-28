@@ -551,8 +551,8 @@ int main(int argc, char *argv[]) {
 	};
 	transform(decc.begin(), decc.end(), dpolar.begin(), x.begin(), polar2xD2F);
 	transform(decc.begin(), decc.end(), dpolar.begin(), y.begin(), polar2yD2F);
-	decc.swap(vector<double>()); // release memory from temporary vectors
-	dpolar.swap(vector<double>());
+	vector<double>().swap(decc); // release memory from temporary vectors
+	vector<double>().swap(dpolar);
 
 	auto cart = make_pair(x, y);
 	x.swap(vector<Float>()); // release memory from temporary vectors

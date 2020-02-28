@@ -3,5 +3,6 @@
 
 #include "CUDA_MACRO.h"
 #include "DIRECTIVE.h"
+#include "CONST.h"
 
 #endif

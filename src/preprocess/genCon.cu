@@ -492,7 +492,7 @@ int main(int argc, char *argv[])
         offset += current_nblock*neuronPerBlock;
 
         size_t current_matSize = current_nblock*nearNeighborBlock*neuronPerBlock*neuronPerBlock*sizeof(Float);
-	    checkCudaErrors(cudaMemcpy(conMat, d_conMat, current_matSize, cudaMemcpyDeviceToHost)); 	
+	    checkCudaErrors(cudaMemcpy(conMat, d_conMat, 2*current_matSize, cudaMemcpyDeviceToHost)); 	
         // output connectome data
         fV1_conMat.write((char*)conMat, current_matSize);
         fV1_delayMat.write((char*)delayMat, current_matSize);

@@ -9,8 +9,6 @@
 #define gL_I 0.08f
 #define tRef_E 2.0f
 #define tRef_I 1.0f
-#define ngTypeE 1
-#define ngTypeI 1
 
 #define EPS 1e-14
 

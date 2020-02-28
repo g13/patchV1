@@ -7,6 +7,7 @@
 #include <helper_functions.h>    // includes cuda.h and cuda_runtime_api.h
 #include <helper_cuda.h>         // helper functions for CUDA error check
 #include <device_launch_parameters.h>
+#include <curand_kernel.h>
 #include <tuple>
 #include "DIRECTIVE.h"
 #include "LGN_props.cuh"
@@ -28,7 +29,13 @@ void LGN_nonlinear(
         Static_nonlinear &logistic,
         Float* __restrict__ max_convol,
         Float* __restrict__ current_convol,
-        Float* __restrict__ LGN_fr
+        Float* __restrict__ LGN_fr,
+        PosInt* __restrict__ sx,
+        PosInt* __restrict__ sy,
+        Float* __restrict__ leftTimeRate,
+        Float* __restrict__ lastNegLogRand,
+		curandStateMRG32k3a* __restrict__ state,
+        Float dt
 );
 
 __global__

@@ -1,4 +1,4 @@
-#include "coredynamics.h"
+#include "coredynamics.cuh"
 extern surface<void, cudaSurfaceType2D> LGNspikeSurface;
 
 __global__
@@ -9,7 +9,7 @@ void logRand_init(Float *logRand,
 {
     Size id = blockIdx.x * blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = state[id];
-    curand_init(seed+id+offset, 0, 0, &localState);
+    curand_init(seed+id, 0, 0, &localState);
     Float rand = uniform(&localState);
     logRand[id] = -log(uniform(&localState));
     state[id] = localState;
@@ -18,11 +18,11 @@ void logRand_init(Float *logRand,
 
 __device__
 __forceinline__
-void evolve_gLGN(ConductanceShape &cond, Float &g, Float &h, Float sInfo, Float dt, PosInt ig) {
+void evolve_gLGN(ConductanceShape &cond, Float &g, Float &h, Float sInfo, Float f, Float dt, PosInt ig) {
     Float nsp = flooring(sInfo); // integer part: #spikes - 1
     Float tsp = sInfo - nsp; // decimal part: normalized mean tsp
     nsp += 1;
-    cond.compute_single_input_conductance(g, h, sLGN*nsp, dt*(1-tsp), ig);
+    cond.compute_single_input_conductance(g, h, f*nsp, dt*(1-tsp), ig);
 }
 
 __device__
@@ -136,7 +136,7 @@ void LIF::reset_v() {
     v = vL;
 }
 
-__launch_bounds(1024,2)
+__launch_bounds__(1024,2)
 __global__ 
 void compute_V_collect_spike(
         Float* __restrict__ v,
@@ -146,13 +146,11 @@ void compute_V_collect_spike(
         Float* __restrict__ hI,
         Float* __restrict__ spikeTrain, // [depth, nblock, blockSize]
         Float* __restrict__ tBack,
+        Size* __restrict__ nLGN,
         Float* __restrict__ sLGN,
-        Float* __restrict__ LGN_idx,
-        Float* __restrict__ LGN_idy,
-        PosInt* __restrict__ blockVready,
-        curandStateMRG32k3a* __restrict__ stateE,
-        curandStateMRG32k3a* __restrict__ stateI,
-        PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeE, Size ngTypeI, Size ngType, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, Size nChunk, Size mE, PosIntL seed)
+        PosInt* __restrict__ LGN_idx,
+        PosInt* __restrict__ LGN_idy,
+        PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeE, Size ngTypeI, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, Size nChunk, Size mE, PosIntL seed)
 {
 	//assert(blockDim.x == blockSize);
     PosInt tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -188,13 +186,13 @@ void compute_V_collect_spike(
     	Size m = nLGN[tid];
         for (Size i = 0; i<m; i++) {
             PosInt lid = tid*max_nLGN + i;
-            Float sLGN = LGN_V1_s[lid];
+            Float f = sLGN[lid];
             PosInt x = LGN_idx[lid];
             PosInt y = LGN_idy[lid];
             Float sInfo;
             surf2Dread(&sInfo, LGNspikeSurface, 4*x, y);
             if (sInfo >= 0.0) {
-                evolve_gLGN(g, h, sInfo, dt, ig);
+                evolve_gLGN(condE, g, h, sInfo, f, dt, ig);
             }
         }
         gE_t1 += g;
@@ -219,10 +217,10 @@ void compute_V_collect_spike(
     lif.set_p1(gE_t1, gI_t1, gL);
     /* evolve g to t+dt with ff input only */
     // step
-    step(&lif, dt, tRef, spikeTrain+tid*trainDepth+currentTimeSlot /*the last 2 args are for deugging*/ tid, gE_t, gI_t);
+    step(&lif, dt, tRef, spikeTrain+tid*trainDepth+currentTimeSlot, /*the last 2 args are for deugging*/ tid, gE_t1, gI_t1);
     if (lif.v < vI) {
 #ifdef DEBUG
-		printf("#%i something is off gE = %f, gI = %f, v = %f\n", tid, gE_t, gI_t, lif.v);
+		printf("#%i something is off gE = %f, gI = %f, v = %f\n", tid, gE_t1, gI_t1, lif.v);
 #endif
         lif.v = vI;
     }   
@@ -242,8 +240,7 @@ void recal_G_mat(
         Float* __restrict__ gI, // [ngTypeI, nV1] 
         Float* __restrict__ hE,
         Float* __restrict__ hI,
-        PosInt* __restrict__ blockGready,
-        ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nV1, Size mE, Float speedOfThought) 
+        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nV1, Size mE, Float speedOfThought) 
 {
     // each thread is the post neuron that collects its presynaptic input conductances
     // initialize
@@ -271,15 +268,18 @@ void recal_G_mat(
             Float strength = conMat[mid];
             Float distance = delayMat[mid];
             Float *local_g;
+            Float *local_h;
             Size ngType;
             ConductanceShape *cond;
-            if (i > mE) {
-                local_g = local_gI;
-                ngType = ngTypeI;
+            if (i < mE) {
+                local_g = local_gE;
+                local_h = local_hE;
+                ngType = ngTypeE;
                 cond = &condE;
             } else {
-                local_g = local_gE;
-                ngType = ngTypeE;
+                local_g = local_gI;
+                local_h = local_hI;
+                ngType = ngTypeI;
                 cond = &condI;
             }
             for (PosInt j=1; j<trainDepth+1; j++) { // older to newer
@@ -292,7 +292,7 @@ void recal_G_mat(
                     else if (tsp < 0) break; // break at the first spike that did not arrive
                     nsp += 1;
                     for (PosInt ig=0; ig<ngType; ig++) {
-                        cond->compute_single_input_conductance(local_g, local_h, strength*nsp, dt*(1-tsp), ig);
+                        cond->compute_single_input_conductance(local_g[ig], local_h[ig], strength*nsp, dt*(1-tsp), ig);
                     }
                 }
                 //__syncwarp(); // may not be needed
@@ -317,11 +317,34 @@ void recal_G_mat(
     delete [] local_hI;
 }
 
+__global__
+void sum_G(
+        Size* __restrict__ nVec,
+        Float* __restrict__ gEt,
+        Float* __restrict__ gE,
+        Float* __restrict__ gIt,
+        Float* __restrict__ gI,
+        Float* __restrict__ hEt,
+        Float* __restrict__ hE,
+        Float* __restrict__ hIt,
+        Float* __restrict__ hI)
+{
+    PosInt id = blockIdx.x*blockDim.x + threadIdx.x;
+    if (nVec[id] > 0) {
+		// sum
+        gE[id] += gEt[id];
+        gI[id] += gIt[id];
+        hE[id] += hEt[id];
+        hI[id] += hIt[id];
+    }
+}
+
+using namespace std;
 void recal_G_vec(
         Float spikeTrain[],
-        vector<Size> &nVec,  vector<PosInt> &vecID, vector<Float> &conVec, vector<Float> &delayVec,
+        vector<Size> &nVec,  vector<vector<PosInt>> &vecID, vector<vector<Float>> &conVec, vector<vector<Float>> &delayVec,
         Float gE[], Float gI[], Float hE[], Float hI[],
-        ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nV1, Size mE, Float speedOfThought, Size chunkSize, Size maxChunkSize) 
+        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, PosInt currentTimeSlot, Size trainDepth, Size nV1, Size mE, Float speedOfThought, Size chunkSize, Size maxChunkSize) 
 {
     Float *local_gE = new Float[ngTypeE];
     Float *local_hE = new Float[ngTypeE];
@@ -342,22 +365,25 @@ void recal_G_vec(
             PosIntL ipre = vecID[i0+i][j];
             PosInt tid = ipre%blockSize;
 
-            Float strength = conVec[j];
-            Float distance = delayVec[j];
+            Float strength = conVec[i0+i][j];
+            Float distance = delayVec[i0+i][j];
             Float *local_g;
+            Float *local_h;
             Size ngType;
             ConductanceShape *cond;
             // TODO direct output to g and h
-            if (tid > mE) {
-                local_g = gI;
-                ngType = ngTypeI;
+            if (tid < mE) {
+                local_g = local_gE;
+                local_h = local_hE;
+                ngType = ngTypeE;
                 cond = &condE;
             } else {
-                local_g = local_gE;
-                ngType = ngTypeE;
+                local_g = local_gI;
+                local_h = local_hI;
+                ngType = ngTypeI;
                 cond = &condI;
             }
-            for (k = 0; k < trainDepth; k++) {
+            for (PosInt k = 0; k < trainDepth; k++) {
                 PosInt isp = ipre*trainDepth + (currentTimeSlot + k) % trainDepth;
                 Float sInfo = spikeTrain[isp];
                 if (sInfo >= 0) {
@@ -367,7 +393,7 @@ void recal_G_vec(
                     else if (tsp < 0) break; // break at the first spike that did not arrive
                     nsp += 1;
                     for (PosInt ig=0; ig<ngType; ig++) {
-                        cond->compute_single_input_conductance(local_g, local_h, strength*nsp, dt*(1-tsp), ig);
+                        cond->compute_single_input_conductance(local_g[ig], local_h[ig], strength*nsp, dt*(1-tsp), ig);
                     }
                 }
                 //__syncwarp(); // may not be needed
@@ -389,29 +415,5 @@ void recal_G_vec(
     delete [] local_gI;
     delete [] local_hE;
     delete [] local_hI;
-}
-
-__global__
-sum_G(
-        Size* __restrict__ nVec,
-        Float* __restrict__ gEt,
-        Float* __restrict__ gE,
-        Float* __restrict__ gIt,
-        Float* __restrict__ gI,
-        Float* __restrict__ hEt,
-        Float* __restrict__ hE,
-        Float* __restrict__ hIt,
-        Float* __restrict__ hI,
-		PosInt block_offset)
-{
-    PosInt tid = blockIdx.x*blockDim.x + threadIdx.x;
-    PosInt id = (block_offset+blockIdx.x)*blockDim.x + threadIdx.x;
-    if (nVec[id] > 0) {
-		// sum
-        gE[tid] += gEt[tid];
-        gI[tid] += gIt[tid];
-        hE[tid] += hEt[tid];
-        hI[tid] += hIt[tid];
-    }
 }
 

@@ -1,8 +1,8 @@
-#include "stats.h"
+#include "stats.cuh"
 using namespace std;
 
 __global__
-pixelize(
+void pixelize(
         Float* __restrict__ array,
         double* __restrict__ x,
         double* __restrict__ y,
@@ -12,9 +12,9 @@ pixelize(
 }
 
 // From nChunks of [chunkSize, ngTypeE+ngTypeI, blockSize] -> [ngTypeE+ngTypeI, nV1], where nV1 = nChunk*chunkSize*blockSize
-void reshape_chunk_and_write(Float chunk[], ofstream fRawData, Size maxChunkSize, Size remainChunkSize, Size nChunk, Size nE, Size nI, Size nV1) {
+void reshape_chunk_and_write(Float chunk[], ofstream &fRawData, Size maxChunkSize, Size remainChunkSize, Size nChunk, Size nE, Size nI, Size nV1) {
     PosIntL offset = 0;
-    size_t gSize = nV1*(ngTypeE+ngTypeI);
+    size_t gSize = nV1*(nE+nI);
     Float *flatten = new Float[gSize];
     Size chunkSize = maxChunkSize;
     for (PosInt i=0; i<nChunk; i++) {
@@ -22,7 +22,7 @@ void reshape_chunk_and_write(Float chunk[], ofstream fRawData, Size maxChunkSize
         for (PosInt j=0; j<nE; j++) {
             PosIntL fid = i*maxChunkSize*blockSize + j*nV1;
             for (PosInt k=0; k<chunkSize*blockSize; k++) {
-                flatten[j*nV1 + i*blockSize + k] = chunk[offset];
+                flatten[fid + k] = chunk[offset];
                 offset++;
             }
         }
@@ -39,14 +39,15 @@ void reshape_chunk_and_write(Float chunk[], ofstream fRawData, Size maxChunkSize
     delete []flatten;
 }
 
-void getLGN_V1_surface(vector<PosInt> &xy, vector<vector<PosInt>> &LGN_V1_ID, PosInt* surface, Size max_LGNperV1, Size nLGN) {
+void getLGN_V1_surface(vector<PosInt> &xy, vector<vector<PosInt>> &LGN_V1_ID, PosInt* surface_xy, Size* nLGNperV1, Size max_LGNperV1, Size nLGN) {
     Size nV1 = LGN_V1_ID.size();
-    for (PosInt i=0; i<nV1; ++) {
-        for (PosInt j=0; j<LGN_V1_ID[i].size(); j++) {
+    for (PosInt i=0; i<nV1; i++) {
+        nLGNperV1[i] = LGN_V1_ID[i].size();
+        for (PosInt j=0; j<nLGNperV1[i]; j++) {
             PosInt xid = i*max_LGNperV1 + j;
-            surface[xid] = xy[LGN_V1_ID[i][j]]; // x
+            surface_xy[xid] = xy[LGN_V1_ID[i][j]]; // x
             PosInt yid = nV1*max_LGNperV1 + xid;
-            surface[yid] = xy[nLGN + LGN_V1_ID[i][j]];
+            surface_xy[yid] = xy[nLGN + LGN_V1_ID[i][j]];
         }
     }
 }

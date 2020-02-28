@@ -1,6 +1,7 @@
 #ifndef COND_SHAPE_H
 #define COND_SHAPE_H
 #include <cmath>
+#include "types.h"
 
 struct ConductanceShape {
     Float riseTime[5], decayTime[5], dod[5], coef2[5];

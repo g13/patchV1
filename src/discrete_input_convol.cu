@@ -510,7 +510,7 @@ void LGN_convol_c1s(
         s - single thread 
     */
     // non-dimensionalized decay time-scale unit  for intensity
-    Float I_unit = dt/denorm/Itau; // denorm is the co-divisor to compare frame with dt
+    //Float I_unit = dt/denorm/Itau; // denorm is the co-divisor to compare frame with dt
     Size nPatch = (nKernelSample + nSample-1)/nSample - 1;
     Size remain = nKernelSample % nSample;
     if (remain == 0) {
@@ -799,7 +799,7 @@ void LGN_convol_c1s(
 			// itFrames =  [0... nSample-1]
 			// fullLength =  [0... nSample-1...]
             iFramePhase = itFrames % ntPerFrame;
-			PosInt old_Frame = currentFrame;
+			// PosInt old_Frame = currentFrame; // use with DEBUG 
             currentFrame = old_currentFrame + itFrames/ntPerFrame;
             /* DEBUG
 			    if (blockIdx.x == 52583 && tid == 0)  {
@@ -823,15 +823,14 @@ void LGN_convol_c1s(
 
 __inline__
 __device__
-get_spike(Float &spikeInfo,
-          Float &leftTimeRate,
-          Float &lastNegLogRand,
-          Float dt,
-          Float rate,
-          curandStateMRG32k3a &state) 
+void get_spike(Float &spikeInfo,
+               Float &leftTimeRate,
+               Float &lastNegLogRand,
+               Float dt,
+               Float rate,
+               curandStateMRG32k3a *state) 
 {
     spikeInfo = 0;
-    Float tau, dTau, negLogRand;
     // ith spike, jth dt
     // t_{i+1}*r_{j+1} + (T_{j}-t_{i})*r_{j} = -log(rand);
     Float rT = dt*rate;
@@ -862,8 +861,9 @@ void LGN_nonlinear(
         PosInt* __restrict__ sy,
         Float* __restrict__ leftTimeRate,
         Float* __restrict__ lastNegLogRand,
-		curandStateMRG32k3a* __restrict__ state
-) {
+		curandStateMRG32k3a* __restrict__ state,
+        Float dt)
+{
 	unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     bool engaging = id<nLGN;
     unsigned int MASK = __ballot_sync(FULL_MASK, static_cast<int>(engaging));
@@ -873,15 +873,16 @@ void LGN_nonlinear(
         Float current = current_convol[id];
 		Float max = max_convol[id];
         Float lTR = leftTimeRate[id];
-        Float lNL = lastNegLogRand[id]
+        Float lNL = lastNegLogRand[id];
         PosInt x = sx[id];
         PosInt y = sy[id];
+        curandStateMRG32k3a local_state = state[id];
 
 		// initialize for next time step
 		current_convol[id] = 0.0;
         // get firing rate
         logistic.load_first(id, C50, K, A, B);
-        Float convol = current;
+        // Float convol = current; // use with DEBUG
         if (current < 0) {
             current = 0;
         }
@@ -895,11 +896,12 @@ void LGN_nonlinear(
         LGN_fr[id] = fr;
         //LGN_fr[id] = max * transform(C50, K, A, B, current/max);
         Float spikeInfo; // must be float, integer part = #spikes decimals: mean tsp
-        get_spike(spikeInfo, lTR, lNL, dt, fr, state);
-        if (nSpike > -1.0) {
+        get_spike(spikeInfo, lTR, lNL, dt, fr, &local_state);
+        if (spikeInfo > -1.0) {
             lastNegLogRand[id] = lNL;
         }
         leftTimeRate[id] = lTR;
+        state[id] = local_state;
         // write to surface memory 
         surf2Dwrite(spikeInfo, LGNspikeSurface, 4*x, y);
     }
