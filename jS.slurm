@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=jupyterServer
+#SBATCH --job-name=jS
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=16
 #SBATCH --mem=40GB
-#SBATCH --time=06:00:00
+#SBATCH --time=12:00:00
 #SBATCH -o log/jS_%J.out
 #SBATCH --mail-user=wd554@nyu.edu
 #SBATCH --mail-type=END
@@ -23,9 +23,9 @@ else
     fi
 fi
 unset __conda_setup
-date
 conda activate general
 # <<< conda initialize <<<
 
+date
 python jScript.py
 date

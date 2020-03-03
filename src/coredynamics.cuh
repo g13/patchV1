@@ -86,7 +86,7 @@ void recal_G_vec(
         Float spikeTrain[],
         std::vector<Size> &nVec, std::vector<std::vector<PosInt>> &vecID, std::vector<std::vector<Float>> &conVec, std::vector<std::vector<Float>> &delayVec,
         Float gE[], Float gI[], Float hE[], Float hI[],
-        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, PosInt currentTimeSlot, Size trainDepth, Size nV1, Size mE, Float speedOfThought, Size chunkSize, Size maxChunkSize
+        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, PosInt currentTimeSlot, Size trainDepth, Size nV1, Size mE, Float speedOfThought, Size chunkSize
 );
 
 #endif

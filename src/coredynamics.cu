@@ -150,15 +150,20 @@ void compute_V_collect_spike(
         Float* __restrict__ sLGN,
         PosInt* __restrict__ LGN_idx,
         PosInt* __restrict__ LGN_idy,
-        PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeE, Size ngTypeI, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, Size nChunk, Size mE, PosIntL seed)
+        PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeE, Size ngTypeI, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size mE, PosIntL seed)
 {
 	//assert(blockDim.x == blockSize);
     PosInt tid = blockIdx.x * blockDim.x + threadIdx.x;
-	PosInt iChunk = tid/(nChunk*blockDim.x);
-	Size chunkSize = maxChunkSize;
-	if (iChunk == nChunk-1) chunkSize = remainChunkSize;
-	chunkSize *= blockSize;
-	PosInt id = tid % (chunkSize*blockDim.x);
+	PosInt chunk_offset;
+	Size chunkSize;
+    if (blockIdx.x > iSizeSplit*maxChunkSize) {
+        chunk_offset = (iSizeSplit*maxChunkSize + ((blockIdx.x-iSizeSplit*maxChunkSize)/remainChunkSize)*remainChunkSize)*blockSize;
+        chunkSize = maxChunkSize*blockSize;
+    } else {
+        chunk_offset = (blockIdx.x / maxChunkSize)*maxChunkSize*blockSize;
+        chunkSize = remainChunkSize*blockSize;
+    }
+	PosInt id = tid % chunkSize;
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
     // TODO: load individual gl, tref
     LIF lif(v[tid], tBack[tid]);
@@ -176,7 +181,7 @@ void compute_V_collect_spike(
 	Float gE_t1 = 0.0;
     #pragma unroll
     for (PosInt ig=0; ig<ngTypeE; ig++) {
-        PosInt gid = chunkSize*ig + id;
+        PosInt gid = chunk_offset*ngTypeE + chunkSize*ig + id;
         Float g = gE[gid];
         Float h = hE[gid];
         gE_t0 += g;
@@ -204,7 +209,7 @@ void compute_V_collect_spike(
 	Float gI_t1 = 0.0;
     #pragma unroll
     for (PosInt ig=0; ig<ngTypeI; ig++) {
-        PosInt gid = chunkSize*ig + id;
+        PosInt gid = chunk_offset*ngTypeI + chunkSize*ig + id;
         Float g = gI[gid];
         Float h = hI[gid];
         gI_t0 += g;
@@ -261,6 +266,7 @@ void recal_G_mat(
 		PosInt local_bid = blockIdx.x*nearNeighborBlock + ib;
 		PosIntL bid = neighborBlockId[local_bid];
         // check for old spikes
+        #pragma unroll
         for (PosInt i=0; i<blockSize; i++) {
 			PosIntL ipre = bid*blockSize + i;
             // access each presynaptic neurons in stride
@@ -344,7 +350,7 @@ void recal_G_vec(
         Float spikeTrain[],
         vector<Size> &nVec,  vector<vector<PosInt>> &vecID, vector<vector<Float>> &conVec, vector<vector<Float>> &delayVec,
         Float gE[], Float gI[], Float hE[], Float hI[],
-        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, PosInt currentTimeSlot, Size trainDepth, Size nV1, Size mE, Float speedOfThought, Size chunkSize, Size maxChunkSize) 
+        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, PosInt currentTimeSlot, Size trainDepth, Size nV1, Size mE, Float speedOfThought, Size chunkSize) 
 {
     Float *local_gE = new Float[ngTypeE];
     Float *local_hE = new Float[ngTypeE];
@@ -401,12 +407,12 @@ void recal_G_vec(
         }
         // output
         for (PosInt ig=0; ig<ngTypeE; ig++) {
-            PosInt gid = ig*maxChunkSize*blockSize + i;
+            PosInt gid = ig*chunkSize*blockSize + i;
             gE[gid] = local_gE[ig];
             hE[gid] = local_hE[ig];
         }
         for (PosInt ig=0; ig<ngTypeI; ig++) {
-            PosInt gid = ig*maxChunkSize*blockSize + i;
+            PosInt gid = ig*chunkSize*blockSize + i;
             gI[gid] = local_gI[ig];
             hI[gid] = local_hI[ig];
         }

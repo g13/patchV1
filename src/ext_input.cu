@@ -940,16 +940,10 @@ int main(int argc, char **argv) {
 	cout << "stats frame output requires " << posSize/1024.0/1024.0 << "Mb\n";
 
 	// overlap multiple chunks of data transfer and computation to increase performance
-    Size maxChunkSize;
-    Size remainChunkSize = nblock % nChunk;
-    if (remainChunkSize == 0) {
-        maxChunkSize = nblock/nChunk;
-        remainChunkSize = maxChunkSize;
-    } else {
-        maxChunkSize = (nblock-remainChunkSize)/(nChunk-1);
-        assert((nblock-remainChunkSize)%(nChunk-1) == 0);
-    }
-
+    PosInt iSizeSplit = nblock % nChunk; // | maxChunkSize, i < iSizeSplit| remainChunkSize
+    Size maxChunkSize = nblock/nChunk;
+    Size remainChunkSize = maxChunkSize;
+    if (iSizeSplit > 0) maxChunkSize++;
 
     Size nearNeighborBlock;
     fV1_conMat.open(V1_conMat_filename, fstream::in | fstream::binary);
@@ -982,9 +976,9 @@ int main(int argc, char **argv) {
     size_t matOffset = 0;
     size_t matChunkSize = maxChunkSize*blockChunkSize;
 	Float maxDistance = 0;
+	size_t chunkSize = matChunkSize;
     for (PosInt i=0; i<nChunk; i++) {
-		size_t chunkSize = matChunkSize;
-        if (i == nChunk-1) chunkSize = remainChunkSize*blockChunkSize;
+        if (i > iSizeSplit-1) chunkSize = remainChunkSize*blockChunkSize;
 		conDelayMat[i] = conDelayMat0 + matOffset;
 		conMat[i] = conDelayMat[i];
         matOffset += chunkSize;
@@ -993,10 +987,9 @@ int main(int argc, char **argv) {
             matOffset += chunkSize;
         }
 	}
-
+    chunkSize = matChunkSize;
     for (PosInt i=0; i<nChunk; i++) {
-		size_t chunkSize = matChunkSize;
-        if (i == nChunk-1) chunkSize = remainChunkSize*blockChunkSize;
+        if (i > iSizeSplit-1) chunkSize = remainChunkSize*blockChunkSize;
         fV1_conMat.read(reinterpret_cast<char*>(conMat[i]), chunkSize);
         fV1_delayMat.read(reinterpret_cast<char*>(delayMat[i]), chunkSize);
     	Float current_maxDistance = array_max(delayMat[i], chunkSize);
@@ -1029,7 +1022,7 @@ int main(int argc, char **argv) {
     hI[0] = hE[0] + eSize;
     for (PosInt i = 1; i<nChunk; i++) {
         gE[i] = hI[i-1] + iSize; 
-        if (i == nChunk-1) {
+        if (i > iSizeSplit-1) {
             eSize = remainChunkSize*blockSize*ngTypeE;
             iSize = remainChunkSize*blockSize*ngTypeI;
         }
@@ -1053,7 +1046,7 @@ int main(int argc, char **argv) {
     d_hIt[0] = d_hEt[0] + eSize;
     for (PosInt i = 1; i<nChunk; i++) {
         d_gEt[i] = d_hIt[i-1] + iSize; 
-        if (i == nChunk-1) {
+        if (i > iSizeSplit-1) {
             eSize = remainChunkSize*blockSize*ngTypeE;
             iSize = remainChunkSize*blockSize*ngTypeI;
         }
@@ -1082,7 +1075,7 @@ int main(int argc, char **argv) {
     d_hI[0] = d_hE[0] + eSize;
     for (PosInt i = 1; i<nChunk; i++) {
         d_gE[i] = d_hI[i-1] + iSize; 
-        if (i == nChunk-1) {
+        if (i > iSizeSplit-1) {
             eSize = remainChunkSize*blockSize*ngTypeE;
             iSize = remainChunkSize*blockSize*ngTypeI;
         }
@@ -1416,17 +1409,17 @@ int main(int argc, char **argv) {
 	}
 	size_t sChunkMatSize = 2*maxChunkSize*blockChunkSize;
 	size_t rChunkMatSize = 2*remainChunkSize*blockChunkSize;
-	cout << "single chunk of conDelayMat requires " << sChunkMatSize/1024.0/1024.0 << ", the last chunk requires " << rChunkMatSize << " Mb\n";
+	cout << "single chunk of conDelayMat requires at most" << sChunkMatSize/1024.0/1024.0 << ", smaller chunks require " << rChunkMatSize << " Mb\n";
 	size_t ccChunkMatSize;
 	if (matConcurrency == nChunk) { // if total concurrency, match the final chunk size
-		ccChunkMatSize = (matConcurrency-1) * sChunkMatSize + rChunkMatSize;
+		ccChunkMatSize = iSizeSplit * sChunkMatSize + (nChunk-iSizeSplit) * rChunkMatSize;
 	} else {
 		ccChunkMatSize = matConcurrency * sChunkMatSize;
 	}
 	int ccReduced = 0;
 	while (usingGMem + ccChunkMatSize > deviceProps.totalGlobalMem) {
 		matConcurrency--;
-		if (matConcurrency == nChunk) {
+		if (matConcurrency > iSizeSplit - 1) {
 			ccChunkMatSize -= rChunkMatSize;
 		} else {
 			ccChunkMatSize -= sChunkMatSize;
@@ -1450,7 +1443,7 @@ int main(int argc, char **argv) {
 	Float **d_conDelayMat = new Float*[matConcurrency];
 	d_conDelayMat[0] = d_mat;
 	for (PosInt i = 1; i<matConcurrency; i++) {
-		d_conDelayMat[i] = d_conDelayMat[i-1] + sChunkMatSize;
+		d_conDelayMat[i] = d_conDelayMat[i-1] + sChunkMatSize; // may not be filled for iChunk > iSizeSplit
 	}
 
 	cout << "Using "<< usingGMem/1024.0/1024.0 << " Mb from a total of " << deviceProps.totalGlobalMem/1024.0/1024.0 << " Mb, remaining " << (deviceProps.totalGlobalMem - usingGMem)/1024.0/1024.0 << " Mb\n";
@@ -1639,7 +1632,7 @@ int main(int argc, char **argv) {
 		if (it > 0) { // seeking for overlap of data output with LGN input
 			cudaEventSynchronize(gReady);
 			// write g to fRawData
-    		reshape_chunk_and_write(gE[0], fRawData, maxChunkSize, remainChunkSize, nChunk, ngTypeE, ngTypeI, nV1);
+    		reshape_chunk_and_write(gE[0], fRawData, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, ngTypeE, ngTypeI, nV1);
 		}
 
 		getLastCudaError("LGN_nonlinear failed");
@@ -1668,7 +1661,7 @@ int main(int argc, char **argv) {
                 d_nLGNperV1, sLGN, LGN_idx, LGN_idy,
                 currentTimeSlot, trainDepth, max_LGNperV1,
                 ngTypeE, ngTypeI, condE, condI,
-                dt, maxChunkSize, remainChunkSize, nChunk, mE, seed);
+                dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, mE, seed);
 		getLastCudaError("compute_V_collect_spike failed");
 
         checkCudaErrors(cudaMemcpyAsync(spikeTrain, d_spikeTrain, trainSize, cudaMemcpyDeviceToHost, mainStream)); // to overlap with  recal_G, to be used in recal_Gvec
@@ -1678,7 +1671,7 @@ int main(int argc, char **argv) {
         PosInt block_offset = 0;
 		size_t mat_offset = 0;
         for (PosInt i = 0; i < nChunk; i++) {
-            if (i == nChunk-1) chunkSize = remainChunkSize;
+            if (i > iSizeSplit-1) chunkSize = remainChunkSize;
             size_t mChunkSize = chunkSize*blockChunkSize;
 			size_t p_offset = mat_offset%ccChunkMatSize;
 			memcpy((void*)(p_conDelayMat + p_offset), (void*) conDelayMat[i], 2*mChunkSize);
@@ -1713,7 +1706,7 @@ int main(int argc, char **argv) {
 		size_t pinned_H2D = 0;
 		size_t pinned_D2H = ghSize;
         for (PosInt i = 0; i < nChunk; i++) {
-            if (i == nChunk-1) chunkSize = remainChunkSize;
+            if (i > iSizeSplit-1) chunkSize = remainChunkSize;
 			size_t gChunkSize = chunkSize*blockSize*(ngTypeE+ngTypeI)*sizeof(Float);
 			size_t ghChunkSize = gChunkSize*2;
             // cpu accumulate conductances from far neighbors
@@ -1723,7 +1716,7 @@ int main(int argc, char **argv) {
                     gE[i], gI[i], hE[i], hI[i],
                     dt, condE, condI, ngTypeE, ngTypeI,
                     block_offset, currentTimeSlot, trainDepth,
-                    nV1, mE, speedOfThought, chunkSize, maxChunkSize);
+                    nV1, mE, speedOfThought, chunkSize);
             // g and h
             checkCudaErrors(cudaMemcpyAsync(d_gEt[i], gE[i], ghChunkSize, cudaMemcpyHostToDevice, stream[i])); // size in maxChunk
 
@@ -1746,7 +1739,7 @@ int main(int argc, char **argv) {
     fRawData.write((char*) v, nV1*sizeof(Float));
 	// write g to fRawData
 	cudaEventSynchronize(gReady);
-    reshape_chunk_and_write(gE[0], fRawData, maxChunkSize, remainChunkSize, nChunk, ngTypeE, ngTypeI, nV1);
+    reshape_chunk_and_write(gE[0], fRawData, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, ngTypeE, ngTypeI, nV1);
     cout << "simulation done.\n";
 
     { // clean-up

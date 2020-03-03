@@ -214,7 +214,7 @@ def get_pos_3d(x,y,area,n,skip=602):
         r = np.arange(ntmp)
         select = is_point_inside(px, py, x, y, ntmp)
         ptmp = np.vstack((px, py))
-        for j in r[select]:
+        for j in r[select]: # exclude duplicates
             if j > 0:
                 if ((ptmp[:,:j-1] - ptmp[:,j].reshape((2,1)) == 0).all(0)).any():
                     select[j] = False
@@ -248,6 +248,64 @@ def get_pos_3d(x,y,area,n,skip=602):
     np.random.shuffle(shuffled_id)
     pos = pos[:,shuffled_id]
     return pos
+
+""" a more uniformly spaced neuronal positions, not finished, but may be not necessary with parallel spreading (faster now)
+def get_pos_3d_uniform(x,y,area,n,skip=602):
+    xmin = min(x)
+    xmax = max(x)
+    ymin = min(y)
+    ymax = max(y)
+    storming_area = (xmax-xmin)*(ymax-ymin)
+    ratio = storming_area/area
+    pos = np.empty((3,n), dtype=float)
+    pos[2,:] = np.randdom.shuffle(np.linspace(0, 0.01, n)) # 10 micron depth
+    ntmp = np.ceil(n*ratio).astype(int)
+    dr = np.sqrt(area/n)
+    i = 0
+    count = 0
+    max_trial = 100
+    while count < max_trial:
+        px = xmin + (xmax-xmin) * rands[:,0]
+        py = ymin + (ymax-ymin) * rands[:,1]
+        #print(f'selecting {count}: ({i}+{ntmp})/{n}')
+        r = np.arange(ntmp)
+        select = is_point_inside(px, py, x, y, ntmp)
+        ptmp = np.vstack((px, py))
+        for j in r[select]: # exclude duplicates
+            if j > 0:
+                if ((ptmp[:,:j-1] - ptmp[:,j].reshape((2,1)) == 0).all(0)).any():
+                    select[j] = False
+            if i > 0:
+                if ((pos[:2,:i] - ptmp[:,j].reshape((2,1)) == 0).all(0)).any():
+                    select[j] = False
+        nselected = sum(select)
+        if nselected == 0:
+            raise Exception(f'no points selected from {ntmp} random points')
+
+        if i+nselected > n:
+            nselected = n-i
+        pos[0,i:i+nselected] = (px[select])[:nselected]
+        pos[1,i:i+nselected] = (py[select])[:nselected]
+        pos[2,i:i+nselected] = (pz[select])[:nselected]
+        #print(f'selected {count}: ({i}+{nselected})/{n}')
+        i += nselected
+        count += 1
+        #print(f'{count}: {ntmp}/{n}')
+        if i < n:
+            ntmp = max(np.ceil((n-i)*ratio).astype(int),10)
+            if sobol_set:
+                skip = skip + ntmp
+        else:
+            assert(i==n)
+            break
+    if count == max_trial and i < n:
+        raise Exception(f'after {count} round of sobol rands still left {ntmp} points to be assigned')
+    # remove the orderness from sobol semi-pseudo-random number
+    shuffled_id = np.arange(n)
+    np.random.shuffle(shuffled_id)
+    pos = pos[:,shuffled_id]
+    return pos
+"""
 
 def cut_blocks(pos,iblock,nblock,total_block,block_area,e0,e1,model_block,get_x,get_y,ax=None,skip=602,s1=0.76,s2=0.1821,blockSize=1024,block_tol=1e-10,max_it=10,bp=32):
     p = np.linspace(-np.pi/2,np.pi/2,nblock+1)

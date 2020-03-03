@@ -30,7 +30,7 @@ class surface:
         self.pos_uniform = False 
 
     # prepare pos
-    def prep_pos(self, check = True):
+    def prep_pos(self, expand = False, check = True):
         duplicate = 0
         for i in np.arange(self.nLGN):
             #assert(np.sum((self.pos[:,i] - self.pos[:,i+1:].T == 0).all(-1))==0)
@@ -47,26 +47,36 @@ class surface:
         i, j, d2 = self.get_ij_grid(get_d2 = True, get_coord = False)
 
         # pick neurons that is outside the discrete ragged boundary
-        d2[self.Pi[i,j]<=0,    0] = np.float('inf')
-        d2[self.Pi[i+1,j]<=0,  1] = np.float('inf')
-        d2[self.Pi[i,j+1]<=0,  2] = np.float('inf')
-        d2[self.Pi[i+1,j+1]<=0,3] = np.float('inf')
-        nbp = np.sum((d2 == np.tile(np.array([np.float('inf'), np.float('inf'), np.float('inf'), np.float('inf')]), (self.nLGN,1))).any(-1))
-        print(f'#boundary points: {nbp} ')
-        assert(np.sum((d2 == np.tile(np.array([np.float('inf'), np.float('inf'), np.float('inf'), np.float('inf')]), (self.nLGN,1))).all(-1)) == 0)
-        ipick = np.argmin(d2,1)
-        
-        # retain neurons inside the discrete ragged boundary
-        outsideRaggedBound = ((self.Pi[i,j] <= 0) + (self.Pi[i+1,j] <= 0) + (self.Pi[i,j+1] <= 0) + (self.Pi[i+1,j+1] <= 0)).astype(bool)
-        print(f'adjust {np.sum(outsideRaggedBound)} positions near the boundary')
-        #print(self.pos[:,733])
-        #print(self.pos[:,776])
-        x = np.mod(ipick[outsideRaggedBound],2)
-        y = ipick[outsideRaggedBound]//2
-        bx = self.xx[i[outsideRaggedBound] + x , j[outsideRaggedBound] + y]
-        by = self.yy[i[outsideRaggedBound] + x , j[outsideRaggedBound] + y]
-        self.pos[0,outsideRaggedBound] = bx + (self.pos[0,outsideRaggedBound]-bx)/3
-        self.pos[1,outsideRaggedBound] = by + (self.pos[1,outsideRaggedBound]-by)/3
+        if not expand:
+            d2[self.Pi[i,j]<=0,    0] = np.float('inf')
+            d2[self.Pi[i+1,j]<=0,  1] = np.float('inf')
+            d2[self.Pi[i,j+1]<=0,  2] = np.float('inf')
+            d2[self.Pi[i+1,j+1]<=0,3] = np.float('inf')
+            nbp = np.sum((d2 == np.tile(np.array([np.float('inf'), np.float('inf'), np.float('inf'), np.float('inf')]), (self.nLGN,1))).any(-1))
+            print(f'#boundary points: {nbp} ')
+            assert(np.sum((d2 == np.tile(np.array([np.float('inf'), np.float('inf'), np.float('inf'), np.float('inf')]), (self.nLGN,1))).all(-1)) == 0)
+            ipick = np.argmin(d2,1)
+            
+            # retain neurons inside the discrete ragged boundary
+            outsideRaggedBound = ((self.Pi[i,j] <= 0) + (self.Pi[i+1,j] <= 0) + (self.Pi[i,j+1] <= 0) + (self.Pi[i+1,j+1] <= 0)).astype(bool)
+            print(f'adjust {np.sum(outsideRaggedBound)} positions near the boundary')
+            #print(self.pos[:,733])
+            #print(self.pos[:,776])
+            x = np.mod(ipick[outsideRaggedBound],2)
+            y = ipick[outsideRaggedBound]//2
+            bx = self.xx[i[outsideRaggedBound] + x , j[outsideRaggedBound] + y]
+            by = self.yy[i[outsideRaggedBound] + x , j[outsideRaggedBound] + y]
+            self.pos[0,outsideRaggedBound] = bx + (self.pos[0,outsideRaggedBound]-bx)/3
+            self.pos[1,outsideRaggedBound] = by + (self.pos[1,outsideRaggedBound]-by)/3
+        else:
+            pick = self.Pi[i,j]<=0
+            self.Pi[i[pick],j[pick]] = 1
+            pick = self.Pi[i+1,j]<=0
+            self.Pi[i[pick]+1,j[pick]] = 1
+            pick = self.Pi[i,j+1]<=0
+            self.Pi[i[pick],j[pick]+1] = 1
+            pick = self.Pi[i+1,j+1]<=0
+            self.Pi[i[pick]+1,j[pick]+1] = 1
 
         # checks
         if check:
@@ -274,15 +284,41 @@ class surface:
             else:
                 return i, j, d2.T
 
-    def gen_surface(self,ax):
-        if not self.pos_uniform:
-            print('make pos uniform first')
+    def plot_surface(self,ax):
+        subarea = self.subgrid[0] * self.subgrid[1]
+        area = subarea * np.sum(self.Pi > 0)
+        print(f'grid area: {area}, used in simulation')
+        A = self.Pi.copy()
+        A[self.Pi <= 0] = 0
+        A[self.Pi > 0] = 1
+        bound, btype = self.define_bound(A)
+        # connecting points on grid sides
+        ax.plot(bound[:,0,[0,2]].squeeze(), bound[:,1,[0,2]].squeeze(), ',r')
+        # grid centers
+        ax.plot(bound[:,0,1].squeeze(), bound[:,1,1].squeeze(), ',g')
+        # plot particles
         ax.plot(self.pos[0,:], self.pos[1,:],',k')
         ax.set_aspect('equal')
         coordinate = -1
         return coordinate
 
-    def save_pos(self, pos_file):
-        with open(pos_file,'wb') as f:
-            np.array([self.nLGN]).tofile(f)
-            self.pos.tofile(f)
+    def save(self, pos_file = None, parallel_file = None):
+        if pos_file is not None:
+            with open(pos_file,'wb') as f:
+                np.array([self.nLGN]).tofile(f)
+                self.pos.tofile(f)
+        if parallel_file is not None:
+            subarea = self.subgrid[0] * self.subgrid[1]
+            area = subarea * np.sum(self.Pi > 0)
+            A = self.Pi.copy()
+            A[self.Pi <= 0] = 0
+            A[self.Pi > 0] = 1
+            boundPos, btype = self.define_bound(A)
+            with open(parallel_file, 'wb') as f:
+                np.array([self.nLGN]).astype('u4').tofile(f)
+                self.pos.tofile(f)
+                np.array([btype.size]).astype('u4').tofile(f)
+                boundPos.tofile(f)
+                btype.astype('u4').tofile(f)
+                self.subgrid.tofile(f)
+                np.array([area]).astype('f8').tofile(f)

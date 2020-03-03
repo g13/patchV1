@@ -5,8 +5,8 @@ import time
 py_compile.compile('repel_system.py')
 
 class repel_system:
-    def __init__(self, area, subgrid, initial_x, bp, btype, boundary_param = None, particle_param = None, initial_v = None, nlayer = 1, layer = None, soft_boundary = None, soft_btype = None,  enough_memory = False, p_scale = 2.5, b_scale = 1.0, fixed = None, b_cl = None, i_cl = None):
-        self.nn = initial_x.shape[1]
+    def __init__(self, area, subgrid, initial_x, bp, btype, boundary_param = None, particle_param = None, initial_v = None, soft_boundary = None, soft_btype = None,  enough_memory = False, p_scale = 2.5, b_scale = 1.0, fixed = None, b_cl = None, i_cl = None):
+        self.n = initial_x.shape[1]
         self.nb = bp.shape[0]
         if fixed is None:
             self.fixList = np.array([])
@@ -14,7 +14,7 @@ class repel_system:
             self.fixList = fixed
         if b_cl is None:
             per_unit_area = 2*np.sqrt(3) # in cl^2
-            self.cl = np.sqrt((area/self.nn)/per_unit_area)
+            self.cl = np.sqrt((area/self.n)/per_unit_area)
             print(f'characteristic length (inter-particle-distance) = {self.cl}')
             a_particle = self.cl*p_scale
             a_boundary = self.cl*b_scale
@@ -26,14 +26,7 @@ class repel_system:
         # will be used to limit displacement and velocity
         self.damp = 0.1
         self.default_limiting = self.cl
-        self.limiting = np.zeros(self.nn) + self.default_limiting
-        if nlayer == -1:
-            self.layerSupplied = True
-            assert(nlayer == layer.shape[0])
-            self.nlayer = nlayer
-            self.layer = layer
-        else:
-            self.layerSupplied = False
+        self.limiting = np.zeros(self.n) + self.default_limiting
 
         print('particle:')
         if particle_param is None:
@@ -50,54 +43,22 @@ class repel_system:
             assert(soft_btype is not None)
             self.soft_boundary = rec_boundary(subgrid, soft_boundary, soft_btype, None, enough_memory)
 
-        print(f'{self.nb} boundary points and {self.nn} particles initialized')
+        print(f'{self.nb} boundary points and {self.n} particles initialized')
         print(f'in units of grids ({subgrid[0]:.3f},{subgrid[1]:.3f}):')
         print(f'    interparticle distance ({self.cl/subgrid[0]:.3f},{self.cl/subgrid[1]:.3f})')
         print(f'    radius of influence for particles ({self.particle.r0/subgrid[0]:.3f},{self.particle.r0/subgrid[1]:.3f})')
         print(f'    radius of influence for boundaries ({self.boundary.r0/subgrid[0]:.3f},{self.boundary.r0/subgrid[1]:.3f})')
         print(f'    default limiting of displacement in one dt: ({self.default_limiting/subgrid[0]:.3f}, {self.default_limiting/subgrid[1]:.3f})')
         
-        self.nlayer = nlayer
         self.enough_memory = enough_memory 
 
     def initialize(self):
-        if self.layerSupplied is False:
-            self.layer = np.empty(self.nlayer, dtype=object)
-            if self.nlayer > 1:
-                # transform to [x/y,index]
-                bp = self.soft_boundary.pos[:,:,1].T
-                dis = np.empty(self.nn)
-                for i in range(self.nn):
-                    ib = np.argmin(np.sum(np.power(bp - self.particle.pos[:,i].reshape(2,1),2), axis=0))
-                    dis[i], _ = self.soft_boundary.get_r[ib](ib, self.particle.pos[:,i])
-                    stdout.write(f'\rinitializing, {(i+1)/self.nn*100:.3f}%')
-
-                print('\n')
-                dis_range = np.linspace(np.min(dis), np.max(dis), self.nlayer+1)
-                n = np.zeros(self.nlayer)
-                for i in range(self.nlayer):
-                    if i == self.nlayer-1:
-                        self.layer[i] = np.nonzero(np.logical_and(dis >= dis_range[i], dis <= dis_range[i+1]))[0]
-                    else:
-                        self.layer[i] = np.nonzero(np.logical_and(dis >= dis_range[i], dis < dis_range[i+1]))[0]
-                    n[i] = self.layer[i].size
-                print(f'number of neurons in layers: {n}')
-            else:
-                self.layer[0] = np.arange(self.nn)
-
-        self.get_acc_update_limiting(self.layer[0])
+        self.get_acc_update_limiting()
         print('initialized')
-        if self.layerSupplied is False:
-            return self.nlayer, self.layer
          
-    def get_acc_update_limiting(self, pick = None):
-        if pick is None:
-            pos = self.particle.pos
-            n = pos.shape[1]
-            pick = np.arange(n)
-        else:
-            pos = self.particle.pos[:,pick]
-            n = pos.shape[1]
+    def get_acc_update_limiting(self):
+        pos = self.particle.pos
+        n = pos.shape[1]
         m = self.particle.pos.shape[1]
         # NOTE: not implemented
         if self.enough_memory:
@@ -114,25 +75,20 @@ class repel_system:
         else:
             # for every particle picked
             for i in range(n):
-
                 ## calculate repelling acceleratoin from the nearest boundary
                 ds = self.boundary.pos[:,:,1] - pos[:,i].reshape(1,2)
                 ib = np.argmin(np.sum(np.power(ds, 2), axis = -1))
                 acc, limiting = self.boundary.get_acc[ib](ib, pos[:,i])
                 # update the limiting threshold
                 if limiting > 0:
-                    self.limiting[pick[i]] =  np.min([limiting/2, self.default_limiting])
-                ## limiting acceleration from boundary
-                # da = np.linalg.norm(acc)
-                # if da > self.limiting[pick[i]]:
-                    # acc = self.limiting[pick[i]] * acc/da
-                self.particle.acc[:,pick[i]] = acc
+                    self.limiting[i] =  np.min([limiting/2, self.default_limiting])
+                self.particle.acc[:,i] = acc
 
                 ## accumulate acceleration from particles
                 ds = pos[:,i].reshape(2,1) - self.particle.pos
                 # pick a square first
                 ppick = np.max(np.abs(ds), axis = 0) < self.particle.r0
-                ppick[pick[i]] = False
+                ppick[i] = False
                 if ppick.any():
                     ## calculate distance
                     r = np.linalg.norm(ds[:,ppick], axis=0)
@@ -143,77 +99,41 @@ class repel_system:
                     if rpick.any():
                         ## untouched summed acceleration
                         direction = ds[:,ppick]/r[rpick]
-                        self.particle.acc[:,pick[i]] = self.particle.acc[:,pick[i]] + np.sum(self.particle.f(r[rpick])*direction, axis=-1)
-                        ## limiting the total summed acceleration
-                        # dacc = np.sum(self.particle.f(r[rpick])*direction, axis=-1)
-                        # da = np.linalg.norm(dacc, axis=0)
-                        # if da > self.limiting[pick[i]]:
-                        #   dacc = self.limiting[pick[i]] * dacc/da
-                        # self.particle.acc[:,pick[i]] = dacc
-                        ## limiting acceleration from individual interaction with particles
-                        #direction = ds[:,ppick]/r[rpick]
-                        #dacc = self.particle.f(r[rpick])*direction
-                        #da = np.linalg.norm(dacc, axis=0)
-                        #large_acc = da > self.limiting[pick[i]]
-                        #dacc[:,large_acc] = self.limiting[pick[i]] * dacc[:,large_acc]/da[large_acc]
-                        #self.particle.acc[:,pick[i]] = np.sum(dacc, axis=-1)
-
-                #stdout.write(f'\rcalculate acceleration: {(i+1)/pick.size*100:.3f}%')
+                        self.particle.acc[:,i] = self.particle.acc[:,i] + np.sum(self.particle.f(r[rpick])*direction, axis=-1)
+                #stdout.write(f'\rcalculate acceleration: {(i+1)/n*100:.3f}%')
         #print('\n')
 
-    def next(self, dt, layer_seq = None):
-        if layer_seq is None:
-            layer_seq = np.arange(self.nlayer)
-
+    def next(self, dt):
         # limitation on displacement and velocity are needed, but not acceleration
         nlimited = 0
         # get to new position by speed * dt + 1/2 * acc * dt^2
         # limit the change in displacement by the distance to the nearest boundary
         # calculate the new velocity, limit the final speed, not the change of velocity
-        if self.nlayer == 1:
-            dpos = self.particle.vel*dt + 0.5*self.particle.acc * np.power(dt,2)
-            # limit change in displacement
-            dr = np.linalg.norm(dpos, axis = 0)
-            large_dpos = dr > self.limiting
-            dpos[:,large_dpos] = self.limiting[large_dpos] * dpos[:,large_dpos]/dr[large_dpos]
-            if not self.fixList.size == 0:
-                dpos[:,self.fixList] = 0
-            self.particle.pos = self.particle.pos + dpos
-            dr[large_dpos] = self.limiting[large_dpos]
-            nlimited = np.sum(large_dpos)
-        else:
-            dr = np.empty(self.nn)
-            # update position
-            for i in layer_seq:
-                pick = self.layer[i]
-                dpos = self.particle.vel[:,pick]*dt + 0.5*self.particle.acc[:,pick] * np.power(dt,2)
-                # limit position change
-                dr[pick] = np.linalg.norm(dpos, axis = 0)
-                large_dpos = dr[pick] > self.limiting[pick]
-                dpos[:,large_dpos] = self.limiting[pick][large_dpos] * dpos[:,large_dpos]/dr[pick][large_dpos]
-                self.particle.pos[:,pick] = self.particle.pos[:,pick] + dpos
-                dr[pick][large_dpos] = self.limiting[pick][large_dpos]
-                nlimited = nlimited + np.sum(large_dpos)
+        dpos = self.particle.vel*dt + 0.5*self.particle.acc * np.power(dt,2)
+        # limit change in displacement
+        dr = np.linalg.norm(dpos, axis = 0)
+        large_dpos = dr > self.limiting
+        dpos[:,large_dpos] = self.limiting[large_dpos] * dpos[:,large_dpos]/dr[large_dpos]
+        if not self.fixList.size == 0:
+            dpos[:,self.fixList] = 0
+        self.particle.pos = self.particle.pos + dpos
+        dr[large_dpos] = self.limiting[large_dpos]
 
-                if i < self.nlayer-1:
-                    ## update acceleration and velocity
-                    self.get_acc_update_limiting(self.layer[i+1])
+        nlimited = np.sum(large_dpos)
 
         # number of freezed particles
         nfreeze = np.sum(dr == 0)
         # reset limiting threshold 
-        self.limiting = np.zeros(self.nn) + self.default_limiting
+        self.limiting = np.zeros(self.n) + self.default_limiting
         ## update acceleration and velocity
         last_acc = self.particle.acc.copy()
         self.get_acc_update_limiting()
-        for i in layer_seq:
-            pick = self.layer[i]
-            # use acc to change the course of velocity
-            self.particle.vel[:,pick] = (1-self.damp) * self.particle.vel[:,pick] + 0.5*(self.particle.acc[:,pick] + last_acc[:,pick])*dt
-            # limit the absolute speed
-            v = np.linalg.norm(self.particle.vel[:,pick], axis = 0)
-            large_vel =  v > self.limiting[pick]/dt
-            self.particle.vel[:,pick[large_vel]] = self.limiting[pick[large_vel]]/dt * self.particle.vel[:,pick[large_vel]]/v[large_vel]
+        # use acc to change the course of velocity
+        self.particle.vel = (1-self.damp) * self.particle.vel + 0.5*(self.particle.acc + last_acc)*dt
+        # limit the absolute speed
+        v = np.linalg.norm(self.particle.vel, axis = 0)
+        large_vel =  v > self.limiting/dt
+        self.particle.vel[:,large_vel] = self.limiting[large_vel]/dt * self.particle.vel[:,large_vel]/v[large_vel]
 
         return self.particle.pos, np.array([np.mean(dr), np.std(dr)]), nlimited, nfreeze
 
@@ -231,7 +151,7 @@ class L_J_potiential:
     def plot(self, ax1, ax2, style):
         epsilon = np.finfo(float).eps
         n = 100
-        r = np.linspace(0,self.r0,n) + epsilon
+        r = np.linspace(0,1.1*self.r0,n) + epsilon
         y = self.f(r)
         ax1.plot(r,y,style)
         ax1.plot(self.r0, self.f(self.r0), '*r')
@@ -254,12 +174,12 @@ class L_J_potiential:
 class point_particle:
     def __init__(self, initial_x, param, initial_v = None):
         self.pos = initial_x
-        self.n = self.pos.shape[1]
+        n = self.pos.shape[1]
         if initial_v is not None:
             self.vel = initial_v
         else:
-            self.vel = np.zeros((2,self.n))
-        self.acc = np.zeros((2,self.n))
+            self.vel = np.zeros((2,n))
+        self.acc = np.zeros((2,n))
 
        # potential Lennard-Jones Potential
         self.r0 = param.r0
@@ -269,7 +189,7 @@ class point_particle:
 class rec_boundary:
     def __init__(self, subgrid, pos, btype, param = None, enough_memory = False):
         self.pos = pos
-        self.n = pos.shape[0]
+        n = pos.shape[0]
         assert(pos.shape[1] == 2 and pos.shape[2] == 3)
         self.subgrid = subgrid # (x,y)
         # set a radius to pick nearby particles
@@ -280,10 +200,10 @@ class rec_boundary:
                 self.rec = self.r0
             param.print()
             self.f = param.f
-            self.get_acc = np.empty(self.n, dtype = object)
+            self.get_acc = np.empty(n, dtype = object)
             if enough_memory:
                 raise Exception('not implemented')
-                for i in range(self.n):
+                for i in range(n):
                     # same y-coord -> horizontal boundary
                     if btype[i] == 0:
                         assert((pos[i,1,1] - pos[i,1,:] == 0).all())
@@ -303,7 +223,7 @@ class rec_boundary:
                                 raise Exception(f'btype: {btype[i]} is not implemented')
                             self.get_acc[i] = self.get_avh_vec
             else:
-                for i in range(self.n):
+                for i in range(n):
                     # same y-coord -> horizontal boundary
                     if btype[i] == 0:
                         assert((pos[i,1,1] - pos[i,1,:] == 0).all())
@@ -323,9 +243,9 @@ class rec_boundary:
                                 raise Exception(f'btype: {btype[i]} is not implemented')
                             self.get_acc[i] = self.get_avh
         else:
-            self.get_r = np.empty(self.n, dtype = object)
+            self.get_r = np.empty(n, dtype = object)
             print('the boundary is soft')
-            for i in range(self.n):
+            for i in range(n):
                 # same y-coord -> horizontal boundary
                 if btype[i] == 0:
                     assert((pos[i,1,1] - pos[i,1,:] == 0).all())
@@ -566,7 +486,7 @@ class rec_boundary:
     def get_avh(self, i, pos):
         return self.get_turn(i, pos, 2)
 
-def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = None, particle_param = None, initial_v = None, nlayer = 1, layer = None, layer_seq = None, soft_boundary = None, soft_btype = None, ax = None, seed = None, ns = 1000, ret_vel = False, p_scale = 2.0, b_scale = 1.0, fixed = None, mshape = ',', b_cl = None, i_cl = None):
+def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = None, particle_param = None, initial_v = None, soft_boundary = None, soft_btype = None, ax = None, seed = None, ns = 1000, ret_vel = False, p_scale = 2.0, b_scale = 1.0, fixed = None, mshape = ',', b_cl = None, i_cl = None):
     # sample points to follow:
     print(boundary.size * pos.size/1024/1024/1024)
     if ax is not None:
@@ -595,18 +515,23 @@ def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = Non
             spos[0,:,:] =  pos[:,spick]
             starting_pos = pos[:,spick].copy()
     # test with default bound potential param
-    system = repel_system(area, subgrid, pos, boundary, btype, boundary_param, particle_param, initial_v, nlayer = nlayer, layer = layer, soft_boundary = soft_boundary, soft_btype = soft_btype, p_scale = p_scale, b_scale = b_scale, fixed = fixed, b_cl = b_cl, i_cl = i_cl)
+    system = repel_system(area, subgrid, pos, boundary, btype, boundary_param, particle_param, initial_v, soft_boundary = soft_boundary, soft_btype = soft_btype, p_scale = p_scale, b_scale = b_scale, fixed = fixed, b_cl = b_cl, i_cl = i_cl)
     system.initialize()
 
     full_trace = True 
-    if ns == pos.shape[1]:
+    nparticle = pos.shape[1]
+    if ns == nparticle:
         full_trace = False
 
     if dt is not None:
         convergence = np.empty((dt.size,2))
         nlimited = np.zeros(dt.size, dtype=int)
+        #nCPU = mp.cpu_count()
+        #nparticel//nCPU
+        #pool = mp.Pool(nCPU)
         for i in range(dt.size):
-            pos, convergence[i,:], nlimited[i], nfreeze = system.next(dt[i], layer_seq)
+            #pool.apply(system.next, args= (dt[i],p)) for p in patch
+            pos, convergence[i,:], nlimited[i], nfreeze = system.next(dt[i])
             stdout.write(f'\r{(i+1)/dt.size*100:.3f}%, {nlimited[i]} particles\' displacement are limited, {nfreeze} particles freezed')
             if ax is not None and ns > 0:
                 if full_trace:
@@ -617,6 +542,7 @@ def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = Non
                         spos[0,:,:] =  pos[:,spick]
                     else:
                         spos[1,:,:] =  pos[:,spick]
+        #pool.close()
     if not full_trace:
         ax.plot(spos[:,0,:].squeeze(), spos[:,1,:].squeeze(),'-,c', lw = 0.01)
 
@@ -625,17 +551,14 @@ def simulate_repel(area, subgrid, pos, dt, boundary, btype, boundary_param = Non
         nlimited = -1
 
     if ax is not None:
-        if system.nlayer == 1:
-            ax.plot(pos[0,:], pos[1,:], mshape+'k', ms = 0.01)
-        else:
-            for i in np.arange(system.nlayer):
-                ax.plot(pos[0,system.layer[i]], pos[1,system.layer[i]], mshape)
+        ax.plot(pos[0,:], pos[1,:], mshape+'k', ms = 0.01)
         if ns > 0:
             ax.plot(starting_pos[0,:], starting_pos[1,:], mshape+'m', ms = 0.01)
     print('\n')
     # normalize convergence of position relative the inter-particle-distance 
     convergence = convergence/system.cl
     if ret_vel is False:
-        return pos, convergence, nlimited, system.layer
+        return pos, convergence, nlimited
     else:
-        return pos, convergence, nlimited, system.layer, system.particle.vel
+        return pos, convergence, nlimited, system.particle.vel
+

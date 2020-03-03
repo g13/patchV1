@@ -31,6 +31,7 @@ enum class OutputType: Size { // V1 local RF
 	LoffMon = 3
 };
 
+// TODO: add On-Off
 enum class InputType: Size { // LGN
     // center-surround
     LonMoff = 0,

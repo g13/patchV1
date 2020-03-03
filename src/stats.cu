@@ -12,29 +12,33 @@ void pixelize(
 }
 
 // From nChunks of [chunkSize, ngTypeE+ngTypeI, blockSize] -> [ngTypeE+ngTypeI, nV1], where nV1 = nChunk*chunkSize*blockSize
-void reshape_chunk_and_write(Float chunk[], ofstream &fRawData, Size maxChunkSize, Size remainChunkSize, Size nChunk, Size nE, Size nI, Size nV1) {
+void reshape_chunk_and_write(Float chunk[], ofstream &fRawData, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1) {
     PosIntL offset = 0;
     size_t gSize = nV1*(nE+nI);
     Float *flatten = new Float[gSize];
     Size chunkSize = maxChunkSize;
     for (PosInt i=0; i<nChunk; i++) {
-        if (i == nChunk-1) chunkSize = remainChunkSize;
+        PosIntL offset_f;
+        if (i > iSizeSplit - 1) {
+            chunkSize = remainChunkSize;
+            offset_f = iSizeSplit*maxChunkSize + (i-iSizeSplit)*chunkSize;
+        } else {
+            offset_f = i*maxChunkSize;
+        }
         for (PosInt j=0; j<nE; j++) {
-            PosIntL fid = i*maxChunkSize*blockSize + j*nV1;
             for (PosInt k=0; k<chunkSize*blockSize; k++) {
-                flatten[fid + k] = chunk[offset];
+                flatten[j*nV1 + f_offset + k] = chunk[offset];
                 offset++;
             }
         }
         for (PosInt j=0; j<nI; j++) {
-            PosIntL fid = nE*nV1 + i*maxChunkSize*blockSize + j*nV1;
             for (PosInt k=0; k<chunkSize*blockSize; k++) {
-                flatten[fid + k] = chunk[offset];
+                flatten[(nE+j)*nV1 + f_offset + k] = chunk[offset];
                 offset++;
             }
         }
-        assert(offset == (i+1)*maxChunkSize*blockSize*(nE+nI));
     }
+    assert(offset == (iSizeSplit*maxChunkSize + (nChunk - iSizeSplit)*remainChunkSize)*blockSize*(nE+nI));
     fRawData.write((char*) flatten, gSize*sizeof(Float));
     delete []flatten;
 }

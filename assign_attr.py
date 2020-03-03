@@ -1,5 +1,6 @@
 from patch_geo_func import x_ep, y_ep, model_block_ep
-from repel_system import *
+from repel_system import simulate_repel
+from parallel_repel_system import simulate_repel_parallel
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm 
 from sys import stdout
@@ -83,7 +84,6 @@ class macroMap:
             with open(OD_file,'r') as f:
                 self.ODlabel = np.fromfile(f, 'i4', count = self.networkSize)
         
-        self.layer = None
         self.pODready = OD_file is not None
         self.pOPready = OP_file is not None 
         self.LR_boundary_defined = False 
@@ -266,16 +266,12 @@ class macroMap:
         # retain neurons inside the discrete ragged boundary
         outsideRaggedBound = ((self.Pi[i,j] <= 0) + (self.Pi[i+1,j] <= 0) + (self.Pi[i,j+1] <= 0) + (self.Pi[i+1,j+1] <= 0)).astype(bool)
         print(f'adjust {np.sum(outsideRaggedBound)} positions near the boundary')
-        print(self.pos[:,733])
-        print(self.pos[:,776])
         x = np.mod(ipick[outsideRaggedBound],2)
         y = ipick[outsideRaggedBound]//2
         bx = self.xx[i[outsideRaggedBound] + x , j[outsideRaggedBound] + y]
         by = self.yy[i[outsideRaggedBound] + x , j[outsideRaggedBound] + y]
         self.pos[0,outsideRaggedBound] = bx + (self.pos[0,outsideRaggedBound]-bx)/3
         self.pos[1,outsideRaggedBound] = by + (self.pos[1,outsideRaggedBound]-by)/3
-        print(self.pos[:,733])
-        print(self.pos[:,776])
 
         print('assign ocular dominance preference to neuron according to their position in the cortex')
         self.ODlabel = np.zeros((self.networkSize), dtype = int)
@@ -620,6 +616,35 @@ class macroMap:
             self.posUniform = True
         return oldpos, convergenceL, convergenceR, nlimitedL, nlimitedR
 
+    def make_pos_uniform_parallel(self, dt, b_scale, p_scale, figname, ncpu = 16, ndt0 = 0, check = True):
+        if not self.pODready:
+            self.assign_pos_OD1()
+        pR = self.ODlabel > 0
+        pL = self.ODlabel < 0
+        nR = np.sum(pR)
+        nL = np.sum(pL)
+        areaL = self.area * nL/(nR+nL)
+        areaR = self.area * nR/(nR+nL)
+        print(f'smooth area: {areaL}, {areaR}')
+        subarea = self.subgrid[0] * self.subgrid[1]
+        areaR = subarea * np.sum(self.LR == 1)
+        areaL = subarea * np.sum(self.LR == -1)
+        print(f'grid area: {areaL}, {areaR}, used in simulation')
+        if self.LR_boundary_defined is False:
+            self.define_bound_LR()
+
+        oldpos = self.pos.copy()
+        self.pos[:,pL] = simulate_repel_parallel(areaL, self.subgrid, self.pos[:,pL], dt, self.OD_boundL, self.btypeL, b_scale, p_scale, figname +'L', ndt0, ncpu)
+        if check:
+            self.check_pos()
+        self.pos[:,pR] = simulate_repel_parallel(areaR, self.subgrid, self.pos[:,pR], dt, self.OD_boundR, self.btypeR, b_scale, p_scale, figname +'R', ndt0, ncpu)
+        if check:
+            self.check_pos()
+
+        if not self.posUniform:
+            self.posUniform = True
+        return oldpos, convergenceL, convergenceR, nlimitedL, nlimitedR
+
     def spread_pos_VF(self, dt, vpfile, lrfile, LRlabel, seed = None, firstTime = True, particle_param = None, boundary_param = None, ax = None, p_scale = 2.0, b_scale = 1.0):
         ngrid = np.sum(self.Pi).astype(int)
         if LRlabel == 'L':
@@ -847,7 +872,7 @@ class macroMap:
                         plt.polar(self.p_range, self.e_range[ie]+np.zeros(self.npolar),':',c='0.5', lw = 0.1)
 
 
-    def save(self, pos_file = None, OD_file = None, OP_file = None, VFxy_file = None, VFpolar_file = None, Feature_file = None, fp = 'f4'):
+    def save(self, pos_file = None, OD_file = None, OP_file = None, VFxy_file = None, VFpolar_file = None, Feature_file = None, Parallel_file = None, fp = 'f4'):
         if pos_file is not None:
             with open(pos_file,'wb') as f:
                 np.array([self.nblock, self.blockSize, self.dataDim]).astype('u4').tofile(f)        
@@ -884,6 +909,24 @@ class macroMap:
                 np.array([2]).astype('u4').tofile(f)
                 self.ODlabel.astype(fp).tofile(f)
                 self.op.astype(fp).tofile(f)
+
+        if Parallel_file is not None:
+            subarea = self.subgrid[0] * self.subgrid[1]
+            area = subarea * np.sum(self.Pi > 0)
+            A = self.Pi.copy()
+            A[self.Pi <= 0] = 0
+            A[self.Pi > 0] = 1
+            boundPos, btype = self.define_bound(A)
+            with open(Parallel_file, 'wb') as f:
+                np.array([self.networkSize]).astype('u4').tofile(f)
+                self.pos.tofile(f)
+                np.array([btype.size]).astype('u4').tofile(f)
+                boundPos.tofile(f)
+                btype.astype('u4').tofile(f)
+                print(np.min(btype), np.max(btype))
+                self.subgrid.tofile(f)
+                np.array([area]).astype('f8').tofile(f)
+
 
 ######## rarely-used functions ##############
     #
