@@ -73,11 +73,9 @@ int main(int argc, char **argv) {
 
 	bool storeSpatial = true;
     Float dt; // in ms, better in fractions of binary 
-	bool useNewLGN;
-	bool saveLGN_fr;
-	bool saveLGN_gallery;
-	bool saveOutputB4V1;
-    bool getStatsFrameV;
+	bool useNewLGN, readFeature;
+	bool saveLGN_fr, saveLGN_gallery, saveOutputB4V1;
+    bool frameVisV1output, frameVisLGNoutput;
     Size nChunk;
 	Size matConcurrency;
     SmallSize nSpatialSample1D; // spatial kernel sample size = nSpatialSample1D x nSpatialSample1D
@@ -119,9 +117,10 @@ int main(int argc, char **argv) {
 		("decayTimeE", po::value<vector<Float>>(&gdE), "array for decay time of the excitatory conductances, size should be consistent with riseTimeE")
 		("decayTimeI", po::value<vector<Float>>(&gdI), "array for decay time of the inhibitory conductances, size should be consistent with riseTimeI")
         ("archtypeAccCount",po::value<vector<Size>>(&archtypeAccCount), "neuronal types' discrete accumulative distribution (E&I), size of [nArchtype], nArchtype = nTypeHierarchy[0]")
+		("readFeature", po::value<bool>(&readFeature)->default_value(true), "read features, OD, OP rather than learning them")
 		("saveLGN_fr", po::value<bool>(&saveLGN_fr)->default_value(true),"write LGN firing rates to disk, specify filename through LGN_fr_filename")
-		("getStatsFrameV", po::value<bool>(&getStatsFrameV)->default_value(false),"get response stats frame for visual field of V1")
-		("frameLGNoutput", po::value<bool>(&getStatsFrameV)->default_value(false),"get response stats frame for visual field of LGN")
+		("frameVisV1output", po::value<bool>(&frameVisV1output)->default_value(false),"get response stats frame for visual field of V1")
+		("frameVisLGNoutput", po::value<bool>(&frameVisLGNoutput)->default_value(false),"get response stats frame for visual field of LGN")
 		("saveLGN_gallery", po::value<bool>(&saveLGN_gallery)->default_value(true), "check convolution kernels and maximum convolution values, write data to disk, specify filename through LGN_gallery_filename")
 		("saveOutputB4V1", po::value<bool>(&saveOutputB4V1)->default_value(true), "check adapted luminance values, write data to disk, specify filename through outputB4V1_filename")
 		("useNewLGN", po::value<bool>(&useNewLGN)->default_value(true), "regenerate the a new ensemble of LGN parameters according to their distribution");
@@ -300,18 +299,18 @@ int main(int argc, char **argv) {
     
     Float deg2rad = M_PI/180.0;
     // Float rad2deg = 180.0/M_PI;
-    Size nLGN_L, nLGN_R, nLGN;
+    Size nLGN_I, nLGN_C, nLGN;
 	Float max_ecc, L_x0, L_y0, R_x0, R_y0, normViewDistance;
     fLGN_vpos.open(LGN_vpos_filename, fstream::in | fstream::binary);
     if (!fLGN_vpos) {
 		cout << "Cannot open or find " << LGN_vpos_filename <<" to read in LGN properties.\n";
         return EXIT_FAILURE;
     } else {
-	    fLGN_vpos.read(reinterpret_cast<char*>(&nLGN_L), sizeof(Size));
-	    fLGN_vpos.read(reinterpret_cast<char*>(&nLGN_R), sizeof(Size));
+	    fLGN_vpos.read(reinterpret_cast<char*>(&nLGN_I), sizeof(Size));
+	    fLGN_vpos.read(reinterpret_cast<char*>(&nLGN_C), sizeof(Size));
 	    fLGN_vpos.read(reinterpret_cast<char*>(&max_ecc), sizeof(Float)); // in rad
     }
-    nLGN = nLGN_L + nLGN_R;
+    nLGN = nLGN_I + nLGN_C;
 	Float stimulus_extent = stimulus_range + stimulus_buffer;
     if (max_ecc >= stimulus_range) {
         printf("%f < %f\n", max_ecc, stimulus_range);
@@ -323,7 +322,7 @@ int main(int argc, char **argv) {
 	L_y0 = 0.5;
 	R_x0 = 0.5 + L_x0;
 	R_y0 = 0.5;
-    cout << nLGN << " LGN neurons, " << nLGN_L << " from left eye, " << nLGN_R << " from right eye, center positions are within the eccentricity of " << max_ecc << " deg, reaching normalized stimulus radius of " << normEccMaxStimulus_extent << "(" << max_ecc << ", " << stimulus_range << ")" << " and a buffer range of " << L_x0 << "(" << stimulus_buffer << ")" << ".\n";
+    cout << nLGN << " LGN neurons, " << nLGN_I << " from the ipsilateral eye, " << nLGN_C << " from the contralateral eye, center positions are within the eccentricity of " << max_ecc << " deg, reaching normalized stimulus radius of " << normEccMaxStimulus_extent << "(" << max_ecc << ", " << stimulus_range << ")" << " and a buffer range of " << L_x0 << "(" << stimulus_buffer << ")" << ".\n";
     max_ecc = max_ecc * deg2rad;
 	normViewDistance = normEccMaxStimulus_extent/tan(max_ecc);
     cout << "normalized view distance: " << normViewDistance << "\n";
@@ -365,9 +364,12 @@ int main(int argc, char **argv) {
     // 
     vector<Float> LGN_x(nLGN);
     vector<Float> LGN_y(nLGN);
-    Size nsx, nsy;
-	fLGN_vpos.read(reinterpret_cast<char*>(&nsx), sizeof(Size));
-	fLGN_vpos.read(reinterpret_cast<char*>(&nsy), sizeof(Size));
+	Float LGN_x0, LGN_xspan;
+	Float LGN_y0, LGN_yspan;
+    fLGN_vpos.read(reinterpret_cast<char*>(&LGN_x0), sizeof(Float));
+    fLGN_vpos.read(reinterpret_cast<char*>(&LGN_xspan), sizeof(Float));
+    fLGN_vpos.read(reinterpret_cast<char*>(&LGN_y0), sizeof(Float));
+    fLGN_vpos.read(reinterpret_cast<char*>(&LGN_yspan), sizeof(Float));
 	fLGN_vpos.read(reinterpret_cast<char*>(&LGN_x[0]), nLGN*sizeof(Float));
 	fLGN_vpos.read(reinterpret_cast<char*>(&LGN_y[0]), nLGN*sizeof(Float));
 
@@ -800,18 +802,21 @@ int main(int argc, char **argv) {
 
     vector<PosInt> sxyID(2*nLGN);
     ifstream fLGN_surface;
-	Float LGN_x0, LGN_xspan;
-	Float LGN_y0, LGN_yspan;
+	//Float LGN_x0, LGN_xspan;
+	//Float LGN_y0, LGN_yspan;
+    Size nsx, nsy;
     fLGN_surface.open(fLGN_surface_filename, fstream::in | fstream::binary);
     if (!fLGN_surface) {
 	    cout << "Cannot open or find " << fLGN_surface_filename <<" to read in LGN surface position.\n";
 	    return EXIT_FAILURE;
     } else {
+		fLGN_surface.read(reinterpret_cast<char*>(&nsx), sizeof(Size));
+		fLGN_surface.read(reinterpret_cast<char*>(&nsy), sizeof(Size));
         fLGN_surface.read(reinterpret_cast<char*>(&sxyID[0]), 2*nLGN*sizeof(PosInt));
-        fLGN_surface.read(reinterpret_cast<char*>(&LGN_x0), sizeof(Float));
-        fLGN_surface.read(reinterpret_cast<char*>(&LGN_xspan), sizeof(Float));
-        fLGN_surface.read(reinterpret_cast<char*>(&LGN_y0), sizeof(Float));
-        fLGN_surface.read(reinterpret_cast<char*>(&LGN_yspan), sizeof(Float));
+        //fLGN_surface.read(reinterpret_cast<char*>(&LGN_x0), sizeof(Float));
+        //fLGN_surface.read(reinterpret_cast<char*>(&LGN_xspan), sizeof(Float));
+        //fLGN_surface.read(reinterpret_cast<char*>(&LGN_y0), sizeof(Float));
+        //fLGN_surface.read(reinterpret_cast<char*>(&LGN_yspan), sizeof(Float));
     }
 	size_t usingGMem = 0;
 
@@ -890,6 +895,8 @@ int main(int argc, char **argv) {
     double *V1_vy;
 	double V1_x0, V1_xspan;
 	double V1_y0, V1_yspan;
+	double V1_vx0, V1_vxspan;
+	double V1_vy0, V1_vyspan;
     fV1_pos.open(V1_pos_filename, fstream::in | fstream::binary);
     if (!fV1_pos) {
 		cout << "Cannot open or find " << V1_pos_filename <<" to read V1 positions.\n";
@@ -909,49 +916,124 @@ int main(int argc, char **argv) {
         fV1_pos.read(reinterpret_cast<char*>(&V1_y0), sizeof(double));
         fV1_pos.read(reinterpret_cast<char*>(&V1_yspan), sizeof(double));
         cout << nV1 << " V1 neurons\n";
-        if (!getStatsFrameV) {
+        if (!frameVisV1output) {
             cpu_chunk_V1pos = new double[nV1*2];
             fV1_pos.read(reinterpret_cast<char*>(cpu_chunk_V1pos), 2*nV1*sizeof(double));
         } else {
             cpu_chunk_V1pos = new double[nV1*4];
+        	fV1_pos.read(reinterpret_cast<char*>(&V1_vx0), sizeof(double));
+        	fV1_pos.read(reinterpret_cast<char*>(&V1_vxspan), sizeof(double));
+        	fV1_pos.read(reinterpret_cast<char*>(&V1_vy0), sizeof(double));
+        	fV1_pos.read(reinterpret_cast<char*>(&V1_vyspan), sizeof(double));
             fV1_pos.read(reinterpret_cast<char*>(cpu_chunk_V1pos), 4*nV1*sizeof(double));
         }
         V1_x = cpu_chunk_V1pos;
         V1_y = V1_x + nV1;
-        if (getStatsFrameV) {
+        if (frameVisV1output) {
             V1_vx = V1_y + nV1;
             V1_vy = V1_vx + nV1;
         }
     }
-    double xminV, xmaxV;
-    double xmin, xmax;
-    double yminV, ymaxV;
-    double ymin, ymax;
-    tie(xmin, xmax) = array_minmax<double>(V1_x, nV1);
-    tie(ymin, ymax) = array_minmax<double>(V1_y, nV1);
-    Float V1_hwRatio = static_cast<Float>((ymax-ymin)/(xmax-xmin));
 
     // stats: frames, rawdata
-	// cortical surface
-    Size ps_width = 1024;
-    Size ps_height = ceil(V1_hwRatio * ps_width);
-    if (ps_height%2 == 1) ps_height++;
-    Size pixel_stats = ps_width * ps_height;
-	// visual field surface
-    Size pixel_statsV, ps_widthV, ps_heightV;
-	size_t posSize = 2*nV1*sizeof(double) + pixel_stats*sizeof(Float);
-    if (getStatsFrameV) {
-        ps_widthV = 510;
-        tie(xminV, xmaxV) = array_minmax<double>(V1_vx, nV1);
-        tie(yminV, ymaxV) = array_minmax<double>(V1_vy, nV1);
-        Float V1_hwRatioV = static_cast<Float>((ymaxV-yminV)/(xmaxV-xminV));
-    	ps_heightV = ceil(V1_hwRatioV * ps_widthV);
-    	// left + 4 + right
-    	pixel_statsV = (2*ps_widthV+4) * ps_heightV;
-		posSize += 2*nV1*sizeof(double) + pixel_statsV*sizeof(Float);
-    }
-	cout << "stats frame output requires " << posSize/1024.0/1024.0 << "Mb\n";
+	// cortical and LGN surface
+	V1_hwPhyRatio = V1_yspan/V1_xspan;
+    Size phyWidth = 1024;
+    Size phyHeight = ceil(V1_hwPhyRatio * phyWidth);
+    if (phyHeight%2 == 1) phyHeight++;
+    Size nPixel_phyV1 = phyWidth * phyHeight;
 
+	// two visual field surface, left and right
+    Size nPixel_visV1, visWidth, visHeight; // share with visLGN
+    if (frameVisV1output) {
+        visWidth = 510;
+		Float V1_hwVisRatioV = V1_vyspan/(2*V1_vxspan);
+    	visHeightV = ceil(V1_hwVisRatioV * visWidth);
+    	if (visHeightV%2 == 1) visHeightV++;
+    	// left + 4pixel gap + right = 1024
+    	nPixel_visV1 = 2*visWidth * visHeight;
+		posSize +=(nV1/nPixel_visV1 + 1)*nPixel_visV1*sizeof(PosInt); // est.
+    }
+	Size nPixel_visLGN = nPixel_visV1;
+
+	// allocate 
+	PosInt *d_V1_phyFramePosId;
+	Size maxV1perPixel;
+	{
+		Int* pick = new Int[nV1]; // dummy variable, picks for all neuron
+		for (PosInt i = 0; i<nV1; i++) {
+			pick[i] = 1;
+		}
+		vector<vector<PosInt>> V1_phyFramePosId_v = getUnderlyingID(&(V1_x[0]), &(V1_y[0], pick, nV1, phyWidth, phyHeight, V1_x0, V1_xspan, V1_y, V1_yspan, &maxV1perPixel) // height defined by yspan/xspan * width
+		size_t framePosIdSize = maxV1perPixel*phyWidth*phyHeight;
+		PosInt* V1_phyFramePosId = new PosInt[framePosIdSize];
+		for (PosInt i=0; i<phyWidth; i++) {
+			memcpy(V1_phyFramePosId + i*maxV1perPixel, &(V1_phyFramePosId_v[i][0]), sizeof(PosInt)*V1_phyFramePosId_v[i].size());
+		}
+		checkCudaErrors(cudaMalloc((void **) &d_V1_phyFramePosId, sizeof(PosInt)*framePosIdSize));
+		checkCudaErrors(cudaMemcpy(d_V1_phyFramePosId, V1_phyFramePosId, sizeof(PosInt)*framePosIdSize, cudaMemcpyHostToDevice));
+		delete [] V1_phyFramePosId;
+		usingGMem += framePosIdSize*sizeof(PosInt);
+	}
+
+	PosInt *d_LGN_visFramePosId;
+	Size maxLGNperPixel_I, maxLGNperPixel_C;
+	if (frameVisLGNoutput) {
+		Size nTmp = nLGN_C > nLGN_I	? nLGN_C: nLGN_I;
+		vector<bool> pick(nTmp, true); // LGN index are well separated
+		vector<vector<PosInt>> LGN_visFramePosId_vI = getUnderlyingID(&(LGN_x[0]), &(LGN_y[0], pick, nLGN_I, visWidth, visHeight, LGN_x0, LGN_xspan, LGN_y0, LGN_yspan, &maxLGNperPixel_C);
+		vector<vector<PosInt>> LGN_visFramePosId_vC = getUnderlyingID(&(LGN_x[nLGN_I]), &(LGN_y[nLGN_I], pick, nLGN_I, visWidth, visHeight, LGN_x0, LGN_xspan, LGN_y0, LGN_yspan, &maxLGNperPixel_I);
+
+		size_t framePosIdSize = (maxLGNperPixel_I + maxLGNperPixel_C)*visWidth*visHeight;
+		PosInt* LGN_visFramePosId = new PosInt[framePosIdSize];
+		for (PosInt i=0; i<visWidth; i++) {
+			memcpy(LGN_visFramePosId + i*maxLGNperPixel_I, &(LGN_visFramePosId_vI[i][0]), sizeof(PosInt)*LGN_visFramePosId_vI[i].size());
+			PosInt offset = visWidth*visHeight*maxLGNperPixel_I;
+			memcpy(LGN_visFramePosId + offset + i*maxLGNperPixel_C, &(LGN_visFramePosId_vC[i][0]), sizeof(PosInt)*LGN_visFramePosId_vC[i].size());
+		}
+		checkCudaErrors(cudaMalloc((void **) &d_LGN_visFramePosId, sizeof(PosInt)*framePosIdSize));
+		checkCudaErrors(cudaMemcpy(d_LGN_visFramePosId, LGN_visFramePosId, sizeof(PosInt)*framePosIdSize, cudaMemcpyHostToDevice));
+		delete [] LGN_visFramePosId;
+		usingGMem += framePosIdSize*sizeof(PosInt);
+	}
+
+	PosInt *d_V1_visFramePosId;
+	Size maxV1perPixel_I, maxV1perPixel_C;
+	if (frameVisV1output) {
+		Int* pick; // only for OD pick
+		if (readFeature) {
+			pick = &featureValue[0];
+		} else {
+			pick = new Int[nV1];
+			for (PosInt i = 0; i<nV1; i++) {
+				pick[i] = 1;
+			}
+		}
+		vector<vector<PosInt>> V1_visFramePosId_vI = getUnderlyingID(&(V1_x[0]), &(V1_y[0], pick, nV1, visWidth, visHeight, V1_vx0, V1_vxspan, V1_vy0, V1_vyspan, &maxV1perPixel_C);
+		for (PosInt i = 0; i<nV1; i++) {
+			pick[i] = -pick[i];
+		}
+		vector<vector<PosInt>> V1_visFramePosId_vC = getUnderlyingID(&(V1_x[0]), &(V1_y[0], pick, nV1, visWidth, visHeight, V1_vx0, V1_vxspan, V1_vy0, V1_vyspan, &maxV1perPixel_I);
+		if (!readFeature) {
+			delete [] pick;
+		}
+
+		size_t framePosIdSize = (maxV1perPixel_I + maxV1perPixel_C)*visWidth*visHeight;
+		PosInt* V1_visFramePosId = new PosInt[framePosIdSize];
+		for (PosInt i=0; i<visWidth; i++) {
+			memcpy(V1_visFramePosId + i*maxV1perPixel_I, &(V1_visFramePosId_vI[i][0]), sizeof(PosInt)*V1_visFramePosId_vI[i].size());
+			PosInt offset = visWidth*visHeight*maxV1perPixel_I;
+			memcpy(V1_visFramePosId + offset + i*maxV1perPixel_C, &(V1_visFramePosId_vC[i][0]), sizeof(PosInt)*V1_visFramePosId_vC[i].size());
+			}
+		}
+		checkCudaErrors(cudaMalloc((void **) &d_V1_visFramePosId, sizeof(PosInt)*framePosIdSize));
+		checkCudaErrors(cudaMemcpy(d_V1_visFramePosId, V1_visFramePosId, sizeof(PosInt)*framePosIdSize, cudaMemcpyHostToDevice));
+		delete [] V1_visFramePosId;
+		usingGMem += framePosIdSize*sizeof(PosInt);
+	}
+
+
+	cout << "stats frame output may require " << posSize/1024.0/1024.0 << "Mb\n";
 	// overlap multiple chunks of data transfer and computation to increase performance
     PosInt iSizeSplit = nblock % nChunk; // | maxChunkSize, i < iSizeSplit| remainChunkSize
     Size maxChunkSize = nblock/nChunk;
@@ -1235,7 +1317,8 @@ int main(int argc, char **argv) {
         	fV1_RF.close();
 	    }
     */
-    /* read V1_feature
+	Int* ODpick;
+    if (readFeature) {
         fV1_feature.open(V1_feature_filename, ios::in|ios::binary);
 	    if (!fV1_feature) {
 	    	cout << "failed to open pos file:" << V1_feature_filename << "\n";
@@ -1246,7 +1329,13 @@ int main(int argc, char **argv) {
 	    vector<Float> featureValue(nFeature*nV1); // [OD, OP, ..]
         fV1_feature.read(reinterpret_cast<char*>(&featureValue[0]), sizeof(Float)*nFeature*nV1);
 	    fV1_feature.close();
-    */
+		ODpick = &featureValue[0];
+	} else {
+		ODpick = new Int[nV1];
+		for (PosInt i=0; i<nV1; i++) {
+			ODpick[i] = 1;
+		}
+	}
 
 	{ // output file tests
 		if (saveLGN_fr) {
@@ -1459,6 +1548,8 @@ int main(int argc, char **argv) {
 		d_conDelayMat[i] = d_conDelayMat[i-1] + sChunkMatSize; // may not be filled for iChunk > iSizeSplit
 	}
 
+	cout << "Using "<< usingGMem/1024.0/1024.0 << " Mb from a total of " << deviceProps.totalGlobalMem/1024.0/1024.0 << " Mb, remaining " << (deviceProps.totalGlobalMem - usingGMem)/1024.0/1024.0 << " Mb\n";
+
     // initialize average to normalized mean luminance
     {// initialize texture to 0
         float* tLMS;
@@ -1514,7 +1605,7 @@ int main(int argc, char **argv) {
             *dLGN.spatial,
             SW_storage,
             SC_storage,
-			nLGN_L,
+			nLGN_I,
 		 	L_x0,
 		 	L_y0,
 		 	R_x0,
@@ -1523,27 +1614,6 @@ int main(int argc, char **argv) {
             nsig);
 	getLastCudaError("store failed");
 	cout << "convol parameters stored\n";
-	Size maxLGNperPixel;
-	PosInt *LGN_framePosId;
-	PosInt *V1_framePosId;
-	PosInt *d_LGN_framePosId;
-	PosInt *d_V1_framePosId;
-
-	vector<vector<PosInt>> V1_PhyFramePosId = getUnderlyingID(&(V1_x[0]), &(V1_y[0], nV1, width, height, V1_x0, V1_xspan, V1_y, V1_yspan, &maxV1perPixel)
-
-	if (frameLGNoutput) {
-		vector<vector<PosInt>> LGN_framePosId = getUnderlyingID(&(LGN_x[0]), &(LGN_y[0], nLGN, width, height, LGN_x0, LGN_xspan, LGN_y, LGN_yspan, &maxLGNperPixel)
-		LGN_framePosId = new PosInt[maxLGNperPixel*oWidth*oHeight];
-		for (PosInt i=0; i<nPixelPerFrame; i++) {
-			
-		}
-		if (frameV1output) {
-			
-				
-		}
-	}
-
-	cout << "Using "<< usingGMem/1024.0/1024.0 << " Mb from a total of " << deviceProps.totalGlobalMem/1024.0/1024.0 << " Mb, remaining " << (deviceProps.totalGlobalMem - usingGMem)/1024.0/1024.0 << " Mb\n";
 
 	if (saveLGN_gallery) {// storage check output
     	checkCudaErrors(cudaMemcpy(galleryOutput, gpu_LGN_gallery, gallerySize, cudaMemcpyDeviceToHost));
@@ -1644,7 +1714,7 @@ int main(int argc, char **argv) {
                 SW_storage, SC_storage, TW_storage,
                 currentConvol, contrast,
                 dLGN.coneType, *dLGN.spatial,
-				nLGN_L,
+				nLGN_I,
 				normViewDistance,
                 iFrameTail, maxFrame, ntPerFrame, iFramePhaseTail,
                 Itau,
