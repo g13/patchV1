@@ -2,31 +2,36 @@
 using namespace std;
 
 __global__
-void pixelize(
-        Float* __restrict__ sp,
-        double* __restrict__ x,
-        double* __restrict__ y,
-        Float* __restrict__ frame,
-        Float x0, Float x_span, Float y0, Float y_span, Size n, Size width, Size height) 
+void pixelizeOutput(
+        Float* __restrict__ fr,
+        Float* __restrict__ output,
+        PosInt* __restrict__ pid, 
+		Size* __restrict__ m, // within one pixel
+		Size trainDepth, PosInt currentTimeSlot, Size nPerPixel_I, Size nPerPixel_C, Size nPixel_I, nPixel)
 {
-    extern __shared__ Float* fInfo[];
-    Float* f_val = fInfo;
-    Size* f_n = (Size*) (f_val + width*height);
-
-    //PosIntL xid = threadIdx.x + blockDim.x * blockIdx.x;
-    //PosIntL yid = threadIdx.y + blockDim.y * blockIdx.y;
-    PosIntL id = (gridDim.x*blockIdx.y + blockIdx.x) * (blockDim.x*blockDim.y)  + threadIdx.y * blockDim.x + threadIdx.x;
-    if (id < n) {
-        Float value = array[id];
-        PosInt idx = static_cast<PosInt>(((x[id]-x0)/x_span)*width);
-        PosInt idy = static_cast<PosInt>(((y[id]-y0)/y_span)*height);
-        atomicAdd(f_n + idy*width + idx, 1);
-        atomicAdd(f_val + idy*width + idx, value);
-    }
+	PosInt tid = blockDim.x*blockIdx.x + threadIdx.x;
+	if (tid < nPixel) {
+		Size m_local = m[tid];
+		Float value = 0;
+		if (m_local > 0) {
+			Size nPerPixel = tid < nPixel_I? nPerPixel_I: nPerPixel_C;
+			for (PosInt i=0; i<m_local; i++) {
+				PosInt id = pid[tid*nPerPixel + i];
+				PosInt sInfo = fr[trainDepth*id + currentTimeSlot];
+				if (sInfo > 0) {
+					value += ceiling(sInfo);
+				}
+			}
+			value = value/m_local;
+		}
+		__syncwarp();
+		output[tid] += value
+	}
 }
 
 // From nChunks of [chunkSize, ngTypeE+ngTypeI, blockSize] -> [ngTypeE+ngTypeI, nV1], where nV1 = nChunk*chunkSize*blockSize
-void reshape_chunk_and_write(Float chunk[], ofstream &fRawData, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1) {
+void reshape_chunk_and_write(Float chunk[], ofstream &fRawData, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1)
+{
     PosIntL offset = 0;
     size_t gSize = nV1*(nE+nI);
     Float *flatten = new Float[gSize];
@@ -57,7 +62,8 @@ void reshape_chunk_and_write(Float chunk[], ofstream &fRawData, Size maxChunkSiz
     delete []flatten;
 }
 
-void getLGN_V1_surface(vector<PosInt> &xy, vector<vector<PosInt>> &LGN_V1_ID, PosInt* surface_xy, Size* nLGNperV1, Size max_LGNperV1, Size nLGN) {
+void getLGN_V1_surface(vector<PosInt> &xy, vector<vector<PosInt>> &LGN_V1_ID, PosInt* surface_xy, Size* nLGNperV1, Size max_LGNperV1, Size nLGN)
+{
     Size nV1 = LGN_V1_ID.size();
     for (PosInt i=0; i<nV1; i++) {
         nLGNperV1[i] = LGN_V1_ID[i].size();
