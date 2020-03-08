@@ -120,7 +120,8 @@ int main(int argc, char **argv) {
 		("decayTimeI", po::value<vector<Float>>(&gdI), "array for decay time of the inhibitory conductances, size should be consistent with riseTimeI")
         ("archtypeAccCount",po::value<vector<Size>>(&archtypeAccCount), "neuronal types' discrete accumulative distribution (E&I), size of [nArchtype], nArchtype = nTypeHierarchy[0]")
 		("saveLGN_fr", po::value<bool>(&saveLGN_fr)->default_value(true),"write LGN firing rates to disk, specify filename through LGN_fr_filename")
-		("getStatsFrameV", po::value<bool>(&getStatsFrameV)->default_value(false),"get response stats frame for visual field")
+		("getStatsFrameV", po::value<bool>(&getStatsFrameV)->default_value(false),"get response stats frame for visual field of V1")
+		("frameLGNoutput", po::value<bool>(&getStatsFrameV)->default_value(false),"get response stats frame for visual field of LGN")
 		("saveLGN_gallery", po::value<bool>(&saveLGN_gallery)->default_value(true), "check convolution kernels and maximum convolution values, write data to disk, specify filename through LGN_gallery_filename")
 		("saveOutputB4V1", po::value<bool>(&saveOutputB4V1)->default_value(true), "check adapted luminance values, write data to disk, specify filename through outputB4V1_filename")
 		("useNewLGN", po::value<bool>(&useNewLGN)->default_value(true), "regenerate the a new ensemble of LGN parameters according to their distribution");
@@ -362,13 +363,13 @@ int main(int argc, char **argv) {
     vector<Float> covariant(nLGN);
 
     // 
-    vector<Float> sx(nLGN);
-    vector<Float> sy(nLGN);
+    vector<Float> LGN_x(nLGN);
+    vector<Float> LGN_y(nLGN);
     Size nsx, nsy;
 	fLGN_vpos.read(reinterpret_cast<char*>(&nsx), sizeof(Size));
 	fLGN_vpos.read(reinterpret_cast<char*>(&nsy), sizeof(Size));
-	fLGN_vpos.read(reinterpret_cast<char*>(&sx[0]), nLGN*sizeof(Float));
-	fLGN_vpos.read(reinterpret_cast<char*>(&sy[0]), nLGN*sizeof(Float));
+	fLGN_vpos.read(reinterpret_cast<char*>(&LGN_x[0]), nLGN*sizeof(Float));
+	fLGN_vpos.read(reinterpret_cast<char*>(&LGN_y[0]), nLGN*sizeof(Float));
 
 	fLGN_vpos.read(reinterpret_cast<char*>(&LGNtype[0]), nLGN*sizeof(InputType_t));
 	if (useNewLGN) { // Setup LGN here 
@@ -797,14 +798,20 @@ int main(int argc, char **argv) {
 	LGN_parameter dLGN(hLGN);
     hLGN.freeMem();
 
-    vector<PosInt> sxy(2*nLGN);
+    vector<PosInt> sxyID(2*nLGN);
     ifstream fLGN_surface;
+	Float LGN_x0, LGN_xspan;
+	Float LGN_y0, LGN_yspan;
     fLGN_surface.open(fLGN_surface_filename, fstream::in | fstream::binary);
     if (!fLGN_surface) {
 	    cout << "Cannot open or find " << fLGN_surface_filename <<" to read in LGN surface position.\n";
 	    return EXIT_FAILURE;
     } else {
-        fLGN_surface.read(reinterpret_cast<char*>(&sxy[0]), 2*nLGN*sizeof(PosInt));
+        fLGN_surface.read(reinterpret_cast<char*>(&sxyID[0]), 2*nLGN*sizeof(PosInt));
+        fLGN_surface.read(reinterpret_cast<char*>(&LGN_x0), sizeof(Float));
+        fLGN_surface.read(reinterpret_cast<char*>(&LGN_xspan), sizeof(Float));
+        fLGN_surface.read(reinterpret_cast<char*>(&LGN_y0), sizeof(Float));
+        fLGN_surface.read(reinterpret_cast<char*>(&LGN_yspan), sizeof(Float));
     }
 	size_t usingGMem = 0;
 
@@ -833,7 +840,7 @@ int main(int argc, char **argv) {
 
 
     // initialize
-    checkCudaErrors(cudaMemcpy(d_sx, &(sxy[0]), sizeof(PosInt)*2*nLGN, cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMemcpy(d_sx, &(sxyID[0]), sizeof(PosInt)*2*nLGN, cudaMemcpyHostToDevice));
 
     seed++;
 	Size nLGN_block, nLGN_thread; // for LGN_nonlinear
@@ -881,6 +888,8 @@ int main(int argc, char **argv) {
     double *V1_y;
     double *V1_vx;
     double *V1_vy;
+	double V1_x0, V1_xspan;
+	double V1_y0, V1_yspan;
     fV1_pos.open(V1_pos_filename, fstream::in | fstream::binary);
     if (!fV1_pos) {
 		cout << "Cannot open or find " << V1_pos_filename <<" to read V1 positions.\n";
@@ -895,6 +904,10 @@ int main(int argc, char **argv) {
             return EXIT_FAILURE;
         }
         fV1_pos.read(reinterpret_cast<char*>(&nV1), sizeof(Size));
+        fV1_pos.read(reinterpret_cast<char*>(&V1_x0), sizeof(double));
+        fV1_pos.read(reinterpret_cast<char*>(&V1_xspan), sizeof(double));
+        fV1_pos.read(reinterpret_cast<char*>(&V1_y0), sizeof(double));
+        fV1_pos.read(reinterpret_cast<char*>(&V1_yspan), sizeof(double));
         cout << nV1 << " V1 neurons\n";
         if (!getStatsFrameV) {
             cpu_chunk_V1pos = new double[nV1*2];
@@ -1111,14 +1124,14 @@ int main(int argc, char **argv) {
     char* surfacePos = new char[surfacePosSize];
     PosInt* surface_xy = (PosInt*) surfacePos;
     Size* nLGNperV1 = (Size*) (surface_xy + 2*max_LGNperV1*nV1);
-    getLGN_V1_surface(sxy, LGN_V1_ID, surface_xy, nLGNperV1, max_LGNperV1, nLGN);
-    // release memory from LGN_V1_ID and sxy
+    getLGN_V1_surface(sxyID, LGN_V1_ID, surface_xy, nLGNperV1, max_LGNperV1, nLGN);
+    // release memory from LGN_V1_ID and sxyID
     //LGN_V1_ID.swap(vector<PosInt>());
     for (PosInt i=0; i<nV1; i++) {
         vector<PosInt>().swap(LGN_V1_ID[i]);
     }
     vector<vector<PosInt>>().swap(LGN_V1_ID);
-    vector<PosInt>().swap(sxy);
+    vector<PosInt>().swap(sxyID);
 
 	PosInt* d_surfacePos;
     checkCudaErrors(cudaMalloc((void**)&d_surfacePos, surfacePosSize));
@@ -1446,8 +1459,6 @@ int main(int argc, char **argv) {
 		d_conDelayMat[i] = d_conDelayMat[i-1] + sChunkMatSize; // may not be filled for iChunk > iSizeSplit
 	}
 
-	cout << "Using "<< usingGMem/1024.0/1024.0 << " Mb from a total of " << deviceProps.totalGlobalMem/1024.0/1024.0 << " Mb, remaining " << (deviceProps.totalGlobalMem - usingGMem)/1024.0/1024.0 << " Mb\n";
-
     // initialize average to normalized mean luminance
     {// initialize texture to 0
         float* tLMS;
@@ -1512,6 +1523,27 @@ int main(int argc, char **argv) {
             nsig);
 	getLastCudaError("store failed");
 	cout << "convol parameters stored\n";
+	Size maxLGNperPixel;
+	PosInt *LGN_framePosId;
+	PosInt *V1_framePosId;
+	PosInt *d_LGN_framePosId;
+	PosInt *d_V1_framePosId;
+
+	vector<vector<PosInt>> V1_PhyFramePosId = getUnderlyingID(&(V1_x[0]), &(V1_y[0], nV1, width, height, V1_x0, V1_xspan, V1_y, V1_yspan, &maxV1perPixel)
+
+	if (frameLGNoutput) {
+		vector<vector<PosInt>> LGN_framePosId = getUnderlyingID(&(LGN_x[0]), &(LGN_y[0], nLGN, width, height, LGN_x0, LGN_xspan, LGN_y, LGN_yspan, &maxLGNperPixel)
+		LGN_framePosId = new PosInt[maxLGNperPixel*oWidth*oHeight];
+		for (PosInt i=0; i<nPixelPerFrame; i++) {
+			
+		}
+		if (frameV1output) {
+			
+				
+		}
+	}
+
+	cout << "Using "<< usingGMem/1024.0/1024.0 << " Mb from a total of " << deviceProps.totalGlobalMem/1024.0/1024.0 << " Mb, remaining " << (deviceProps.totalGlobalMem - usingGMem)/1024.0/1024.0 << " Mb\n";
 
 	if (saveLGN_gallery) {// storage check output
     	checkCudaErrors(cudaMemcpy(galleryOutput, gpu_LGN_gallery, gallerySize, cudaMemcpyDeviceToHost));

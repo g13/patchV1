@@ -643,7 +643,7 @@ class macroMap:
 
         if not self.posUniform:
             self.posUniform = True
-        return oldpos, convergenceL, convergenceR, nlimitedL, nlimitedR
+        return oldpos
 
     def spread_pos_VF(self, dt, vpfile, lrfile, LRlabel, seed = None, firstTime = True, particle_param = None, boundary_param = None, ax = None, p_scale = 2.0, b_scale = 1.0):
         ngrid = np.sum(self.Pi).astype(int)
