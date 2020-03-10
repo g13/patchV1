@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH -p serial 
-#SBATCH --job-name=python
+#SBATCH --job-name=surf
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=28
 #SBATCH --mem=64GB
 #SBATCH --time=10:00:00
-#SBATCH -o log/py_%J.out
+#SBATCH -o log/surf_%J.out
 #SBATCH --mail-user=wd554@nyu.edu
 #SBATCH --mail-type=END
 
@@ -27,6 +27,6 @@ conda activate general
 # <<< conda initialize <<<
 
 date
-#python getLGNsurface_C.py
-python parallel_repel_system_C.py
+python getLGNsurface_I.py
+python parallel_repel_system_I.py
 date

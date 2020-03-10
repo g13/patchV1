@@ -872,7 +872,7 @@ class macroMap:
                         plt.polar(self.p_range, self.e_range[ie]+np.zeros(self.npolar),':',c='0.5', lw = 0.1)
 
 
-    def save(self, pos_file = None, OD_file = None, OP_file = None, VFxy_file = None, VFpolar_file = None, Feature_file = None, Parallel_file = None, fp = 'f4'):
+    def save(self, pos_file = None, OD_file = None, OP_file = None, VFxy_file = None, VFpolar_file = None, Feature_file = None, Parallel_uniform_file = None, allpos_file = None, Parallel_spreadVF_file = None, fp = 'f4'):
         if pos_file is not None:
             with open(pos_file,'wb') as f:
                 np.array([self.nblock, self.blockSize, self.dataDim]).astype('u4').tofile(f)        
@@ -910,14 +910,14 @@ class macroMap:
                 self.ODlabel.astype(fp).tofile(f)
                 self.op.astype(fp).tofile(f)
 
-        if Parallel_file is not None:
+        if Parallel_uniform_file is not None:
             subarea = self.subgrid[0] * self.subgrid[1]
             area = subarea * np.sum(self.Pi > 0)
             A = self.Pi.copy()
             A[self.Pi <= 0] = 0
             A[self.Pi > 0] = 1
             boundPos, btype = self.define_bound(A)
-            with open(Parallel_file, 'wb') as f:
+            with open(Parallel_uniform_file, 'wb') as f:
                 np.array([self.networkSize]).astype('u4').tofile(f)
                 self.pos.tofile(f)
                 np.array([btype.size]).astype('u4').tofile(f)
@@ -927,6 +927,52 @@ class macroMap:
                 self.subgrid.tofile(f)
                 np.array([area]).astype('f8').tofile(f)
 
+        if allpos_file is not None:
+            subarea = self.subgrid[0] * self.subgrid[1]
+            area = subarea * np.sum(self.Pi > 0)
+            A = self.Pi.copy()
+            A[self.Pi <= 0] = 0
+            A[self.Pi > 0] = 1
+            boundPos, _ = self.define_bound(A)
+            x0 = np.min(boundPos[:,0,1]) 
+            xspan = np.max(boundPos[:,0,1]) - x0
+            y0 = np.min(boundPos[:,1,1])
+            yspan = np.max(boundPos[:,1,1]) - y0
+            vx0 = 0
+            vxspan = self.ecc
+            vy0 = -self.ecc
+            vyspan = 2*self.ecc
+            with open(pos_file,'wb') as f:
+                np.array([self.nblock, self.blockSize, self.dataDim]).astype('u4').tofile(f)        
+                pos = np.empty((self.nblock, self.dataDim, self.blockSize))
+                np.array([x0, xspan, y0, yspan], dtype = float).tofile(f)        
+                pos[:,0,:] = self.pos[0,:].reshape(self.nblock,self.blockSize)
+                pos[:,1,:] = self.pos[1,:].reshape(self.nblock,self.blockSize)
+                if self.dataDim == 3:
+                    pos[:,2,:] = self.zpos
+                pos.tofile(f)
+                vpos = self.assign_pos_VF()
+                np.array([vx0, vxspan, vy0, vyspan], dtype = float).tofile(f)        
+                vx = vpos[0,:] * np.cos(vpos[1,:])
+                vy = vpos[0,:] * np.sin(vpos[1,:])
+                np.vstack((vx,vy)).tofile(f)
+
+        if Parallel_spreadVF_file is not None:
+            subarea = self.subgrid[0] * self.subgrid[1]
+            area = subarea * np.sum(self.Pi > 0)
+            A = self.Pi.copy()
+            A[self.Pi <= 0] = 0
+            A[self.Pi > 0] = 1
+            boundPos, btype = self.define_bound(A)
+            with open(Parallel_spreadVF_file, 'wb') as f:
+                np.array([self.networkSize]).astype('u4').tofile(f)
+                self.pos.tofile(f)
+                np.array([btype.size]).astype('u4').tofile(f)
+                boundPos.tofile(f)
+                btype.astype('u4').tofile(f)
+                print(np.min(btype), np.max(btype))
+                self.subgrid.tofile(f)
+                np.array([area]).astype('f8').tofile(f)
 
 ######## rarely-used functions ##############
     #

@@ -4,38 +4,6 @@ using namespace std;
 /* 
     Purpose:
         Connect neurons with visual field centered at (eccentricity, polar) in retinotopic Sheet1 :pre-synaptically: to neurons in another retinotopic Sheet2, with visual field centered near the same spot.
-    
-    Inputs:
-        1. visual field positions of neurons in Sheet1 in ((e)ccentricity, (p)olar angle) of size (2,N1) 
-            vf1 --- ([Float], [Float]) 
-        2. index list of Sheet1 neurons as an presynaptic pool to corresponding Sheet2 neurons:
-            poolList --- [[Int]];
-        3. List of Sheet2 neuron properties of size (7,N2): 
-           columns: orientation (theta), spatial phase(phase), spatial frequency(sfreq), modAmp_nConlitude* (modAmp_nCon), 2D-envelope (ecc), elipse horizontal diameter (a).
-           prop --- [[Float]]
-           * works as a spatial sensitivity parameter.
-        4. Threshold of connection:
-            P_th --- Float 
-        5. Noise applied to connection probability between On and Off:
-            P_noise --- Float 
-    Output:
-        1. visual field positions of neurons in Sheet2 in ((e)ccentricity, (p)olar angle) of size (2,N1) 
-            vf2 --- ([Float], [Float])
-        2. List of connection ID and strength per Sheet2 neuron
-            strList --- [[Int], [Float]]
-    
-    Source file structure:
-
-        "retinotopic_connection.h"
-            declare retinotopic_connection
-            declare show_connections 
-
-        "retinotopic_connection.cpp"
-            implement retinotopic_connection
-                for i-th Sheet2 neuron
-                transform properties to connection probability of the j-th neurons in the poolList[i] based on their vf positions.
-                normalize P_on and P_off by sum P_on and P_off over the poolList[i]
-                cutoff connections for P_k(x,y) < P_th, k = on/off
 */
 
 template<typename T>
@@ -437,9 +405,7 @@ vector<vector<Size>> retinotopic_vf_pool(
     return poolList;
 }
  
-// unit test
 int main(int argc, char *argv[]) {
-
     cudaDeviceProp deviceProps;
     checkCudaErrors(cudaGetDeviceProperties(&deviceProps, 0));
     printf("CUDA device [%s] has %d Multi-Processors ", deviceProps.name, deviceProps.multiProcessorCount);
@@ -466,7 +432,7 @@ int main(int argc, char *argv[]) {
     vector<Size> nRefTypeV1_RF, V1_RefTypeID;
     vector<Float> V1_RFtypeAccDist, V1_RefTypeDist;
 	string LGN_vpos_filename, V1_vpos_filename;
-    string V1_RFprop_filename,V1_feature_filename;
+	imple
 	po::options_description generic("generic options");
 	generic.add_options()
 		("help,h", "print usage")
@@ -487,15 +453,15 @@ int main(int argc, char *argv[]) {
 		("V1_RefTypeDist", po::value<vector<Float>>(&V1_RefTypeDist), "determine the relative portion of the available cone/ON-OFF combinations in each V1 RF type")
 		("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file that stores V1 neurons' parameters")
 		("fV1_RFprop", po::value<string>(&V1_RFprop_filename)->default_value("V1_RFprop.bin"), "file that stores V1 neurons' parameters")
-		("fLGN", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"), "file that stores LGN position in visual field (and on-cell off-cell label)")
+		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"), "file that stores LGN position in visual field (and on-cell off-cell label)")
 		("fV1_vpos", po::value<string>(&V1_vpos_filename)->default_value("V1_vpos.bin"), "file that stores V1 position in visual field)");
 
     string V1_filename, idList_filename, sList_filename;
 	po::options_description output_opt("output options");
 	output_opt.add_options()
 		("fV1", po::value<string>(&V1_filename)->default_value("V1RF.bin"), "file that stores V1 neurons' information")
-		("fLGN_V1_ID", po::value<string>(&idList_filename)->default_value("LGN_V1_idList.bin"), "file stores LGN to V1 connections")
-		("fLGN_V1_s", po::value<string>(&sList_filename)->default_value("LGN_V1_sList.bin"), "file stores LGN to V1 connection strengths");
+		("fLGN_vpos_V1_ID", po::value<string>(&idList_filename)->default_value("LGN_V1_idList.bin"), "file stores LGN to V1 connections")
+		("fLGN_vpos_V1_s", po::value<string>(&sList_filename)->default_value("LGN_V1_sList.bin"), "file stores LGN to V1 connection strengths");
 
 	po::options_description cmdline_options;
 	cmdline_options.add(generic).add(input_opt).add(output_opt);
@@ -560,9 +526,9 @@ int main(int argc, char *argv[]) {
 	fV1_vpos.close();
 
 
-	ifstream fLGN;
-	fLGN.open(LGN_vpos_filename, fstream::in | fstream::binary);
-	if (!fLGN) {
+	ifstream fLGN_vpos;
+	fLGN_vpos.open(LGN_vpos_filename, fstream::in | fstream::binary);
+	if (!fLGN_vpos) {
 		cout << "Cannot open or find " << LGN_vpos_filename << "\n";
 		return EXIT_FAILURE;
 	}
@@ -571,38 +537,49 @@ int main(int argc, char *argv[]) {
     Size m;
 	Float max_ecc;
 	size_pointer = &mL;
-	fLGN.read(reinterpret_cast<char*>(size_pointer), sizeof(Size));
+	fLGN_vpos.read(reinterpret_cast<char*>(size_pointer), sizeof(Size));
 	size_pointer = &mR;
-	fLGN.read(reinterpret_cast<char*>(size_pointer), sizeof(Size));
-	fLGN.read(reinterpret_cast<char*>(&max_ecc), sizeof(Float));
+	fLGN_vpos.read(reinterpret_cast<char*>(size_pointer), sizeof(Size));
+	fLGN_vpos.read(reinterpret_cast<char*>(&max_ecc), sizeof(Float));
     m = mL + mR;
+	{// not used
+		Float tmp;
+		fLGN_vpos.read(reinterpret_cast<char*>(&tmp), sizeof(Float)); // x0
+		fLGN_vpos.read(reinterpret_cast<char*>(&tmp), sizeof(Float)); // xspan
+		fLGN_vpos.read(reinterpret_cast<char*>(&tmp), sizeof(Float)); // y0
+		fLGN_vpos.read(reinterpret_cast<char*>(&tmp), sizeof(Float)); // yspan
+	}
     cout << m << " LGN neurons, " << mL << " from left eye, " << mR << " from right eye.\n";
 	cout << "need " << 3 * m * sizeof(Float) / 1024 / 1024 << "mb\n";
-
-	vector<InputType> LGNtype(m);
-	fLGN.read(reinterpret_cast<char*>(&LGNtype[0]), m * sizeof(Size));
-	//temporary vectors to get coordinate pairs
-	vector<Float> polar0(m);
-	vector<Float> ecc0(m);
-	fLGN.read(reinterpret_cast<char*>(&polar0[0]), m*sizeof(Float));
-	fLGN.read(reinterpret_cast<char*>(&ecc0[0]), m*sizeof(Float));
 	vector<Float> x0(m);
 	vector<Float> y0(m);
-	auto polar2x = [] (Float polar, Float ecc) {
-		return ecc*cos(polar);
-	};
-	auto polar2y = [] (Float polar, Float ecc) {
-		return ecc*sin(polar);
-	};
-	transform(polar0.begin(), polar0.end(), ecc0.begin(), x0.begin(), polar2x);
-	transform(polar0.begin(), polar0.end(), ecc0.begin(), y0.begin(), polar2y);
+	fLGN_vpos.read(reinterpret_cast<char*>(&x0[0]), m*sizeof(Float));
+	fLGN_vpos.read(reinterpret_cast<char*>(&y0[0]), m*sizeof(Float));
+
+	vector<InputType> LGNtype(m);
+	fLGN_vpos.read(reinterpret_cast<char*>(&LGNtype[0]), m * sizeof(Size));
+	/*** now read from file directly
+		//temporary vectors to get cartesian coordinate pairs
+		vector<Float> polar0(m);
+		vector<Float> ecc0(m);
+		fLGN_vpos.read(reinterpret_cast<char*>(&polar0[0]), m*sizeof(Float));
+		fLGN_vpos.read(reinterpret_cast<char*>(&ecc0[0]), m*sizeof(Float));
+		auto polar2x = [] (Float polar, Float ecc) {
+			return ecc*cos(polar);
+		};
+		auto polar2y = [] (Float polar, Float ecc) {
+			return ecc*sin(polar);
+		};
+		transform(polar0.begin(), polar0.end(), ecc0.begin(), x0.begin(), polar2x);
+		transform(polar0.begin(), polar0.end(), ecc0.begin(), y0.begin(), polar2y);
+		// release memory from temporary vectors
+		vector<Float>().swap(polar0);
+		vector<Float>().swap(ecc0);
+	*/
 	auto cart0 = make_pair(x0, y0);
-	// release memory from temporary vectors
 	vector<Float>().swap(x0);
 	vector<Float>().swap(y0); 
-	vector<Float>().swap(polar0);
-	vector<Float>().swap(ecc0);
-	fLGN.close();
+	fLGN_vpos.close();
 
 	cout << "carts ready\n";
     vector<BigSize> seeds{seed,seed+13};
@@ -748,9 +725,8 @@ int main(int argc, char *argv[]) {
 	fV1.write((char*)&sfreq[0], n * sizeof(Float));
     fV1.close();
 
-    // write poolList to disk
-	//print_listOfList<Size>(poolList);
+    // write poolList to disk, to be used in ext_input.cu and genCon.cu
 	write_listOfList<Size>(idList_filename, poolList, false);
-	write_listOfList<Float>(sList_filename, srList, false);
+	write_listOfListForArray<Float>(sList_filename, srList, false); // read with read_listOfListToArray
     return 0;
 }

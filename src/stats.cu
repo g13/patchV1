@@ -7,7 +7,7 @@ void pixelizeOutput(
         Float* __restrict__ output,
         PosInt* __restrict__ pid, 
 		Size* __restrict__ m, // within one pixel
-		Size trainDepth, PosInt currentTimeSlot, Size nPerPixel_I, Size nPerPixel_C, Size nPixel_I, nPixel)
+		Size trainDepth, PosInt currentTimeSlot, Size nPerPixel_I, Size nPerPixel_C, Size nPixel_I, Size nPixel)
 {
 	PosInt tid = blockDim.x*blockIdx.x + threadIdx.x;
 	if (tid < nPixel) {
@@ -25,7 +25,7 @@ void pixelizeOutput(
 			value = value/m_local;
 		}
 		__syncwarp();
-		output[tid] += value
+		output[tid] += value;
 	}
 }
 
@@ -46,13 +46,13 @@ void reshape_chunk_and_write(Float chunk[], ofstream &fRawData, Size maxChunkSiz
         }
         for (PosInt j=0; j<nE; j++) {
             for (PosInt k=0; k<chunkSize*blockSize; k++) {
-                flatten[j*nV1 + f_offset + k] = chunk[offset];
+                flatten[j*nV1 + offset_f + k] = chunk[offset];
                 offset++;
             }
         }
         for (PosInt j=0; j<nI; j++) {
             for (PosInt k=0; k<chunkSize*blockSize; k++) {
-                flatten[(nE+j)*nV1 + f_offset + k] = chunk[offset];
+                flatten[(nE+j)*nV1 + offset_f + k] = chunk[offset];
                 offset++;
             }
         }

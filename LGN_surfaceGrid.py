@@ -45,7 +45,7 @@ if exist_data:
     
 else:
     parallel_fileL = 'p_repel_finalL.bin'
-    parallel_fileR = 'p_repel_finalR2.bin'
+    parallel_fileR = 'p_repel_finalR.bin'
     with open(parallel_fileL, 'rb') as f:
         nL = np.fromfile(f, 'u4', count = 1)[0]
         posL = np.fromfile(f, 'f8', count = 2*nL).reshape(2,nL)
@@ -229,21 +229,30 @@ else:
     assert(pos_ind_fill.all())
     
     xmax_id = np.max(pos_ind[0,:])
+    xmin_id = np.max(pos_ind[0,:])
     ymax_id = np.max(pos_ind[1,:])
-    print(f'xid range: {[np.min(pos_ind[0,:]), xmax_id]}')
-    print(f'yid range: {[np.min(pos_ind[1,:]), ymax_id]}')
+    print(f'xid range: {[xmin_id, xmax_id]}')
     assert(np.min(pos_ind[0,:]) >= 0)
     assert(np.min(pos_ind[1,:]) >= 0)
     assert(xmax_id <= len(x)-2)
-    n_max = np.max([len(y[0]), len(y[other])]) - 1 # n = lines-1
+    iy = np.argmax([len(col) for col in y]) - 1 # n = lines-1
+    n_max = len(y[iy])
     assert(ymax_id <= n_max-1) # max id = n-1
+    assert(ymax_id == pos_ind[1,idy[iy][-1]]) # max id = n-1
+    ymin_id = pos_ind[1,idy[iy][0]]
+    print(f'yid range: {[ymin_id, ymax_id]}')
     
+    # adjust id to get a smaller footprint
+    pos_ind[0,:] = pos_ind[0,:] - xmin_id
     for i in range(len(y)):
         if n_max > len(y[i]):
             n0 = (n_max - len(y[i]))//2
             if n0 > 0:
                 for k in range(len(idy[i])):
                     pos_ind[1, idy[i][k]] = pos_ind[1, idy[i][k]] + n0
+    pos_ind[1,:] = pos_ind[1,:] - ymin_id
+assert(np.min(pos_ind[0,:]) == 0)
+assert(np.min(pos_ind[1,:]) == 0)
 
 figId = plt.figure('surface_Id', dpi = dpi)
 axId = figId.add_subplot(111)
@@ -285,8 +294,8 @@ ax.plot(pos[0,np.logical_not(pos_ind_fill)], pos[1,np.logical_not(pos_ind_fill)]
 ax.set_aspect('equal')
 fig.savefig('LGNsurface_grid.png', dpi = dpi)
 with open('LGN_surfaceID.bin', 'wb') as f:
-    np.array([xmin, mid, xmax]).tofile(f)
-    np.array([ymin, ymax]).tofile(f)
     np.array([xmax_id, ymax_id]).astype('u4').tofile(f)
     pos_ind.tofile(f)
+    np.array([xmin, mid, xmax]).tofile(f)
+    np.array([ymin, ymax]).tofile(f)
     pos_ind_fill.tofile(f)
