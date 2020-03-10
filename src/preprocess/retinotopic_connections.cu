@@ -431,8 +431,7 @@ int main(int argc, char *argv[]) {
     BigSize seed;
     vector<Size> nRefTypeV1_RF, V1_RefTypeID;
     vector<Float> V1_RFtypeAccDist, V1_RefTypeDist;
-	string LGN_vpos_filename, V1_vpos_filename;
-	imple
+	string LGN_vpos_filename, V1_vpos_filename, V1_RFprop_filename, V1_feature_filename;
 	po::options_description generic("generic options");
 	generic.add_options()
 		("help,h", "print usage")

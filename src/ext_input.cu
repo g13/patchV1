@@ -822,7 +822,7 @@ int main(int argc, char **argv) {
 		//fLGN_surface.read(reinterpret_cast<char*>(&LGN_y0), sizeof(Float));
 		//fLGN_surface.read(reinterpret_cast<char*>(&LGN_yspan), sizeof(Float));
 	}
-	fLGN_surface.close()
+	fLGN_surface.close();
 	size_t usingGMem = 0;
 
 	// malloc for LGN

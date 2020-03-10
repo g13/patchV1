@@ -38,17 +38,17 @@ std::vector<std::vector<PosInt>> getUnderlyingID(T* x, T* y, Int* pick, Size n, 
 }
 
 template<typename T>
-void flattenBlock(Size nblock, Size neuronPerBlock, T pos) {
-    Size networkSize = nblock*neuronPerBlock
+void flattenBlock(Size nblock, Size neuronPerBlock, T *pos) {
+    Size networkSize = nblock*neuronPerBlock;
     std::vector<T> x(networkSize);
     std::vector<T> y(networkSize);
     for (PosInt i=0; i<nblock; i++) {
         PosInt offset = i*2*neuronPerBlock;
         for (PosInt j=0; j<neuronPerBlock; j++) {
-            x.push_back(T[offset + j]);
+            x.push_back(pos[offset + j]);
         }
         for (PosInt j=0; j<neuronPerBlock; j++) {
-            y.push_back(T[offset + neuronPerBlock + j]);
+            y.push_back(pos[offset + neuronPerBlock + j]);
         }
     }
     memcpy(pos, &x[0], networkSize*sizeof(T));
