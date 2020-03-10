@@ -20,7 +20,7 @@ enum class RFtype: Size {
     doubleOppopent_gabor = 4 // cone and spatial opponency in Gabor profile, V1
 };
 
-enum class OutputType: Size { // V1 local RF 
+enum class OutputType: Size { // V1 local RF subregion
 	// if RF has double peaks, choose the first on the left
 	// surround ignored when RF have double peaks
 	// non-opponent

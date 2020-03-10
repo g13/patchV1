@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
 		("fV1_typeMat", po::value<string>(&typeMat_filename)->default_value(""), "read nTypeHierarchy, pTypeMat, sTypeMat from this file, not implemented")
         ("fV1_type", po::value<string>(&V1_type_filename)->default_value("V1_type.bin"), "file to read predetermined neuronal types based on nTypeHierarchy")
         ("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file to read spatially predetermined functional features of neurons")
-        ("fV1_pos", po::value<string>(&V1_pos_filename)->default_value("V1_pos.bin"), "the directory to read neuron positions");
+        ("fV1_pos", po::value<string>(&V1_pos_filename)->default_value("V1_allpos.bin"), "the directory to read neuron positions");
 
 	po::options_description output_opt("output options");
 	output_opt.add_options()
@@ -197,6 +197,15 @@ int main(int argc, char *argv[])
 		cout << "the dimension of position coord intended is " << usingPosDim << ", data provided from " << V1_pos_filename << " gives " << dataDim << "\n";
 		return EXIT_FAILURE;
 	}
+	
+	{// not used
+		double tmp;	
+		fV1_pos.read(reinterpret_cast<char*>(&tmp), sizeof(double));
+		fV1_pos.read(reinterpret_cast<char*>(&tmp), sizeof(double));
+		fV1_pos.read(reinterpret_cast<char*>(&tmp), sizeof(double));
+		fV1_pos.read(reinterpret_cast<char*>(&tmp), sizeof(double));
+	}
+	
     vector<double> pos(usingPosDim*networkSize);
     fV1_pos.read(reinterpret_cast<char*>(&pos[0]), usingPosDim*networkSize*sizeof(double));
 	fV1_pos.close();
@@ -207,7 +216,7 @@ int main(int argc, char *argv[])
 	if (nHierarchy - 1 > 0) {
 		fV1_type.open(V1_type_filename, ios::in | ios::binary);
 		if (!fV1_type) {
-			cout << "failed to open pos file:" << V1_type_filename << ", note if nHierarchy: " << nHierarchy << " > 1.\n";
+			cout << "failed to open V1type file:" << V1_type_filename << ", note if nHierarchy: " << nHierarchy << " > 1.\n";
 			return EXIT_FAILURE;
 		}
 		fV1_type.read(reinterpret_cast<char*>(&nSubHierarchy), sizeof(Size));
@@ -234,7 +243,7 @@ int main(int argc, char *argv[])
 	// read predetermined functional response features of neurons (use as starting seed if involve learning).
     fV1_feature.open(V1_feature_filename, ios::in|ios::binary);
 	if (!fV1_feature) {
-		cout << "failed to open pos file:" << V1_feature_filename << "\n";
+		cout << "failed to open feature file:" << V1_feature_filename << "\n";
 		return EXIT_FAILURE;
 	}
 	Size nFeature;
@@ -355,7 +364,7 @@ int main(int argc, char *argv[])
     // blocks
     Float* block_x = (Float*) cpu_chunk;
     Float* block_y = block_x + nblock;
-    Size* neighborBlockId = (Size*) (block_y + nblock);
+    PosInt* neighborBlockId = (Size*) (block_y + nblock);
     Size* nNeighborBlock = neighborBlockId + maxNeighborBlock*nblock;
 
     // connectome
@@ -393,7 +402,7 @@ int main(int argc, char *argv[])
     // device to host
     Float* __restrict__ d_block_x = (Float*) (d_pos + usingPosDim*networkSize); 
     Float* __restrict__ d_block_y = d_block_x + nblock;
-    Size*  __restrict__ d_neighborBlockId = (Size*) (d_block_y + nblock);
+    PosInt*  __restrict__ d_neighborBlockId = (Size*) (d_block_y + nblock);
     Size*  __restrict__ d_nNeighborBlock = d_neighborBlockId + maxNeighborBlock*nblock;
 
     Float* __restrict__ d_conMat = (Float*) (d_nNeighborBlock + nblock);
@@ -463,7 +472,7 @@ int main(int argc, char *argv[])
     //cout << "number of neighbors: ";
     for (Size i=0; i<nblock; i++) {
         //cout << nNeighborBlock[i] <<  ", ";
-        fNeighborBlock.write((char*)&neighborBlockId[i*maxNeighborBlock], nNeighborBlock[i]*sizeof(Size));
+        fNeighborBlock.write((char*)&neighborBlockId[i*maxNeighborBlock], nNeighborBlock[i]*sizeof(PosInt));
     }
     //cout << "\n";
     fNeighborBlock.close();

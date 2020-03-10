@@ -130,7 +130,7 @@ __global__
 __launch_bounds__(blockSize, 1)
 void get_neighbor_blockId(Float* __restrict__ block_x,
                           Float* __restrict__ block_y,
-                          Size* __restrict__ neighborBlockId,
+                          PosInt* __restrict__ neighborBlockId,
                           Size* __restrict__ nNeighborBlock,
                           Size nblock, Float max_radius, Size maxNeighborBlock);
 
@@ -140,7 +140,7 @@ void generate_connections(double* __restrict__ pos,
                           Float* __restrict__ preS_type,
                           Float* __restrict__ preP_type,
                           Size* __restrict__ preN,
-                          Size* __restrict__ neighborBlockId,
+                          PosInt* __restrict__ neighborBlockId,
                           Size* __restrict__ nNeighborBlock,
                           Float* __restrict__ rden,
                           Float* __restrict__ raxn,
