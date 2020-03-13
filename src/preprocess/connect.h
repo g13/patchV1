@@ -6,8 +6,10 @@
 #include <helper_functions.h> // include cuda.h and cuda_runtime_api.h
 #include <helper_cuda.h>
 #include <curand_kernel.h>
+#include <cassert>
 #include "../MACRO.h"
 #include "../types.h"
+#include "../util/cuda_util.cuh"
 
 struct hInitialize_package {
 	Size* mem_block;

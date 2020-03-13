@@ -12,7 +12,7 @@
 #define nOutputType 4
 #define nInputType 4
 
-enum class RFtype: Size {
+enum class RFtype: PosInt {
 	nonOppopent_gabor = 0,  // different cone input correlates, i.e., have the same sign, in gabor form, find in V1
 	nonOppopent_cs = 1,  // different cone input correlates, i.e., have the same sign, in center surround form not necessarily concentric, find in V1
 	singleOppopent = 2, // center surround cone opponency, LGN and V1
@@ -20,7 +20,7 @@ enum class RFtype: Size {
     doubleOppopent_gabor = 4 // cone and spatial opponency in Gabor profile, V1
 };
 
-enum class OutputType: Size { // V1 local RF subregion
+enum class OutputType: PosInt { // V1 local RF subregion
 	// if RF has double peaks, choose the first on the left
 	// surround ignored when RF have double peaks
 	// non-opponent
@@ -32,7 +32,7 @@ enum class OutputType: Size { // V1 local RF subregion
 };
 
 // TODO: add On-Off
-enum class InputType: Size { // LGN
+enum class InputType: PosInt { // LGN
     // center-surround
     LonMoff = 0,
     LoffMon = 1,

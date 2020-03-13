@@ -1,7 +1,4 @@
 #include "connect.h"
-#include <cassert>
-#include "../util/cuda_util.cuh"
-#include "../types.h"
 
 extern __device__ __constant__ pFeature pref[];
 

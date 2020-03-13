@@ -114,9 +114,9 @@ void orthPhiRotate3D(Float theta0, Float phi0, Float eta, Float &cost, Float &si
 	
     // need by the next step is cos and sin
     //cosPhi = cos(phi0) * cos(eta);
-    double dcos = cos(static_cast<double>(eta));
-	double cosPhi_d = cos(static_cast<double>(phi0)) * dcos;
-    double sinPhi_d = sqrt(1.0 - cosPhi_d*cosPhi_d);
+    double dcos = cosineb(static_cast<double>(eta));
+	double cosPhi_d = cosineb(static_cast<double>(phi0)) * dcos;
+    double sinPhi_d = square_rootb(1.0 - cosPhi_d*cosPhi_d);
 	/* DEBUG
     if (abs(sinPhi_d) == 0 || abs(dcos) == 0) {
         printf("cosPhi = %e, sinPhi = %e, cos0(%f) = %e, dcos(%f) = %e\n", cosPhi_d, sinPhi_d, phi0, cos(static_cast<double>(phi0)), eta, cos(static_cast<double>(eta)));
@@ -126,16 +126,27 @@ void orthPhiRotate3D(Float theta0, Float phi0, Float eta, Float &cost, Float &si
 
 	cosPhi = static_cast<Float>(cosPhi_d);
     sinPhi = static_cast<Float>(sinPhi_d);
+    if (sinPhi == 0) {
+        printf("sinPhi_d = %e, sinPhi = %e", sinPhi_d, sinPhi);
+        assert(sinPhi != 0);
+    }
 
     Float cost1, sint1;
     cost1 = sine(phi0) * dcos/sinPhi;
     sint1 = sine(eta)/sinPhi;
     if (abs(sint1) > 1.0) {
-        assert(abs(cost1) < 1.0);
+        if (abs(cost1) >= 1.0) {
+            //printf("cost1 = %e, sin(%e) = %e, dcos = %e, sinPhi = %e | %e\n", cost1, phi0, sine(phi0), dcos, sinPhi, sinPhi_d);
+            printf("cosPhi = %e | %e, sinPhi_d = %e | %e sine(%e) = %e | %e, cosine(%e) = %e | %e, dcos: cosine(%e) = %e | %e, one: %e | %e\n", cosPhi, cosPhi_d, sinPhi, sinPhi_d, phi0, sine(phi0), sineb(phi0), phi0, cosine(phi0), cosineb(phi0), eta, cosine(eta), cosineb(eta), cosPhi*cosPhi + sinPhi*sinPhi, cosPhi_d*cosPhi_d + sinPhi_d*sinPhi_d);
+            assert(abs(cost1) < 1.0);
+        }
         sint1 = copyms(square_root(1-cost1*cost1), sint1);
     }
     if (abs(cost1) > 1.0) {
-        assert(abs(sint1) < 1.0);
+        if (abs(sint1) >= 1.0) {
+            printf("sint1 = %e, sin(%e) = %e, sinPhi = %e | %e\n", sint1, eta, sine(eta), sinPhi, sinPhi_d);
+            assert(abs(sint1) < 1.0);
+        }
         cost1 = copyms(square_root(1-sint1*sint1), cost1);
     }
 	/* DEBUG

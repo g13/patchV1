@@ -146,13 +146,14 @@ std::vector<std::vector<T>> read_listOfList(std::string filename, bool print = f
 	std::vector<std::vector<T>>	data;
 	do {
         Size listSize;
-        input_file.read(reinterpret_cast<char*>(&listSize), sizeof(Int));
+        input_file.read(reinterpret_cast<char*>(&listSize), sizeof(Size));
+        if (!input_file) break;
 		std::vector<T> new_data(listSize);
 		if (listSize > 0) {
 			input_file.read(reinterpret_cast<char*>(&new_data[0]), listSize * sizeof(T));
 		}
 		data.push_back(new_data);
-    } while (!input_file.eof());
+    } while (true);
 	input_file.close();
 	return data;
 } 
@@ -189,7 +190,7 @@ void write_listOfListForArray(std::string filename, std::vector<std::vector<T>> 
 }
 
 template <typename T>
-void read_listOfListToArray(std::string filename, T *&array, Size &maxList, bool print = false) {
+void read_listOfListToArray(std::string filename, T* &array, Size &maxList, bool print = false) {
 	std::ifstream input_file;
 	input_file.open(filename, std::fstream::in | std::fstream::binary);
 	if (!input_file) {
@@ -205,7 +206,7 @@ void read_listOfListToArray(std::string filename, T *&array, Size &maxList, bool
         Size listSize;
         input_file.read(reinterpret_cast<char*>(&listSize), sizeof(Size));
 		input_file.read(reinterpret_cast<char*>(&array[i*maxList]), listSize * sizeof(T));
-    } 
+    }
 	input_file.close();
 } 
 

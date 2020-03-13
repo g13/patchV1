@@ -62,11 +62,12 @@ void reshape_chunk_and_write(Float chunk[], ofstream &fRawData, Size maxChunkSiz
     delete []flatten;
 }
 
-void getLGN_V1_surface(vector<PosInt> &xy, vector<vector<PosInt>> &LGN_V1_ID, PosInt* surface_xy, Size* nLGNperV1, Size max_LGNperV1, Size nLGN)
+void getLGN_V1_surface(vector<PosInt> &xy, vector<vector<PosInt>> &LGN_V1_ID, PosInt surface_xy[], Size nLGNperV1[], Size max_LGNperV1, Size nLGN)
 {
     Size nV1 = LGN_V1_ID.size();
     for (PosInt i=0; i<nV1; i++) {
         nLGNperV1[i] = LGN_V1_ID[i].size();
+        assert(nLGNperV1[i] <= max_LGNperV1);
         for (PosInt j=0; j<nLGNperV1[i]; j++) {
             PosInt xid = i*max_LGNperV1 + j;
             surface_xy[xid] = xy[LGN_V1_ID[i][j]]; // x

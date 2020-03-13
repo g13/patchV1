@@ -344,11 +344,14 @@ int main(int argc, char *argv[])
         half *= 2;
 	    cpu_chunk = malloc(memorySize);
     } while ((cpu_chunk == NULL || d_memorySize > deviceProps.totalGlobalMem*0.8) && nblock > 1);
+    
     Size nChunk = (nblock + maxChunkSize-1) /maxChunkSize - 1;
+    cout << "nChunk = " << nChunk+1 << ", with maxChunkSize: " << maxChunkSize << " in total " << nblock << " blocks.\n";
     Size remainChunkSize = nblock%maxChunkSize;
 	if (remainChunkSize == 0) {
 		remainChunkSize = maxChunkSize;
 	}
+    assert(maxChunkSize * nChunk + remainChunkSize == nblock);
 	printf("need to allocate %f MB memory on host\n", static_cast<float>(memorySize)/1024/1024);
 	// to receive from device
     void* __restrict__ gpu_chunk;

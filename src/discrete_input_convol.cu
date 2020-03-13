@@ -278,7 +278,9 @@ void store_spatialWeight(
     
 	block_reduce<Float>(reduced, spatialWeight);
     // TODO: gaussian spatialWeight with fixed sample point in the unit of sigma is the same across neuorns, can be passed from host directly
-    SW_storage[storeID] = spatialWeight/reduced[0];
+	if (blockIdx.x == 0 && blockIdx.y == 0) {
+		SW_storage[threadIdx.x + threadIdx.y*blockDim.x] = spatialWeight/reduced[0];
+	}
 	Float cosp, sinp; 
     Float cosEcc, sinEcc;
 	orthPhiRotate3D(centerPolar, centerEcc + h, w, cosp, sinp, cosEcc, sinEcc);
@@ -501,8 +503,8 @@ void LGN_convol_c1s(
     SmallSize typeS = coneType[blockIdx.x + 1*gridDim.x];
     SmallSize typeC = coneType[blockIdx.x + 0*gridDim.x];
 
-    Float spatialWeightS = SW_storage[storeIDS];
-    Float spatialWeightC = SW_storage[storeIDC];
+    Float spatialWeightS = SW_storage[tid];
+    Float spatialWeightC = SW_storage[tid];
     //initialize return value
     /* looping the following over (nPatch+1) patches on nKernelSample samples points:
         p - parallelized by all threads;

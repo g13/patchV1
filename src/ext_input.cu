@@ -21,6 +21,15 @@
 #include "global.h"
 #include "MACRO.h"
 
+
+inline int checkGMemUsage(size_t usingGMem, size_t GMemAvail) {
+	if (usingGMem > GMemAvail) {
+		std::cout << usingGMem / 1024.0 / 1024.0 << " > GMem available on device: " << GMemAvail << "\n";
+		return EXIT_FAILURE;
+	} else {
+		return EXIT_SUCCESS;
+	}
+}
 // the retinal discrete x, y as cone receptors id
 inline void init_layer(texture<float, cudaTextureType2DLayered> &layer) {
 	layer.addressMode[0] = cudaAddressModeBorder;
@@ -61,6 +70,7 @@ int main(int argc, char **argv) {
 	printf("CUDA device [%s] has %d Multi-Processors ", deviceProps.name, deviceProps.multiProcessorCount);
 	printf("SM %d.%d\n", deviceProps.major, deviceProps.minor);
 	printf("total global memory: %f Mb.\n", deviceProps.totalGlobalMem/1024.0/1024.0);
+	size_t GMemAvail = deviceProps.totalGlobalMem;
 
 #ifdef SINGLE_PRECISION
 	cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeFourByte);
@@ -133,7 +143,7 @@ int main(int argc, char **argv) {
 	string V1_RF_filename, V1_feature_filename, V1_pos_filename;
 	string neighborBlock_filename;
 	string V1_vec_filename, V1_delayMat_filename, V1_conMat_filename;
-	string fLGN_surface_filename;
+	string LGN_surfaceID_filename;
 	string LGN_filename, LGN_vpos_filename, LGN_V1_s_filename, LGN_V1_ID_filename; // inputs
 	string LGN_fr_filename, outputFrame_filename; // outputs
 	string LGN_convol_filename, LGN_gallery_filename, outputB4V1_filename, rawData_filename;
@@ -142,7 +152,7 @@ int main(int argc, char **argv) {
 		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"),"file that stores LGN neurons information")
 		("fLGN_V1_ID", po::value<string>(&LGN_V1_ID_filename)->default_value("LGN_V1_idList.bin"),"file stores LGN to V1 connections")
 		("fLGN_V1_s", po::value<string>(&LGN_V1_s_filename)->default_value("LGN_V1_sList.bin"),"file stores LGN to V1 connection strengths")
-		("fLGN_surface", po::value<string>(&fLGN_surface_filename)->default_value("LGN_surface.bin"),"file stores LGN position on surface memory")
+		("fLGN_surfaceID", po::value<string>(&LGN_surfaceID_filename)->default_value("LGN_surfaceID.bin"),"file stores LGN position ID on surface memory")
 		("fV1_pos", po::value<string>(&V1_pos_filename)->default_value("V1_allpos.bin"), "file that stores V1 coritcal position and visual field position")
 		("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file to read spatially predetermined functional features of neurons")
 		("fV1_conMat", po::value<string>(&V1_conMat_filename)->default_value("V1_conMat.bin"), "file that stores V1 to V1 connection within the neighboring blocks")
@@ -197,7 +207,7 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	Size ngTypeI = grE.size();
+	Size ngTypeI = grI.size();
 	if (ngTypeI > 5) {
 		cout << "too many types of inhibitory conductances, change the array size of time constant in condShape.h accordingly and recompile\n"; 
 		return EXIT_FAILURE;
@@ -222,7 +232,7 @@ int main(int argc, char **argv) {
 	}
 
 	if (archtypeAccCount.size() != 2) {
-		cout << "the accumulative distribution of neuronal type <archtypeAccCount> has size of " << archtypeAccCount.size() << " > 2, but only E&I are implemented\n";
+		cout << "the accumulative distribution of neuronal type <archtypeAccCount> has size of " << archtypeAccCount.size() << " != 2, but only E&I are implemented\n";
 		return EXIT_FAILURE;
 	}
 	Size mE = archtypeAccCount[0];
@@ -233,6 +243,28 @@ int main(int argc, char **argv) {
 	delete [] riseTimeI;
 	delete [] decayTimeE;
 	delete [] decayTimeI;
+
+	// precheck
+	bool simpleContrast = true; // TODO : implement this for comparison no cone adaptation if set to true
+	Size stepRate = std::round(1000/dt);
+	if (std::round(1000/dt) != 1000/dt) {
+		cout << "stepRate = " << 1000/dt << "Hz, but it has to be a integer.\n";
+		return EXIT_FAILURE;
+	}
+	if (frameRate > stepRate) {
+		cout << "stepRate cannot be smaller than frameRate, 1000/dt.\n";
+		return EXIT_FAILURE;
+	}
+
+	Size nRetrace = static_cast<Size>(std::round(tau/dt));
+	if (std::round(tau/dt) != tau/dt) {
+		cout << "tau: " << tau << " should be divisible by dt: " << tau << ".\n"; 
+		return EXIT_FAILURE;
+	}
+	if (nRetrace % nKernelSample != 0) {
+		cout << "tau: " << nRetrace << " in #dt should be divisible by nKernelSample: " << nKernelSample << ".\n"; 
+		return EXIT_FAILURE;
+	}
 
 	// from the retina facing out
 	ifstream fStimulus; // ext. inputs
@@ -339,7 +371,7 @@ int main(int argc, char **argv) {
 	}
 	// TODO: reduce memory usage if no distribution
 	printf("=== temporal storage memory required: %dx%dx%d = %fMB\n", nKernelSample,nLGN,nType,nKernelSample*nLGN*nType*sizeof(Float)/1024.0/1024.0);
-	printf("=== spatial storage memory required: %dx%dx%d = %fMB\n", nSample, nLGN, nType, nSample*nType*nLGN*sizeof(Float)/1024.0/1024.0);
+	printf("=== spatial storage memory required: %dx%d = %fMB\n", nSpatialSample1D, nSpatialSample1D, nSample*sizeof(Float)/1024.0/1024.0);
 	printf("=== texture coord storage memory required: %dx%dx%d = %fMB\n", nSample, nLGN, nType, 2*nSample*nType*nLGN*sizeof(float)/1024.0/1024.0);
 
 	// vectors to initialize LGN
@@ -805,24 +837,24 @@ int main(int argc, char **argv) {
 	hLGN.freeMem();
 
 	vector<PosInt> sxyID(2*nLGN);
-	ifstream fLGN_surface;
+	ifstream fLGN_surfaceID;
 	//Float LGN_x0, LGN_xspan;
 	//Float LGN_y0, LGN_yspan;
 	Size nsx, nsy;
-	fLGN_surface.open(fLGN_surface_filename, fstream::in | fstream::binary);
-	if (!fLGN_surface) {
-		cout << "Cannot open or find " << fLGN_surface_filename <<" to read in LGN surface position.\n";
+	fLGN_surfaceID.open(LGN_surfaceID_filename, fstream::in | fstream::binary);
+	if (!fLGN_surfaceID) {
+		cout << "Cannot open or find " << LGN_surfaceID_filename <<" to read in LGN surface position.\n";
 		return EXIT_FAILURE;
 	} else {
-		fLGN_surface.read(reinterpret_cast<char*>(&nsx), sizeof(Size));
-		fLGN_surface.read(reinterpret_cast<char*>(&nsy), sizeof(Size));
-		fLGN_surface.read(reinterpret_cast<char*>(&sxyID[0]), 2*nLGN*sizeof(PosInt));
+		fLGN_surfaceID.read(reinterpret_cast<char*>(&nsx), sizeof(Size));
+		fLGN_surfaceID.read(reinterpret_cast<char*>(&nsy), sizeof(Size));
+		fLGN_surfaceID.read(reinterpret_cast<char*>(&sxyID[0]), 2*nLGN*sizeof(PosInt));
 		//fLGN_surface.read(reinterpret_cast<char*>(&LGN_x0), sizeof(Float));
 		//fLGN_surface.read(reinterpret_cast<char*>(&LGN_xspan), sizeof(Float));
 		//fLGN_surface.read(reinterpret_cast<char*>(&LGN_y0), sizeof(Float));
 		//fLGN_surface.read(reinterpret_cast<char*>(&LGN_yspan), sizeof(Float));
 	}
-	fLGN_surface.close();
+	fLGN_surfaceID.close();
 	size_t usingGMem = 0;
 
 	// malloc for LGN
@@ -836,13 +868,14 @@ int main(int argc, char **argv) {
 	char* gpu_B4V1;
 	checkCudaErrors(cudaMalloc((void **)&gpu_B4V1, B4V1Size));
 	usingGMem += B4V1Size;
+	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	PosInt *d_sx = (PosInt*) gpu_B4V1;
 	PosInt *d_sy =  d_sx + nLGN;
-	Float* leftTimeRate = (Float*) d_sy + nLGN;
+	Float* leftTimeRate = (Float*) (d_sy + nLGN);
 	Float* lastNegLogRand = leftTimeRate + nLGN;
-	curandStateMRG32k3a *randState = (curandStateMRG32k3a*) lastNegLogRand + nLGN;
-	Float* d_LGN_fr = (Float*) randState + nLGN;
+	curandStateMRG32k3a *randState = (curandStateMRG32k3a*) (lastNegLogRand + nLGN);
+	Float* d_LGN_fr = (Float*) (randState + nLGN);
 	Float* currentConvol = d_LGN_fr + nLGN;
 	// TODO: not necessary when not checking add option flag
 	Float* luminance = currentConvol + nLGN; 
@@ -856,7 +889,7 @@ int main(int argc, char **argv) {
 	Size nLGN_block, nLGN_thread; // for LGN_nonlinear
 	nLGN_block = (nLGN + blockSize - 1)/blockSize;
 	nLGN_thread = blockSize;
-	logRand_init<<<nLGN_block, nLGN_thread>>>(lastNegLogRand, leftTimeRate, randState, seed);
+	logRand_init<<<nLGN_block, nLGN_thread>>>(lastNegLogRand, leftTimeRate, randState, seed, nLGN);
 	getLastCudaError("logRand_init");
 
 	// malloc LGN_surface
@@ -865,18 +898,21 @@ int main(int argc, char **argv) {
 	checkCudaErrors(cudaMallocArray(&cuSurfArray, &surfaceDesc, nsx, nsy, cudaArraySurfaceLoadStore));
 	cudaBindSurfaceToArray(LGNspikeSurface, cuSurfArray);
 	usingGMem += nsx*nsy*sizeof(Float);
+	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	// Storage memory
 	size_t maxConvolSize = nLGN;
+	// SC and TW are computation intensive
 	size_t TW_size = nType*nKernelSample*nLGN;
-	size_t SW_size = nType*nSample*nLGN;
 	size_t SC_size = 2*nType*nSample*nLGN;
+	size_t SW_size = nSample; // normalized Gaussian has constant values at constant intervals, heterogeneity is reflected by Spatial Coordinates (SC_storage)
 	size_t gallerySize = (maxConvolSize + TW_size + SW_size)*sizeof(Float) + SC_size*sizeof(float);
 	char* galleryOutput = new char[gallerySize]; 
 
 	Float* gpu_LGN_gallery;
 	checkCudaErrors(cudaMalloc((void **) &gpu_LGN_gallery, gallerySize));
 	usingGMem += gallerySize;
+	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	Float* maxConvol = gpu_LGN_gallery;
 	Float* TW_storage = maxConvol + maxConvolSize;
@@ -933,12 +969,48 @@ int main(int argc, char **argv) {
 			fV1_pos.read(reinterpret_cast<char*>(&V1_vyspan), sizeof(double));
 			fV1_pos.read(reinterpret_cast<char*>(cpu_chunk_V1pos + 2*nV1), 2*nV1*sizeof(double));
 		}
-        flattenBlock<double>(nblock, neuronPerBlock, cpu_chunk_V1pos);
 		V1_x = cpu_chunk_V1pos;
 		V1_y = V1_x + nV1;
+        flattenBlock<double>(nblock, neuronPerBlock, cpu_chunk_V1pos);
+		Float xMax, xMin;
+		Float yMax, yMin;
+		for (PosInt i = 0; i < nV1; i++) {
+			if (i == 0) {
+				xMax = V1_x[0];
+				xMin = V1_x[0];
+				yMax = V1_y[0];
+				yMin = V1_y[0];
+			}
+			else {
+				if (V1_x[i] > xMax) xMax = V1_x[i];
+				if (V1_x[i] < xMin) xMin = V1_x[i];
+				if (V1_y[i] > yMax) yMax = V1_y[i];
+				if (V1_y[i] < yMin) yMin = V1_y[i];
+			}
+		}
+		cout << "x:" << xMin << ", " << xMax << "\n";
+		cout << "y:" << yMin << ", " << yMax << "\n";
 		if (frameVisV1output) {
 			V1_vx = V1_y + nV1;
 			V1_vy = V1_vx + nV1;
+			Float vxMax, vxMin;
+			Float vyMax, vyMin;
+			for (PosInt i = 0; i < nV1; i++) {
+				if (i == 0) {
+					vxMax = V1_vx[0];
+					vxMin = V1_vx[0];
+					vyMax = V1_vy[0];
+					vyMin = V1_vy[0];
+				}
+				else {
+					if (V1_vx[i] > vxMax) vxMax = V1_vx[i];
+					if (V1_vx[i] < vxMin) vxMin = V1_vx[i];
+					if (V1_vy[i] > vyMax) vyMax = V1_vy[i];
+					if (V1_vy[i] < vyMin) vyMin = V1_vy[i];
+				}
+			}
+			cout << "vx:" << vxMin << ", " << vxMax << "\n";
+			cout << "vy:" << vyMin << ", " << vyMax << "\n";
 		}
 	}
 	fV1_pos.close();
@@ -996,10 +1068,12 @@ int main(int argc, char **argv) {
 		// assign
 		for (PosInt i=0; i<nPixel_phyV1; i++) {
 			nV1perPhyPixel[i] = V1_phyFramePosId_v[i].size();
-			memcpy(V1_phyFramePosId + i*maxV1perPixel, &(V1_phyFramePosId_v[i][0]), sizeof(PosInt)*V1_phyFramePosId_v[i].size());
+			if (nV1perPhyPixel[i] > 0) memcpy(V1_phyFramePosId + i*maxV1perPixel, &(V1_phyFramePosId_v[i][0]), sizeof(PosInt)*nV1perPhyPixel[i]);
 		}
 		// gpu allocate
 		checkCudaErrors(cudaMalloc((void **) &d_V1_phyFrame, V1_phyFrameSize));
+		usingGMem += V1_phyFrameSize;
+		if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 		// copy to gpu
 		checkCudaErrors(cudaMemcpy(d_V1_phyFrame, V1_phyFrame, V1_phyFrameSize, cudaMemcpyHostToDevice));
 		// place pointers
@@ -1007,7 +1081,6 @@ int main(int argc, char **argv) {
 		d_V1_phyFramePosId = (PosInt*) (d_nV1perPhyPixel + nPixel_phyV1);
 
 		delete [] V1_phyFrame;
-		usingGMem += V1_phyFrameSize;
 		nFrameOutput += 1;
 		cout << "V1 frame output " << phyWidth << "x" << phyHeight << ", " << maxV1perPixel << " V1 neurons per pixel.\n";
 	}
@@ -1030,15 +1103,14 @@ int main(int argc, char **argv) {
 		Size* nLGNperPixel = (Size*) LGN_visFrame;
 		PosInt* LGN_visFramePosId = (PosInt*) (nLGNperPixel + nPixel_visLGN);
 		// assign
+		PosInt offset = visWidth*visHeight;
 		for (PosInt i=0; i<visWidth*visHeight; i++) {
 			// Ipsi
 			nLGNperPixel[i] = LGN_visFramePosId_vI[i].size();
-			memcpy(LGN_visFramePosId + i*maxLGNperPixel_I, &(LGN_visFramePosId_vI[i][0]), sizeof(PosInt)*LGN_visFramePosId_vI[i].size());
+			if (nLGNperPixel[i] > 0) memcpy(LGN_visFramePosId + i*maxLGNperPixel_I, &(LGN_visFramePosId_vI[i][0]), sizeof(PosInt)*nLGNperPixel[i]);
 			// Contra
-			PosInt offset = visWidth*visHeight;
 			nLGNperPixel[i+offset] = LGN_visFramePosId_vC[i].size();
-			offset *= maxLGNperPixel_I;
-			memcpy(LGN_visFramePosId + offset + i*maxLGNperPixel_C, &(LGN_visFramePosId_vC[i][0]), sizeof(PosInt)*LGN_visFramePosId_vC[i].size());
+			if (nLGNperPixel[i+offset] > 0) memcpy(LGN_visFramePosId + offset*maxLGNperPixel_I + i*maxLGNperPixel_C, &(LGN_visFramePosId_vC[i][0]), sizeof(PosInt)*nLGNperPixel[i+offset]);
 		}
 		// gpu allocate 
 		checkCudaErrors(cudaMalloc((void **) &d_LGN_visFrame, LGN_visFrameSize));
@@ -1050,8 +1122,9 @@ int main(int argc, char **argv) {
 
 		delete [] LGN_visFrame;
 		usingGMem += LGN_visFrameSize;
+		if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 		nFrameOutput += 1;
-		cout << "LGN frame output " << phyWidth << "x" << phyHeight << ", " << maxV1perPixel << " LGN per pixel.\n";
+		cout << "LGN VF frame output " << visWidth << "x" << visHeight << ", " << maxLGNperPixel_C << "(" << maxLGNperPixel_I << ")" << "Contra(Ipsi) LGN neurons per pixel.\n";
 	}
 
 	char* d_V1_visFrame;
@@ -1084,15 +1157,14 @@ int main(int argc, char **argv) {
 		Size* nV1perVisPixel = (Size*) V1_visFrame;
 		PosInt* V1_visFramePosId = (PosInt*) (nV1perVisPixel + nPixel_visV1);
 		// assign
+		PosInt offset = visWidth*visHeight;
 		for (PosInt i=0; i<visWidth*visHeight; i++) {
 			// Ipsi 
 			nV1perVisPixel[i] = V1_visFramePosId_vI[i].size();
-			memcpy(V1_visFramePosId + i*maxV1perPixel_I, &(V1_visFramePosId_vI[i][0]), sizeof(PosInt)*V1_visFramePosId_vI[i].size());
+			if (nV1perVisPixel[i] > 0) memcpy(V1_visFramePosId + i * maxV1perPixel_I, &(V1_visFramePosId_vI[i][0]), sizeof(PosInt)*nV1perVisPixel[i]);
 			// Contra
-			PosInt offset = visWidth*visHeight;
 			nV1perVisPixel[i+offset] = V1_visFramePosId_vC[i].size();
-			offset *= maxV1perPixel_I;
-			memcpy(V1_visFramePosId + offset + i*maxV1perPixel_C, &(V1_visFramePosId_vC[i][0]), sizeof(PosInt)*V1_visFramePosId_vC[i].size());
+			if (nV1perVisPixel[i+offset] > 0) memcpy(V1_visFramePosId + offset*maxV1perPixel_I + i*maxV1perPixel_C, &(V1_visFramePosId_vC[i][0]), sizeof(PosInt)*nV1perVisPixel[i+offset]);
 		}
 		// gpu allocate
 		checkCudaErrors(cudaMalloc((void **) &d_V1_visFrame, V1_visFrameSize));
@@ -1101,10 +1173,11 @@ int main(int argc, char **argv) {
 		d_nV1perVisPixel = (Size*) d_V1_visFrame;
 		d_V1_visFramePosId = (PosInt*) (d_nV1perVisPixel + nPixel_visV1);
 
-		delete [] V1_visFrame;
+		delete []V1_visFrame;
 		usingGMem += V1_visFrameSize;
+		if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 		nFrameOutput += 1;
-		cout << "V1 VF frame output " << phyWidth << "x" << phyHeight << ", " << maxV1perPixel << " V1 neurons per pixel.\n";
+		cout << "V1 VF frame output " << visWidth << "x" << visHeight << ", " << maxV1perPixel_C << "(" << maxV1perPixel_I << ")" << "Contra(Ipsi) V1 neurons per pixel.\n";
 	}
 
 	Float *d_outputFrame;
@@ -1126,12 +1199,14 @@ int main(int argc, char **argv) {
 		if (frameVisLGNoutput) d_LGN_spVisFrame = d_V1SpPhyFrame + nPixel_phyV1;	
 	}
 	usingGMem += framesSize;
+	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	// overlap multiple chunks of data transfer and computation to increase performance
 	PosInt iSizeSplit = nblock % nChunk; // | maxChunkSize, i < iSizeSplit| remainChunkSize
 	Size maxChunkSize = nblock/nChunk;
 	Size remainChunkSize = maxChunkSize;
 	if (iSizeSplit > 0) maxChunkSize++;
+	assert(maxChunkSize * (nChunk - iSizeSplit) + remainChunkSize * iSizeSplit == nblock);
 
 	Size nearNeighborBlock;
 	fV1_conMat.open(V1_conMat_filename, fstream::in | fstream::binary);
@@ -1154,9 +1229,10 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	// intertwine the two matrices for ovelapping gpu kernel later
-	size_t blockChunkSize = nearNeighborBlock*blockSize*blockSize * sizeof(Float);
+	// reading the two matrices in a intertwined manner
+	size_t blockChunkSize = nearNeighborBlock * blockSize*blockSize;
 	size_t matSize = nblock * blockChunkSize; 
+	cout << "matSize = " << nblock << "x" << nearNeighborBlock << "x" << blockSize << "x" << blockSize << "x" << sizeof(Float) << "=" << matSize * sizeof(Float) / 1024.0 / 1024.0 << "Mb\n";
 	Float* conDelayMat0 = new Float[matSize*2];
 	Float** conDelayMat = new Float*[nChunk];
 	Float** conMat = new Float*[nChunk];
@@ -1175,21 +1251,24 @@ int main(int argc, char **argv) {
 			matOffset += chunkSize;
 		}
 	}
+	assert(delayMat[nChunk-1] + chunkSize == conDelayMat0 + matSize*2);
 	chunkSize = matChunkSize;
 	for (PosInt i=0; i<nChunk; i++) {
-		if (i > iSizeSplit-1) chunkSize = remainChunkSize*blockChunkSize;
-		fV1_conMat.read(reinterpret_cast<char*>(conMat[i]), chunkSize);
-		fV1_delayMat.read(reinterpret_cast<char*>(delayMat[i]), chunkSize);
+		if (i >= iSizeSplit) chunkSize = remainChunkSize*blockChunkSize;
+		if (fV1_conMat) fV1_conMat.read(reinterpret_cast<char*>(conMat[i]), chunkSize*sizeof(Float));
+		else assert(fV1_conMat);
+		if (fV1_delayMat) fV1_delayMat.read(reinterpret_cast<char*>(delayMat[i]), chunkSize*sizeof(Float));
+		else assert(fV1_delayMat);
 		Float current_maxDistance = array_max(delayMat[i], chunkSize);
 		if (maxDistance < current_maxDistance) maxDistance = current_maxDistance;
 	}
-	delete []*conMat;
-	delete []*delayMat;
+	delete []conMat;
+	delete []delayMat;
 	fV1_conMat.close();
 	fV1_delayMat.close();
 	Size trainDepth = ceil((maxDistance/speedOfThought)/dt);
 
-	// single chunk of Pinned memory on CPU for heavy usages 
+	// pinned memory on CPU for heavy usages on
 	// spikeTrain, voltage, gE, hE, gI, hI
 	Float* pinnedMem;
 	size_t trainSize = trainDepth*nV1;
@@ -1245,12 +1324,14 @@ int main(int argc, char **argv) {
 		d_hIt[i] = d_hEt[i] + eSize;
 	}
 	usingGMem += ghSize;
+	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	// v, g (D2H), h (D only)
 	Float *d_vgh;
 	Size vghSize = vSize + ghSize;
 	checkCudaErrors(cudaMalloc((void**)&d_vgh, vghSize));
 	usingGMem += vghSize;
+	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	Float *d_v = d_vgh;
 	Float **d_gE = new Float*[nChunk];
@@ -1280,10 +1361,11 @@ int main(int argc, char **argv) {
 	checkCudaErrors(cudaMalloc((void**)&d_spikeTrain, trainSize + nV1*sizeof(Float)));
 	Float *tBack = d_spikeTrain + trainSize;
 	usingGMem += trainSize + nV1*sizeof(Float);
+	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	init<Float><<<nblock, blockSize>>>(tBack, -1.0, nV1);
 	init<Float><<<nblock, blockSize>>>(d_spikeTrain, -1.0, nV1);
-	cout << "spikeTrain retains spikes for " << trainDepth << "time steps\n";
+	cout << "spikeTrain retains spikes for " << trainDepth << " time steps\n";
 
 	Size max_LGNperV1;
 	Float* LGN_V1_s;
@@ -1292,6 +1374,7 @@ int main(int argc, char **argv) {
 	size_t sLGN_size = max_LGNperV1*nV1*sizeof(Float);
 	checkCudaErrors(cudaMalloc((void**)&sLGN, sLGN_size));
 	usingGMem += sLGN_size;
+	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	checkCudaErrors(cudaMemcpy(sLGN, LGN_V1_s, sLGN_size, cudaMemcpyHostToDevice));
 	delete []LGN_V1_s;
@@ -1302,8 +1385,8 @@ int main(int argc, char **argv) {
 	PosInt* surface_xy = (PosInt*) surfacePos;
 	Size* nLGNperV1 = (Size*) (surface_xy + 2*max_LGNperV1*nV1);
 	getLGN_V1_surface(sxyID, LGN_V1_ID, surface_xy, nLGNperV1, max_LGNperV1, nLGN);
+
 	// release memory from LGN_V1_ID and sxyID
-	//LGN_V1_ID.swap(vector<PosInt>());
 	for (PosInt i=0; i<nV1; i++) {
 		vector<PosInt>().swap(LGN_V1_ID[i]);
 	}
@@ -1316,6 +1399,7 @@ int main(int argc, char **argv) {
 	PosInt* LGN_idy = LGN_idx + max_LGNperV1*nV1;
 	Size* d_nLGNperV1 = LGN_idy + max_LGNperV1*nV1;
 	usingGMem += surfacePosSize;
+	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	checkCudaErrors(cudaMemcpy(d_surfacePos, surfacePos, surfacePosSize, cudaMemcpyHostToDevice));
 
@@ -1377,6 +1461,7 @@ int main(int argc, char **argv) {
 	checkCudaErrors(cudaMemcpy(d_neighborBlockId, &(neighborBlockId[0]), nblock*nearNeighborBlock*sizeof(PosInt), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_nVec, &(nVec[0]), nV1*sizeof(Size), cudaMemcpyHostToDevice));
 	usingGMem += neighborInfo_size;
+	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	/* read V1_RF
 	   fV1_RF.open(V1_RF_filename, fstream::in | fstream::binary);
@@ -1471,27 +1556,6 @@ int main(int argc, char **argv) {
 	}
 	cout << "output file check, done\n";
 
-	bool simpleContrast = true; // TODO : implement this for comparison no cone adaptation if set to true
-	Size stepRate = std::round(1000/dt);
-	if (std::round(1000/dt) != 1000/dt) {
-		cout << "stepRate = " << 1000/dt << "Hz, but it has to be a integer.\n";
-		return EXIT_FAILURE;
-	}
-	if (frameRate > stepRate) {
-		cout << "stepRate cannot be smaller than frameRate, 1000/dt.\n";
-		return EXIT_FAILURE;
-	}
-
-	Size nRetrace = static_cast<Size>(std::round(tau/dt));
-	if (std::round(tau/dt) != tau/dt) {
-		cout << "tau should be divisible by dt.\n"; 
-		return EXIT_FAILURE;
-	}
-	if (nRetrace % nKernelSample != 0) {
-		cout << "tau in #dt should be divisible by nKernelSample.\n"; 
-		return EXIT_FAILURE;
-	}
-
 	Size iKernelSampleT0;
 	PosInt kernelSampleInterval = nRetrace/nKernelSample;
 	if (kernelSampleInterval%2 == 0) {
@@ -1570,6 +1634,7 @@ int main(int argc, char **argv) {
 	checkCudaErrors(cudaMalloc3DArray(&cuArr_S, &channelDesc, make_cudaExtent(width, height, maxFrame), cudaArrayLayered));
 
 	usingGMem += 3*width*height*maxFrame*sizeof(Float);
+	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	// set params for layerd texture memory
 	init_layer(L_retinaInput);
@@ -1592,47 +1657,54 @@ int main(int argc, char **argv) {
 	M = L + nPixelPerFrame;
 	S = M + nPixelPerFrame;
 
-	// pinned pathway for conDelayMat
+	// pinned pathway for conDelayMat concurrency
+	if (matConcurrency < 2) {
+		matConcurrency = 2;
+		cout << "matConcurrency raised to 2, smaller values not implemented.\n";
+	}
 	if (matConcurrency > nChunk) {
 		cout << "matConcurrency is reduced to " << nChunk << "  == nChunk\n";  
 	}
-	size_t sChunkMatSize = 2*maxChunkSize*blockChunkSize;
+	size_t sChunkMatSize = 2*maxChunkSize*blockChunkSize; // 2 for conMat and delayMat
 	size_t rChunkMatSize = 2*remainChunkSize*blockChunkSize;
-	cout << "single chunk of conDelayMat requires at most" << sChunkMatSize/1024.0/1024.0 << ", smaller chunks require " << rChunkMatSize << " Mb\n";
-	size_t ccChunkMatSize;
-	if (matConcurrency == nChunk) { // if total concurrency, match the final chunk size
-		ccChunkMatSize = iSizeSplit * sChunkMatSize + (nChunk-iSizeSplit) * rChunkMatSize;
+	cout << "single chunk of conDelayMat requires at most" << sChunkMatSize*sizeof(Float)/1024.0/1024.0 << ", smaller chunks require " << rChunkMatSize*sizeof(Float)/1024.0/1024.0 << " Mb\n";
+	size_t ccChunkMatSize; // (c)on(c)urrent chunk
+	if (matConcurrency > iSizeSplit) { // if total concurrency, match the total chunk size
+		ccChunkMatSize = iSizeSplit * sChunkMatSize + (matConcurrency-iSizeSplit) * rChunkMatSize;
 	} else {
 		ccChunkMatSize = matConcurrency * sChunkMatSize;
 	}
 	int ccReduced = 0;
-	while (usingGMem + ccChunkMatSize > deviceProps.totalGlobalMem) {
-		matConcurrency--;
-		if (matConcurrency > iSizeSplit - 1) {
+	while (usingGMem + ccChunkMatSize*sizeof(Float) > deviceProps.totalGlobalMem) {
+		if (matConcurrency > iSizeSplit) {
 			ccChunkMatSize -= rChunkMatSize;
 		} else {
 			ccChunkMatSize -= sChunkMatSize;
 		}
+		matConcurrency--;
 		ccReduced++;
 	}
 	if (ccReduced) {
 		cout << "GPU does not have the required memory for requested matConcurrency " << matConcurrency + ccReduced << ", it's now reduced to " << matConcurrency << "\n";
 	}
 
-	cout << "matConcurrency of " << matConcurrency << " chunks requires " << ccChunkMatSize/1024.0/1024.0 << " Mb, total device gmem = " << deviceProps.totalGlobalMem/1024.0/1024.0 << "Mb\n";
+	cout << "matConcurrency of " << matConcurrency << " chunks requires " << ccChunkMatSize*sizeof(Float)/1024.0/1024.0 << " Mb, total device gmem = " << deviceProps.totalGlobalMem/1024.0/1024.0 << "Mb\n";
 
 	// pinned conDelayMat on Host
 	char* p_conDelayMat;
-	checkCudaErrors(cudaMallocHost((void**) &p_conDelayMat, ccChunkMatSize));
+	checkCudaErrors(cudaMallocHost((void**) &p_conDelayMat, ccChunkMatSize*sizeof(Float)));
 
 	// receiving end of pinned conDelayMat on Device
 	Float *d_mat; // d_delayMat;
-	checkCudaErrors(cudaMalloc((void**)&d_mat, ccChunkMatSize));
-	usingGMem += ccChunkMatSize;
+	checkCudaErrors(cudaMalloc((void**)&d_mat, ccChunkMatSize*sizeof(Float)));
+	usingGMem += ccChunkMatSize*sizeof(Float);
 	Float **d_conDelayMat = new Float*[matConcurrency];
 	d_conDelayMat[0] = d_mat;
 	for (PosInt i = 1; i<matConcurrency; i++) {
-		d_conDelayMat[i] = d_conDelayMat[i-1] + sChunkMatSize; // may not be filled for iChunk > iSizeSplit
+		size_t matChunkSize;
+		if (i < iSizeSplit) matChunkSize = sChunkMatSize;
+		else matChunkSize = rChunkMatSize;
+		d_conDelayMat[i] = d_conDelayMat[i-1] + matChunkSize; // may not be filled for iChunk > iSizeSplit
 	}
 
 	cout << "Using "<< usingGMem/1024.0/1024.0 << " Mb from a total of " << deviceProps.totalGlobalMem/1024.0/1024.0 << " Mb, remaining " << (deviceProps.totalGlobalMem - usingGMem)/1024.0/1024.0 << " Mb\n";
@@ -1861,10 +1933,10 @@ int main(int argc, char **argv) {
 		size_t mat_offset = 0;
 		for (PosInt i = 0; i < nChunk; i++) {
 			if (i > iSizeSplit-1) chunkSize = remainChunkSize;
-			size_t mChunkSize = chunkSize*blockChunkSize;
+			size_t mChunkSize = chunkSize * blockChunkSize;
 			size_t p_offset = mat_offset%ccChunkMatSize;
-			memcpy((void*)(p_conDelayMat + p_offset), (void*) conDelayMat[i], 2*mChunkSize);
-			checkCudaErrors(cudaMemcpyAsync(d_conDelayMat[i%matConcurrency], p_conDelayMat + p_offset, 2*mChunkSize, cudaMemcpyHostToDevice, stream[i%matConcurrency]));
+			memcpy((void*)(p_conDelayMat + p_offset), (void*) conDelayMat[i], 2*mChunkSize*sizeof(Float));
+			checkCudaErrors(cudaMemcpyAsync(d_conDelayMat[i%matConcurrency], p_conDelayMat + p_offset, 2*mChunkSize*sizeof(Float), cudaMemcpyHostToDevice, stream[i%matConcurrency]));
 
 			Float* d_conMat = d_conDelayMat[i%matConcurrency];
 			Float* d_delayMat = d_conMat + mChunkSize;
@@ -1966,20 +2038,20 @@ int main(int argc, char **argv) {
 
 		delete []outputB4V1;
 		delete []galleryOutput;
-		delete []*d_gE;
-		delete []*d_gI;
-		delete []*d_hE;
-		delete []*d_hI;
-		delete []*d_gEt;
-		delete []*d_gIt;
-		delete []*d_hEt;
-		delete []*d_hIt;
-		delete []*gE;
-		delete []*gI;
-		delete []*hE;
-		delete []*hI;
-		delete []*conDelayMat;
-		delete []*d_conDelayMat;
+		delete []d_gE;
+		delete []d_gI;
+		delete []d_hE;
+		delete []d_hI;
+		delete []d_gEt;
+		delete []d_gIt;
+		delete []d_hEt;
+		delete []d_hIt;
+		delete []gE;
+		delete []gI;
+		delete []hE;
+		delete []hI;
+		delete []conDelayMat;
+		delete []d_conDelayMat;
 		delete []exact_norm;
 		delete []exact_it;
 		delete []outputFrame;

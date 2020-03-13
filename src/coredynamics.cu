@@ -5,15 +5,19 @@ __global__
 void logRand_init(Float *logRand,
                   Float *lTR,
                   curandStateMRG32k3a *state,
-                  PosIntL seed)
+                  PosIntL seed,
+				  Size n
+)
 {
     Size id = blockIdx.x * blockDim.x + threadIdx.x;
-    curandStateMRG32k3a localState = state[id];
-    curand_init(seed+id, 0, 0, &localState);
-    Float rand = uniform(&localState);
-    logRand[id] = -log(uniform(&localState));
-    state[id] = localState;
-    lTR[id] = logRand[id]*rand;
+	if (id < n) {
+		curandStateMRG32k3a localState = state[id];
+		curand_init(seed + id, 0, 0, &localState);
+		Float rand = uniform(&localState);
+		logRand[id] = -log(uniform(&localState));
+		state[id] = localState;
+		lTR[id] = logRand[id] * rand;
+	}
 }
 
 __device__

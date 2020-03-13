@@ -556,7 +556,7 @@ int main(int argc, char *argv[]) {
 	fLGN_vpos.read(reinterpret_cast<char*>(&y0[0]), m*sizeof(Float));
 
 	vector<InputType> LGNtype(m);
-	fLGN_vpos.read(reinterpret_cast<char*>(&LGNtype[0]), m * sizeof(Size));
+	fLGN_vpos.read(reinterpret_cast<char*>(&LGNtype[0]), m * sizeof(PosInt));
 	/*** now read from file directly
 		//temporary vectors to get cartesian coordinate pairs
 		vector<Float> polar0(m);
