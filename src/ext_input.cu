@@ -889,6 +889,7 @@ int main(int argc, char **argv) {
 	Size nLGN_block, nLGN_thread; // for LGN_nonlinear
 	nLGN_block = (nLGN + blockSize - 1)/blockSize;
 	nLGN_thread = blockSize;
+    cout << "logRand_init<<<" << nLGN_block << ", " << nLGN_thread << ">>>" << "\n";
 	logRand_init<<<nLGN_block, nLGN_thread>>>(lastNegLogRand, leftTimeRate, randState, seed, nLGN);
 	getLastCudaError("logRand_init");
 

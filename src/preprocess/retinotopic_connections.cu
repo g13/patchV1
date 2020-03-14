@@ -219,6 +219,7 @@ void vf_pool_CUDA( // for each eye
     Size V1_id = i0 + blockDim.x*blockIdx.x + threadIdx.x;
     Size nPatch = (m + blockSize - 1)/blockSize;
     Size nRemain = m%blockSize;
+    assert((nPatch-1)*blockSize + nRemain == m);
     curandStateMRG32k3a rGen;
     Float V1_x, V1_y, r;
     if (V1_id < n) { // get radius
@@ -320,7 +321,7 @@ vector<vector<Size>> retinotopic_vf_pool(
 		original2LR(baRatio, baRatioLR, LR, nL);
 		original2LR(VFposEcc, VFposEccLR, LR, nL);
         Float *d_memblock;
-        Size d_memSize = ((2+3)*n + 2*m)*sizeof(Float) + (n*maxLGNperV1pool + n)*sizeof(Size);
+        Size d_memSize = ((2+3)*n + 2*m)*sizeof(Float) + n*maxLGNperV1pool*sizeof(PosInt) + n*sizeof(Size);
         checkCudaErrors(cudaMalloc((void **) &d_memblock, d_memSize));
 		cout << "need global memory of " << d_memSize / 1024.0 / 1024.0 / 4.0 << "mb\n";
         Float* d_x = d_memblock;
@@ -331,11 +332,11 @@ vector<vector<Size>> retinotopic_vf_pool(
         Float* d_a = d_baRatio + n; // to be filled
         Float* d_VFposEcc = d_baRatio + n;
 		// to be filled
-        Size* d_poolList = (Size*) (d_VFposEcc + n);
-        Size* d_nPool = d_poolList + n*maxLGNperV1pool;
+        PosInt* d_poolList = (PosInt*) (d_VFposEcc + n);
+        Size* d_nPool = (Size*) d_poolList + n*maxLGNperV1pool;
 
-        checkCudaErrors(cudaMemcpy(d_x, &(yLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
-        checkCudaErrors(cudaMemcpy(d_y, &(xLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(d_x, &(xLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(d_y, &(yLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpy(d_x0, &(cart0.first[0]), m*sizeof(Float), cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpy(d_y0, &(cart0.second[0]), m*sizeof(Float), cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpy(d_baRatio, &(baRatioLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
@@ -351,11 +352,11 @@ vector<vector<Size>> retinotopic_vf_pool(
         vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_poolList, d_nPool, nL, n-nL, mL, m-mL, seed, LGN_V1_RFratio, maxLGNperV1pool);
         getLastCudaError("vf_pool for the right eye failed");
 		vector<vector<Size>> poolListLR;
-        Size* poolListArray = new Size[n*maxLGNperV1pool];
-        Size* nPool = new Size[n*maxLGNperV1pool];
+        PosInt* poolListArray = new Size[n*maxLGNperV1pool];
+        Size* nPool = new Size[n];
 		vector<Float> aLR(n);
         checkCudaErrors(cudaMemcpy(&aLR[0], d_a, n*sizeof(Float), cudaMemcpyDeviceToHost));
-        checkCudaErrors(cudaMemcpy(poolListArray, d_poolList, n*maxLGNperV1pool*sizeof(Size), cudaMemcpyDeviceToHost));
+        checkCudaErrors(cudaMemcpy(poolListArray, d_poolList, n*maxLGNperV1pool*sizeof(PosInt), cudaMemcpyDeviceToHost));
         checkCudaErrors(cudaMemcpy(nPool, d_nPool, n*sizeof(Size), cudaMemcpyDeviceToHost));
         for (Size i=0; i<n; i++) {
             vector<Size> iPool;
@@ -367,6 +368,7 @@ vector<vector<Size>> retinotopic_vf_pool(
         }
         delete []poolListArray;
         delete []nPool;
+        cout << "maxLGNperV1pool = " << maxLGNperV1pool << "\n";
 		LR2original(poolListLR, poolList, LR, nL);
 		LR2original(aLR, a, LR, nL);
     } else {
@@ -394,13 +396,16 @@ vector<vector<Size>> retinotopic_vf_pool(
             }
         }
         // next nearest neuron j to (e,p) in sheet 1
+        Size maxLGNperV1pool = 0;
         for (Size i=0; i<n; i++) {
             if (LR[i] > 0) {
                 poolList.push_back(draw_from_radius(cart.first[i], cart.second[i], cart0, mL, m, rMap[i]));
             } else {
                 poolList.push_back(draw_from_radius(cart.first[i], cart.second[i], cart0, 0, mL, rMap[i]));
             }
+            if (poolList[i].size() > maxLGNperV1pool) maxLGNperV1pool = poolList[i].size();
         }
+        cout << "maxLGNperV1pool = " << maxLGNperV1pool << "\n";
     }
     return poolList;
 }

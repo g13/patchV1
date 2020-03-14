@@ -1,6 +1,7 @@
 #include "coredynamics.cuh"
 extern surface<void, cudaSurfaceType2D> LGNspikeSurface;
 
+__launch_bounds__(1024,2)
 __global__
 void logRand_init(Float *logRand,
                   Float *lTR,
