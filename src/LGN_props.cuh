@@ -95,7 +95,7 @@ __device__
 __forceinline__
 Float transform(Float C50, Float K, Float A, Float B, Float input) {
     // calculation
-    Float X = 1/(1+exponential(K*(C50-input)));
+    Float X = 1.0/(1+exponential(K*(C50-input)));
     return A*X + B;
 }
 

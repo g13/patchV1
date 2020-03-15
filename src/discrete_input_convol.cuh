@@ -81,92 +81,81 @@ void LGN_convol_c1s(
         Size kernelSampleInterval,
         Size nKernelSample,
         Float dt,
-        Size denorm
+        Size denorm,
+        bool saveOutputB4V1
 );
 
 __host__
 __device__
 __forceinline__
 void orthPhiRotate3D_arc(Float theta0, Float phi0, Float eta, Float &theta, Float &phi) {
-	// phi (0, pi)
+	// phi (0, pi) typically small
 	// theta [-pi,pi]
-	// eta [-pi/2, pi/2] the rotating angle, orhogonal to radius*dPhi
+	// eta [-pi/2, pi/2] the rotating angle, orhogonal to radius*dphi, typically small
 	
-    if (phi0 < 0.0) {
-        phi0 = -phi0;
-        theta0 -= copyms(M_PI, theta0);
-    }
     // need by the next step is cos and sin
-	phi =  static_cast<Float>(acos( cos(static_cast<double>(phi0))*cos(static_cast<double>(eta)) ));
-	theta = theta0 + static_cast<Float>(atan( tan(static_cast<double>(eta)), sin(static_cast<double>(phi0)) )); //atan2(y, x)
+	Float sin_phi0 = sine(phi0);
+	Float tan_eta = tangent(eta);
+    Float r = square_root(tan_eta*tan_eta + sin_phi0*sin_phi0);
+    phi = arcsin(r);
+    if (phi0 < 0.0) phi = -phi;
+    Float dtheta = atan(tan_eta, sin_phi0); //atan2(y, x)
+	theta = theta0 + dtheta;
     assert(!isnan(phi));
     assert(!isnan(theta));
 }
+
 
 // rotations are free of arc-trignometric function to avoid precision issues around the origin.
 __host__
 __device__
 __forceinline__
-void orthPhiRotate3D(Float theta0, Float phi0, Float eta, Float &cost, Float &sint, Float &cosPhi, Float &sinPhi) {
+void orthPhiRotate3D(Float theta, Float phi, Float eta, Float &cost, Float &sint, Float &cosPhi, Float &sinPhi) {
 	// phi (0, pi)
 	// theta [-pi,pi]
 	// eta [-pi/2, pi/2] the rotating angle, orhogonal to radius*dPhi
-	
-    // need by the next step is cos and sin
-    //cosPhi = cos(phi0) * cos(eta);
-    double dcos = cosineb(static_cast<double>(eta));
-	double cosPhi_d = cosineb(static_cast<double>(phi0)) * dcos;
-    double sinPhi_d = square_rootb(1.0 - cosPhi_d*cosPhi_d);
-	/* DEBUG
-    if (abs(sinPhi_d) == 0 || abs(dcos) == 0) {
-        printf("cosPhi = %e, sinPhi = %e, cos0(%f) = %e, dcos(%f) = %e\n", cosPhi_d, sinPhi_d, phi0, cos(static_cast<double>(phi0)), eta, cos(static_cast<double>(eta)));
-        assert(abs(dcos) > 0);
-        assert(abs(sinPhi_d) > 0);
-    }*/
-
-	cosPhi = static_cast<Float>(cosPhi_d);
-    sinPhi = static_cast<Float>(sinPhi_d);
-    if (sinPhi == 0) {
-        printf("sinPhi_d = %e, sinPhi = %e", sinPhi_d, sinPhi);
-        assert(sinPhi != 0);
-    }
 
     Float cost1, sint1;
-    cost1 = sine(phi0) * dcos/sinPhi;
-    sint1 = sine(eta)/sinPhi;
+    Float tan_eta = tangentb(eta);
+    Float sin_phi = sineb(phi);
+    Float r = square_rootb(tan_eta*tan_eta + sin_phi*sin_phi);
+
+    //cosPhi = static_cast<Float>(cosineb(eta) * cosineb(phi));
+    cosPhi = cosine(eta) * cosine(phi);
+    assert(abs(cosPhi) <= 1);
+    //sinPhi = static_cast<Float>(r);
+    sinPhi = r;
+    assert(abs(sinPhi) <= 1);
+    //printf("r = %1.15e, sinPhi = %1.15e\n", sinPhi, square_rootb(1-cosPhi_d*cosPhi_d));
+    //assert(false);
+
+    cost1 = sin_phi/r;
+    sint1 = tan_eta/r;
+    assert(abs(cost1) <= 1);
+    assert(abs(sint1) <= 1);
     if (abs(sint1) > 1.0) {
-        if (abs(cost1) >= 1.0) {
-            //printf("cost1 = %e, sin(%e) = %e, dcos = %e, sinPhi = %e | %e\n", cost1, phi0, sine(phi0), dcos, sinPhi, sinPhi_d);
-            printf("cosPhi = %e | %e, sinPhi_d = %e | %e sine(%e) = %e | %e, cosine(%e) = %e | %e, dcos: cosine(%e) = %e | %e, one: %e | %e\n", cosPhi, cosPhi_d, sinPhi, sinPhi_d, phi0, sine(phi0), sineb(phi0), phi0, cosine(phi0), cosineb(phi0), eta, cosine(eta), cosineb(eta), cosPhi*cosPhi + sinPhi*sinPhi, cosPhi_d*cosPhi_d + sinPhi_d*sinPhi_d);
-            assert(abs(cost1) < 1.0);
-        }
         sint1 = copyms(square_root(1-cost1*cost1), sint1);
     }
     if (abs(cost1) > 1.0) {
-        if (abs(sint1) >= 1.0) {
-            printf("sint1 = %e, sin(%e) = %e, sinPhi = %e | %e\n", sint1, eta, sine(eta), sinPhi, sinPhi_d);
-            assert(abs(sint1) < 1.0);
-        }
         cost1 = copyms(square_root(1-sint1*sint1), cost1);
     }
 	/* DEBUG
     if (isnan(cost1) || isnan(sint1) || abs(cost1)>1.0 || abs(sint1) > 1.0) {
-        printf("sinPhi = %f\n", sinPhi);
         printf("cost1 = %f, sint1 = %f\n", cost1, sint1);
-        printf("sin0(%f) = %f\n", phi0, sine(phi0));
-        printf("dsin(%f) = %f\n", eta, sine(eta));
-        printf("dcos(%f) = %f\n", eta, dcos);
+        printf("sin_phi(%f) = %f\n", phi, sin_phi);
+        printf("tan_eta(%f) = %f\n", eta, tan_eta);
+        printf("cost1^2 + sint1^2 == %e\n", cost1*cost1 + sint1*sint1);
         assert(abs(cost1)<=1.0);
         assert(abs(sint1)<=1.0);
         assert(!isnan(cost1));
         assert(!isnan(sint1));
     }*/
 
-    Float cost0 = cosine(theta0);
-    Float sint0 = sine(theta0);
+    Float cost0 = cosine(theta);
+    Float sint0 = sine(theta);
 	/* DEBUG
     if (isnan(cost0) || isnan(sint0) || abs(cost0)>1.0 || abs(sint0) > 1.0) {
-        printf("cos(%f) = %f, sin(%f) = %f\n", theta0, cost0, theta0, sint0);
+        printf("cos(%f) = %f, sin(%f) = %f\n", theta, cost0, theta, sint0);
         assert(abs(cost0)<=1.0);
         assert(abs(sint0)<=1.0);
         assert(!isnan(cost0));

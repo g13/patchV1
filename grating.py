@@ -2,7 +2,7 @@ import numpy as np
 import cv2 as cv
 import functools
 from ext_signal import *
-
+#TODO: heterogeneous buffers
 def generate_grating(spatialFrequency, temporalFrequency, direction, npixel, c1, c2, fname, time = 1, phase = 0, sharpness = 0, frameRate = 120, ecc = 2.5, buffer_ecc = 0.25, gtype = 'drifting'):
     """
     spatialFrequency: cycle per degree

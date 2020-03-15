@@ -165,7 +165,7 @@ int main(int argc, char **argv) {
 		("fRawData", po::value<string>(&rawData_filename)->default_value("rawData.bin"), "file that stores V1 response (spike, v, g) over time")
 		("fOutputFrame", po::value<string>(&outputFrame_filename)->default_value("outputFrame.bin"),"file that stores firing rate from LGN and/or V1 (in physical location or visual field) spatially to be ready for frame production") // TEST 
 		("fOutputB4V1", po::value<string>(&outputB4V1_filename)->default_value("outputB4V1.bin"),"file that stores luminance values, contrasts, LGN convolution and their firing rates") // TEST 
-		("fLGN_gallery", po::value<string>(&LGN_gallery_filename)->default_value("LGN_gallery_filename.bin"),"file that stores spatial and temporal convolution parameters"); // TEST 
+		("fLGN_gallery", po::value<string>(&LGN_gallery_filename)->default_value("LGN_gallery.bin"),"file that stores spatial and temporal convolution parameters"); // TEST 
 
 	po::options_description cmdline_options;
 	cmdline_options.add(generic_opt).add(top_opt);
@@ -417,7 +417,7 @@ int main(int argc, char **argv) {
 		fLGN_vpos.read(reinterpret_cast<char*>(&LGN_polar[0]), nLGN*sizeof(Float));
 		// polar is in rad
 		fLGN_vpos.read(reinterpret_cast<char*>(&LGN_ecc[0]), nLGN*sizeof(Float));
-		// ecc of center is in deg [0, nLGN), surround in rad [nLGN, 2*nLGN)
+		// ecc of center is in deg [0, nLGN), surround to generate in rad [nLGN, 2*nLGN)
 		auto transform_deg2rad = [deg2rad] (Float ecc) {return ecc*deg2rad;};
 		transform(LGN_ecc.begin(), LGN_ecc.begin()+nLGN, LGN_ecc.begin(), transform_deg2rad);
 		fLGN_vpos.close();
@@ -475,7 +475,7 @@ int main(int argc, char **argv) {
 		norm = normal_distribution<Float>(acuity,std);
 		generate(LGN_rw.begin()+nLGN, LGN_rw.end(), get_rand_from_gauss0(rGen_LGNsetup, norm, positiveBound));
 
-		// ry ~ rx circular sub RF
+		// ry ~ rx circular sub RF, not necessary
 		norm = normal_distribution<Float>(1.0, 1.0/30.0);
 		auto add_noise = [&norm, &rGen_LGNsetup](Float input) {
 			return input * norm(rGen_LGNsetup);
@@ -495,12 +495,37 @@ int main(int argc, char **argv) {
 		};
 		norm = normal_distribution<Float>(0.0, 1.0/3.0/sqrt(2)); // within a 1/3 of the std of the gauss0ian
 		auto get_rand = get_rand_from_gauss0(rGen_LGNsetup, norm, noBound);
+        Float maxSecc, minSecc, maxSpolar, minSpolar;
+        Float maxCecc, minCecc, maxCpolar, minCpolar;
 		for (Size i=0; i<nLGN; i++) {
 			// not your usual transform 
 			Float intermediateEcc = LGN_ecc[i]+LGN_rh[i]*get_rand();
 			Float eta = LGN_rw[i]*get_rand();
 			orthPhiRotate3D_arc(LGN_polar[i], intermediateEcc, eta, LGN_polar[i+nLGN], LGN_ecc[i+nLGN]);
+            if (i==0) {
+                minSecc = LGN_ecc[i+nLGN];
+                maxSecc = LGN_ecc[i+nLGN];
+                minSpolar = LGN_polar[i+nLGN];
+                maxSpolar = LGN_polar[i+nLGN];
+                minCecc = LGN_ecc[i];
+                maxCecc = LGN_ecc[i];
+                minCpolar = LGN_polar[i];
+                maxCpolar = LGN_polar[i];
+            } else {
+                if (LGN_ecc[i+nLGN] < minSecc) minSecc = LGN_ecc[i+nLGN];
+                if (LGN_polar[i+nLGN] < minSpolar) minSpolar = LGN_polar[i+nLGN];
+                if (LGN_ecc[i+nLGN] > maxSecc) maxSecc = LGN_ecc[i+nLGN];
+                if (LGN_polar[i+nLGN] > maxSpolar) maxSpolar = LGN_polar[i+nLGN];
+                if (LGN_ecc[i] < minCecc) minCecc = LGN_ecc[i];
+                if (LGN_polar[i] < minCpolar) minCpolar = LGN_polar[i];
+                if (LGN_ecc[i] > maxCecc) maxCecc = LGN_ecc[i];
+                if (LGN_polar[i] > maxCpolar) maxCpolar = LGN_polar[i];
+            }
 		}
+        printf("Cen ecc: %e, %e\n", minCecc*180/M_PI, maxCecc*180/M_PI);
+        printf("Cen polar: %e, %e\n", minCpolar*180/M_PI, maxCpolar*180/M_PI);
+        printf("Sur ecc: %e, %e\n", minSecc*180/M_PI, maxSecc*180/M_PI);
+        printf("Sur polar: %e, %e\n", minSpolar*180/M_PI, maxSpolar*180/M_PI);
 
 		auto get_rand_from_clipped_gauss = [](Float param[2], Float lb, Float ub) {
 			assert(lb < 1);
@@ -858,16 +883,25 @@ int main(int argc, char **argv) {
 	size_t usingGMem = 0;
 
 	// malloc for LGN
-	size_t spikeGenSize = (2*sizeof(Float) + sizeof(curandStateMRG32k3a) + 2*sizeof(PosInt)) * nLGN;
+	size_t spikeGenSize = (2*sizeof(PosInt) + 2*sizeof(Float) + sizeof(curandStateMRG32k3a)) * nLGN;
 
-	size_t outputB4V1Size = 4*sizeof(Float) * nLGN;
+	size_t outputB4V1Size;
+    if (saveOutputB4V1) { 
+        outputB4V1Size = 5*sizeof(Float) * nLGN;
+    } else {
+        if (saveLGN_fr) {
+            outputB4V1Size = 2*sizeof(Float) * nLGN;
+        }
+    }
 	size_t B4V1Size = spikeGenSize + outputB4V1Size;
 
-	Float* outputB4V1 = new Float[outputB4V1Size];
+    Float* outputB4V1;
+	checkCudaErrors(cudaMallocHost((void**) &outputB4V1, outputB4V1Size));
 
 	char* gpu_B4V1;
 	checkCudaErrors(cudaMalloc((void **)&gpu_B4V1, B4V1Size));
-	usingGMem += B4V1Size;
+
+    usingGMem += B4V1Size;
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	PosInt *d_sx = (PosInt*) gpu_B4V1;
@@ -875,20 +909,23 @@ int main(int argc, char **argv) {
 	Float* leftTimeRate = (Float*) (d_sy + nLGN);
 	Float* lastNegLogRand = leftTimeRate + nLGN;
 	curandStateMRG32k3a *randState = (curandStateMRG32k3a*) (lastNegLogRand + nLGN);
-	Float* d_LGN_fr = (Float*) (randState + nLGN);
-	Float* currentConvol = d_LGN_fr + nLGN;
-	// TODO: not necessary when not checking add option flag
-	Float* luminance = currentConvol + nLGN; 
-	Float* contrast = luminance + nLGN;
 
+	Float* d_LGN_fr = (Float*) (randState + nLGN);
+    Float* currentConvol = d_LGN_fr + nLGN;
+    Float* luminance;
+    Float* contrast;
+    if (saveOutputB4V1) {
+	    luminance = currentConvol + nLGN; 
+	    contrast = luminance + nLGN; // contrast: nLGN * nType (center contrast and surround contrast are different because of separate cone input)
+    }
 
 	// initialize
 	checkCudaErrors(cudaMemcpy(d_sx, &(sxyID[0]), sizeof(PosInt)*2*nLGN, cudaMemcpyHostToDevice));
 
 	seed++;
 	Size nLGN_block, nLGN_thread; // for LGN_nonlinear
-	nLGN_block = (nLGN + blockSize - 1)/blockSize;
-	nLGN_thread = blockSize;
+	nLGN_thread = blockSize/4;
+	nLGN_block = (nLGN + nLGN_thread - 1)/nLGN_thread;
     cout << "logRand_init<<<" << nLGN_block << ", " << nLGN_thread << ">>>" << "\n";
 	logRand_init<<<nLGN_block, nLGN_thread>>>(lastNegLogRand, leftTimeRate, randState, seed, nLGN);
 	getLastCudaError("logRand_init");
@@ -1357,15 +1394,16 @@ int main(int argc, char **argv) {
 	}
 
 	// for spikeTrain D2H (only output the current slot to file)
-	trainSize *= sizeof(Float);
 	Float *d_spikeTrain;
-	checkCudaErrors(cudaMalloc((void**)&d_spikeTrain, trainSize + nV1*sizeof(Float)));
+	checkCudaErrors(cudaMalloc((void**)&d_spikeTrain, (trainSize + nV1)*sizeof(Float)));
 	Float *tBack = d_spikeTrain + trainSize;
-	usingGMem += trainSize + nV1*sizeof(Float);
+	usingGMem += (trainSize + nV1)*sizeof(Float);
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	init<Float><<<nblock, blockSize>>>(tBack, -1.0, nV1);
-	init<Float><<<nblock, blockSize>>>(d_spikeTrain, -1.0, nV1);
+    getLastCudaError("tBack");
+	init<Float><<<nblock*trainDepth, blockSize>>>(d_spikeTrain, -1.0, nV1*trainDepth);
+    getLastCudaError("init spikeTrain");
 	cout << "spikeTrain retains spikes for " << trainDepth << " time steps\n";
 
 	Size max_LGNperV1;
@@ -1751,7 +1789,7 @@ int main(int argc, char **argv) {
 	dim3 convolBlock(nSpatialSample1D, nSpatialSample1D, 1);
 	dim3 convolGrid(nLGN, 2, 1);
 
-	cout << "cuda memory, set\n";
+	cout << "cuda memory all set.\n";
 
 	cout << "store<<<" << convolGrid.x  << "x" << convolGrid.y  << "x" << convolGrid.z << ", " << convolBlock.x  << "x" << convolBlock.y  << "x" << convolBlock.z << ">>>\n";
 	// store spatial and temporal weights determine the maximums of LGN kernel convolutions
@@ -1806,10 +1844,11 @@ int main(int argc, char **argv) {
 		return tail;
 	};
 
-	cudaEvent_t vReady, spReady, gReady;
+	cudaEvent_t vReady, spReady, gReady, LGN_ready;
 	checkCudaErrors(cudaEventCreate(&vReady));
 	checkCudaErrors(cudaEventCreate(&spReady));
 	checkCudaErrors(cudaEventCreate(&gReady));
+	checkCudaErrors(cudaEventCreate(&LGN_ready));
 	//cudaEvent_t *gReady = new cudaEvent_t[nChunk];
 	//for (PosInt i = 0; i < nChunk; i++) {
 	//	checkCudaErrors(cudaEventCreate(&gReady[i]));
@@ -1879,9 +1918,9 @@ int main(int argc, char **argv) {
 				iFrameTail, maxFrame, ntPerFrame, iFramePhaseTail,
 				Itau,
 				iKernelSampleT0, kernelSampleInterval, nKernelSample,
-				dt, denorm);
-
+				dt, denorm, saveOutputB4V1);
 		getLastCudaError("LGN_convol_c1s failed");
+
 		if (it > 0) { // seeking for overlap of data output with LGN input
 			fRawData.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
 			cudaEventSynchronize(vReady);
@@ -1891,25 +1930,26 @@ int main(int argc, char **argv) {
 
 		// generate LGN fr with logistic function
 		LGN_nonlinear<<<nLGN_block, nLGN_thread, 0, mainStream>>>(nLGN, *dLGN.logistic, maxConvol, currentConvol, d_LGN_fr, d_sx, d_sy, leftTimeRate, lastNegLogRand, randState, dt);
+		getLastCudaError("LGN_nonlinear failed");
+		cudaEventRecord(LGN_ready, mainStream);
 		if (it > 0) { // seeking for overlap of data output with LGN input
 			cudaEventSynchronize(gReady);
 			// write g to fRawData
 			reshape_chunk_and_write(gE[0], fRawData, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, ngTypeE, ngTypeI, nV1);
 		}
 
-		getLastCudaError("LGN_nonlinear failed");
-		if (saveOutputB4V1) { // TODO: use Async pinned memory
-			checkCudaErrors(cudaMemcpy(outputB4V1, d_LGN_fr, outputB4V1Size, cudaMemcpyDeviceToHost));
+		if (saveLGN_fr) {
+		    cudaStreamWaitEvent(stream[0], LGN_ready, 0);
+		    if (saveOutputB4V1) { 
+			    checkCudaErrors(cudaMemcpyAsync(outputB4V1, d_LGN_fr, outputB4V1Size, cudaMemcpyDeviceToHost, stream[0]));
 
-			fOutputB4V1.write((char*)outputB4V1, outputB4V1Size); // d_LGN_fr, currentConvol, luminance, contrast
-		}
-		if (saveLGN_fr) {// use only the first row of outputB4V1
-			if (!saveOutputB4V1) { // else already copied
-				checkCudaErrors(cudaMemcpy(outputB4V1, d_LGN_fr, nLGN*sizeof(Float), cudaMemcpyDeviceToHost));
+			    fOutputB4V1.write((char*)outputB4V1, outputB4V1Size); // d_LGN_fr, currentConvol, luminance, contrast
+		    } else { // use only the first row of outputB4V1
+				checkCudaErrors(cudaMemcpyAsync(outputB4V1, d_LGN_fr, nLGN*sizeof(Float), cudaMemcpyDeviceToHost, stream[0]));
 			}
 			fLGN_fr.write((char*)outputB4V1, nLGN*sizeof(Float)); 
 		}
-
+        cout << "LGN done\n";
 		if (it == nt-1) {
 			printf("\r@t = %f -> %f simulated, frame %d#%d-%d, %.1f%%", t, t+dt, currentFrame/nFrame, currentFrame%nFrame, nFrame, 100*static_cast<float>(it+1)/nt);
 			//oldFrame = currentFrame;
@@ -1926,7 +1966,7 @@ int main(int argc, char **argv) {
 				dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, mE, seed);
 		getLastCudaError("compute_V_collect_spike failed");
 
-		checkCudaErrors(cudaMemcpyAsync(spikeTrain, d_spikeTrain, trainSize, cudaMemcpyDeviceToHost, mainStream)); // to overlap with  recal_G, to be used in recal_Gvec
+		checkCudaErrors(cudaMemcpyAsync(spikeTrain, d_spikeTrain, trainSize*sizeof(Float), cudaMemcpyDeviceToHost, mainStream)); // to overlap with  recal_G, to be used in recal_Gvec
 		cudaEventRecord(spReady, mainStream);
 
 		size_t chunkSize = maxChunkSize;
@@ -1959,7 +1999,7 @@ int main(int argc, char **argv) {
 			}
 		}
 
-		checkCudaErrors(cudaMemcpyAsync(v, d_v, nV1*sizeof(Float), cudaMemcpyDeviceToHost, mainStream)); // to overlap with  recal_G, to be used in recal_Gvec
+		checkCudaErrors(cudaMemcpyAsync(v, d_v, nV1*sizeof(Float), cudaMemcpyDeviceToHost, mainStream)); // to overlap with recal_G above
 		cudaEventRecord(vReady, mainStream);
 
 		block_offset = 0;
@@ -2037,7 +2077,6 @@ int main(int argc, char **argv) {
 		fLGN_gallery.close();
 		fOutputB4V1.close();
 
-		delete []outputB4V1;
 		delete []galleryOutput;
 		delete []d_gE;
 		delete []d_gI;
@@ -2060,6 +2099,7 @@ int main(int argc, char **argv) {
 		checkCudaErrors(cudaEventDestroy(vReady));
 		checkCudaErrors(cudaEventDestroy(gReady));
 		checkCudaErrors(cudaEventDestroy(spReady));
+		checkCudaErrors(cudaEventDestroy(LGN_ready));
 		checkCudaErrors(cudaStreamDestroy(mainStream));
 		for (PosInt i=0; i<nChunk; i++) {
 			checkCudaErrors(cudaStreamDestroy(stream[i]));
@@ -2067,6 +2107,7 @@ int main(int argc, char **argv) {
 		delete []stream;
 		checkCudaErrors(cudaFreeHost(pinnedMem));
 		checkCudaErrors(cudaFreeHost(p_conDelayMat));
+		checkCudaErrors(cudaFreeHost(outputB4V1));
 		dLGN.freeMem();
 		checkCudaErrors(cudaFree(gpu_B4V1));
 		checkCudaErrors(cudaFree(gpu_LGN_gallery));

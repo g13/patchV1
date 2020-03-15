@@ -274,11 +274,9 @@ void store_spatialWeight(
     Float w = (threadIdx.x + 0.5)*dw - wSpan;
     Float h = (threadIdx.y + 0.5)*dh - hSpan;
 
-    Float spatialWeight = spatialKernel(w, h, wSigSqrt2, hSigSqrt2);
-    
-	block_reduce<Float>(reduced, spatialWeight);
-    // TODO: gaussian spatialWeight with fixed sample point in the unit of sigma is the same across neuorns, can be passed from host directly
 	if (blockIdx.x == 0 && blockIdx.y == 0) {
+        Float spatialWeight = spatialKernel(w, h, wSigSqrt2, hSigSqrt2);
+	    block_reduce<Float>(reduced, spatialWeight);
 		SW_storage[threadIdx.x + threadIdx.y*blockDim.x] = spatialWeight/reduced[0];
 	}
 	Float cosp, sinp; 
@@ -290,26 +288,26 @@ void store_spatialWeight(
 
     float x, y;
     retina_to_plane(cosp, sinp, tanEcc, x, y, normViewDistance, LR_x0, LR_y0);
-    /* DEBUG visual field and stimulus field not matching
+    // DEBUG visual field and stimulus field not matching
         if (LR) {
             if (x < 0 || x > 0.5) {
-                printf("x\n");
-                assert(x>=0);
-                assert(x<=0.5);
+                printf("x = %1.15e\n", x);
+                //assert(x>=0);
+                //assert(x<=0.5);
             }
         } else {
             if (x < 0.5 || x > 1) {
-                printf("x\n");
-                assert(x>=0.5);
-                assert(x<=1);
+                printf("x = %1.15e\n", x);
+                //assert(x>=0.5);
+                //assert(x<=1);
             }
         }
         if (y<0 || y>1) {
-            printf("y\n");
-            assert(y>=0);
-            assert(y<=1);
+            printf("y = %1.15e\n", y);
+            //assert(y>=0);
+            //assert(y<=1);
         }
-    */
+    //
     
     // store coords for retrieve data from texture
     SC_storage[storeID] = x; // x
@@ -436,7 +434,8 @@ void LGN_convol_c1s(
         Size kernelSampleInterval,
         Size nKernelSample,
         Float dt,
-        Size denorm 
+        Size denorm,
+        bool saveOutputB4V1
 ) {
     __shared__ Float reducedS[warpSize];
     __shared__ Float reducedC[warpSize];
@@ -503,8 +502,7 @@ void LGN_convol_c1s(
     SmallSize typeS = coneType[blockIdx.x + 1*gridDim.x];
     SmallSize typeC = coneType[blockIdx.x + 0*gridDim.x];
 
-    Float spatialWeightS = SW_storage[tid];
-    Float spatialWeightC = SW_storage[tid];
+    Float spatialWeight = SW_storage[tid];
     //initialize return value
     /* looping the following over (nPatch+1) patches on nKernelSample samples points:
         p - parallelized by all threads;
@@ -694,9 +692,9 @@ void LGN_convol_c1s(
                     local_contrast = copyms(1.0, local_contrast); // copyms is copysign(value, sign);
                 }
 
-                Float filteredS = spatialWeightS*local_contrast;
+                Float filteredS = spatialWeight*local_contrast;
                 block_reduce<Float>(reducedS, filteredS);
-                if (iPatch == nPatch && iFrame == nFrame-1 && tid ==0) {
+                if (saveOutputB4V1 && iPatch == nPatch && iFrame == nFrame-1 && tid ==0) {
                     contrast[gridDim.x*1+blockIdx.x] = reducedS[0];
                     luminance[lidC] = mean_I;
 					/*DEBUG
@@ -717,9 +715,9 @@ void LGN_convol_c1s(
                     local_contrast = copyms(1.0, local_contrast); // copyms is copysign(value, sign);
                 }
 
-                Float filteredC = spatialWeightC*local_contrast;
+                Float filteredC = spatialWeight*local_contrast;
                 block_reduce<Float>(reducedC, filteredC);
-                if (iPatch == nPatch && iFrame == nFrame-1 && tid == 0) {
+                if (saveOutputB4V1 && iPatch == nPatch && iFrame == nFrame-1 && tid == 0) {
                     contrast[gridDim.x*0+blockIdx.x] = reducedC[0];
 					/* DEBUG
 						if (blockIdx.x == 52583) {
@@ -851,7 +849,7 @@ void get_spike(Float &spikeInfo,
     leftTimeRate = (rT - (n_rt-lastNegLogRand));
 }
 
-__launch_bounds__(1024, 2)
+__launch_bounds__(256, 1)
 __global__ 
 void LGN_nonlinear(
         Size nLGN,
@@ -879,9 +877,9 @@ void LGN_nonlinear(
         PosInt x = sx[id];
         PosInt y = sy[id];
         curandStateMRG32k3a local_state = state[id];
-
 		// initialize for next time step
 		current_convol[id] = 0.0;
+
         // get firing rate
         logistic.load_first(id, C50, K, A, B);
         // Float convol = current; // use with DEBUG
