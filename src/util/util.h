@@ -190,7 +190,7 @@ void write_listOfListForArray(std::string filename, std::vector<std::vector<T>> 
 }
 
 template <typename T>
-void read_listOfListToArray(std::string filename, T* &array, Size &maxList, bool print = false) {
+void read_listOfListToArray(std::string filename, T* &array, Size &maxList, bool print = false, T ratio = 1) {
 	std::ifstream input_file;
 	input_file.open(filename, std::fstream::in | std::fstream::binary);
 	if (!input_file) {
@@ -206,6 +206,11 @@ void read_listOfListToArray(std::string filename, T* &array, Size &maxList, bool
         Size listSize;
         input_file.read(reinterpret_cast<char*>(&listSize), sizeof(Size));
 		input_file.read(reinterpret_cast<char*>(&array[i*maxList]), listSize * sizeof(T));
+		if (ratio != 1) {
+			for (PosInt j=0; j<listSize; j++) {
+				array[i*maxList + j] *= ratio;
+			}
+		}
     }
 	input_file.close();
 } 

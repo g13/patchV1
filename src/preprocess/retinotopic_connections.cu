@@ -222,7 +222,7 @@ void vf_pool_CUDA( // for each eye
     assert((nPatch-1)*blockSize + nRemain == m);
     curandStateMRG32k3a rGen;
     Float V1_x, V1_y, r;
-    if (V1_id < n) { // get radius
+    if (V1_id < i0+n) { // get radius
         Float ecc = VFposEcc[V1_id];
         Float baR = baRatio[V1_id];
         V1_x = x[V1_id];
@@ -235,8 +235,8 @@ void vf_pool_CUDA( // for each eye
         a[V1_id] = local_a;
         Float b = R*sqr/M_PI;
         r = (local_a > b)? local_a: b;
+        // scan and pooling LGN
     }
-    // scan and pooling LGN
     Size iPool = 0;
     for (Size iPatch = 0; iPatch < nPatch; iPatch++) {
         // load LGN pos to __shared__
@@ -253,16 +253,32 @@ void vf_pool_CUDA( // for each eye
         }
         __syncthreads();
         // check for distance
-        for (Size i = 0; i < nLGN; i++) {
-            Size iLGN = (threadIdx.x + i)%nLGN;
-            Float dis = get_distance(sx[iLGN]-V1_x, sy[iLGN]-V1_y);
-            if (dis < r) {
-                poolList[V1_id*maxLGNperV1pool + iPool] = j0 + iPatch*blockSize + iLGN;
-                iPool++;
+        if (V1_id < i0+n) {
+            for (Size i = 0; i < nLGN; i++) {
+                Size iLGN = (threadIdx.x + i)%nLGN;
+                Float dis = get_distance(sx[iLGN]-V1_x, sy[iLGN]-V1_y);
+                if (dis < r) {
+                    PosInt LGN_id = j0 + iPatch*blockSize + iLGN;
+                    PosIntL pid = V1_id*maxLGNperV1pool + iPool;
+                    assert(pid < static_cast<PosIntL>((i0+n)*maxLGNperV1pool));
+                    printf("pid: %lu < (%u+%u)*%u = %lu\n", pid, i0, n, maxLGNperV1pool, static_cast<PosIntL>((i0+n)*maxLGNperV1pool));
+                    poolList[pid] = LGN_id;
+                    if (LGN_id >= j0+m) {
+                        printf("LGN_id:%u < %u\n", LGN_id, j0+m); 
+                        assert(LGN_id < j0+m);
+                    }
+                    iPool++;
+                    if (iPool >= maxLGNperV1pool) {
+                        printf("V1_id:%u, r = %f\n", V1_id, r);
+                        assert(iPool < maxLGNperV1pool);
+                    }
+                }
             }
         }
     }
-    nPool[V1_id] = iPool;
+    if (V1_id < i0+n) {
+        nPool[V1_id] = iPool;
+    }
 }
 
 /* 
@@ -321,9 +337,13 @@ vector<vector<Size>> retinotopic_vf_pool(
 		original2LR(baRatio, baRatioLR, LR, nL);
 		original2LR(VFposEcc, VFposEccLR, LR, nL);
         Float *d_memblock;
-        Size d_memSize = ((2+3)*n + 2*m)*sizeof(Float) + n*maxLGNperV1pool*sizeof(PosInt) + n*sizeof(Size);
+        size_t d_memSize = ((2+3)*n + 2*m)*sizeof(Float) + n*maxLGNperV1pool*sizeof(PosInt) + n*sizeof(Size);
+		cout << "poolList need memory of " << n << "x" << maxLGNperV1pool << "x" << sizeof(PosInt) << " = " << static_cast<PosIntL>(n)*maxLGNperV1pool*sizeof(PosInt) << " = " << static_cast<PosIntL>(n)*maxLGNperV1pool*sizeof(PosInt) / 1024.0 / 1024.0 << "mb\n";
         checkCudaErrors(cudaMalloc((void **) &d_memblock, d_memSize));
-		cout << "need global memory of " << d_memSize / 1024.0 / 1024.0 / 4.0 << "mb\n";
+		cout << "need global memory of " << d_memSize / 1024.0 / 1024.0 << "mb\n";
+        cudaDeviceProp deviceProps;
+        checkCudaErrors(cudaGetDeviceProperties(&deviceProps, 0));
+        cout << "remaining: " << deviceProps.totalGlobalMem << " - " << d_memSize << " = " << deviceProps.totalGlobalMem - d_memSize << "\n";
         Float* d_x = d_memblock;
         Float* d_y = d_x + n;
         Float* d_x0 = d_y + n;
@@ -333,7 +353,7 @@ vector<vector<Size>> retinotopic_vf_pool(
         Float* d_VFposEcc = d_baRatio + n;
 		// to be filled
         PosInt* d_poolList = (PosInt*) (d_VFposEcc + n);
-        Size* d_nPool = (Size*) d_poolList + n*maxLGNperV1pool;
+        Size* d_nPool = (Size*) (d_poolList + n*maxLGNperV1pool);
 
         checkCudaErrors(cudaMemcpy(d_x, &(xLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpy(d_y, &(yLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
@@ -341,7 +361,7 @@ vector<vector<Size>> retinotopic_vf_pool(
         checkCudaErrors(cudaMemcpy(d_y0, &(cart0.second[0]), m*sizeof(Float), cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpy(d_baRatio, &(baRatioLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpy(d_VFposEcc, &(VFposEccLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
-
+        // TODO: get in chunks for large network
         Size nblock = (nL + blockSize-1)/blockSize;
         cout <<  "<<<" << nblock << ", " << blockSize << ">>>\n";
         vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_poolList, d_nPool, 0, nL, 0, mL, seed, LGN_V1_RFratio, maxLGNperV1pool);
@@ -366,9 +386,12 @@ vector<vector<Size>> retinotopic_vf_pool(
             }
             poolListLR.push_back(iPool);
         }
+        Size avgPool = accumulate(nPool, nPool+n, 0)/n;
+        Size minPool = *min_element(nPool, nPool+n);
+        Size maxPool = *max_element(nPool, nPool+n);
         delete []poolListArray;
         delete []nPool;
-        cout << "maxLGNperV1pool = " << maxLGNperV1pool << "\n";
+        cout << "LGNperV1pool: [" << minPool << ", " << avgPool << ", " << maxPool << " < " << maxLGNperV1pool << "]\n";
 		LR2original(poolListLR, poolList, LR, nL);
 		LR2original(aLR, a, LR, nL);
     } else {
@@ -411,22 +434,6 @@ vector<vector<Size>> retinotopic_vf_pool(
 }
  
 int main(int argc, char *argv[]) {
-    cudaDeviceProp deviceProps;
-    checkCudaErrors(cudaGetDeviceProperties(&deviceProps, 0));
-    printf("CUDA device [%s] has %d Multi-Processors ", deviceProps.name, deviceProps.multiProcessorCount);
-    printf("SM %d.%d\n", deviceProps.major, deviceProps.minor);
-    printf("total global memory: %f Mb.\n", deviceProps.totalGlobalMem/1024.0/1024.0);
-
-#ifdef SINGLE_PRECISION
-    cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeFourByte);
-#else
-    cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
-#endif
-    printf("maximum threads per MP: %d.\n", deviceProps.maxThreadsPerMultiProcessor);
-    printf("shared memory per block: %zu bytes.\n", deviceProps.sharedMemPerBlock);
-    printf("registers per block: %d.\n", deviceProps.regsPerBlock);
-    cout << "\n";
-    
 	namespace po = boost::program_options;
     bool readFromFile, useCuda;
 	Float p_n_LGNeff;
@@ -447,10 +454,10 @@ int main(int argc, char *argv[]) {
 
 	po::options_description input_opt("input options");
 	input_opt.add_options()
-		("p_n_LGNeff", po::value<Float>(&p_n_LGNeff)->default_value(10), "LGN conneciton probability")
-		("LGN_V1_RFratio,r", po::value<Float>(&LGN_V1_RFratio)->default_value(0.5), "LGN's contribution to the total RF size")
+		("p_n_LGNeff", po::value<Float>(&p_n_LGNeff)->default_value(10), "LGN conneciton probability [0,1], or number of connections [0,n]")
+		("LGN_V1_RFratio,r", po::value<Float>(&LGN_V1_RFratio)->default_value(1.0), "LGN's contribution to the total RF size")
 		("maxLGNperV1pool,m", po::value<Size>(&maxLGNperV1pool)->default_value(100), "maximum pooling of LGN neurons per V1 neuron")
-		("SimpleComplex", po::value<Int>(&SimpleComplex), "determine how simple complex is implemented, through modulation modAmp_nConlitude(0) or number of LGN connection(1)")
+		("SimpleComplex", po::value<Int>(&SimpleComplex)->default_value(0), "determine how simple complex is implemented, through modulation modAmp_nCon(0) or number of LGN connection(1)")
 		("V1_RFtypeAccDist", po::value<vector<Float>>(&V1_RFtypeAccDist), "determine the relative portion of each V1 RF type")
 		("nRefTypeV1_RF", po::value<vector<Size>>(&nRefTypeV1_RF), "determine the number of cone/ON-OFF combinations for each V1 RF type")
 		("V1_RefTypeID", po::value<vector<Size>>(&V1_RefTypeID), "determine the ID of the available cone/ON-OFF combinations in each V1 RF type")
@@ -489,6 +496,24 @@ int main(int argc, char *argv[]) {
 	}
 	po::notify(vm);
 
+    if (useCuda) {
+        cudaDeviceProp deviceProps;
+        checkCudaErrors(cudaGetDeviceProperties(&deviceProps, 0));
+        printf("CUDA device [%s] has %d Multi-Processors ", deviceProps.name, deviceProps.multiProcessorCount);
+        printf("SM %d.%d\n", deviceProps.major, deviceProps.minor);
+        printf("total global memory: %f Mb.\n", deviceProps.totalGlobalMem/1024.0/1024.0);
+    
+    #ifdef SINGLE_PRECISION
+        cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeFourByte);
+    #else
+        cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
+    #endif
+        printf("maximum threads per MP: %d.\n", deviceProps.maxThreadsPerMultiProcessor);
+        printf("shared memory per block: %zu bytes.\n", deviceProps.sharedMemPerBlock);
+        printf("registers per block: %d.\n", deviceProps.regsPerBlock);
+        cout << "\n";
+    }
+    
 	ifstream fV1_vpos;
 	fV1_vpos.open(V1_vpos_filename, fstream::in | fstream::binary);
 	if (!fV1_vpos) {
@@ -524,6 +549,8 @@ int main(int argc, char *argv[]) {
 	vector<double>().swap(decc); // release memory from temporary vectors
 	vector<double>().swap(dpolar);
 
+    cout << "V1_x: [" << *min_element(x.begin(), x.end()) << ", " << *max_element(x.begin(), x.end()) << "]\n";
+    cout << "V1_y: [" << *min_element(y.begin(), y.end()) << ", " << *max_element(y.begin(), y.end()) << "]\n";
 	auto cart = make_pair(x, y);
 	vector<Float>().swap(x); // release memory from temporary vectors
 	vector<Float>().swap(y);
@@ -580,6 +607,8 @@ int main(int argc, char *argv[]) {
 		vector<Float>().swap(polar0);
 		vector<Float>().swap(ecc0);
 	*/
+    cout << "LGN_x: [" << *min_element(x0.begin(), x0.end()) << ", " << *max_element(x0.begin(), x0.end()) << "]\n";
+    cout << "LGN_y: [" << *min_element(y0.begin(), y0.end()) << ", " << *max_element(y0.begin(), y0.end()) << "]\n";
 	auto cart0 = make_pair(x0, y0);
 	vector<Float>().swap(x0);
 	vector<Float>().swap(y0); 
@@ -621,14 +650,39 @@ int main(int argc, char *argv[]) {
 
     vector<Float> a; // radius of the VF, to be filled
 	vector<Float> baRatio = generate_baRatio(n, rGen);
+    cout << "max pool of LGN = " << maxLGNperV1pool << "\n";
     vector<vector<Size>> poolList = retinotopic_vf_pool(cart, cart0, VFposEcc, useCuda, rGen, baRatio, a, LR, nL, mL, m, maxLGNperV1pool, seed, LGN_V1_RFratio);
+    Size minPool = maxLGNperV1pool; 
+    Size maxPool = 0; 
+    Size meanPool = 0; 
+    Size zeroPool = 0;
+    Float zeroR = 0;
+    Float meanR = 0;
+    for (PosInt i=0; i<n; i++) {
+        Size iSize = poolList[i].size();
+        Float r = a[i]*square_root(baRatio[i]*baRatio[i] + 1);
+        if (iSize > maxPool) maxPool = iSize;
+        if (iSize < minPool) minPool = iSize;
+        if (iSize == 0) {
+            zeroPool++;
+            zeroR += r;
+        }
+        meanR += r;
+        meanPool += iSize;
+    }
+    meanPool /= n;
+    zeroR /= zeroPool;
+    meanR /= n;
+    cout << "poolSizes: [" << minPool << ", " << meanPool << ", " << maxPool << "]\n";
+    cout << "among them " << zeroPool << " would have no connection from LGN, whose average radius is " << zeroR << ", compared to population mean " <<  meanR << "\n";
+    
 	cout << "poolList and R ready\n";
 
 	vector<RFtype> V1Type(n); // defined in RFtype.h [0..4], RF shapes
 	vector<OutputType> RefType(n); // defined in in RFtype.h [0..3] conetype placements
 	vector<Float> phase(n); // [0, 2*pi], control the phase
     // theta is read from fV1_feature
-	vector<Float> modAmp_nCon(n); // [0,1] controls simple complex ratio, through subregion overlap ratio (modulation modAmp_nConlitude), or number of LGN connected.
+	vector<Float> modAmp_nCon(n); // [0,1] controls simple complex ratio, through subregion overlap ratio, or number of LGN connected.
     if (readFromFile) {
         ifstream fV1_RFprop(V1_RFprop_filename, fstream::in | fstream::binary);
 	    if (!fV1_RFprop) {
@@ -728,6 +782,21 @@ int main(int argc, char *argv[]) {
     fV1.write((char*)&baRatio[0], n * sizeof(Float));
 	fV1.write((char*)&sfreq[0], n * sizeof(Float));
     fV1.close();
+
+    minPool = maxLGNperV1pool; 
+    maxPool = 0; 
+    meanPool = 0; 
+    zeroPool = 0;
+    for (PosInt i=0; i<n; i++) {
+        Size iSize = poolList[i].size();
+        if (iSize > maxPool) maxPool = iSize;
+        if (iSize < minPool) minPool = iSize;
+        meanPool += iSize;
+        if (iSize == 0) zeroPool++;
+    }
+    meanPool /= n;
+    cout << "# connections: [" << minPool << ", " << meanPool << ", " << maxPool << "]\n";
+    cout << "among them " << zeroPool << " would have no connection from LGN\n";
 
     // write poolList to disk, to be used in ext_input.cu and genCon.cu
 	write_listOfList<Size>(idList_filename, poolList, false);

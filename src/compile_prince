@@ -1,0 +1,31 @@
+#!/bin/bash
+module purge
+module load cuda/10.0.130
+module load gcc/6.3.0
+module load boost/gnu/1.66.0
+module list
+
+rm -f main.o 
+rm -f discrete_convol.o
+rm -f cuda_util.o
+rm -f coredynamics.o
+rm -f stats.o
+
+sm=sm_60
+
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c patch.cu -o main.o
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c discrete_input_convol.cu
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c util/cuda_util.cu -o cuda_util.o
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c stats.cu
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c coredynamics.cu
+
+nvcc -arch=$sm -lcudadevrt -lcudart -lboost_program_options main.o cuda_util.o stats.o discrete_input_convol.o coredynamics.o -o patch #-lcurand
+# === RAND === nvcc -arch=compute_70 -lcudadevrt -lcudart coredynamics.o patch.o -o patch
+
+#nvcc -arch=compute_70 -Xcompiler -Wall,-pedantic -std=c++11 -O0 -c coredynamics.cu 
+#nvcc -arch=compute_70 -Xcompiler -Wall,-pedantic -std=c++11 -O0 -c test.cu 
+#nvcc -arch=compute_70 -Xcompiler -Wall,-pedantic test.o coredynamics.o -lcudadevrt -lcudart -o test
+
+#nvcc -arch=compute_61 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c test.cu -o main.o -lcudadevrt
+#nvcc -arch=compute_61 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c coredynamics.cu -o coredynamics.o -lcudadevrt
+#nvcc -arch=compute_61 main.o coredynamics.o -o test

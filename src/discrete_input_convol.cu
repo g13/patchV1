@@ -849,7 +849,7 @@ void get_spike(Float &spikeInfo,
     leftTimeRate = (rT - (n_rt-lastNegLogRand));
 }
 
-__launch_bounds__(256, 1)
+__launch_bounds__(1024, 2)
 __global__ 
 void LGN_nonlinear(
         Size nLGN,

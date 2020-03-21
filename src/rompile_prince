@@ -1,0 +1,20 @@
+#!/bin/bash
+module purge
+module load cuda/10.0.130
+module load gcc/6.3.0
+module load boost/gnu/1.66.0
+module list
+
+cd preprocess 
+rm -f cuda_util.o
+rm -f retino.o
+rm -f dow.o
+
+sm=sm_70
+
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c ../util/cuda_util.cu -o cuda_util.o
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c retinotopic_connections.cu -o retino.o
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c Dow_et_al_1981.cu -o dow.o
+
+nvcc -arch=$sm -lcudadevrt -lcudart -lboost_program_options retino.o dow.o -o ../retino_gpu #-lcurand
+cd ..

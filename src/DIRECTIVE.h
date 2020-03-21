@@ -8,7 +8,7 @@
 #define TEST_CONVERGENCE_NO_ROUNDING_ERR
 //#define SKIP_IO
 //#define TEST_WITH_MANUAL_FFINPUT
-//#define DEBUG 
+#define DEBUG 
 //#define GPU_ONLY
 #include "types.h"
 #define RECLAIM
