@@ -259,18 +259,16 @@ void vf_pool_CUDA( // for each eye
                 Float dis = get_distance(sx[iLGN]-V1_x, sy[iLGN]-V1_y);
                 if (dis < r) {
                     PosInt LGN_id = j0 + iPatch*blockSize + iLGN;
-                    PosIntL pid = V1_id*maxLGNperV1pool + iPool;
-                    assert(pid < static_cast<PosIntL>((i0+n)*maxLGNperV1pool));
-                    printf("pid: %lu < (%u+%u)*%u = %lu\n", pid, i0, n, maxLGNperV1pool, static_cast<PosIntL>((i0+n)*maxLGNperV1pool));
+                    PosIntL pid = static_cast<PosIntL>(V1_id)*maxLGNperV1pool + iPool;
                     poolList[pid] = LGN_id;
                     if (LGN_id >= j0+m) {
                         printf("LGN_id:%u < %u\n", LGN_id, j0+m); 
                         assert(LGN_id < j0+m);
                     }
                     iPool++;
-                    if (iPool >= maxLGNperV1pool) {
+                    if (iPool > maxLGNperV1pool) {
                         printf("V1_id:%u, r = %f\n", V1_id, r);
-                        assert(iPool < maxLGNperV1pool);
+                        assert(iPool <= maxLGNperV1pool);
                     }
                 }
             }
@@ -326,7 +324,7 @@ vector<vector<Size>> retinotopic_vf_pool(
 		BigSize seed,
 		Float LGN_V1_RFratio
 ) {
-    vector<vector<Size>> poolList;
+    vector<vector<PosInt>> poolList;
     const Size n = cart.first.size();
         
     poolList.reserve(n);
@@ -337,13 +335,10 @@ vector<vector<Size>> retinotopic_vf_pool(
 		original2LR(baRatio, baRatioLR, LR, nL);
 		original2LR(VFposEcc, VFposEccLR, LR, nL);
         Float *d_memblock;
-        size_t d_memSize = ((2+3)*n + 2*m)*sizeof(Float) + n*maxLGNperV1pool*sizeof(PosInt) + n*sizeof(Size);
+        size_t d_memSize = ((2+3)*n + 2*m)*sizeof(Float) + static_cast<size_t>(n)*maxLGNperV1pool*sizeof(PosInt) + n*sizeof(Size);
 		cout << "poolList need memory of " << n << "x" << maxLGNperV1pool << "x" << sizeof(PosInt) << " = " << static_cast<PosIntL>(n)*maxLGNperV1pool*sizeof(PosInt) << " = " << static_cast<PosIntL>(n)*maxLGNperV1pool*sizeof(PosInt) / 1024.0 / 1024.0 << "mb\n";
         checkCudaErrors(cudaMalloc((void **) &d_memblock, d_memSize));
-		cout << "need global memory of " << d_memSize / 1024.0 / 1024.0 << "mb\n";
-        cudaDeviceProp deviceProps;
-        checkCudaErrors(cudaGetDeviceProperties(&deviceProps, 0));
-        cout << "remaining: " << deviceProps.totalGlobalMem << " - " << d_memSize << " = " << deviceProps.totalGlobalMem - d_memSize << "\n";
+		cout << "need global memory of " << d_memSize / 1024.0 / 1024.0 << "mb in total\n";
         Float* d_x = d_memblock;
         Float* d_y = d_x + n;
         Float* d_x0 = d_y + n;
@@ -361,7 +356,7 @@ vector<vector<Size>> retinotopic_vf_pool(
         checkCudaErrors(cudaMemcpy(d_y0, &(cart0.second[0]), m*sizeof(Float), cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpy(d_baRatio, &(baRatioLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpy(d_VFposEcc, &(VFposEccLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
-        // TODO: get in chunks for large network
+        // TODO: stream kernels in chunks for large network
         Size nblock = (nL + blockSize-1)/blockSize;
         cout <<  "<<<" << nblock << ", " << blockSize << ">>>\n";
         vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_poolList, d_nPool, 0, nL, 0, mL, seed, LGN_V1_RFratio, maxLGNperV1pool);
@@ -371,29 +366,29 @@ vector<vector<Size>> retinotopic_vf_pool(
         cout <<  "<<<" << nblock << ", " << blockSize << ">>>\n";
         vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_poolList, d_nPool, nL, n-nL, mL, m-mL, seed, LGN_V1_RFratio, maxLGNperV1pool);
         getLastCudaError("vf_pool for the right eye failed");
-		vector<vector<Size>> poolListLR;
-        PosInt* poolListArray = new Size[n*maxLGNperV1pool];
+		vector<vector<PosInt>> poolListLR;
+        size_t largeSize = static_cast<BigSize>(n)*maxLGNperV1pool;
+        PosInt* poolListArray = new Size[largeSize];
         Size* nPool = new Size[n];
 		vector<Float> aLR(n);
         checkCudaErrors(cudaMemcpy(&aLR[0], d_a, n*sizeof(Float), cudaMemcpyDeviceToHost));
-        checkCudaErrors(cudaMemcpy(poolListArray, d_poolList, n*maxLGNperV1pool*sizeof(PosInt), cudaMemcpyDeviceToHost));
+        checkCudaErrors(cudaMemcpy(poolListArray, d_poolList, largeSize*sizeof(PosInt), cudaMemcpyDeviceToHost));
         checkCudaErrors(cudaMemcpy(nPool, d_nPool, n*sizeof(Size), cudaMemcpyDeviceToHost));
         for (Size i=0; i<n; i++) {
-            vector<Size> iPool;
-            iPool.reserve(nPool[i]);
+            vector<Size> iPool(nPool[i]);
             for (Size j=0; j<nPool[i]; j++) {
-                iPool.push_back(poolListArray[i*maxLGNperV1pool + j]);
+                size_t pid = static_cast<PosIntL>(i)*maxLGNperV1pool + j;
+                iPool[j] = poolListArray[pid];
             }
             poolListLR.push_back(iPool);
         }
-        Size avgPool = accumulate(nPool, nPool+n, 0)/n;
-        Size minPool = *min_element(nPool, nPool+n);
         Size maxPool = *max_element(nPool, nPool+n);
         delete []poolListArray;
         delete []nPool;
-        cout << "LGNperV1pool: [" << minPool << ", " << avgPool << ", " << maxPool << " < " << maxLGNperV1pool << "]\n";
+        assert(maxPool < maxLGNperV1pool);
 		LR2original(poolListLR, poolList, LR, nL);
 		LR2original(aLR, a, LR, nL);
+        checkCudaErrors(cudaFree(d_memblock));
     } else {
         vector<Float> normRand;
         vector<Float> rMap;
@@ -428,7 +423,7 @@ vector<vector<Size>> retinotopic_vf_pool(
             }
             if (poolList[i].size() > maxLGNperV1pool) maxLGNperV1pool = poolList[i].size();
         }
-        cout << "maxLGNperV1pool = " << maxLGNperV1pool << "\n";
+        cout << "actual maxLGNperV1pool reaches " << maxLGNperV1pool << "\n";
     }
     return poolList;
 }
@@ -673,7 +668,7 @@ int main(int argc, char *argv[]) {
     meanPool /= n;
     zeroR /= zeroPool;
     meanR /= n;
-    cout << "poolSizes: [" << minPool << ", " << meanPool << ", " << maxPool << "]\n";
+    cout << "poolSizes: [" << minPool << ", " << meanPool << ", " << maxPool << " < " << maxLGNperV1pool << "]\n";
     cout << "among them " << zeroPool << " would have no connection from LGN, whose average radius is " << zeroR << ", compared to population mean " <<  meanR << "\n";
     
 	cout << "poolList and R ready\n";

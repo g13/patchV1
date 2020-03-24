@@ -50,10 +50,10 @@ void compute_V_collect_spike(
         Float* __restrict__ v,
         Float* __restrict__ gFF,
         Float* __restrict__ hFF,
-        Float* __restrict__ gE,
-        Float* __restrict__ gI,
-        Float* __restrict__ hE,
-        Float* __restrict__ hI,
+        Float** __restrict__ gE,
+        Float** __restrict__ gI,
+        Float** __restrict__ hE,
+        Float** __restrict__ hI,
         Float* __restrict__ spikeTrain, // [depth, nblock, blockSize]
         Float* __restrict__ tBack,
         Size* __restrict__ nLGN,
@@ -73,7 +73,8 @@ void sum_G(
         Float* __restrict__ hEt,
         Float* __restrict__ hE,
         Float* __restrict__ hIt,
-        Float* __restrict__ hI
+        Float* __restrict__ hI,
+        Size ngTypeE, Size ngTypeI
 );
 
 void recal_G_vec(

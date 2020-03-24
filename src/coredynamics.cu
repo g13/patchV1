@@ -40,6 +40,11 @@ Float step(LIF* lif, Float dt, Float tRef, Float *tsp, PosInt id, Float gE, Floa
         // return from refractory period
         if (lif->tBack > 0.0f) {
             lif->recompute_v0(dt);
+            #ifdef DEBUG
+                if (id == 0 || id == 768) {
+                    printf("backed\n");
+                }
+            #endif
         }
         lif->implicit_rk2(dt);
         while (lif->v > vT && lif->tBack < dt) { // forbids firing exactly at the end of the timestep, 
@@ -48,6 +53,11 @@ Float step(LIF* lif, Float dt, Float tRef, Float *tsp, PosInt id, Float gE, Floa
             sInfo += lif->tsp;
             lif->spikeCount++;
             lif->tBack = lif->tsp + tRef;
+            #ifdef DEBUG
+                if (id == 0 || id == 768) {
+                    printf("#%u spiked at %f, to come back at %f\n", id, lif->tsp, lif->tBack);
+                }
+            #endif
             if (lif->tBack < dt) {
                 // refractory period ended during dt
                 lif->recompute(dt);
@@ -58,23 +68,20 @@ Float step(LIF* lif, Float dt, Float tRef, Float *tsp, PosInt id, Float gE, Floa
         sInfo = sInfo / (lif->spikeCount * dt);
     }
     // access only the first element [id*depth + currentTimeSlot]
-    tsp[0] = sInfo + lif->spikeCount-1;
+    tsp[0] = sInfo + lif->spikeCount-1; // set to -1 not fired
     if (lif->tBack >= dt) {
         // during refractory period
         lif->reset_v();
     }
     lif->tBack -= dt;
-#ifdef DEBUG
-    if (lif->spikeCount > 1) {
-        printf("#%i spiked %i in one time step %f, refractory period = %f ms, only the last tsp is recorded\n", id, lif->spikeCount, dt, tRef);
-    }
-#endif
-    if (lif->v < vI) {
-#ifdef DEBUG
-		printf("#%i implicit rk2 is A-Stable! something is off gE1 = %f, gI1 = %f, v = %f, v0 = %f, a0 = %f, b0 = %f, a1 = %f, b1 = %f\n", id, gE, gI, lif->v, lif->v0, lif->a0, lif->b0, lif->a1, lif->b1);
-#endif
-        lif->v = vI;
-    }   
+    #ifdef DEBUG
+        if (id == 2) {
+            printf("#%u v = %f, gI = %f\n", id, lif->v, gI);
+        }
+        if (lif->v < vI) {
+    		printf("#%i implicit rk2 is A-Stable! something is off gE1 = %f, gI1 = %f, v = %f, v0 = %f, a0 = %f, b0 = %f, a1 = %f, b1 = %f\n", id, gE, gI, lif->v, lif->v0, lif->a0, lif->b0, lif->a1, lif->b1);
+        }   
+    #endif
     return lif->tsp;
 }
 
@@ -147,10 +154,10 @@ void compute_V_collect_spike(
         Float* __restrict__ v,
         Float* __restrict__ gFF, // not in chunks
         Float* __restrict__ hFF,
-        Float* __restrict__ gE, // in chunks
-        Float* __restrict__ gI,
-        Float* __restrict__ hE,
-        Float* __restrict__ hI,
+        Float** __restrict__ gE, // in chunks
+        Float** __restrict__ gI,
+        Float** __restrict__ hE,
+        Float** __restrict__ hI,
         Float* __restrict__ spikeTrain, // [depth, nblock, blockSize]
         Float* __restrict__ tBack,
         Size* __restrict__ nLGN,
@@ -161,20 +168,19 @@ void compute_V_collect_spike(
 {
 	//assert(blockDim.x == blockSize);
     PosInt tid = blockIdx.x * blockDim.x + threadIdx.x;
-	PosInt chunk_offset;
-	Size chunkSize;
-	PosInt id; // neuron id per chunk
+    PosInt iChunk;
+    Size chunkSize;
+    PosInt cid;
     if (blockIdx.x >= iSizeSplit*maxChunkSize) {
-		id = ((blockIdx.x-iSizeSplit*maxChunkSize)/remainChunkSize)*remainChunkSize;
-        chunk_offset = (iSizeSplit*maxChunkSize + id)*blockDim.x;
-        chunkSize = maxChunkSize*blockDim.x;
-		id = ((blockIdx.x - iSizeSplit*maxChunkSize) - id)*blockDim.x + threadIdx.x;
-    } else {
-		id = (blockIdx.x / maxChunkSize)*maxChunkSize;
-        chunk_offset = id*blockDim.x;
+        iChunk = iSizeSplit + (blockIdx.x-iSizeSplit*maxChunkSize)/remainChunkSize;
         chunkSize = remainChunkSize*blockDim.x;
-		id = (blockIdx.x - id)*blockDim.x + threadIdx.x;
+        cid = tid - (iSizeSplit*maxChunkSize + (iChunk-iSizeSplit)*remainChunkSize)*blockDim.x;
+    } else {
+        iChunk = blockIdx.x/maxChunkSize;
+        chunkSize = maxChunkSize*blockDim.x;
+        cid = tid - iChunk*maxChunkSize*blockDim.x;
     }
+
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
     // TODO: load individual gl, tref
     LIF lif(v[tid], tBack[tid]);
@@ -192,7 +198,7 @@ void compute_V_collect_spike(
     // cond FF
     #pragma unroll
     for (PosInt ig=0; ig<ngTypeFF; ig++) {
-        PosInt gid = nV1*ig + id; // not in chunks
+        PosInt gid = nV1*ig + tid; // not in chunks
         Float g = gFF[gid];
         Float h = hFF[gid];
         gE_t0 += g;
@@ -218,42 +224,34 @@ void compute_V_collect_spike(
     // cond E 
     #pragma unroll
     for (PosInt ig=0; ig<ngTypeE; ig++) {
-        PosInt gid = chunk_offset*ngTypeE + chunkSize*ig + id;
-        Float g = gE[gid];
-        Float h = hE[gid];
+        PosInt gid = chunkSize*ig + cid;
+        Float g = gE[iChunk][gid];
+        Float h = hE[iChunk][gid];
         gE_t0 += g;
         condE.decay_conductance(g, h, dt, ig); 
         gE_t1 += g;
-        gE[gid] = g;
-        hE[gid] = h;
+        gE[iChunk][gid] = g;
+        hE[iChunk][gid] = h;
     }
     // cond I 
     Float gI_t0 = 0.0;
 	Float gI_t1 = 0.0;
     #pragma unroll
     for (PosInt ig=0; ig<ngTypeI; ig++) {
-        PosInt gid = chunk_offset*ngTypeI + chunkSize*ig + id;
-        Float g = gI[gid];
-        Float h = hI[gid];
+        PosInt gid = chunkSize*ig + cid;
+        Float g = gI[iChunk][gid];
+        Float h = hI[iChunk][gid];
         gI_t0 += g;
         condI.decay_conductance(g, h, dt, ig); 
         gI_t1 += g;
-        gI[gid] = g;
-        hI[gid] = h;
+        gI[iChunk][gid] = g;
+        hI[iChunk][gid] = h;
     }
     lif.set_p0(gE_t0, gI_t0, gL);
     lif.set_p1(gE_t1, gI_t1, gL);
     /* evolve g to t+dt with ff input only */
     // step
-    step(&lif, dt, tRef, spikeTrain+tid*trainDepth+currentTimeSlot%trainDepth, /*the last 2 args are for deugging*/ tid, gE_t1, gI_t1);
-    if (lif.v < vI) {
-#ifdef DEBUG
-        if (tid == 0) {
-		    printf("#%i something is off gE = %f, gI = %f, v = %f\n", tid, gE_t1, gI_t1, lif.v);
-#endif
-        }
-        lif.v = vI;
-    }   
+    step(&lif, dt, tRef, spikeTrain+nV1*currentTimeSlot+tid, /*the last 3 args are for deugging*/ tid, gE_t1, gI_t1);
 	v[tid] = lif.v;
     tBack[tid] = lif.tBack;
 }
@@ -295,9 +293,10 @@ void recal_G_mat(
         for (PosInt i=0; i<blockSize; i++) {
 			PosInt ipre = bid*blockSize + i;
             // access each presynaptic neurons in stride
+            // conMat: [nblock,nearNeighborBlock,blockDim.x,blockDim.x] last dim is the post-id: second-last pre-id
             PosIntL mid = static_cast<PosIntL>((local_bid*blockSize + i)*blockSize + threadIdx.x);
             Float strength = conMat[mid];
-            Float distance = delayMat[mid];
+            Float time2post = delayMat[mid]/speedOfThought;
             Float *local_g;
             Float *local_h;
             Size ngType;
@@ -313,22 +312,36 @@ void recal_G_mat(
                 ngType = ngTypeI;
                 cond = &condI;
             }
-            for (PosInt j=1; j<trainDepth+1; j++) { // older to newer
-                PosInt isp = ipre*trainDepth + (currentTimeSlot + j) % trainDepth;
+            PosInt it2post = static_cast<PosInt>(ceiling(time2post/dt));
+            time2post = it2post*dt - time2post;
+            assert(time2post>=0);
+            assert(time2post<dt);
+            PosInt j0 = (currentTimeSlot - it2post + trainDepth)%trainDepth;
+            //|<-   it2post               ->|
+            //|j0                           |currentTimeSlot
+            //|--*--o---|--*------|---------|---------| thus 2
+            //   |  tsp    |               
+            // ->|         |<- distance adjusted dt
+            // ->| distance/speedOfThought  |<-
+            //|  |<- time2post
+            #pragma unroll
+            for (PosInt j=0; j<2; j++) { 
+                // from older to newer
+                PosInt isp = nV1*(j0 + j) + ipre;
 				/* DEBUG
 				if (ipre >= nV1) {
 					printf("ipre: %u = %u*%i + %i < %u\n", ipre, bid, blockSize, i, nV1);
 					assert(ipre < nV1);
 				}*/
                 Float sInfo = spikeTrain[isp];
-                if (sInfo >= 0) {
+                if (sInfo >= 0) { // could fire at the instant t = t_i
                     Float nsp = flooring(sInfo);
-                    Float tsp = (sInfo - nsp + (trainDepth-j))*dt - distance/speedOfThought;
-                    if (tsp >= dt) continue; // this spike has passed
-                    else if (tsp < 0) break; // break at the first spike that did not arrive
-                    nsp += 1;
-                    for (PosInt ig=0; ig<ngType; ig++) {
-                        cond->compute_single_input_conductance(local_g[ig], local_h[ig], strength*nsp, dt*(1-tsp), ig);
+                    Float tsp = (sInfo - nsp)*dt - time2post;
+                    if (tsp < dt && tsp >=0) {
+                        nsp += 1;
+                        for (PosInt ig=0; ig<ngType; ig++) {
+                            cond->compute_single_input_conductance(local_g[ig], local_h[ig], strength*nsp, dt*(1-tsp), ig);
+                        }
                     }
                 }
                 //__syncwarp(); // may not be needed
@@ -338,16 +351,16 @@ void recal_G_mat(
 
     PosInt id = blockIdx.x*blockSize + threadIdx.x;
     for (PosInt ig=0; ig<ngTypeE; ig++) {
-        PosInt gid = ig*gridDim.x*blockSize + id;
-        gE[gid] = local_gE[ig];
-        hE[gid] = local_hE[ig];
+        PosInt gid = ig*gridDim.x*blockDim.x + id;
+        gE[gid] += local_gE[ig];
+        hE[gid] += local_hE[ig];
     }
     delete [] local_gE;
     delete [] local_hE;
     for (PosInt ig=0; ig<ngTypeI; ig++) {
-        PosInt gid = ig*gridDim.x*blockSize + id;
-        gI[gid] = local_gI[ig];
-        hI[gid] = local_hI[ig];
+        PosInt gid = ig*gridDim.x*blockDim.x + id;
+        gI[gid] += local_gI[ig];
+        hI[gid] += local_hI[ig];
     }
     delete [] local_gI;
     delete [] local_hI;
@@ -363,16 +376,28 @@ void sum_G(
         Float* __restrict__ hEt,
         Float* __restrict__ hE,
         Float* __restrict__ hIt,
-        Float* __restrict__ hI)
+        Float* __restrict__ hI,
+        Size ngTypeE, Size ngTypeI)
 {
     PosInt id = blockIdx.x*blockDim.x + threadIdx.x;
     if (nVec[id] > 0) {
 		// sum
-        gE[id] += gEt[id];
-        gI[id] += gIt[id];
-        hE[id] += hEt[id];
-        hI[id] += hIt[id];
+        for (PosInt ig=0; ig<ngTypeE; ig++) {
+            PosInt gid = ig*gridDim.x*blockDim.x + id;
+            gE[gid] += gEt[gid];
+            hE[gid] += hEt[gid];
+        }
+        for (PosInt ig=0; ig<ngTypeI; ig++) {
+            PosInt gid = ig*gridDim.x*blockDim.x + id;
+            gI[gid] += gIt[gid];
+            hI[gid] += hIt[gid];
+        }
     }
+    #ifdef DEBUG
+        if (id == 0||id == 1) {
+            printf("#%u gE[0] = %f, gE[1] = %f, gI = %f\n", id, gE[id], gE[gridDim.x*blockDim.x + id], gI[id]);
+        }
+    #endif
 }
 
 using namespace std;
@@ -402,7 +427,7 @@ void recal_G_vec(
             PosInt tid = ipre%blockSize;
 
             Float strength = conVec[i0+i][j];
-            Float distance = delayVec[i0+i][j];
+            Float time2post = delayVec[i0+i][j]/speedOfThought;
             Float *local_g;
             Float *local_h;
             Size ngType;
@@ -419,17 +444,23 @@ void recal_G_vec(
                 ngType = ngTypeI;
                 cond = &condI;
             }
-            for (PosInt k = 0; k < trainDepth; k++) {
-                PosInt isp = ipre*trainDepth + (currentTimeSlot + k) % trainDepth;
+            PosInt it2post = static_cast<PosInt>(ceiling(time2post/dt));
+            time2post = it2post*dt - time2post;
+            assert(time2post>=0);
+            assert(time2post<dt);
+            PosInt k0 = (currentTimeSlot - it2post + trainDepth)%trainDepth;
+            #pragma unroll
+            for (PosInt k = 0; k < 2; k++) {
+                PosInt isp = nV1*(k0+k) + ipre;
                 Float sInfo = spikeTrain[isp];
                 if (sInfo >= 0) {
                     Float nsp = flooring(sInfo);
-                    Float tsp = (sInfo - nsp + (trainDepth-j))*dt - distance/speedOfThought;
-                    if (tsp >= dt) continue; // this spike has passed
-                    else if (tsp < 0) break; // break at the first spike that did not arrive
-                    nsp += 1;
-                    for (PosInt ig=0; ig<ngType; ig++) {
-                        cond->compute_single_input_conductance(local_g[ig], local_h[ig], strength*nsp, dt*(1-tsp), ig);
+                    Float tsp = (sInfo - nsp)*dt - time2post;
+                    if (tsp < dt && tsp >= 0){
+                        nsp += 1;
+                        for (PosInt ig=0; ig<ngType; ig++) {
+                            cond->compute_single_input_conductance(local_g[ig], local_h[ig], strength*nsp, dt*(1-tsp), ig);
+                        }
                     }
                 }
                 //__syncwarp(); // may not be needed

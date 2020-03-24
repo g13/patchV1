@@ -89,8 +89,11 @@ int main(int argc, char **argv) {
 	bool saveLGN_fr, saveLGN_gallery, saveOutputB4V1;
 	bool frameVisV1output, frameVisLGNoutput;
     bool hWrite;
+    bool manual;
 	Size nChunk;
 	Size matConcurrency;
+	Size phyWidth;
+	Size visWidth;
 	SmallSize nSpatialSample1D; // spatial kernel sample size = nSpatialSample1D x nSpatialSample1D
 	SmallSize nKernelSample;
 	vector<Float> grFF;
@@ -100,6 +103,8 @@ int main(int argc, char **argv) {
 	vector<Float> gdE;
 	vector<Float> gdI;
 	vector<Size> archtypeAccCount;
+    vector<PosInt> preList, postList;
+    vector<Float> sList;
 	Float nsig; // extent of spatial RF sampling in units of std
 	Float tau; // required length of memory for LGN temporal kernel
 	Float Itau; // in ms .. cone adaptation at 300ms https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1003289
@@ -119,11 +124,13 @@ int main(int argc, char **argv) {
 	top_opt.add_options()
 		("dt", po::value<Float>(&dt)->default_value(0.0625), "simulatoin time step in ms") 
 		("nChunk,n", po::value<Size>(&nChunk)->default_value(10),"simulation in chunks, empricial")
-		("matConcurrency,n", po::value<Size>(&matConcurrency)->default_value(2),"sum presynaptic inputs from connection matrices in parallel, depends on the availability of device memory")
+		("matConcurrency,n", po::value<Size>(&matConcurrency)->default_value(10),"sum presynaptic inputs from connection matrices in parallel, depends on the availability of device memory")
 		("speedOfThought", po::value<Float>(&speedOfThought)->default_value(1.0), "velocity of conduction, mm/ms") 
 		("nt", po::value<Size>(&nt)->default_value(8000), "total simulatoin time in units of time step")
 		("nsig", po::value<Float>(&nsig)->default_value(3), "extent of spatial RF sampling in units of std")
 		("nSpatialSample1D", po::value<SmallSize>(&nSpatialSample1D)->default_value(warpSize), "number of samples per x,y direction for a LGN spatial RF")
+        ("phyWidth", po::value<Size>(&phyWidth)->default_value(256), "pixel width of the physical V1 sheet frame output")
+        ("visWidth", po::value<Size>(&visWidth)->default_value(126), "pixel width of the halfi visual field frame output")
 		("tau", po::value<Float>(&tau)->default_value(250.0), "the backward time interval that a LGN temporal RF should cover")
 		("Itau", po::value<Float>(&Itau)->default_value(300.0), "the light intensity adaptation time-scale of a cone")
 		("ratioLGN", po::value<Float>(&ratioLGN)->default_value(1), "scale LGN strength")
@@ -136,6 +143,10 @@ int main(int argc, char **argv) {
 		("decayTimeE", po::value<vector<Float>>(&gdE), "array for decay time of the cortical excitatory conductances, size should be consistent with riseTimeE")
 		("decayTimeI", po::value<vector<Float>>(&gdI), "array for decay time of the inhibitory conductances, size should be consistent with riseTimeI")
 		("archtypeAccCount",po::value<vector<Size>>(&archtypeAccCount), "neuronal types' discrete accumulative distribution (E&I), size of [nArchtype], nArchtype = nTypeHierarchy[0]")
+        ("manual", po::value<bool>(&manual)->default_value(false), "manually connect neurons, modify on top of conMat")
+        ("preList", po::value<vector<PosInt>>(&preList), "the presynaptic neurons of the manual connections")
+        ("postList", po::value<vector<PosInt>>(&postList), "the postynaptic neurons of the manual connections")
+        ("sList", po::value<vector<Float>>(&sList), "the strength of the manual connections, can be an scalar")
 		("readFeature", po::value<bool>(&readFeature)->default_value(true), "read features, OD, OP rather than learning them")
 		("hWrite", po::value<bool>(&hWrite)->default_value(true), "write h data to fRawData output")
 		("saveLGN_fr", po::value<bool>(&saveLGN_fr)->default_value(true),"write LGN firing rates to disk, specify filename through LGN_fr_filename")
@@ -204,7 +215,7 @@ int main(int argc, char **argv) {
 		return EXIT_FAILURE;
 	}
 
-	Size ngTypeFF = grFF.size();
+	Size ngTypeFF = static_cast<Size>(grFF.size());
 	if (ngTypeFF > 5) {
 		cout << "too many types of feed-foward(FF) excitatory conductances, change the array size of time constant in condShape.h accordingly and recompile\n"; 
 		return EXIT_FAILURE;
@@ -215,7 +226,7 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	Size ngTypeE = grE.size();
+	Size ngTypeE = static_cast<Size>(grE.size());
 	if (ngTypeE > 5) {
 		cout << "too many types of excitatory conductances, change the array size of time constant in condShape.h accordingly and recompile\n"; 
 		return EXIT_FAILURE;
@@ -226,7 +237,7 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	Size ngTypeI = grI.size();
+	Size ngTypeI = static_cast<Size>(grI.size());
 	if (ngTypeI > 5) {
 		cout << "too many types of inhibitory conductances, change the array size of time constant in condShape.h accordingly and recompile\n"; 
 		return EXIT_FAILURE;
@@ -1031,7 +1042,7 @@ int main(int argc, char **argv) {
 		fV1_pos.read(reinterpret_cast<char*>(&V1_y0), sizeof(double));
 		fV1_pos.read(reinterpret_cast<char*>(&V1_yspan), sizeof(double));
 		nV1 = nblock * neuronPerBlock;
-		cout << nV1 << " V1 neurons\n";
+		cout << nV1 << " V1 neurons, x:[" << V1_x0 << ", " << V1_x0+V1_xspan << "], y:[" << V1_y0 << ", " << V1_y0 + V1_yspan << "]\n";
 		if (!frameVisV1output) {
 			cpu_chunk_V1pos = new double[nV1*2];
 			fV1_pos.read(reinterpret_cast<char*>(cpu_chunk_V1pos), 2*nV1*sizeof(double));
@@ -1042,6 +1053,7 @@ int main(int argc, char **argv) {
 			fV1_pos.read(reinterpret_cast<char*>(&V1_vxspan), sizeof(double));
 			fV1_pos.read(reinterpret_cast<char*>(&V1_vy0), sizeof(double));
 			fV1_pos.read(reinterpret_cast<char*>(&V1_vyspan), sizeof(double));
+		    cout << " V1 visual position, x:[" << V1_vx0 << ", " << V1_vx0+V1_vxspan << "], y:[" << V1_vy0 << ", " << V1_vy0 + V1_vyspan << "] in degree\n";
 			fV1_pos.read(reinterpret_cast<char*>(cpu_chunk_V1pos + 2*nV1), 2*nV1*sizeof(double));
 		}
 		V1_x = cpu_chunk_V1pos;
@@ -1063,8 +1075,10 @@ int main(int argc, char **argv) {
 				if (V1_y[i] < yMin) yMin = V1_y[i];
 			}
 		}
-		cout << "x:" << xMin << ", " << xMax << "\n";
-		cout << "y:" << yMin << ", " << yMax << "\n";
+        assert(xMin >= V1_x0);
+        assert(xMax <= V1_x0+V1_xspan);
+        assert(yMin >= V1_y0);
+        assert(yMax <= V1_y0+V1_yspan);
 		if (frameVisV1output) {
 			V1_vx = V1_y + nV1;
 			V1_vy = V1_vx + nV1;
@@ -1084,8 +1098,10 @@ int main(int argc, char **argv) {
 					if (V1_vy[i] < vyMin) vyMin = V1_vy[i];
 				}
 			}
-			cout << "vx:" << vxMin << ", " << vxMax << "\n";
-			cout << "vy:" << vyMin << ", " << vyMax << "\n";
+            assert(vxMin >= V1_vx0);
+            assert(vxMax <= V1_vx0+V1_vxspan);
+            assert(vyMin >= V1_vy0);
+            assert(vyMax <= V1_vy0+V1_vyspan);
 		}
 	}
 	fV1_pos.close();
@@ -1106,16 +1122,14 @@ int main(int argc, char **argv) {
 	// stats: frames, rawdata
 	// cortical and LGN surface
 	Float V1_hwPhyRatio = V1_yspan/V1_xspan;
-	Size phyWidth = 1024;
 	Size phyHeight = ceil(V1_hwPhyRatio * phyWidth);
 	if (phyHeight%2 == 1) phyHeight++;
 	Size nPixel_phyV1 = phyWidth * phyHeight;
 
 	// two visual field surface, left and right
-	Size nPixel_visV1, visWidth, visHeight; // share with visLGN
+	Size nPixel_visV1, visHeight; // share with visLGN
 	if (frameVisV1output) {
-		visWidth = 510;
-		Float V1_hwVisRatioV = V1_vyspan/(2*V1_vxspan);
+		Float V1_hwVisRatioV = V1_vyspan/V1_vxspan;
 		visHeight = ceil(V1_hwVisRatioV * visWidth);
 		if (visHeight%2 == 1) visHeight++;
 		// left + 4pixel gap + right = 1024
@@ -1145,7 +1159,7 @@ int main(int argc, char **argv) {
             assert(id_max < nV1);
         //
 		// determine size
-		size_t V1_phyFrameSize = maxV1perPixel*phyWidth*phyHeight * sizeof(PosInt);
+		size_t V1_phyFrameSize = static_cast<size_t>(maxV1perPixel)*phyWidth*phyHeight * sizeof(PosInt);
 		V1_phyFrameSize += nPixel_phyV1 * sizeof(Size);
 		// allocate
 		char* V1_phyFrame = new char[V1_phyFrameSize];
@@ -1175,7 +1189,7 @@ int main(int argc, char **argv) {
 
 		delete [] V1_phyFrame;
 		nFrameOutput += 1;
-		cout << "V1 frame output " << phyWidth << "x" << phyHeight << ", " << maxV1perPixel << " V1 neurons per pixel.\n";
+		cout << "V1 frame output " << phyWidth << "x" << phyHeight << ", maximum " << maxV1perPixel << " V1 neurons per pixel.\n";
 	}
 
 	char* d_LGN_visFrame;
@@ -1213,7 +1227,7 @@ int main(int argc, char **argv) {
         //
 
 		// determine size
-		size_t LGN_visFrameSize = (maxLGNperPixel_I + maxLGNperPixel_C)*visWidth*visHeight * sizeof(PosInt);
+		size_t LGN_visFrameSize = static_cast<size_t>(maxLGNperPixel_I + maxLGNperPixel_C)*visWidth*visHeight * sizeof(PosInt);
 		LGN_visFrameSize += nPixel_visLGN * sizeof(Size);
 		// allocate
 		char* LGN_visFrame = new char[LGN_visFrameSize];
@@ -1254,7 +1268,7 @@ int main(int argc, char **argv) {
 		usingGMem += LGN_visFrameSize;
 		if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 		nFrameOutput += 1;
-		cout << "LGN VF frame output " << visWidth << "x" << visHeight << ", " << maxLGNperPixel_C << "(" << maxLGNperPixel_I << ")" << "Contra(Ipsi) LGN neurons per pixel.\n";
+		cout << "LGN VF frame output " << visWidth << "x" << visHeight << ", maximum " << maxLGNperPixel_C << "(" << maxLGNperPixel_I << ")" << "Contra(Ipsi) LGN neurons per pixel.\n";
 	}
 
 	char* d_V1_visFrame;
@@ -1304,7 +1318,7 @@ int main(int argc, char **argv) {
         //
 
 		// detemine size
-		size_t V1_visFrameSize = (maxV1perPixel_I + maxV1perPixel_C)*visWidth*visHeight*sizeof(PosInt);
+		size_t V1_visFrameSize = static_cast<size_t>(maxV1perPixel_I + maxV1perPixel_C)*visWidth*visHeight*sizeof(PosInt);
 		V1_visFrameSize += nPixel_visV1 * sizeof(Size);
 		// allocate
 		char* V1_visFrame = new char[V1_visFrameSize];
@@ -1343,7 +1357,7 @@ int main(int argc, char **argv) {
 		usingGMem += V1_visFrameSize;
 		if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 		nFrameOutput += 1;
-		cout << "V1 VF frame output " << visWidth << "x" << visHeight << ", " << maxV1perPixel_C << "(" << maxV1perPixel_I << ")" << "Contra(Ipsi) V1 neurons per pixel.\n";
+		cout << "V1 VF frame output " << visWidth << "x" << visHeight << ", maximum " << maxV1perPixel_C << "(" << maxV1perPixel_I << ")" << "Contra(Ipsi) V1 neurons per pixel.\n";
 	}
 
 	Float *d_outputFrame;
@@ -1367,6 +1381,35 @@ int main(int argc, char **argv) {
 	usingGMem += framesSize;
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
+    // far connection
+	vector<Size> nVec(nV1);
+	vector<vector<PosInt>> vecID(nV1);
+	vector<vector<Float>> conVec(nV1);
+	vector<vector<Float>> delayVec(nV1);
+	fV1_vec.open(V1_vec_filename, fstream::in | fstream::binary);
+	if (!fV1_vec) {
+		cout << "Cannot open or find " << V1_vec_filename <<" to read V1 connection to farther neighbor.\n";
+		return EXIT_FAILURE;
+	} else {
+		fV1_vec.read(reinterpret_cast<char*>(&nVec[0]), nV1*sizeof(Size));
+		for (PosInt i=0; i<nV1; i++) {
+			if (nVec[i] > 0) {
+				vector<PosInt> tmp(nVec[i]);
+				fV1_vec.read(reinterpret_cast<char*>(&tmp[0]), nVec[i]*sizeof(PosInt));
+				vecID[i] = tmp;
+
+				vector<Float> ftmp(nVec[i]);
+				fV1_vec.read(reinterpret_cast<char*>(&ftmp[0]), nVec[i]*sizeof(Float));
+				conVec[i] = ftmp;
+
+				fV1_vec.read(reinterpret_cast<char*>(&ftmp[0]), nVec[i]*sizeof(Float));
+				delayVec[i] = ftmp;
+			}
+		}
+	}
+	fV1_vec.close();
+
+    // closer neighbors
 	// overlap multiple chunks of data transfer and computation to increase performance
 	PosInt iSizeSplit = nblock % nChunk; // | maxChunkSize, i < iSizeSplit| remainChunkSize
 	Size maxChunkSize = nblock/nChunk;
@@ -1396,7 +1439,7 @@ int main(int argc, char **argv) {
 	}
 
 	// reading the two matrices in a intertwined manner
-	size_t blockChunkSize = nearNeighborBlock * blockSize*blockSize;
+	size_t blockChunkSize = static_cast<size_t>(nearNeighborBlock) * blockSize*blockSize;
 	size_t matSize = nblock * blockChunkSize; 
 	cout << "matSize = " << nblock << "x" << nearNeighborBlock << "x" << blockSize << "x" << blockSize << "x" << sizeof(Float) << "=" << matSize * sizeof(Float) / 1024.0 / 1024.0 << "Mb\n";
 	Float* conDelayMat0 = new Float[matSize*2];
@@ -1408,7 +1451,7 @@ int main(int argc, char **argv) {
 	Float maxDistance = 0;
 	size_t chunkSize = matChunkSize;
 	for (PosInt i=0; i<nChunk; i++) {
-		if (i > iSizeSplit-1) chunkSize = remainChunkSize*blockChunkSize;
+		if (i >= iSizeSplit) chunkSize = remainChunkSize*blockChunkSize;
 		conDelayMat[i] = conDelayMat0 + matOffset;
 		conMat[i] = conDelayMat[i];
 		matOffset += chunkSize;
@@ -1428,193 +1471,16 @@ int main(int argc, char **argv) {
 		Float current_maxDistance = array_max(delayMat[i], chunkSize);
 		if (maxDistance < current_maxDistance) maxDistance = current_maxDistance;
 	}
-	delete []conMat;
-	delete []delayMat;
 	fV1_conMat.close();
 	fV1_delayMat.close();
 	Size trainDepth = ceil((maxDistance/speedOfThought)/dt);
-
-	// pinned memory on CPU for heavy usages on
-	// spikeTraie, voltage, gFF, gE, hE, gI, hI
-	Float* pinnedMem;
-	size_t trainSize = trainDepth*nV1;
-	size_t ghSize = 2*nV1*(ngTypeFF + ngTypeE + ngTypeI)*sizeof(Float);
-	size_t vSize = nV1*sizeof(Float);
-	size_t pinnedSize = trainSize*sizeof(Float) + vSize + ghSize;
-	checkCudaErrors(cudaMallocHost((void**) &pinnedMem, pinnedSize));
-	Float *spikeTrain = pinnedMem;
-	Float *v = spikeTrain + trainSize;
-	Float *gFF = v + nV1;
-	Float *hFF = gFF +  nV1*ngTypeFF;
-	Float **gE = new Float*[nChunk];
-	Float **gI = new Float*[nChunk];
-	Float **hE = new Float*[nChunk];
-	Float **hI = new Float*[nChunk];
-
-	size_t eSize = maxChunkSize*blockSize*ngTypeE;
-	size_t iSize = maxChunkSize*blockSize*ngTypeI;
-	gE[0] = hFF + nV1*ngTypeFF;
-	gI[0] = gE[0] + eSize;
-	hE[0] = gI[0] + iSize;
-	hI[0] = hE[0] + eSize;
-	for (PosInt i = 1; i<nChunk; i++) {
-		gE[i] = hI[i-1] + iSize; 
-		if (i > iSizeSplit-1) {
-			eSize = remainChunkSize*blockSize*ngTypeE;
-			iSize = remainChunkSize*blockSize*ngTypeI;
-		}
-		gI[i] = gE[i] + eSize;
-		hE[i] = gI[i] + iSize;
-		hI[i] = hE[i] + eSize;
-	}
-
-	// GPU arrays to receive g,h sum from conVec (pinned), FF not needed
-	Float *d_gh;
-	checkCudaErrors(cudaMalloc((void**)&d_gh, ghSize));
-	Float **d_gEt = new Float*[nChunk];
-	Float **d_gIt = new Float*[nChunk];
-	Float **d_hEt = new Float*[nChunk];
-	Float **d_hIt = new Float*[nChunk];
-	eSize = maxChunkSize*blockSize*ngTypeE;
-	iSize = maxChunkSize*blockSize*ngTypeI;
-	d_gEt[0] = d_gh;
-	d_gIt[0] = d_gEt[0] + eSize;
-	d_hEt[0] = d_gIt[0] + iSize;
-	d_hIt[0] = d_hEt[0] + eSize;
-	for (PosInt i = 1; i<nChunk; i++) {
-		d_gEt[i] = d_hIt[i-1] + iSize; 
-		if (i > iSizeSplit-1) {
-			eSize = remainChunkSize*blockSize*ngTypeE;
-			iSize = remainChunkSize*blockSize*ngTypeI;
-		}
-		d_gIt[i] = d_gEt[i] + eSize;
-		d_hEt[i] = d_gIt[i] + iSize;
-		d_hIt[i] = d_hEt[i] + eSize;
-	}
-	usingGMem += ghSize;
-	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
-
-	// v, g (D2H), h (D only)
-	Float *d_vgh;
-	Size vghSize = vSize + ghSize;
-	checkCudaErrors(cudaMalloc((void**)&d_vgh, vghSize));
-	usingGMem += vghSize;
-	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
-
-	Float *d_v = d_vgh;
-	Float *d_gFF = d_v + nV1;
-	Float *d_hFF = d_gFF + nV1*ngTypeFF;
-	Float **d_gE = new Float*[nChunk];
-	Float **d_gI = new Float*[nChunk];
-	Float **d_hE = new Float*[nChunk];
-	Float **d_hI = new Float*[nChunk];
-	eSize = maxChunkSize*blockSize*ngTypeE;
-	iSize = maxChunkSize*blockSize*ngTypeI;
-	d_gE[0] = d_hFF + nV1*ngTypeFF;
-	d_gI[0] = d_gE[0] + eSize;
-	d_hE[0] = d_gI[0] + iSize;
-	d_hI[0] = d_hE[0] + eSize;
-	for (PosInt i = 1; i<nChunk; i++) {
-		d_gE[i] = d_hI[i-1] + iSize; 
-		if (i > iSizeSplit-1) {
-			eSize = remainChunkSize*blockSize*ngTypeE;
-			iSize = remainChunkSize*blockSize*ngTypeI;
-		}
-		d_gI[i] = d_gE[i] + eSize;
-		d_hE[i] = d_gI[i] + iSize;
-		d_hI[i] = d_hE[i] + eSize;
-	}
-
-	// for spikeTrain D2H (only output the current slot to file)
-	Float *d_spikeTrain;
-	checkCudaErrors(cudaMalloc((void**)&d_spikeTrain, (trainSize + nV1)*sizeof(Float)));
-	Float *tBack = d_spikeTrain + trainSize;
-	usingGMem += (trainSize + nV1)*sizeof(Float);
-	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
-
-	init<Float><<<nblock, blockSize>>>(tBack, -1.0, nV1);
-    getLastCudaError("tBack");
-	init<Float><<<nblock*trainDepth, blockSize>>>(d_spikeTrain, -1.0, nV1*trainDepth);
-    getLastCudaError("init spikeTrain");
-	cout << "spikeTrain retains spikes for " << trainDepth << " time steps for each neuron\n";
-
-	Size max_LGNperV1;
-	Float* LGN_V1_s;
-	read_listOfListToArray<Float>(LGN_V1_s_filename, LGN_V1_s, max_LGNperV1, false, ratioLGN); // assign LGN_V1_s and max_LGNperV1
-	cout << "maximum LGN per V1: " << max_LGNperV1 << "\n";
-	Float* sLGN;
-	size_t sLGN_size = max_LGNperV1*nV1*sizeof(Float);
-	checkCudaErrors(cudaMalloc((void**)&sLGN, sLGN_size));
-	usingGMem += sLGN_size;
-	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
-
-	checkCudaErrors(cudaMemcpy(sLGN, LGN_V1_s, sLGN_size, cudaMemcpyHostToDevice));
-	delete []LGN_V1_s;
-
-	vector<vector<PosInt>> LGN_V1_ID = read_listOfList<PosInt>(LGN_V1_ID_filename, false);
-    Size avgLGNperV1 = 0;
-    for (PosInt i=0; i<nV1; i++) {
-        avgLGNperV1 += LGN_V1_ID[i].size();
-    }
-    avgLGNperV1 /= nV1;
-	cout << "maximum LGN per V1: " << max_LGNperV1 << ", " << avgLGNperV1 << " on average\n";
-	size_t surfacePosSize = 2*max_LGNperV1*nV1*sizeof(PosInt) + nV1*sizeof(Size);
-	char* surfacePos = new char[surfacePosSize];
-	PosInt* surface_xy = (PosInt*) surfacePos;
-	Size* nLGNperV1 = (Size*) (surface_xy + 2*max_LGNperV1*nV1);
-	getLGN_V1_surface(sxyID, LGN_V1_ID, surface_xy, nLGNperV1, max_LGNperV1, nLGN);
-
-	// release memory from LGN_V1_ID and sxyID
-	for (PosInt i=0; i<nV1; i++) {
-		vector<PosInt>().swap(LGN_V1_ID[i]);
-	}
-	vector<vector<PosInt>>().swap(LGN_V1_ID);
-	vector<PosInt>().swap(sxyID);
-
-	PosInt* d_surfacePos;
-	checkCudaErrors(cudaMalloc((void**)&d_surfacePos, surfacePosSize));
-	PosInt* LGN_idx = d_surfacePos;
-	PosInt* LGN_idy = LGN_idx + max_LGNperV1*nV1;
-	Size* d_nLGNperV1 = LGN_idy + max_LGNperV1*nV1;
-	usingGMem += surfacePosSize;
-	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
-
-	checkCudaErrors(cudaMemcpy(d_surfacePos, surfacePos, surfacePosSize, cudaMemcpyHostToDevice));
-
-	delete []surfacePos;
-	cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << " Mb\n";
-
-	vector<Size> nVec(nV1);
-	vector<vector<PosInt>> vecID(nV1);
-	vector<vector<Float>> conVec(nV1);
-	vector<vector<Float>> delayVec(nV1);
-	fV1_vec.open(V1_vec_filename, fstream::in | fstream::binary);
-	if (!fV1_vec) {
-		cout << "Cannot open or find " << V1_vec_filename <<" to read V1 connection to farther neighbor.\n";
-		return EXIT_FAILURE;
-	} else {
-		fV1_vec.read(reinterpret_cast<char*>(&nVec[0]), nV1*sizeof(Size));
-		for (PosInt i=0; i<nV1; i++) {
-			if (nVec[i] > 0) {
-				vector<PosInt> tmp(nVec[i]);
-				fV1_vec.read(reinterpret_cast<char*>(&tmp[0]), nVec[i]*sizeof(PosInt));
-				vecID[i] = tmp;
-
-				vector<Float> ftmp(nVec[i]);
-				fV1_vec.read(reinterpret_cast<char*>(&ftmp[0]), nVec[i]*sizeof(Float));
-				conVec[i] = ftmp;
-
-				fV1_vec.read(reinterpret_cast<char*>(&ftmp[0]), nVec[i]*sizeof(Float));
-				delayVec[i] = ftmp;
-			}
-		}
-	}
-	fV1_vec.close();
+    cout << "conMat and delayMat set\n";
 
 	vector<Size> nNeighborBlock(nblock);
 	vector<vector<PosInt>> neighborBlockId(nblock);
 	PosInt *nBlockId = new PosInt[nearNeighborBlock*nblock];
 
+    // neighboring blocks
 	fNeighborBlock.open(neighborBlock_filename, fstream::in | fstream::binary);
 	if (!fNeighborBlock) {
 		cout << "Cannot open or find " << V1_vec_filename <<" to read V1 neighbor block info.\n";
@@ -1645,6 +1511,238 @@ int main(int argc, char **argv) {
 	delete [] nBlockId;
 	usingGMem += neighborInfo_size;
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
+
+    if (manual) {
+        auto get_dis = [] (Float a, Float b) {
+            Float dis = square_root(a*a + b*b);
+            return dis;
+        };
+        if (preList.size() != postList.size()) {
+            cout << "the number of presynaptic neurons: " << preList.size() << " does not match with the number of postsynaptic neurons: " << postList.size() << " for the manual connections\n";
+            return EXIT_FAILURE;
+        } else {
+            if (sList.size() == 1) {
+                sList.assign(preList.size(), sList[0]);
+            }
+            for (PosInt i = 0; i<postList.size(); i++) {
+                PosInt bid = postList[i]/blockSize;
+                PosInt p_bid = preList[i]/blockSize;
+                bool blocked = false;
+                PosInt local_bid;
+                for (PosInt ib=0; ib<nNeighborBlock[bid]; ib++) {
+                    if (p_bid == neighborBlockId[bid][ib]) {
+                        blocked = true;
+                        local_bid = ib;
+                        break;
+                    }
+                }
+                if (blocked) {
+                    PosInt tid = postList[i]%blockSize;
+                    PosInt iChunk;
+                    if (bid >= iSizeSplit*maxChunkSize) {
+                        iChunk = iSizeSplit + (bid - iSizeSplit*maxChunkSize)/remainChunkSize;
+                        bid = bid - iSizeSplit*maxChunkSize - (iChunk-iSizeSplit)*remainChunkSize;
+                    } else {
+                        iChunk = bid/maxChunkSize;
+                        bid = bid - iChunk*maxChunkSize;
+                    }
+                    // conMat: [nblock,nearNeighborBlock,blockDim.x,blockDim.x] last dim is the post-id: second-last pre-id
+                    PosIntL mid = static_cast<PosIntL>(bid)*nearNeighborBlock*blockSize*blockSize + static_cast<PosIntL>(local_bid)*blockSize*blockSize + preList[i]*blockSize + postList[i];
+                    Float old_s = conMat[iChunk][mid];
+                    conMat[iChunk][mid] = sList[i];
+                    cout << "changed the connection strength of post-id: " << postList[i] << " from pre-id: "  << preList[i] << " from " << old_s << " to " << sList[i] << ", at a distance of " << delayMat[iChunk][mid] << "mm\n";
+                } else {
+                    bool exist = false;
+                    PosInt vid;
+                    for (PosInt j=0; j<nVec[postList[i]]; j++) {
+                        if (vecID[postList[i]][j] == preList[i]) {
+                            exist = true;
+                            vid = j;
+                            break;
+                        }
+                    }
+                    if (exist) {
+                        Float old_s = conVec[postList[i]][vid];
+                        conVec[postList[i]][vid] = sList[i];
+                        cout << "changed the connection strength of post-id: " << postList[i] << " from pre-id: "  << preList[i] << " from " << old_s << " to " << sList[i] << ", at a distance of " << delayVec[postList[i]][vid] << "mm\n";
+                    } else {
+                        nVec[postList[i]] += 1;
+                        vecID[postList[i]].push_back(preList[i]);
+                        conVec[postList[i]].push_back(sList[i]);
+                        Float distance = get_dis(V1_x[postList[i]]-V1_x[preList[i]], V1_y[postList[i]]-V1_y[preList[i]]);
+                        delayVec[postList[i]].push_back(distance);
+                        cout << "added connection to post-id: " << postList[i] << " from pre-id: "  << preList[i] << " with strength " << sList[i] << ", at a distance of " << distance << "mm\n";
+                    }
+                }
+            }
+        }
+    }
+	delete []conMat;
+	delete []delayMat;
+
+	// pinned memory on CPU for heavy usages on
+	// spikeTraie, voltage, gFF, gE, hE, gI, hI
+	Float* pinnedMem;
+	size_t trainSize = trainDepth*nV1;
+	size_t ghSize = 2*nV1*(ngTypeE + ngTypeI)*sizeof(Float);
+	size_t vSize = nV1*sizeof(Float);
+    size_t ffSize = 2*nV1*ngTypeFF*sizeof(Float);
+	size_t pinnedSize = trainSize*sizeof(Float) + vSize + ghSize + ffSize;
+	checkCudaErrors(cudaMallocHost((void**) &pinnedMem, pinnedSize));
+	Float *spikeTrain = pinnedMem;
+	Float *v = spikeTrain + trainSize;
+	Float *gFF = v + nV1;
+	Float *hFF = gFF +  nV1*ngTypeFF;
+	Float **gE = new Float*[nChunk];
+	Float **gI = new Float*[nChunk];
+	Float **hE = new Float*[nChunk];
+	Float **hI = new Float*[nChunk];
+
+	size_t eSize = maxChunkSize*blockSize*ngTypeE;
+	size_t iSize = maxChunkSize*blockSize*ngTypeI;
+	gE[0] = hFF + nV1*ngTypeFF;
+	gI[0] = gE[0] + eSize;
+	hE[0] = gI[0] + iSize;
+	hI[0] = hE[0] + eSize;
+	for (PosInt i = 1; i<nChunk; i++) {
+		gE[i] = hI[i-1] + iSize; 
+		if (i >= iSizeSplit) {
+			eSize = remainChunkSize*blockSize*ngTypeE;
+			iSize = remainChunkSize*blockSize*ngTypeI;
+		}
+		gI[i] = gE[i] + eSize;
+		hE[i] = gI[i] + iSize;
+		hI[i] = hE[i] + eSize;
+	}
+
+	// GPU arrays to receive g,h sum from conVec (pinned), FF not needed
+	Float *d_gh;
+	checkCudaErrors(cudaMalloc((void**)&d_gh, ghSize));
+	Float **d_gEt = new Float*[nChunk];
+	Float **d_gIt = new Float*[nChunk];
+	Float **d_hEt = new Float*[nChunk];
+	Float **d_hIt = new Float*[nChunk];
+	eSize = maxChunkSize*blockSize*ngTypeE;
+	iSize = maxChunkSize*blockSize*ngTypeI;
+	d_gEt[0] = d_gh;
+	d_gIt[0] = d_gEt[0] + eSize;
+	d_hEt[0] = d_gIt[0] + iSize;
+	d_hIt[0] = d_hEt[0] + eSize;
+	for (PosInt i = 1; i<nChunk; i++) {
+		d_gEt[i] = d_hIt[i-1] + iSize; 
+		if (i >= iSizeSplit) {
+			eSize = remainChunkSize*blockSize*ngTypeE;
+			iSize = remainChunkSize*blockSize*ngTypeI;
+		}
+		d_gIt[i] = d_gEt[i] + eSize;
+		d_hEt[i] = d_gIt[i] + iSize;
+		d_hIt[i] = d_hEt[i] + eSize;
+	}
+	usingGMem += ghSize;
+	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
+
+	// v, g (D2H), h (D only)
+	Float *d_vgh;
+	size_t vghSize = vSize + ghSize + ffSize;
+	checkCudaErrors(cudaMalloc((void**)&d_vgh, vghSize));
+	usingGMem += vghSize;
+	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
+
+	Float *d_v = d_vgh;
+	Float *d_gFF = d_v + nV1;
+	Float *d_hFF = d_gFF + nV1*ngTypeFF;
+	Float **d_gE = new Float*[nChunk];
+	Float **d_gI = new Float*[nChunk];
+	Float **d_hE = new Float*[nChunk];
+	Float **d_hI = new Float*[nChunk];
+	eSize = maxChunkSize*blockSize*ngTypeE;
+	iSize = maxChunkSize*blockSize*ngTypeI;
+	d_gE[0] = d_hFF + nV1*ngTypeFF;
+	d_gI[0] = d_gE[0] + eSize;
+	d_hE[0] = d_gI[0] + iSize;
+	d_hI[0] = d_hE[0] + eSize;
+	for (PosInt i = 1; i<nChunk; i++) {
+		d_gE[i] = d_hI[i-1] + iSize; 
+		if (i >= iSizeSplit) {
+			eSize = remainChunkSize*blockSize*ngTypeE;
+			iSize = remainChunkSize*blockSize*ngTypeI;
+		}
+		d_gI[i] = d_gE[i] + eSize;
+		d_hE[i] = d_gI[i] + iSize;
+		d_hI[i] = d_hE[i] + eSize;
+	}
+
+    // pass d_gE to kernels
+    Float **dd_gE, **dd_gI, **dd_hE, **dd_hI;
+    checkCudaErrors(cudaMalloc((void**)&dd_gE, nChunk*sizeof(Float*)));
+    checkCudaErrors(cudaMemcpy(dd_gE, d_gE, nChunk*sizeof(Float*), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMalloc((void**)&dd_gI, nChunk*sizeof(Float*)));
+    checkCudaErrors(cudaMemcpy(dd_gI, d_gI, nChunk*sizeof(Float*), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMalloc((void**)&dd_hE, nChunk*sizeof(Float*)));
+    checkCudaErrors(cudaMemcpy(dd_hE, d_hE, nChunk*sizeof(Float*), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMalloc((void**)&dd_hI, nChunk*sizeof(Float*)));
+    checkCudaErrors(cudaMemcpy(dd_hI, d_hI, nChunk*sizeof(Float*), cudaMemcpyHostToDevice));
+    usingGMem += nChunk*sizeof(Float*)*4;
+    cout << "conductance setup in chunks\n";
+
+	// for spikeTrain D2H (only output the current slot to file)
+	Float *d_spikeTrain;
+	checkCudaErrors(cudaMalloc((void**)&d_spikeTrain, (trainSize + nV1)*sizeof(Float)));
+	Float *tBack = d_spikeTrain + trainSize;
+	usingGMem += (trainSize + nV1)*sizeof(Float);
+	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
+
+	init<Float><<<nblock, blockSize>>>(tBack, -1.0, nV1);
+    getLastCudaError("tBack");
+	init<Float><<<nblock*trainDepth, blockSize>>>(d_spikeTrain, -1.0, nV1*trainDepth);
+    getLastCudaError("init spikeTrain");
+	cout << "spikeTrain retains spikes for " << trainDepth << " time steps for each neuron\n";
+
+	Size max_LGNperV1;
+	Float* LGN_V1_s;
+	read_listOfListToArray<Float>(LGN_V1_s_filename, LGN_V1_s, max_LGNperV1, false, ratioLGN); // assign LGN_V1_s and max_LGNperV1
+	Float* sLGN;
+	size_t sLGN_size = static_cast<size_t>(max_LGNperV1)*nV1*sizeof(Float);
+	checkCudaErrors(cudaMalloc((void**)&sLGN, sLGN_size));
+	usingGMem += sLGN_size;
+	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
+
+	checkCudaErrors(cudaMemcpy(sLGN, LGN_V1_s, sLGN_size, cudaMemcpyHostToDevice));
+	delete []LGN_V1_s;
+
+	vector<vector<PosInt>> LGN_V1_ID = read_listOfList<PosInt>(LGN_V1_ID_filename, false);
+    Size avgLGNperV1 = 0;
+    for (PosInt i=0; i<nV1; i++) {
+        avgLGNperV1 += LGN_V1_ID[i].size();
+    }
+    avgLGNperV1 /= nV1;
+	cout << "maximum LGN per V1: " << max_LGNperV1 << ", " << avgLGNperV1 << " on average\n";
+	size_t surfacePosSize = static_cast<size_t>(2*max_LGNperV1)*nV1*sizeof(PosInt) + nV1*sizeof(Size);
+	char* surfacePos = new char[surfacePosSize];
+	PosInt* surface_xy = (PosInt*) surfacePos;
+	Size* nLGNperV1 = (Size*) (surface_xy + 2*max_LGNperV1*nV1);
+	getLGN_V1_surface(sxyID, LGN_V1_ID, surface_xy, nLGNperV1, max_LGNperV1, nLGN);
+    cout << "LGN->V1 surface constructed\n";
+
+	// release memory from LGN_V1_ID and sxyID
+	for (PosInt i=0; i<nV1; i++) {
+		vector<PosInt>().swap(LGN_V1_ID[i]);
+	}
+	vector<vector<PosInt>>().swap(LGN_V1_ID);
+	vector<PosInt>().swap(sxyID);
+
+	PosInt* d_surfacePos;
+	checkCudaErrors(cudaMalloc((void**)&d_surfacePos, surfacePosSize));
+	PosInt* LGN_idx = d_surfacePos;
+	PosInt* LGN_idy = LGN_idx + max_LGNperV1*nV1;
+	Size* d_nLGNperV1 = LGN_idy + max_LGNperV1*nV1;
+	usingGMem += surfacePosSize;
+	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
+
+	checkCudaErrors(cudaMemcpy(d_surfacePos, surfacePos, surfacePosSize, cudaMemcpyHostToDevice));
+
+	delete []surfacePos;
+	cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << " Mb\n";
 
 	/* read V1_RF
 	   fV1_RF.open(V1_RF_filename, fstream::in | fstream::binary);
@@ -1699,8 +1797,11 @@ int main(int argc, char **argv) {
 			cout << "Cannot open or find " << rawData_filename <<" for V1 simulation results.\n";
 			return EXIT_FAILURE;
 		} else {
+			fRawData.write((char*) &dt, sizeof(Float));
 			fRawData.write((char*) &nt, sizeof(Size));
 			fRawData.write((char*) &nV1, sizeof(Size));
+            PosInt iHwrite = static_cast<PosInt>(hWrite);
+            fRawData.write((char*) &iHwrite, sizeof(PosInt));
 			fRawData.write((char*) &ngTypeFF, sizeof(Size));
 			fRawData.write((char*) &ngTypeE, sizeof(Size));
 			fRawData.write((char*) &ngTypeI, sizeof(Size));
@@ -1865,7 +1966,7 @@ int main(int argc, char **argv) {
 	size_t rChunkMatSize = 2*remainChunkSize*blockChunkSize;
 	cout << "single chunk of conDelayMat requires at most" << sChunkMatSize*sizeof(Float)/1024.0/1024.0 << ", smaller chunks require " << rChunkMatSize*sizeof(Float)/1024.0/1024.0 << " Mb\n";
 	size_t ccChunkMatSize; // (c)on(c)urrent chunk
-	if (matConcurrency > iSizeSplit) { // if total concurrency, match the total chunk size
+	if (matConcurrency > iSizeSplit) {
 		ccChunkMatSize = iSizeSplit * sChunkMatSize + (matConcurrency-iSizeSplit) * rChunkMatSize;
 	} else {
 		ccChunkMatSize = matConcurrency * sChunkMatSize;
@@ -1881,7 +1982,7 @@ int main(int argc, char **argv) {
 		ccReduced++;
 	}
 	if (ccReduced) {
-		cout << "GPU does not have the required memory for requested matConcurrency " << matConcurrency + ccReduced << ", it's now reduced to " << matConcurrency << "\n";
+		cout << "GPU does not have the required memory for requested for the size of concurrency " << matConcurrency + ccReduced << ", it's now reduced to " << matConcurrency << "\n";
 	}
 
 	cout << "matConcurrency of " << matConcurrency << " chunks requires " << ccChunkMatSize*sizeof(Float)/1024.0/1024.0 << " Mb, total device gmem = " << deviceProps.totalGlobalMem/1024.0/1024.0 << "Mb\n";
@@ -2083,7 +2184,7 @@ int main(int argc, char **argv) {
 				iKernelSampleT0, kernelSampleInterval, nKernelSample,
 				dt, denorm, saveOutputB4V1);
 		getLastCudaError("LGN_convol_c1s failed");
-        //cudaDeviceSynchronize();
+        cudaDeviceSynchronize();
 
 		if (it > 0) { // seeking for overlap of data output with LGN input
 		    cudaEventSynchronize(spHostReady);
@@ -2097,7 +2198,7 @@ int main(int argc, char **argv) {
 		// generate LGN fr with logistic function
 		LGN_nonlinear<<<nLGN_block, nLGN_thread, 0, mainStream>>>(nLGN, *dLGN.logistic, maxConvol, currentConvol, d_LGN_fr, d_sx, d_sy, leftTimeRate, lastNegLogRand, randState, dt);
 		getLastCudaError("LGN_nonlinear failed");
-        //cudaDeviceSynchronize();
+        cudaDeviceSynchronize();
 		if (it > 0) { // seeking for overlap of data output with LGN input
             for (PosInt i=0; i<nChunk; i++) {
 	            cudaEventSynchronize(gReady[i]);
@@ -2117,7 +2218,7 @@ int main(int argc, char **argv) {
 			}
 			fLGN_fr.write((char*)outputB4V1, nLGN*sizeof(Float)); 
 		}
-        cout << "LGN done\n";
+        //cout << "LGN done\n";
 		if (it == nt-1) {
 			printf("\r@t = %f -> %f simulated, frame %d#%d-%d, %.1f%%", t, t+dt, currentFrame/nFrame, currentFrame%nFrame, nFrame, 100*static_cast<float>(it+1)/nt);
 			//oldFrame = currentFrame;
@@ -2126,7 +2227,7 @@ int main(int argc, char **argv) {
 		// TODO: block-wise compute_V
 		// simulate V1 response
 		compute_V_collect_spike <<<nblock, blockSize, 0, mainStream>>> (
-				d_v, d_gFF, d_hFF, d_gE[0], d_gI[0], d_hE[0], d_hI[0],
+				d_v, d_gFF, d_hFF, dd_gE, dd_gI, dd_hE, dd_hI,
 				d_spikeTrain, tBack,
 				d_nLGNperV1, sLGN, LGN_idx, LGN_idy,
 				currentTimeSlot, trainDepth, max_LGNperV1,
@@ -2139,7 +2240,7 @@ int main(int argc, char **argv) {
 		checkCudaErrors(cudaMemcpyAsync(spikeTrain + currentTimeSlot*nV1, d_spikeTrain + currentTimeSlot*nV1, nV1*sizeof(Float), cudaMemcpyDeviceToHost, mainStream)); // to overlap with  recal_G, to be used in recal_Gvec
 		cudaEventRecord(spHostReady, mainStream);
 
-		size_t chunkSize = maxChunkSize;
+		Size chunkSize = maxChunkSize;
 		PosInt block_offset = 0;
 		size_t mat_offset = 0;
 		for (PosInt i = 0; i < nChunk; i++) {
@@ -2162,7 +2263,7 @@ int main(int argc, char **argv) {
 					currentTimeSlot, trainDepth,
 					nearNeighborBlock, nE, nV1, speedOfThought);
 			getLastCudaError("recal_G failed");
-            //cudaDeviceSynchronize();
+            cudaDeviceSynchronize();
 			if (i < nChunk - 1) {
 				block_offset += chunkSize;
 				mat_offset += 2*mChunkSize;
@@ -2171,14 +2272,12 @@ int main(int argc, char **argv) {
         for (PosInt i=0; i<matConcurrency; i++) {
 			cudaEventRecord(gReady[i], stream[i]);
         }
-		checkCudaErrors(cudaMemcpyAsync(v, d_v, nV1*sizeof(Float)*(1 + ngTypeFF), cudaMemcpyDeviceToHost, mainStream)); // to overlap with recal_G above
+		checkCudaErrors(cudaMemcpyAsync(v, d_v, nV1*sizeof(Float)*(1+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream)); // to overlap with recal_G above
 		cudaEventRecord(v_gFF_Ready, mainStream);
 
 		block_offset = 0;
 		chunkSize = maxChunkSize;
-		cudaEventSynchronize(spReady);
-		size_t pinned_H2D = 0;
-		size_t pinned_D2H = ghSize;
+		cudaEventSynchronize(spHostReady);
 		for (PosInt i = 0; i < nChunk; i++) {
 			if (i >= iSizeSplit) chunkSize = remainChunkSize;
 			size_t gChunkSize = chunkSize*blockSize*(ngTypeE+ngTypeI)*sizeof(Float);
@@ -2196,46 +2295,45 @@ int main(int argc, char **argv) {
 			if (i >= matConcurrency) { // otherwise automatically queued in stream
 				cudaStreamWaitEvent(stream[i%matConcurrency], gReady[i%matConcurrency], 0);
 			}
-			sum_G<<<chunkSize, blockSize, 0, stream[i]>>> (d_nVec + block_offset*blockSize, d_gEt[i], d_gE[i], d_gIt[i], d_gI[i], d_hEt[i], d_hE[i], d_hIt[i], d_hI[i]);
-            //cudaDeviceSynchronize();
+			sum_G<<<chunkSize, blockSize, 0, stream[i]>>> (d_nVec + block_offset*blockSize, d_gEt[i], d_gE[i], d_gIt[i], d_gI[i], d_hEt[i], d_hE[i], d_hIt[i], d_hI[i], ngTypeE, ngTypeI);
+            cudaDeviceSynchronize();
 
 			// 							  // char*
             if (hWrite) checkCudaErrors(cudaMemcpyAsync(gE[i], d_gE[i], ghChunkSize, cudaMemcpyDeviceToHost, stream[i])); // size in chunk
             else checkCudaErrors(cudaMemcpyAsync(gE[i], d_gE[i], gChunkSize, cudaMemcpyDeviceToHost, stream[i])); // size in chunk
 			if (i < nChunk-1) {
 				block_offset += chunkSize;
-				pinned_H2D += ghChunkSize;
-				pinned_D2H += gChunkSize;
 			}
 			cudaEventRecord(gReady[i], stream[i]);
 		}
 		if (it > 0 && it%ot == 0) {
 			checkCudaErrors(cudaMemsetAsync(d_V1SpPhyFrame, 0, nPixel_phyV1*sizeof(Float), ostream[0]));
 		}
-		pixelizeOutput<<<(nPixel_phyV1+blockSize-1)/blockSize, blockSize, 0, ostream[0]>>>(d_spikeTrain, d_V1SpPhyFrame, d_V1_phyFramePosId, d_nV1perPhyPixel, trainDepth, currentTimeSlot, maxV1perPixel, 0, nPixel_phyV1, nPixel_phyV1, nV1);
+		pixelizeOutput<<<(nPixel_phyV1+blockSize-1)/blockSize, blockSize, 0, ostream[0]>>>(d_spikeTrain + currentTimeSlot*nV1, d_V1SpPhyFrame, d_V1_phyFramePosId, d_nV1perPhyPixel, maxV1perPixel, 0, nPixel_phyV1, nPixel_phyV1, nV1);
 		getLastCudaError("pixelizeOutput phyV1 failed");
-        //cudaDeviceSynchronize();
-        cout << "phyV1\n";
+        cudaDeviceSynchronize();
+        //cout << "phyV1\n";
 
 		if (frameVisV1output) {
 			if (it > 0 && it%ot == 0) {
 				checkCudaErrors(cudaMemsetAsync(d_V1SpVisFrame, 0, nPixel_visV1*sizeof(Float), ostream[1]));
 			}
-			pixelizeOutput<<<(nPixel_visV1+blockSize-1)/blockSize, blockSize, 0, ostream[1]>>>(d_spikeTrain, d_V1SpVisFrame, d_V1_visFramePosId, d_nV1perVisPixel, trainDepth, currentTimeSlot, maxV1perPixel_I, maxV1perPixel_C, nPixel_visV1/2, nPixel_visV1, nV1);
+			pixelizeOutput<<<(nPixel_visV1+blockSize-1)/blockSize, blockSize, 0, ostream[1]>>>(d_spikeTrain+currentTimeSlot*nV1, d_V1SpVisFrame, d_V1_visFramePosId, d_nV1perVisPixel, maxV1perPixel_I, maxV1perPixel_C, nPixel_visV1/2, nPixel_visV1, nV1);
 			getLastCudaError("pixelizeOutput visV1 failed");
 		}
-        //cudaDeviceSynchronize();
-        cout << "visV1\n";
+        cudaDeviceSynchronize();
+        //cout << "visV1\n";
 
 		if (frameVisLGNoutput) {
 			if (it > 0 && it%ot == 0) {
 				checkCudaErrors(cudaMemsetAsync(d_LGN_spVisFrame, 0, nPixel_visLGN*sizeof(Float), ostream[2]));
+                cout << "set frame output back to 0\n";
 			}
-			pixelizeOutput<<<(nPixel_visLGN+blockSize-1)/blockSize, blockSize, 0, ostream[2]>>>(d_LGN_fr, d_LGN_spVisFrame, d_LGN_visFramePosId, d_nLGNperPixel, 1, 0, maxLGNperPixel_I, maxLGNperPixel_C, nPixel_visLGN/2, nPixel_visLGN, nLGN);
-			getLastCudaError("pixelizeOutput visV1 failed");
+			pixelizeOutput<<<(nPixel_visLGN+blockSize-1)/blockSize, blockSize, 0, ostream[2]>>>(d_LGN_fr, d_LGN_spVisFrame, d_LGN_visFramePosId, d_nLGNperPixel, maxLGNperPixel_I, maxLGNperPixel_C, nPixel_visLGN/2, nPixel_visLGN, nLGN);
+			getLastCudaError("pixelizeOutput visLGN failed");
 		}
-        //cudaDeviceSynchronize();
-        cout << "visLGN\n";
+        cudaDeviceSynchronize();
+        //cout << "visLGN\n";
 
 		if ((it+1)%ot == 0) {
 			checkCudaErrors(cudaMemcpy(outputFrame, d_outputFrame, framesSize, cudaMemcpyDeviceToHost));
@@ -2311,6 +2409,10 @@ int main(int argc, char **argv) {
 		checkCudaErrors(cudaFree(d_surfacePos));
 		checkCudaErrors(cudaFree(d_neighborInfo));
 		checkCudaErrors(cudaFree(d_V1_phyFrame));
+        checkCudaErrors(cudaFree(dd_gE));
+        checkCudaErrors(cudaFree(dd_gI));
+        checkCudaErrors(cudaFree(dd_hE));
+        checkCudaErrors(cudaFree(dd_hI));
 		if (frameVisV1output) checkCudaErrors(cudaFree(d_V1_visFrame));
 		if (frameVisLGNoutput) checkCudaErrors(cudaFree(d_LGN_visFrame));
 		checkCudaErrors(cudaFree(d_outputFrame));

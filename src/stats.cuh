@@ -12,7 +12,7 @@ void pixelizeOutput(
         Float* __restrict__ output,
         PosInt* __restrict__ pid, 
 		Size* __restrict__ m, // within one pixel
-		Size trainDepth, PosInt currentTimeSlot, Size nPerPixel_I, Size nPerPixel_C, Size nPixel_I, Size nPixel, Size n
+		Size nPerPixel_I, Size nPerPixel_C, Size nPixel_I, Size nPixel, Size n
 );
 
 void reshape_chunk_and_write(Float chunk[], std::ofstream &fRawData, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, bool hWrite);
@@ -25,7 +25,7 @@ std::vector<std::vector<PosInt>> getUnderlyingID(T x[], T y[], Int* pick, Size n
 	// offset normally is the column's ID that separate left and right
 	std::vector<std::vector<PosInt>> uid(height*width, std::vector<PosInt>());
     *maxPerPixel = 1;
-    for (PosIntL i=0; i<n-n0; i++) {
+    for (PosInt i=0; i<n-n0; i++) {
         if (pick[i] > 0) {
             PosInt idx = static_cast<PosInt>(((x[i]-x0)/xspan)*width);
             PosInt idy = static_cast<PosInt>(((y[i]-y0)/yspan)*height);

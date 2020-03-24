@@ -7,7 +7,7 @@ void pixelizeOutput(
         Float* __restrict__ output,
         PosInt* __restrict__ pid, 
 		Size* __restrict__ m, // within one pixel
-		Size trainDepth, PosInt currentTimeSlot, Size nPerPixel_I, Size nPerPixel_C, Size nPixel_I, Size nPixel, Size n)
+		Size nPerPixel_I, Size nPerPixel_C, Size nPixel_I, Size nPixel, Size n)
 {
 	PosInt tid = blockDim.x*blockIdx.x + threadIdx.x;
 	if (tid < nPixel) {
@@ -17,25 +17,29 @@ void pixelizeOutput(
 			Size nPerPixel = tid < nPixel_I? nPerPixel_I: nPerPixel_C;
 			PosInt offset = tid < nPixel_I? 0: (nPixel_I*nPerPixel_I);
 			PosInt ICid = tid - (tid >= nPixel_I)*nPixel_I;
+            offset += ICid*nPerPixel;
+
 			for (PosInt i=0; i<m_local; i++) {
-				PosInt id = pid[offset + ICid*nPerPixel + i];
+				PosInt id = pid[offset + i];
                 if (id >= n) {
                     printf("offset:%u + ICid:%u*nPerPixel:%u + %u\n", offset, ICid, nPerPixel, i);
                     assert(id < n);
                 }
-                if (trainDepth*id + currentTimeSlot >= n*trainDepth) {
-                    printf("trainDepth: %u, currentTimeSlot:%u, id:%u < n:%u\n", trainDepth, currentTimeSlot, id, n);
-                    assert(trainDepth*id + currentTimeSlot < n*trainDepth);
+                if (tid == nPixel/2) {
+                    printf("included nid: %u\n", id);
                 }
-				PosInt sInfo = fr[trainDepth*id + currentTimeSlot];
+				PosInt sInfo = fr[id];
 				if (sInfo > 0) {
 					value += ceiling(sInfo);
 				}
 			}
-			value = value/m_local;
+			value /= m_local;
 		}
 		__syncwarp();
 		output[tid] += value;
+        if (tid == nPixel/2) {
+            printf("frame output: %f at half\n", output[tid]);
+        }
 	}
 }
 
@@ -49,12 +53,12 @@ void reshape_chunk_and_write(Float chunk[], ofstream &fRawData, Size maxChunkSiz
 	if (hWrite) {
 		outputSize = nV1*(nE+nI)*2; // g and h
 	} else {
-		outputSize = nV1*(nE+nI);
+		outputSize = nV1*(nE+nI); // g only
 	}
 	flatten = new Float[outputSize];
     Size chunkSize = maxChunkSize;
     for (PosInt i=0; i<nChunk; i++) {
-        PosIntL offset_f;
+        PosIntL offset_f; // flattened neuron id offset before current chunk
         if (i >= iSizeSplit) {
             chunkSize = remainChunkSize;
             offset_f = (iSizeSplit*maxChunkSize + (i-iSizeSplit)*chunkSize)*blockSize;

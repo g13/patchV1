@@ -265,7 +265,7 @@ void generate_connections(double* __restrict__ pos,
                           Float* __restrict__ dden,
                           Float* __restrict__ daxn,
                           curandStateMRG32k3a* __restrict__ state,
-                          PosInt block_offset, Size networkSize, Size maxDistantNeighbor, Size nearNeighborBlock, Size maxNeighborBlock, Float speedOfThought, Size nType, Size nFeature, bool gaussian_profile) 
+                          PosInt block_offset, Size networkSize, Size maxDistantNeighbor, Size nearNeighborBlock, Size maxNeighborBlock, Size nType, Size nFeature, bool gaussian_profile) 
 {
     // TODO: load with warps but more, e.g., raxn, daxn, preType
     __shared__ double x1[blockSize];
@@ -300,7 +300,7 @@ void generate_connections(double* __restrict__ pos,
     //============= collect p of all ==========
     // withhin block and nearNeighbor
     for (Size in=0; in<nn; in++) {
-        Size bid = neighborBlockId[maxNeighborBlock*blockId + in] * blockDim.x;
+        Size bid = neighborBlockId[maxNeighborBlock*blockId + in] * blockDim.x; // # neurons in all past blocks 
         x1[threadIdx.x] = pos[bid*2 + threadIdx.x];
         y1[threadIdx.x] = pos[bid*2 + blockDim.x + threadIdx.x];
         //DEBUG
@@ -321,12 +321,12 @@ void generate_connections(double* __restrict__ pos,
 	    	// weight from area
             Float p = connect(distance, ra, rd, gaussian_profile);
 
-            if (p > 0) {
+            PosIntL mid = (static_cast<PosIntL>(blockIdx.x*nearNeighborBlock + in)*blockDim.x + i)*blockDim.x + threadIdx.x; // defined outside, so delayMat has access to it
+            if (p > 0 && id != ipre) { // not self-connected
                 Size ip = preType[ipre];
-                // id in the conMat [nblock,nearNeighborBlock,blockDim.x,blockDim.x] loop in the second axis, (last dim is the post-id)
-                PosIntL mid = ((blockIdx.x*nearNeighborBlock + in)*blockDim.x + i)*blockDim.x + threadIdx.x;
+                // id in the conMat [nblock,nearNeighborBlock,blockDim.x,blockDim.x] loop in the second axis, (last dim is the post-id: threadIdx.x, pre-id in the chunk: i)
                 //DEBUG
-                BigSize matSize = blockDim.x*blockDim.x*nearNeighborBlock*gridDim.x;
+                BigSize matSize = static_cast<BigSize>(blockDim.x*blockDim.x)*nearNeighborBlock*gridDim.x;
                 if (mid >= matSize) {
                     printf("(%ux%ux%ux%u) = %u\n", gridDim.x, nearNeighborBlock, blockDim.x, blockDim.x, matSize);
                     assert(mid < matSize);
@@ -340,8 +340,8 @@ void generate_connections(double* __restrict__ pos,
                 }
                 sumP += p;
                 conMat[mid] = p;
-                delayMat[mid] = distance/speedOfThought;
             }
+            delayMat[mid] = distance; // record even if not connected, for LFP
         }
         if (blockIdx.x == 2 && threadIdx.x == 0) {
             printf("accumulated sumP for %uth neuron = %e\n", threadIdx.x, sumP);
@@ -402,7 +402,7 @@ void generate_connections(double* __restrict__ pos,
         Size bid = neighborBlockId[maxNeighborBlock*blockId + in] * blockDim.x;
         #pragma unroll
         for (Size i=0; i<blockDim.x; i++) {
-            PosIntL mid = ((blockIdx.x*nearNeighborBlock + in)*blockDim.x + i)*blockDim.x + threadIdx.x;
+            PosIntL mid = (static_cast<PosIntL>(blockIdx.x*nearNeighborBlock + in)*blockDim.x + i)*blockDim.x + threadIdx.x;
             Float p = conMat[mid]/sumP*pN;
             Size ipre = bid + i;
             Size ip = preType[ipre];
@@ -448,7 +448,7 @@ void generate_connections(double* __restrict__ pos,
                     Float x = static_cast<Float>(x1[threadIdx.x] - x0);
                     Float y = static_cast<Float>(y1[threadIdx.x] - y0);
 	    			Float distance = square_root(x*x + y*y);
-                    delayVec[maxDistantNeighbor*id + nid] = distance/speedOfThought;
+                    delayVec[maxDistantNeighbor*id + nid] = distance;
                     nid += 1;
                     if (nid > maxDistantNeighbor) {
                         printf("set bigger maxDistantNeighbor, currently %u\n", maxDistantNeighbor);

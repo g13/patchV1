@@ -1,17 +1,22 @@
 #!/bin/bash
+module purge
+module load all
+module load gcc/4.9.3
 module load cuda/9.2
 module load boost/gcc_4.9.3/openmpi_1.10.2/avx2/1.57.0
 
 cd preprocess
 
-#rm -f cuda_util.o
-rm -f connect.o
 rm -f genCon.o
+rm -f connect.o
+rm -f cuda_util.o
 
-#nvcc -arch=sm_70 -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c ../util/cuda_util.cu -o cuda_util.o
-nvcc -arch=sm_70 -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c connect.cu
-nvcc -arch=sm_70 -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c genCon.cu
+sm=sm_70
 
-nvcc -arch=sm_70 -lcudadevrt -lcudart -lboost_program_options cuda_util.o connect.o genCon.o -o ../genCon #-lcurand
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c genCon.cu
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c connect.cu
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c ../util/cuda_util.cu -o cuda_util.o
+
+nvcc -arch=$sm -lcudadevrt -lcudart -lboost_program_options cuda_util.o connect.o genCon.o -o ../genCon #-lcurand
 
 cd ..

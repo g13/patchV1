@@ -86,7 +86,7 @@ Float mapping_rule(Float ecc, Float normalRand, RandomEngine &rGen, Float LGN_V1
 	// *** set LGN contribution of the total RF size
 	const Float ratio = sqrt(LGN_V1_RFratio / M_PI);
 	// Dow et al., 1981 Fig. 7 TODO: consider generalized extreme value distribution
-	const Float a = 20.0f; //13.32f;
+	const Float a = 13.32f; //13.32f;
 	const Float b = 0.037f;
 	const Float mean = a + b * ecc;
 	const Float std = 3.0; // it is NOT the scatter in the paper, which means the VF center's scatter around an electrode

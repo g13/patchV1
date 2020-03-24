@@ -265,7 +265,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 		}
 		idList = newList;
 		idList.shrink_to_fit();
-        return idList.size();
+        return static_cast<Size>(idList.size());
     }
 };
 

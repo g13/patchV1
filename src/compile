@@ -1,20 +1,25 @@
 #!/bin/bash
+module purge
+module load all
+module load gcc/4.9.3
 module load cuda/9.2
 module load boost/gcc_4.9.3/openmpi_1.10.2/avx2/1.57.0
-#rm -f ext_input.o 
-rm -f discrete_convol.o
+
+rm -f patch.o 
+#rm -f discrete_convol.o
 #rm -f cuda_util.o
-#rm -f coredynamics.o
-#rm -f stats.o
+rm -f coredynamics.o
+rm -f stats.o
 
-#nvcc -arch=sm_70 -rdc=true -Xcompiler -rdynamic -Xptxas -v -lineinfo -std=c++11 -g -O0 -c ext_input.cu
-#nvcc -arch=sm_70 -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c ext_input.cu
-nvcc -arch=sm_70 -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c discrete_input_convol.cu
-#nvcc -arch=sm_70 -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c util/cuda_util.cu -o cuda_util.o
-#nvcc -arch=sm_70 -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c stats.cu
-#nvcc -arch=sm_70 -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c coredynamics.cu
+sm=sm_70
 
-nvcc -arch=sm_70 -lcudadevrt -lcudart -lboost_program_options ext_input.o cuda_util.o stats.o discrete_input_convol.o coredynamics.o -o patch #-lcurand
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c patch.cu -o patch.o
+#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c discrete_input_convol.cu
+#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c util/cuda_util.cu -o cuda_util.o
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c stats.cu
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c coredynamics.cu
+
+nvcc -arch=$sm -lcudadevrt -lcudart -lboost_program_options patch.o cuda_util.o stats.o discrete_input_convol.o coredynamics.o -o patch #-lcurand
 # === RAND === nvcc -arch=compute_70 -lcudadevrt -lcudart coredynamics.o patch.o -o patch
 
 #nvcc -arch=compute_70 -Xcompiler -Wall,-pedantic -std=c++11 -O0 -c coredynamics.cu 

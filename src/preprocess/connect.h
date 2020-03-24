@@ -160,6 +160,6 @@ void generate_connections(double* __restrict__ pos,
                           Float* __restrict__ dden,
                           Float* __restrict__ daxn,
                           curandStateMRG32k3a* __restrict__ state,
-                          PosInt block_offset, Size networkSize, Size maxDistantNeighbor, Size nearNeighborBlock, Size maxNeighborBlock, Float speedOfThought, Size nType, Size nFeature, bool gaussian_profile);
+                          PosInt block_offset, Size networkSize, Size maxDistantNeighbor, Size nearNeighborBlock, Size maxNeighborBlock, Size nType, Size nFeature, bool gaussian_profile);
 
 #endif
