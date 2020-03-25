@@ -272,13 +272,14 @@ std::pair<T, T> array_minmax(T* v, size_t n) {
 }
 
 template <typename T>
-T array_max(T* v, size_t n) {
+T array_max(T* v, size_t n, PosIntL &imax) {
     T max;
     assert(n>0);
     max = v[0];
-    for (PosInt i=1; i<n; i++) {
+    for (PosIntL i=1; i<n; i++) {
         if (v[i] > max) {
             max =  v[i];
+            imax = i;
         }
     }
     return max;

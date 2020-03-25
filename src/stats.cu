@@ -7,12 +7,16 @@ void pixelizeOutput(
         Float* __restrict__ output,
         PosInt* __restrict__ pid, 
 		Size* __restrict__ m, // within one pixel
-		Size nPerPixel_I, Size nPerPixel_C, Size nPixel_I, Size nPixel, Size n)
+		Size nPerPixel_I, Size nPerPixel_C, Size nPixel_I, Size nPixel, Size n, bool debug)
 {
 	PosInt tid = blockDim.x*blockIdx.x + threadIdx.x;
+    if (debug && tid == 0) {
+        printf("im here\n");
+    }
 	if (tid < nPixel) {
 		Size m_local = m[tid];
 		Float value = 0;
+        bool fired = false;
 		if (m_local > 0) {
 			Size nPerPixel = tid < nPixel_I? nPerPixel_I: nPerPixel_C;
 			PosInt offset = tid < nPixel_I? 0: (nPixel_I*nPerPixel_I);
@@ -21,24 +25,30 @@ void pixelizeOutput(
 
 			for (PosInt i=0; i<m_local; i++) {
 				PosInt id = pid[offset + i];
-                if (id >= n) {
-                    printf("offset:%u + ICid:%u*nPerPixel:%u + %u\n", offset, ICid, nPerPixel, i);
-                    assert(id < n);
-                }
-                if (tid == nPixel/2) {
-                    printf("included nid: %u\n", id);
+                //DEBUG
+                if (debug) {
+                    assert(id < 32768);
                 }
 				PosInt sInfo = fr[id];
 				if (sInfo > 0) {
 					value += ceiling(sInfo);
+                    if (debug) {
+                        printf("i fired\n");
+                    }
+                    assert(value > 0);
+                    fired = true;
 				}
 			}
 			value /= m_local;
+            if (fired) {
+                assert(value > 0);
+            }
 		}
 		__syncwarp();
 		output[tid] += value;
-        if (tid == nPixel/2) {
+        if (debug && fired) {
             printf("frame output: %f at half\n", output[tid]);
+            assert(output[tid] > 0);
         }
 	}
 }
@@ -110,6 +120,14 @@ void getLGN_V1_surface(vector<PosInt> &xy, vector<vector<PosInt>> &LGN_V1_ID, Po
             surface_xy[xid] = xy[LGN_V1_ID[i][j]]; // x
             PosInt yid = nV1*max_LGNperV1 + xid;
             surface_xy[yid] = xy[nLGN + LGN_V1_ID[i][j]];
+        }
+    }
+}
+
+void fill_fSpikeTrain(std::vector<std::vector<std::vector<Float>>> &fsp, Float sp[], std::vector<std::vector<PosInt>> &fcs, std::vector<std::vector<PosInt>> &vecID, std::vector<Size> nVec, Size nV1) {
+    for (PosInt i=0; i<nV1; i++) {
+        for (PosInt j=0; j<nVec[i]; j++) {
+            fsp[i][j][fcs[i][j]] = sp[vecID[i][j]];
         }
     }
 }

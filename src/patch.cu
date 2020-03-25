@@ -1146,7 +1146,7 @@ int main(int argc, char **argv) {
 	{
 		// evaluate neuron id for each pixel in the frame by position
 		vector<Int> pick(nV1,1); // dummy variable, picks for all neuron
-		vector<vector<PosInt>> V1_phyFramePosId_v = getUnderlyingID<double>(&(V1_x[0]), &(V1_y[0]), &(pick[0]), 0, nV1, phyWidth, phyHeight, V1_x0, V1_xspan, V1_y0, V1_yspan, &maxV1perPixel); // height defined by yspan/xspan * width
+		vector<vector<PosInt>> V1_phyFramePosId_v = getUnderlyingID<double>(&(V1_x[0]), &(V1_y[0]), &(pick[0]), 0, nV1, phyWidth, phyHeight, V1_x0, V1_xspan, V1_y0, V1_yspan, &maxV1perPixel, nV1); // height defined by yspan/xspan * width
 
         //DEBUG
             PosInt id_max = 0;
@@ -1200,7 +1200,7 @@ int main(int argc, char **argv) {
 		Size nTmp = nLGN_C > nLGN_I	? nLGN_C: nLGN_I;
 		// evaluate neuron id for each pixel in the frame by position
 		vector<Int> pick(nTmp, true); // LGN index are well separated
-		vector<vector<PosInt>> LGN_visFramePosId_vI = getUnderlyingID<Float>(&(LGN_x[0]), &(LGN_y[0]), &(pick[0]), 0, nLGN_I, visWidth, visHeight, LGN_x0, LGN_xspan, LGN_y0, LGN_yspan, &maxLGNperPixel_I);
+		vector<vector<PosInt>> LGN_visFramePosId_vI = getUnderlyingID<Float>(&(LGN_x[0]), &(LGN_y[0]), &(pick[0]), 0, nLGN_I, visWidth, visHeight, LGN_x0, LGN_xspan, LGN_y0, LGN_yspan, &maxLGNperPixel_I, nLGN_I);
         //DEBUG
             PosInt id_maxI = 0;
             for (PosInt i=0; i<nPixel_visLGN/2; i++) {
@@ -1212,7 +1212,7 @@ int main(int argc, char **argv) {
             assert(id_maxI < nLGN_I);
         //
 
-		vector<vector<PosInt>> LGN_visFramePosId_vC = getUnderlyingID<Float>(&(LGN_x[nLGN_I]), &(LGN_y[nLGN_I]), &(pick[0]), nLGN_I, nLGN, visWidth, visHeight, LGN_x0, LGN_xspan, LGN_y0, LGN_yspan, &maxLGNperPixel_C);
+		vector<vector<PosInt>> LGN_visFramePosId_vC = getUnderlyingID<Float>(&(LGN_x[nLGN_I]), &(LGN_y[nLGN_I]), &(pick[0]), nLGN_I, nLGN, visWidth, visHeight, LGN_x0, LGN_xspan, LGN_y0, LGN_yspan, &maxLGNperPixel_C, nLGN_C);
 
         //DEBUG
             PosInt id_maxC = nLGN_I;
@@ -1278,16 +1278,25 @@ int main(int argc, char **argv) {
 	if (frameVisV1output) {
 		// evaluate neuron id for each pixel in the frame by position
 		Int* pick = new Int[nV1]; // only for OD pick
+        Size nV1_I = 0;
+        Size nV1_C = 0;
 		if (readFeature) {
 			for (PosInt i = 0; i<nV1; i++) {
-				pick[i] = featureValue[i] > 0? 1: -1;
+                if (featureValue[i] < 0) {
+				    pick[i] = 1;
+                    nV1_I++;
+                } else {
+                    pick[i] = -1;
+                    nV1_C++;
+                }
 			}
 		} else {
 			for (PosInt i = 0; i<nV1; i++) {
 				pick[i] = 1;
 			}
+            nV1_I = nV1;
 		}
-		vector<vector<PosInt>> V1_visFramePosId_vI = getUnderlyingID<double>(&(V1_vx[0]), &(V1_vy[0]), pick, 0, nV1, visWidth, visHeight, V1_vx0, V1_vxspan, V1_vy0, V1_vyspan, &maxV1perPixel_I);
+		vector<vector<PosInt>> V1_visFramePosId_vI = getUnderlyingID<double>(&(V1_vx[0]), &(V1_vy[0]), pick, 0, nV1, visWidth, visHeight, V1_vx0, V1_vxspan, V1_vy0, V1_vyspan, &maxV1perPixel_I, nV1_I);
 		for (PosInt i = 0; i<nV1; i++) {
 			pick[i] = -pick[i];
 		}
@@ -1303,7 +1312,7 @@ int main(int argc, char **argv) {
             assert(id_max < nV1);
         //
 
-		vector<vector<PosInt>> V1_visFramePosId_vC = getUnderlyingID<double>(&(V1_vx[0]), &(V1_vy[0]), pick, 0, nV1, visWidth, visHeight, V1_vx0, V1_vxspan, V1_vy0, V1_vyspan, &maxV1perPixel_C);
+		vector<vector<PosInt>> V1_visFramePosId_vC = getUnderlyingID<double>(&(V1_vx[0]), &(V1_vy[0]), pick, 0, nV1, visWidth, visHeight, V1_vx0, V1_vxspan, V1_vy0, V1_vyspan, &maxV1perPixel_C, nV1_C);
 		delete []pick;
 
         //DEBUG
@@ -1448,7 +1457,6 @@ int main(int argc, char **argv) {
 	Float** delayMat = new Float*[nChunk];
 	size_t matOffset = 0;
 	size_t matChunkSize = maxChunkSize*blockChunkSize;
-	Float maxDistance = 0;
 	size_t chunkSize = matChunkSize;
 	for (PosInt i=0; i<nChunk; i++) {
 		if (i >= iSizeSplit) chunkSize = remainChunkSize*blockChunkSize;
@@ -1460,6 +1468,16 @@ int main(int argc, char **argv) {
 			matOffset += chunkSize;
 		}
 	}
+    auto findDisConMax = [](Float a[], Float b[], size_t n) {
+        Float max;
+        max = a[0];
+        for (PosIntL i=1; i<n; i++) {
+            if (a[i] > max && b[i] > 0) {
+                max =  a[i];
+            }
+        }
+        return max;
+    };
 	assert(delayMat[nChunk-1] + chunkSize == conDelayMat0 + matSize*2);
 	chunkSize = matChunkSize;
 	for (PosInt i=0; i<nChunk; i++) {
@@ -1468,12 +1486,9 @@ int main(int argc, char **argv) {
 		else assert(fV1_conMat);
 		if (fV1_delayMat) fV1_delayMat.read(reinterpret_cast<char*>(delayMat[i]), chunkSize*sizeof(Float));
 		else assert(fV1_delayMat);
-		Float current_maxDistance = array_max(delayMat[i], chunkSize);
-		if (maxDistance < current_maxDistance) maxDistance = current_maxDistance;
 	}
 	fV1_conMat.close();
 	fV1_delayMat.close();
-	Size trainDepth = ceil((maxDistance/speedOfThought)/dt);
     cout << "conMat and delayMat set\n";
 
 	vector<Size> nNeighborBlock(nblock);
@@ -1523,14 +1538,18 @@ int main(int argc, char **argv) {
         } else {
             if (sList.size() == 1) {
                 sList.assign(preList.size(), sList[0]);
+            } else {
+                if (preList.size() != postList.size()) {
+                    cout << "the number of presynaptic neurons: " << preList.size() << " does not match with the number of connection strengths provided: " << sList.size() << " for the manual connections\n";
+                }
             }
             for (PosInt i = 0; i<postList.size(); i++) {
                 PosInt bid = postList[i]/blockSize;
-                PosInt p_bid = preList[i]/blockSize;
+                PosInt pre_bid = preList[i]/blockSize;
                 bool blocked = false;
                 PosInt local_bid;
                 for (PosInt ib=0; ib<nNeighborBlock[bid]; ib++) {
-                    if (p_bid == neighborBlockId[bid][ib]) {
+                    if (pre_bid == neighborBlockId[bid][ib]) {
                         blocked = true;
                         local_bid = ib;
                         break;
@@ -1541,7 +1560,7 @@ int main(int argc, char **argv) {
                     PosInt iChunk;
                     if (bid >= iSizeSplit*maxChunkSize) {
                         iChunk = iSizeSplit + (bid - iSizeSplit*maxChunkSize)/remainChunkSize;
-                        bid = bid - iSizeSplit*maxChunkSize - (iChunk-iSizeSplit)*remainChunkSize;
+                        bid = bid - iSizeSplit*maxChunkSize - (iChunk-iSizeSplit)*remainChunkSize; // bid in the chunk
                     } else {
                         iChunk = bid/maxChunkSize;
                         bid = bid - iChunk*maxChunkSize;
@@ -1577,8 +1596,44 @@ int main(int argc, char **argv) {
             }
         }
     }
+	Float maxDistance = 0;
+	for (PosInt i=0; i<nChunk; i++) {
+        Float current_maxDistance = findDisConMax(delayMat[i], conMat[i], chunkSize);
+	    if (maxDistance < current_maxDistance) maxDistance = current_maxDistance;
+    }
+	Size trainDepth = static_cast<Size>(ceil((maxDistance/speedOfThought)/dt)) + 1;
+	cout << "spikeTrain retains spikes for " << trainDepth << " time steps for each neuron, calculated from a maximum connection distance " << maxDistance << " mm\n";
 	delete []conMat;
 	delete []delayMat;
+    
+    vector<vector<vector<Float>>> fSpikeTrain(nV1, vector<vector<Float>>());
+    vector<vector<Size>> fTrainDepth(nV1, vector<Size>());
+    vector<vector<PosInt>> fCurrenSlot(nV1, vector<PosInt>());
+
+    Float fMaxDistance = 0;
+    for (PosInt i=0; i<nV1; i++) {
+        vector<vector<Float>> preSpikeTrain(nVec[i], vector<Float>());
+        fSpikeTrain[i] = preSpikeTrain;
+        for (PosInt j=0; j<nVec[i]; j++) {
+            fTrainDepth[i].push_back(static_cast<Size>(ceil((delayVec[i][j]/speedOfThought)/dt))+1);
+            fCurrenSlot[i].push_back(0);
+            vector<Float> iPreSpikeTrain(fTrainDepth[i][j], -1.0);
+            fSpikeTrain[i][j] = iPreSpikeTrain;
+        }
+        if (nVec[i] > 0) {
+            Float current_maxDistance = *max_element(delayVec[i].begin(), delayVec[i].end());
+	        if (fMaxDistance < current_maxDistance) {
+                fMaxDistance = current_maxDistance;
+            }
+        }
+    }
+    if (fMaxDistance > 0) {
+        Size maxTrainDepth = static_cast<Size>(ceil((fMaxDistance/speedOfThought)/dt));
+	    cout << "fSpikeTrain retains maximum " << fMaxDistance << " time steps for farther connections, calculated from a maximum distance of " << fMaxDistance << " mm\n";
+    } else {
+        assert(accumulate(nVec.begin(), nVec.end(), 0.0) == 0);
+    }
+    cout << "vector connections set\n";
 
 	// pinned memory on CPU for heavy usages on
 	// spikeTraie, voltage, gFF, gE, hE, gI, hI
@@ -1696,7 +1751,6 @@ int main(int argc, char **argv) {
     getLastCudaError("tBack");
 	init<Float><<<nblock*trainDepth, blockSize>>>(d_spikeTrain, -1.0, nV1*trainDepth);
     getLastCudaError("init spikeTrain");
-	cout << "spikeTrain retains spikes for " << trainDepth << " time steps for each neuron\n";
 
 	Size max_LGNperV1;
 	Float* LGN_V1_s;
@@ -1964,7 +2018,7 @@ int main(int argc, char **argv) {
 	}
 	size_t sChunkMatSize = 2*maxChunkSize*blockChunkSize; // 2 for conMat and delayMat
 	size_t rChunkMatSize = 2*remainChunkSize*blockChunkSize;
-	cout << "single chunk of conDelayMat requires at most" << sChunkMatSize*sizeof(Float)/1024.0/1024.0 << ", smaller chunks require " << rChunkMatSize*sizeof(Float)/1024.0/1024.0 << " Mb\n";
+	cout << "single chunk of conDelayMat requires at most " << sChunkMatSize*sizeof(Float)/1024.0/1024.0 << "Mb, smaller chunks require " << rChunkMatSize*sizeof(Float)/1024.0/1024.0 << "Mb\n";
 	size_t ccChunkMatSize; // (c)on(c)urrent chunk
 	if (matConcurrency > iSizeSplit) {
 		ccChunkMatSize = iSizeSplit * sChunkMatSize + (matConcurrency-iSizeSplit) * rChunkMatSize;
@@ -2187,7 +2241,6 @@ int main(int argc, char **argv) {
         cudaDeviceSynchronize();
 
 		if (it > 0) { // seeking for overlap of data output with LGN input
-		    cudaEventSynchronize(spHostReady);
 			fRawData.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
 			cudaEventSynchronize(v_gFF_Ready);
 			fRawData.write((char*) v, nV1*sizeof(Float)*(1+ngTypeFF*(1+hWrite)));
@@ -2272,23 +2325,25 @@ int main(int argc, char **argv) {
         for (PosInt i=0; i<matConcurrency; i++) {
 			cudaEventRecord(gReady[i], stream[i]);
         }
-		checkCudaErrors(cudaMemcpyAsync(v, d_v, nV1*sizeof(Float)*(1+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream)); // to overlap with recal_G above
+		checkCudaErrors(cudaMemcpyAsync(v, d_v, nV1*sizeof(Float)*(1+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream));
 		cudaEventRecord(v_gFF_Ready, mainStream);
 
 		block_offset = 0;
 		chunkSize = maxChunkSize;
 		cudaEventSynchronize(spHostReady);
+        fill_fSpikeTrain(fSpikeTrain,  spikeTrain + nV1*currentTimeSlot, fCurrenSlot, vecID, nVec,nV1);
+
 		for (PosInt i = 0; i < nChunk; i++) {
 			if (i >= iSizeSplit) chunkSize = remainChunkSize;
 			size_t gChunkSize = chunkSize*blockSize*(ngTypeE+ngTypeI)*sizeof(Float);
 			size_t ghChunkSize = gChunkSize*2;
 			// cpu accumulate conductances from far neighbors
 			recal_G_vec(
-					spikeTrain,
+					fSpikeTrain, fTrainDepth, fCurrenSlot,
 					nVec, vecID, conVec, delayVec,
 					gE[i], gI[i], hE[i], hI[i],
 					dt, condE, condI, ngTypeE, ngTypeI,
-					block_offset, currentTimeSlot, trainDepth,
+					block_offset,
 					nE, nV1, speedOfThought, chunkSize);
 			// g and h
 			checkCudaErrors(cudaMemcpyAsync(d_gEt[i], gE[i], ghChunkSize, cudaMemcpyHostToDevice, stream[i])); // size in maxChunk
@@ -2306,10 +2361,13 @@ int main(int argc, char **argv) {
 			}
 			cudaEventRecord(gReady[i], stream[i]);
 		}
+        cout << "it = " << it << ", " << ot << "\n";
 		if (it > 0 && it%ot == 0) {
 			checkCudaErrors(cudaMemsetAsync(d_V1SpPhyFrame, 0, nPixel_phyV1*sizeof(Float), ostream[0]));
+            cout << it << "%" << ot << " = " << it%ot << " reset phyV1\n";
 		}
-		pixelizeOutput<<<(nPixel_phyV1+blockSize-1)/blockSize, blockSize, 0, ostream[0]>>>(d_spikeTrain + currentTimeSlot*nV1, d_V1SpPhyFrame, d_V1_phyFramePosId, d_nV1perPhyPixel, maxV1perPixel, 0, nPixel_phyV1, nPixel_phyV1, nV1);
+        cout << "phyV1, currentTimeSlot = " << currentTimeSlot << "\n";
+		pixelizeOutput<<<(nPixel_phyV1+blockSize-1)/blockSize, blockSize, 0, ostream[0]>>>(d_spikeTrain+currentTimeSlot*nV1, d_V1SpPhyFrame, d_V1_phyFramePosId, d_nV1perPhyPixel, maxV1perPixel, 0, nPixel_phyV1, nPixel_phyV1, nV1, true);
 		getLastCudaError("pixelizeOutput phyV1 failed");
         cudaDeviceSynchronize();
         //cout << "phyV1\n";
@@ -2317,17 +2375,18 @@ int main(int argc, char **argv) {
 		if (frameVisV1output) {
 			if (it > 0 && it%ot == 0) {
 				checkCudaErrors(cudaMemsetAsync(d_V1SpVisFrame, 0, nPixel_visV1*sizeof(Float), ostream[1]));
+                cout << it << "%" << ot << " = " << it%ot << " reset visV1\n";
 			}
-			pixelizeOutput<<<(nPixel_visV1+blockSize-1)/blockSize, blockSize, 0, ostream[1]>>>(d_spikeTrain+currentTimeSlot*nV1, d_V1SpVisFrame, d_V1_visFramePosId, d_nV1perVisPixel, maxV1perPixel_I, maxV1perPixel_C, nPixel_visV1/2, nPixel_visV1, nV1);
+            cout << "visV1, currentTimeSlot = " << currentTimeSlot << "\n";
+			pixelizeOutput<<<(nPixel_visV1+blockSize-1)/blockSize, blockSize, 0, ostream[1]>>>(d_spikeTrain+currentTimeSlot*nV1, d_V1SpVisFrame, d_V1_visFramePosId, d_nV1perVisPixel, maxV1perPixel_I, maxV1perPixel_C, nPixel_visV1/2, nPixel_visV1, nV1, true);
 			getLastCudaError("pixelizeOutput visV1 failed");
 		}
         cudaDeviceSynchronize();
-        //cout << "visV1\n";
 
 		if (frameVisLGNoutput) {
 			if (it > 0 && it%ot == 0) {
 				checkCudaErrors(cudaMemsetAsync(d_LGN_spVisFrame, 0, nPixel_visLGN*sizeof(Float), ostream[2]));
-                cout << "set frame output back to 0\n";
+                cout << it << "%" << ot << " = " << it%ot << "reset visLGN\n";
 			}
 			pixelizeOutput<<<(nPixel_visLGN+blockSize-1)/blockSize, blockSize, 0, ostream[2]>>>(d_LGN_fr, d_LGN_spVisFrame, d_LGN_visFramePosId, d_nLGNperPixel, maxLGNperPixel_I, maxLGNperPixel_C, nPixel_visLGN/2, nPixel_visLGN, nLGN);
 			getLastCudaError("pixelizeOutput visLGN failed");
