@@ -158,6 +158,10 @@ void compute_V_collect_spike(
         Float** __restrict__ gI,
         Float** __restrict__ hE,
         Float** __restrict__ hI,
+        Float** __restrict__ PreVar_LGN,
+        Float** __restrict__ PostVar,
+        Float** __restrict__ PripVar,
+        Float** __restrict__ FrVar,
         Float* __restrict__ spikeTrain, // [depth, nblock, blockSize]
         Float* __restrict__ tBack,
         Size* __restrict__ nLGN,
@@ -268,7 +272,12 @@ void recal_G_mat(
         Float* __restrict__ gI, // [ngTypeI, nV1] 
         Float* __restrict__ hE,
         Float* __restrict__ hI,
-        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nE, Size nV1, Float speedOfThought) 
+        Float* __restrict__ PreVar_V1,
+        Float* __restrict__ PostVar,
+        Float* __restrict__ PripVar,
+        Float* __restrict__ FrVar,
+        Float* __restrict__ qVar,
+        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nE, Size nV1, Float speedOfThought, Size ) 
 {
     // each thread is the post neuron that collects its presynaptic input conductances
     // initialize
@@ -285,6 +294,10 @@ void recal_G_mat(
         local_hI[ig] = 0.0f;
     }
 
+    Float preVar, postVar,
+    if (threadIdx.x < nE) {
+    for (PosInt i=nType; 
+    
     for (PosInt ib = 0; ib < nNeighborBlock[blockIdx.x]; ib++) {
 		PosInt local_bid = blockIdx.x*nearNeighborBlock + ib;
 		PosInt bid = neighborBlockId[local_bid];

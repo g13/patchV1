@@ -10,13 +10,9 @@ void pixelizeOutput(
 		Size nPerPixel_I, Size nPerPixel_C, Size nPixel_I, Size nPixel, Size n, bool debug)
 {
 	PosInt tid = blockDim.x*blockIdx.x + threadIdx.x;
-    if (debug && tid == 0) {
-        printf("im here\n");
-    }
 	if (tid < nPixel) {
 		Size m_local = m[tid];
 		Float value = 0;
-        bool fired = false;
 		if (m_local > 0) {
 			Size nPerPixel = tid < nPixel_I? nPerPixel_I: nPerPixel_C;
 			PosInt offset = tid < nPixel_I? 0: (nPixel_I*nPerPixel_I);
@@ -25,31 +21,20 @@ void pixelizeOutput(
 
 			for (PosInt i=0; i<m_local; i++) {
 				PosInt id = pid[offset + i];
-                //DEBUG
-                if (debug) {
-                    assert(id < 32768);
-                }
-				PosInt sInfo = fr[id];
-				if (sInfo > 0) {
-					value += ceiling(sInfo);
-                    if (debug) {
-                        printf("i fired\n");
-                    }
-                    assert(value > 0);
-                    fired = true;
+				Float sInfo = fr[id];
+				if (sInfo >= 0) {
+					value += flooring(sInfo) + 1;
+                    #ifdef DEBUG
+                        if (id == 0) {
+                            printf("i fired, sInfo = %f\n", sInfo);
+                        }
+                    #endif
 				}
 			}
 			value /= m_local;
-            if (fired) {
-                assert(value > 0);
-            }
 		}
 		__syncwarp();
 		output[tid] += value;
-        if (debug && fired) {
-            printf("frame output: %f at half\n", output[tid]);
-            assert(output[tid] > 0);
-        }
 	}
 }
 
@@ -124,10 +109,16 @@ void getLGN_V1_surface(vector<PosInt> &xy, vector<vector<PosInt>> &LGN_V1_ID, Po
     }
 }
 
-void fill_fSpikeTrain(std::vector<std::vector<std::vector<Float>>> &fsp, Float sp[], std::vector<std::vector<PosInt>> &fcs, std::vector<std::vector<PosInt>> &vecID, std::vector<Size> nVec, Size nV1) {
+bool fill_fSpikeTrain(std::vector<std::vector<std::vector<Float>>> &fsp, Float sp[], std::vector<std::vector<PosInt>> &fcs, std::vector<std::vector<PosInt>> &vecID, std::vector<Size> nVec, Size nV1) {
+    bool outsideSpiked = false;
     for (PosInt i=0; i<nV1; i++) {
         for (PosInt j=0; j<nVec[i]; j++) {
-            fsp[i][j][fcs[i][j]] = sp[vecID[i][j]];
+            Float sInfo = sp[vecID[i][j]];
+            if (sInfo >= 0 && !outsideSpiked) {
+                outsideSpiked = true;
+            }
+            fsp[i][j][fcs[i][j]] = sInfo;
         }
     }
+    return outsideSpiked;
 }

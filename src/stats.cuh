@@ -69,4 +69,4 @@ void flattenBlock(Size nblock, Size neuronPerBlock, T *pos) {
     memcpy(pos+networkSize, &y[0], networkSize*sizeof(T));
 }
 
-void fill_fSpikeTrain(std::vector<std::vector<std::vector<Float>>> &fsp, Float sp[], std::vector<std::vector<PosInt>> &fcs, std::vector<std::vector<PosInt>> &vecID, std::vector<Size> nVec, Size nV1);
+bool fill_fSpikeTrain(std::vector<std::vector<std::vector<Float>>> &fsp, Float sp[], std::vector<std::vector<PosInt>> &fcs, std::vector<std::vector<PosInt>> &vecID, std::vector<Size> nVec, Size nV1);
