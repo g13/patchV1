@@ -3,8 +3,7 @@
 extern texture<float, cudaTextureType2DLayered> L_retinaInput;
 extern texture<float, cudaTextureType2DLayered> M_retinaInput;
 extern texture<float, cudaTextureType2DLayered> S_retinaInput;
-extern surface<void, cudaSurfaceType2D> LGNspikeSurface;
-extern __device__ __constant__ float sqrt2;
+extern surface<void, cudaSurfaceType2DLayered> LGNspikeSurface;
 
 __global__
 void cudaMemsetNonzero(
@@ -373,10 +372,10 @@ void store(Float* __restrict__ max_convol,
         if (tid == 0) {
             Zip_spatial spat;
             spat.load(spatial, lid);
-            Float wSpan = nsig * spat.rx / sqrt2;
+            Float wSpan = nsig * spat.rx / SQRT2;
             Float dw = 2*wSpan/blockDim.x;
 
-            Float hSpan = nsig * spat.ry / sqrt2;
+            Float hSpan = nsig * spat.ry / SQRT2;
             Float dh = 2*hSpan/blockDim.y;
 			k = spat.k;
 			{
@@ -823,32 +822,32 @@ void LGN_convol_c1s(
 
 __inline__
 __device__
-void get_spike(Float &spikeInfo,
-               Float &leftTimeRate,
-               Float &lastNegLogRand,
-               Float dt,
-               Float rate,
-               curandStateMRG32k3a *state) 
+Float get_spike(Size &nsp,
+                Float &leftTimeRate,
+                Float &lastNegLogRand,
+                Float dt,
+                Float rate,
+                curandStateMRG32k3a *state) 
 {
-    spikeInfo = 0;
+    nsp = 0;
     // ith spike, jth dt
     // t_{i+1}*r_{j+1} + (T_{j}-t_{i})*r_{j} = -log(rand);
     Float rT = dt*rate;
-    Float n_rt = lastNegLogRand - leftTimeRate; // tsp = n_rt/rate
-    if (n_rt > rT) { // spike time is larger than dt.
+    Float next_rT = lastNegLogRand - leftTimeRate; // tsp = next_rt/rate
+    if (next_rT > rT) { // spike time is larger than dt.
         leftTimeRate += rT;
-        spikeInfo = -1; // no spike
-        return;
+        return -dt;
     } else do { // at least one spike during current time step
         lastNegLogRand = -logrithm(uniform(state));
-        n_rt += lastNegLogRand;
-        spikeInfo += 1;
-    } while (n_rt <= rT);
-    //  integer part:#spike-1,  decimal part normalized mean tsp
-    spikeInfo = spikeInfo + n_rt/(rate*dt*(spikeInfo+1));
-    leftTimeRate = (rT - (n_rt-lastNegLogRand));
+        next_rT += lastNegLogRand;
+        nsp++;
+    } while (next_rT <= rT);
+    next_rT -= lastNegLogRand; // retract the tentative spike
+    leftTimeRate = rT - next_rT;
+    return next_rT/(rate*nsp); // mean tsp not yet normalized by dt
 }
 
+//template<int ntimes>
 __launch_bounds__(1024, 2)
 __global__ 
 void LGN_nonlinear(
@@ -862,7 +861,7 @@ void LGN_nonlinear(
         Float* __restrict__ leftTimeRate,
         Float* __restrict__ lastNegLogRand,
 		curandStateMRG32k3a* __restrict__ state,
-        Float dt)
+        int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning)
 {
 	unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     bool engaging = id<nLGN;
@@ -874,8 +873,8 @@ void LGN_nonlinear(
 		Float max = max_convol[id];
         Float lTR = leftTimeRate[id];
         Float lNL = lastNegLogRand[id];
-        PosInt x = sx[id];
-        PosInt y = sy[id];
+        int x = sx[id];
+        int y = sy[id];
         curandStateMRG32k3a local_state = state[id];
 		// initialize for next time step
 		current_convol[id] = 0.0;
@@ -894,15 +893,65 @@ void LGN_nonlinear(
             assert(fr >= 0);
         }*/
         LGN_fr[id] = fr;
-        //LGN_fr[id] = max * transform(C50, K, A, B, current/max);
-        Float spikeInfo; // must be float, integer part = #spikes decimals: mean tsp
-        get_spike(spikeInfo, lTR, lNL, dt, fr, &local_state);
+        Float lastSpikeInfo; 
+        Float var[MAX_NLEARNTYPE_FF];
+        if (learning == 1 || learning == 2) {
+            surf2DLayeredread(&lastSpikeInfo, LGNspikeSurface, 4*x, y, 0);
+            if (id == 13) {
+                printf("read LGN #%u: %f\n", id, lastSpikeInfo);
+            }
+            #pragma unroll (max_nLearnTypeFF)
+            for (int i=0; i<nFF; i++) {
+                surf2DLayeredread(&(var[i]), LGNspikeSurface, 4*x, y, 1+(3*i+varSlot)); // varSlot already 'mod'ed
+            }
+        }
+
+        Size nsp;
+        Float tsp = get_spike(nsp, lTR, lNL, dt, fr, &local_state);
+        Float spikeInfo = nsp + tsp/dt; // must be float, integer part = #spikes decimals: mean tsp normalized by dt
+        if (id == 13) {
+            printf("write LGN #%u: %f\n", id, spikeInfo);
+        }
         if (spikeInfo > -1.0) {
             lastNegLogRand[id] = lNL;
         }
         leftTimeRate[id] = lTR;
         state[id] = local_state;
         // write to surface memory 
-        surf2Dwrite(spikeInfo, LGNspikeSurface, 4*x, y);
+        surf2DLayeredwrite(spikeInfo, LGNspikeSurface, 4*x, y, 0);
+
+        if (learning == 1 || learning == 2) {
+            Float delta_t; // from last_tsp (or start of the time step) to tsp (or end of time step)
+            if (spikeInfo >= 0) {
+                delta_t = tsp;
+                #pragma unroll (max_nLearnTypeFF_E)
+                for (PosInt i=0; i<lE.n; i++) {
+                    var[i]++; // increase learning variable after spike, not to be increased right after read to hide latency
+                    decay(var[i], lE.tauLTP[i], delta_t);
+                }
+                #pragma unroll (max_nLearnTypeFF_I)
+                for (PosInt i=0; i<lI.n; i++) {
+                    var[lE.n+i]++; // increase learning variable after spike, not to be increased right after read to hide latency
+                    decay(var[lE.n+i], lI.tauLTP[i], delta_t);
+                }
+                #pragma unroll (max_nLearnTypeFF)
+                for (int i=0; i<nFF; i++) {
+                    surf2DLayeredwrite(var[i], LGNspikeSurface, 4*x, y, 1+(3*i+2)); // update at the third slot
+                }
+                delta_t = dt - delta_t; // remaining time to end of the timestep
+            } else delta_t = dt;
+
+            // decay all together;
+            #pragma unroll (max_nLearnTypeFF_E)
+            for (int i=0; i<lE.n; i++) {
+                decay(var[i], lE.tauLTP[i], delta_t);
+                surf2DLayeredwrite(var[i], LGNspikeSurface, 4*x, y, 1+(3*i+(varSlot+1)%2)); // update at next slot
+            }
+            #pragma unroll (max_nLearnTypeFF_I)
+            for (int i=0; i<lI.n; i++) {
+                decay(var[lE.n+i], lI.tauLTP[i], delta_t);
+                surf2DLayeredwrite(var[lE.n+i], LGNspikeSurface, 4*x, y, 1+(3*(lE.n+i)+(varSlot+1)%2)); // update at next slot
+            }
+        }
     }
 }

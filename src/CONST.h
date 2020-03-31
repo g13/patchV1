@@ -1,5 +1,5 @@
-#ifndef MODEL_CONST_H
-#define MODEL_CONST_H
+#ifndef CONST_H
+#define CONST_H
 
 #define vE 14.0f/3.0f
 #define vI -2.0f/3.0f
@@ -10,17 +10,37 @@
 #define tRef_E 2.0f
 #define tRef_I 1.0f
 
-#define max_nLearnTypeFF 2 // maximum number of feedforward excitatory learning types
-#define max_nLearnTypeE 2 // cortical excitatory
-#define max_nLearnTypeI 2 // inhibitory
-#define max_nLearnType 2 // max 
-#define sum_nType (max_nTypeE+max_nTypeI) // sum
+#define MAX_NLEARNTYPE_FF_I 1 // ff to inhibitory only
+#define MAX_NLEARNTYPE_FF_E 1 // ff to excitatory only
+#define MAX_NLEARNTYPE_FF (MAX_NLEARNTYPE_FF_E + MAX_NLEARNTYPE_FF_I) // maximum number of feedforward learning types
 
-#define max_ngTypeFF 2 // excitatory feedforward conductance types
-#define max_ngTypeE 2 // excitatory coritcal
-#define max_ngTypeI 2 // inhibitory
-#define max_ngType 2 // max
-//#define max_ngType (max_ngTypeFF+max_ngTypeE+max_ngTypeI) // sum 
+#define MAX_NLEARNTYPE_E 2 // cortical excitatory to excitatory
+#define MAX_NLEARNTYPE_Q 1 // cortical inhibitory to excitatory 
+
+//#define MAX_NLEARNTYPE 2 // max 
+//#define SUM_NTYPE (MAX_NTYPEE+MAX_NTYPEI) // sum
+
+#define MAX_NGTYPE_FF 2 // excitatory feedforward conductance types
+#define MAX_NGTYPE_E 2 // excitatory coritcal
+#define MAX_NGTYPE_I 1 // inhibitory
+#define MAX_NGTYPE 2 // max
 #define EPS 1e-14
+#define SQRT2 1.4142135623730951
+
+const int max_nLearnTypeFF_I = MAX_NLEARNTYPE_FF_I;
+const int max_nLearnTypeFF_E = MAX_NLEARNTYPE_FF_E;
+const int max_nLearnTypeFF = (MAX_NLEARNTYPE_FF_E + MAX_NLEARNTYPE_FF_I);
+
+const int max_nLearnTypeE = MAX_NLEARNTYPE_E;
+const int max_nLearnTypeQ = MAX_NLEARNTYPE_Q;
+
+//const int max_nLearnType = MAX_NLEARNTYPE;
+
+const int max_ngTypeFF = MAX_NGTYPE_FF;
+const int max_ngTypeE = MAX_NGTYPE_E;
+const int max_ngTypeI = MAX_NGTYPE_I;
+const int max_ngType = MAX_NGTYPE;
+const Float eps = EPS;
+const Float sqrt2 = SQRT2;
 
 #endif

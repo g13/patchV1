@@ -12,6 +12,8 @@
 #include "DIRECTIVE.h"
 #include "LGN_props.cuh"
 #include "types.h"
+#include "CONST.h"
+#include "condShape.h"
 #include "util/cuda_util.cuh"
 
 // block_reduce works fine when block is not fully occupied
@@ -23,6 +25,12 @@ void testTexture(Float L, Float M, Float S);
 __global__
 void cudaMemsetNonzero(Float* array, Size n, Float value);
 
+__device__
+__forceinline__
+Float get_spike(Size &nsp, Float &leftTimeRate, Float &lastNegLogRand, Float dt, Float rate, curandStateMRG32k3a *state);
+
+//template<int ntimes> extern
+__launch_bounds__(1024, 2)
 __global__ 
 void LGN_nonlinear(
         Size nLGN,
@@ -35,7 +43,7 @@ void LGN_nonlinear(
         Float* __restrict__ leftTimeRate,
         Float* __restrict__ lastNegLogRand,
 		curandStateMRG32k3a* __restrict__ state,
-        Float dt
+        int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning
 );
 
 __global__
