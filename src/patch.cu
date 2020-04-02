@@ -1,3 +1,4 @@
+//TODO: optimize kernels, store and read or compute on site
 #define _USE_MATH_DEFINES
 #include <fstream>
 #include <string>
@@ -91,6 +92,8 @@ int main(int argc, char **argv) {
 	bool saveLGN_fr, saveLGN_gallery, saveOutputB4V1;
 	bool frameVisV1output, frameVisLGNoutput;
     bool hWrite, rawData;
+    bool learnData_FF;
+    bool learnData_V1;
     bool manual;
     bool symQ;
     int learning;
@@ -174,7 +177,7 @@ int main(int argc, char **argv) {
 		("tauLTP", po::value<vector<Float>>(&tauLTP), "array for the decay timescale of LTP variable of the triplet rule")
 		("tauLTD", po::value<vector<Float>>(&tauLTD), "array for the decay timescale of LTD variable of the triplet rule")
 		("tau_trip", po::value<vector<Float>>(&tau_trip), "array for the decay timescale of the triplet variable of the triplet rule")
-		("tau_avg", po::value<vector<Float>>(&tau_avg), "array for the decay timescale of the filtered firing rate for the triplet rule")
+		("tau_avg", po::value<vector<Float>>(&tau_avg), "the decay timescale of the filtered firing rate for the triplet rule, size of 2")
 		("archtypeAccCount",po::value<vector<Size>>(&archtypeAccCount), "neuronal types' discrete accumulative distribution (E&I), size of [nArchtype], nArchtype = nTypeHierarchy[0] (genCon.cu)")
         ("manual", po::value<bool>(&manual)->default_value(false), "manually connect neurons, modify on top of conMat")
         ("preList", po::value<vector<PosInt>>(&preList), "the presynaptic neurons of the manual connections")
@@ -184,6 +187,8 @@ int main(int argc, char **argv) {
 		("hWrite", po::value<bool>(&hWrite)->default_value(true), "write h data to fRawData output")
 		("saveLGN_fr", po::value<bool>(&saveLGN_fr)->default_value(true),"write LGN firing rates to disk, specify filename through LGN_fr_filename")
 		("rawData", po::value<bool>(&rawData)->default_value(true), "to save V1 response (spike, v, g, (h, depends on hWrite)) over time")
+		("learnData_FF", po::value<bool>(&learnData_FF)->default_value(false), "to save LGN->V1 connection strength plasticity over time")
+		("learnData_V1", po::value<bool>(&learnData_V1)->default_value(false), "to save V1->V1 connection strength plasticity over time")
 		("frameVisV1output", po::value<bool>(&frameVisV1output)->default_value(false),"get response stats frame for visual field of V1")
 		("frameVisLGNoutput", po::value<bool>(&frameVisLGNoutput)->default_value(false),"get response stats frame for visual field of LGN")
 		("ot", po::value<Size>(&ot)->default_value(16), "outputFrame interval in multiples of simulatoin time step (ms)") 
@@ -199,7 +204,7 @@ int main(int argc, char **argv) {
 	string LGN_surfaceID_filename;
 	string LGN_filename, LGN_vpos_filename, LGN_V1_s_filename, LGN_V1_ID_filename; // inputs
 	string LGN_fr_filename, outputFrame_filename; // outputs
-	string LGN_convol_filename, LGN_gallery_filename, outputB4V1_filename, rawData_filename;
+	string LGN_convol_filename, LGN_gallery_filename, outputB4V1_filename, rawData_filename, learnData_FF_filename, learnData_V1_filename;
 	top_opt.add_options()
 		("fStimulus", po::value<string>(&stimulus_filename)->default_value("stimulus.bin"),"file that stores LGN firing rates, array of size (nframes,width,height,3)")
 		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"),"file that stores LGN neurons information")
@@ -216,6 +221,7 @@ int main(int argc, char **argv) {
 		("fLGN", po::value<string>(&LGN_filename)->default_value("LGN.bin"),"file that stores all the information of LGN neurons")
 		("fLGN_fr", po::value<string>(&LGN_fr_filename)->default_value("LGN_fr.bin"),"file stores LGN firing rates")
 		("fRawData", po::value<string>(&rawData_filename)->default_value("rawData.bin"), "file that stores V1 response (spike, v, g) over time")
+		("fLearnData_FF", po::value<string>(&learnData_FF_filename)->default_value("learnData_FF.bin"), "file that stores LGN->V1 connection strength over time")
 		("fOutputFrame", po::value<string>(&outputFrame_filename)->default_value("outputFrame.bin"),"file that stores firing rate from LGN and/or V1 (in physical location or visual field) spatially to be ready for frame production") // TEST 
 		("fOutputB4V1", po::value<string>(&outputB4V1_filename)->default_value("outputB4V1.bin"),"file that stores luminance values, contrasts, LGN convolution and their firing rates") // TEST 
 		("fLGN_gallery", po::value<string>(&LGN_gallery_filename)->default_value("LGN_gallery.bin"),"file that stores spatial and temporal convolution parameters"); // TEST 
@@ -288,6 +294,7 @@ int main(int argc, char **argv) {
 		return EXIT_FAILURE;
 	}
 	Size nE = archtypeAccCount[0];
+	Size nI = blockSize-nE;
 
     //ConductanceShape condFF(riseTimeFF, decayTimeFF, ngTypeFF);
     ConductanceShape condFF(&(grFF[0]), &(gdFF[0]), ngTypeFF);
@@ -304,12 +311,18 @@ int main(int argc, char **argv) {
     LearnVarShapeQ lQ;
 	Size nLearnTypeQ;
     if (learning) {
-	    Size nTau_trip = static_cast<Size>(tau_trip.size());
-        if (tauLTD.size() != nTau_trip || tauLTP.size() != nTau_trip || tau_avg.size() != nTau_trip) {
-            cout << "The size of both tauLTD (" << tauLTD.size() << "), tauLTP (" << tauLTP.size() << ") and tau_avg (" << tau_avg.size() << ") should be the same as tau_trip: " << nTau_trip << "\n";
+        if (tau_avg.size() > 2) {
+            cout << "only E and I having different tau_avg for filtered spike response is implemented\n";
             return EXIT_FAILURE;
+        } else {
+            if (tau_avg.size() == 1) {
+                tau_avg.push_back(tau_avg[0]);
+            } else {
+                cout << "tau_avg is not given\n";
+                return EXIT_FAILURE;
+            }
         }
-
+        // Q
         if (tauQ.size() != A_Q.size()) {
             cout << "size of tauQ: " << tauQ.size() << " should be the same as A_Q: " << A_Q.size() << "\n";
             return EXIT_FAILURE;
@@ -334,11 +347,7 @@ int main(int argc, char **argv) {
                 nLearnTypeQ = static_cast<Size>(tauQ.size())/2;
             }
         }
-
-        if (nLearnTypeQ > max_nLearnTypeQ) {
-            cout << "The size of tauQ (" << nLearnTypeQ << ") should not be larger than max_nLearnTypeQ: " << max_nLearnTypeQ << ", change it in CONST.h and recompile\n";
-            return EXIT_FAILURE;
-        }
+        // learning
         if (learning == 1) { // default
             cout << "only FF_E, E and Q learning is active, setting nLearnTypeFF_I to 0\n";
             nLearnTypeFF_I = 0;
@@ -355,36 +364,62 @@ int main(int argc, char **argv) {
             nLearnTypeFF_E = 0;
             nLearnTypeFF_I = 0;
         }
+        // determine nLearnTypes
+        if (nLearnTypeQ > max_nLearnTypeQ) {
+            cout << "The size of tauQ (" << nLearnTypeQ << ") should not be larger than max_nLearnTypeQ: " << max_nLearnTypeQ << ", change it in CONST.h and recompile\n";
+            return EXIT_FAILURE;
+        }
         nLearnTypeFF = nLearnTypeFF_E + nLearnTypeFF_I;
         if (nLearnTypeFF_I > max_nLearnTypeFF_I) {
             cout << "nLearnTypeFF_I: " << nLearnTypeFF_I << " must be smaller than max_nLearnTypeFF_I: " << nLearnTypeFF << " defined in CONST.h, change and recompile\n";
             return EXIT_FAILURE;
         }
-
         if (nLearnTypeFF_E > max_nLearnTypeFF_E) {
             cout << "nLearnTypeFF_E: " << nLearnTypeFF_E << " must be smaller than max_nLearnTypeFF_I: " << nLearnTypeFF << " defined in CONST.h, change and recompile\n";
             return EXIT_FAILURE;
         }
-
-        if (nLearnTypeE + nLearnTypeFF != nTau_trip) {
-            cout << "number of types of cortical triplet learning rules for excitatory neurons, nLearnTypeE: " << nLearnTypeE << " added to the FF triplet ones, nLearnTypeFF " << nLearnTypeFF << " should be the same as the total number of triplet learning rules " << nTau_trip << "\n";
+	    Size nTau_trip = static_cast<Size>(tau_trip.size());
+        if (tauLTD.size() != nTau_trip || tauLTP.size() != nTau_trip) {
+            cout << "The size of both tauLTD (" << tauLTD.size() << "),and tauLTP (" << tauLTP.size() << ") should be the same as tau_trip: " << nTau_trip << "\n";
             return EXIT_FAILURE;
         }
+        if (nTau_trip == 1) {
+            if (nLearnTypeE 
 
-        learnFF_pre<LearnVarShapeFF_E_pre>(lFF_E_pre, &(tauLTP[0]), nLearnTypeFF_E);
-        learnFF_pre<LearnVarShapeFF_I_pre>(lFF_I_pre, &(tauLTP[nLearnTypeFF_E]), nLearnTypeFF_I);
-        printFF_pre<LearnVarShapeFF_E_pre>(lFF_E_pre, 1);
-        printFF_pre<LearnVarShapeFF_I_pre>(lFF_I_pre, 0);
+        } else {
+            if (nLearnTypeE + nLearnTypeFF != nTau_trip) {
+                cout << "number of types of cortical triplet learning rules for excitatory neurons, nLearnTypeE: " << nLearnTypeE << " added to the FF triplet ones, nLearnTypeFF " << nLearnTypeFF << " should be the same as the total number of triplet learning rules " << nTau_trip << "\n";
+                return EXIT_FAILURE;
+            }
+        }
 
-        learnFF_post<LearnVarShapeFF_E_post>(lFF_E_post, &(tauLTD[0]), &(tau_trip[0]), &(tau_avg[0]), &(A_LGN[0]), nLearnTypeFF_E);
-        learnFF_post<LearnVarShapeFF_I_post>(lFF_I_post, &(tauLTD[nLearnTypeFF_E]), &(tau_trip[nLearnTypeFF_E]), &(tau_avg[nLearnTypeFF_E]), &(A_LGN[nLearnTypeFF_E]), nLearnTypeFF_I);
-        printFF_post<LearnVarShapeFF_E_post>(lFF_E_post, 1);
-        printFF_post<LearnVarShapeFF_I_post>(lFF_I_post, 0);
+        if (nTau_trip == 1) { // identical timescale for all types
+            if (nLearnTypeFF_E > 1 || nLearnTypeFF_I > 1 || nLearnTypeE > 1) {
+                cout << "tauLTP, tauLTD, tau_trip has size of 1, but nLearnTypeFF_E: " << nLearnTypeFF_E << ", nLearnTypeFF_I: " << nLearnTypeFF_I << ", nLearnTypeE: " << nLearnTypeE << " are inconsistent.\n";
+                return EXIT_FAILURE;
+            }
+            for (PosInt i=1; i<nLearnTypeFF + nLearnTypeE; i++) {
+                tauLTP.push_back(tauLTP[0]);
+                tauLTD.push_back(tauLTD[0]);
+                tau_trip.push_back(tau_trip[0]);
+            }
+        } 
 
-        learnE(lE, &(tauLTP[nLearnTypeFF]), &(tauLTD[nLearnTypeFF]), &(tau_trip[nLearnTypeFF]), &(tau_avg[nLearnTypeFF]), &(A_V1[0]), nLearnTypeE);
-        printE(lE);
-        learnQ(lQ, &(tauQ[0]), &(A_Q[0]), nLearnTypeQ);
-        printQ(lQ);
+        if (nLearnTypeFF_E) learnFF_pre<LearnVarShapeFF_E_pre>(lFF_E_pre, &(tauLTP[0]), nLearnTypeFF_E);
+        if (nLearnTypeFF_I) learnFF_pre<LearnVarShapeFF_I_pre>(lFF_I_pre, &(tauLTP[nLearnTypeFF_E]), nLearnTypeFF_I);
+        if (nLearnTypeFF_E) learnFF_post<LearnVarShapeFF_E_post>(lFF_E_post, &(tauLTD[0]), &(tau_trip[0]), tau_avg[0], &(A_LGN[0]), nLearnTypeFF_E);
+        if (nLearnTypeFF_I) learnFF_post<LearnVarShapeFF_I_post>(lFF_I_post, &(tauLTD[nLearnTypeFF_E]), &(tau_trip[nLearnTypeFF_E]), tau_avg[1], &(A_LGN[nLearnTypeFF_E]), nLearnTypeFF_I);
+
+        if (nLearnTypeFF_E) printFF_pre<LearnVarShapeFF_E_pre>(lFF_E_pre, 1);
+        if (nLearnTypeFF_I) printFF_pre<LearnVarShapeFF_I_pre>(lFF_I_pre, 0);
+        if (nLearnTypeFF_E) printFF_post<LearnVarShapeFF_E_post>(lFF_E_post, 1);
+        if (nLearnTypeFF_I) printFF_post<LearnVarShapeFF_I_post>(lFF_I_post, 0);
+
+        if (nLearnTypeE) learnE(lE, &(tauLTP[nLearnTypeFF]), &(tauLTD[nLearnTypeFF]), &(tau_trip[nLearnTypeFF]), tau_avg[0], &(A_V1[0]), nLearnTypeE);
+        if (nLearnTypeQ) learnQ(lQ, &(tauQ[0]), &(A_Q[0]), nLearnTypeQ);
+
+        if (nLearnTypeE) printE(lE);
+        if (nLearnTypeQ) printQ(lQ);
     } else {
         nLearnTypeFF_E = 0;
         nLearnTypeFF_I = 0;
@@ -422,7 +457,7 @@ int main(int argc, char **argv) {
 	fstream fLGN; // LGN properties
 	ofstream fLGN_fr; // outputs
 	ofstream fLGN_gallery, fOutputB4V1;
-	ofstream fRawData, fOutputFrame;
+	ofstream fRawData, fOutputFrame, fLearnData_FF;
 
 	Float init_L, init_M, init_S;
 	Size width;
@@ -1233,6 +1268,28 @@ int main(int argc, char **argv) {
 		fV1_feature.read(reinterpret_cast<char*>(&featureValue[0]), sizeof(Float)*nFeature*nV1);
 		fV1_feature.close();
 	} 
+    // learning Vars
+    size_t learnVarSize = (nE*nLearnTypeFF_E + nI*nLearnTypeFF_I)*2*nblock +
+                           nV1*nblock*2 +
+                           nE*nblock*(2+trainDepth)*2*nLearnTypeE +
+                           nE*nblock*2*nLearnTypeQ + 
+                           nE*nblock*2*trainDepth*nLearnTypeQ;
+    Float* learnVar;
+    checkCudaErrors(cudaMalloc((void **) &learnVar, learnVarSize*sizeof(Float)));
+    Float* vLTD_FF_E = learnVar;                              //    post, [nLearnTypeFF_E,        nblock, nE         ]
+    Float* vTrip_FF_E = vLTD_FF_E + nLearnTypeFF_E*nblock*nE;  //   post, [nLearnTypeFF_E,        nblock, nE         ]
+    Float* vLTD_FF_I = vTrip_FF_E + nLearnTypeFF_E*nblock*nE; //    post, [nLearnTypeFF_I,        nblock, nI         ]
+    Float* vTrip_FF_I = vLTD_FF_I + nLearnTypeFF_I*nblock*nI; //    post, [nLearnTypeFF_I,        nblock, nI         ]
+    Float* vAvgE = vTrip_FF_E + nLearnTypeFF_I*nblock*nI; //        post, [                       nblock, nE,       2]
+    Float* vAvgI = vAvgE + nblock*nE*2;                   //        post, [                       nblock, nI,       2]
+    Float* vLTP_E = vAvgI + nblock*nI*2;                   //        pre, [nLearnTypeE,    depth, nblock, nE,       2]
+    Float* vLTD_E = vLTP_E + nLearnTypeE*trainDepth*nblock*nE*2; // post, [nLearnTypeE,           nblock, nE,       2]
+    Float* vTripE = vLTD_E + nLearnTypeE*nblock*nE*2;      //       post, [nLearnTypeE,           nblock, nE,       2]
+    Float* vSTDP_QE = vTripE + nLearnTypeE*nblock*nE*2;       //  E post, [nLearnTypeQ,           nblock, nE        2]
+    Float* vSTDP_QI = vSTDP_QE + nLearnTypeQ*nblock*nE*2;     //   I pre, [nLearnTypeQ,    depth, nblock, nI,       2]
+    usingGMem += learnVarSize*sizeof(Float);
+	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
+
 	// stats: frames, rawdata
 	// cortical and LGN surface
 	Float V1_hwPhyRatio = V1_yspan/V1_xspan;
@@ -1779,6 +1836,8 @@ int main(int argc, char **argv) {
 	delete []conMat;
 	delete []delayMat;
     
+    // a spikeTrain container that retains spikes before it reaches the post-synaptic neuron 
+    // TODO: learning distant connections 
     vector<vector<vector<Float>>> fSpikeTrain(nV1, vector<vector<Float>>());
     vector<vector<Size>> fTrainDepth(nV1, vector<Size>());
     vector<vector<PosInt>> fCurrenSlot(nV1, vector<PosInt>());
@@ -1812,6 +1871,7 @@ int main(int argc, char **argv) {
 	// spikeTraie, voltage, gFF, gE, hE, gI, hI
 	Float* pinnedMem;
 	size_t trainSize = trainDepth*nV1;
+    size_t lVarSize = nV1*(nLearnTypeFF + nLearnTypeE)*sizeof(Float);
 	size_t ghSize = 2*nV1*(ngTypeE + ngTypeI)*sizeof(Float);
 	size_t vSize = nV1*sizeof(Float);
     size_t ffSize = 2*nV1*ngTypeFF*sizeof(Float);
@@ -1823,6 +1883,11 @@ int main(int argc, char **argv) {
 	Float *hFF = gFF +  nV1*ngTypeFF;
 	Float **gE = new Float*[nChunk];
 	Float **gI = new Float*[nChunk];
+	Float **hE = new Float*[nChunk];
+	Float **hI = new Float*[nChunk];
+
+	Float **lE = new Float*[nChunk];
+	Float **lQ = new Float*[nChunk];
 	Float **hE = new Float*[nChunk];
 	Float **hI = new Float*[nChunk];
 
@@ -1939,7 +2004,9 @@ int main(int argc, char **argv) {
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	checkCudaErrors(cudaMemcpy(sLGN, LGN_V1_s, sLGN_size, cudaMemcpyHostToDevice));
-	delete []LGN_V1_s;
+    if (!learnData_FF) { // free memory if not used later
+	    delete []LGN_V1_s;
+    }
 
 	vector<vector<PosInt>> LGN_V1_ID = read_listOfList<PosInt>(LGN_V1_ID_filename, false);
     Size avgLGNperV1 = 0;
@@ -2039,10 +2106,20 @@ int main(int argc, char **argv) {
 		    	fRawData.write((char*) &ngTypeI, sizeof(Size));
 		    }
         }
-
+        if (learnData_FF) {
+		    fLearnData_FF.open(learnData_FF_filename, fstream::out | fstream::binary);
+		    if (!fLearnData_FF) {
+		    	cout << "Cannot open or find " << learnData_FF_filename <<" for LGN->V1 strength plasticity.\n";
+		    	return EXIT_FAILURE;
+            } else {
+		    	fLearnData_FF.write((char*) &dt, sizeof(Float));
+		    	fLearnData_FF.write((char*) &nt, sizeof(Size));
+		    	fLearnData_FF.write((char*) &nV1, sizeof(Size));
+            }
+        }
 		fOutputFrame.open(outputFrame_filename, fstream::out | fstream::binary);
 		if (!fOutputFrame) {
-			cout << "Cannot open or find " << rawData_filename <<" for V1 simulation results.\n";
+			cout << "Cannot open or find " << outputData_filename <<" for output V1 simulation results to frames.\n";
 			return EXIT_FAILURE;
 		} else {
 			fOutputFrame.write((char*)&dt, sizeof(Float));
@@ -2294,11 +2371,12 @@ int main(int argc, char **argv) {
 		return tail;
 	};
 
-	cudaEvent_t v_gFF_Ready, spReady, spHostReady, LGN_ready;
+	cudaEvent_t v_gFF_Ready, spReady, spHostReady, LGN_ready, learnFF_event;
 	checkCudaErrors(cudaEventCreate(&v_gFF_Ready));
 	checkCudaErrors(cudaEventCreate(&spReady));
 	checkCudaErrors(cudaEventCreate(&spHostReady));
 	checkCudaErrors(cudaEventCreate(&LGN_ready));
+	checkCudaErrors(cudaEventCreate(&learnFF_event));
 
 	cudaEvent_t *gReady = new cudaEvent_t[nChunk];
 	cudaEvent_t *matReady = new cudaEvent_t[matConcurrency];
@@ -2390,9 +2468,15 @@ int main(int argc, char **argv) {
         #endif
 
 		if (it > 0) { // seeking for overlap of data output with LGN input
-			fRawData.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
-			cudaEventSynchronize(v_gFF_Ready);
-			fRawData.write((char*) v, nV1*sizeof(Float)*(1+ngTypeFF*(1+hWrite)));
+            if (rawData) {
+			    fRawData.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
+			    cudaEventSynchronize(v_gFF_Ready);
+			    fRawData.write((char*) v, nV1*sizeof(Float)*(1+ngTypeFF*(1+hWrite)));
+            }
+            if (learnData_FF) {
+		        cudaEventSynchronize(learnFF_event);
+			    fLearnData_FF.write((char*) LGN_V1_s, sLGN_size);
+            }
 			currentTimeSlot++;
             currentTimeSlot = currentTimeSlot%trainDepth;
 		}
@@ -2446,12 +2530,17 @@ int main(int argc, char **argv) {
 		// simulate V1 response
 		//compute_V_collect_spike<max_ngTypeFF, max_ngTypeE, max_ngTypeI> <<<nblock, blockSize, 0, mainStream>>> (
 		compute_V_collect_spike<<<nblock, blockSize, 0, mainStream>>> (
-				d_v, d_gFF, d_hFF, dd_gE, dd_gI, dd_hE, dd_hI,
-				d_spikeTrain, tBack,
-				d_nLGNperV1, sLGN, LGN_idx, LGN_idy,
+				d_v, d_gFF, d_hFF, dd_gE, dd_gI, dd_hE, dd_hI, // V1 neuron measurements
+				d_nLGNperV1, sLGN, LGN_idx, LGN_idy, // LGN->V1 connections
+				tBack, d_spikeTrain, // neuron spiking
+                vLTD_FF_E, vTrip_FF_E, vLTD_FF_I, vTrip_FF_I, // FF excitatory learning vars
+                vAvgE, vAvgI, // filtered spiking 
+                vLTP_E, vLTD_E, vTripE, // E->E learning vars
+                vSTDP_QE, vSTDP_QI, // I->E learning vars
 				currentTimeSlot, trainDepth, max_LGNperV1,
 				ngTypeFF, ngTypeE, ngTypeI, condFF, condE, condI,
-				dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, nE, nV1, seed);
+				dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, nE, nI, nV1, seed,
+                lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ); // learning const structs 
         #ifdef CHECK
 		    getLastCudaError("compute_V_collect_spike failed");
         #endif
@@ -2463,6 +2552,14 @@ int main(int argc, char **argv) {
 		    cudaMemcpyAsync(spikeTrain + currentTimeSlot*nV1, d_spikeTrain + currentTimeSlot*nV1, nV1*sizeof(Float), cudaMemcpyDeviceToHost, mainStream); // to overlap with  recal_G, to be used in recal_Gvec
         #endif
 		cudaEventRecord(spHostReady, mainStream);
+        if (learnData_FF) {
+            #ifdef CHECK
+		        checkCudaErrors(cudaMemcpyAsync(LGN_V1_s, sLGN, sLGN_size, cudaMemcpyDeviceToHost, mainStream)); // to overlap with  recal_G, to be used in recal_Gvec
+            #else
+		        cudaMemcpyAsync(LGN_V1_s, sLGN, sLGN_size, cudaMemcpyDeviceToHost, mainStream); // to overlap with  recal_G, to be used in recal_Gvec
+            #endif
+		    cudaEventRecord(learnFF_event, mainStream);
+        }
 
         if (matConcurrency < nChunk) { // intial transfer the first matConcurrency chunks
             size_t initial_size;
@@ -2712,11 +2809,15 @@ int main(int argc, char **argv) {
 		delete []exact_norm;
 		delete []exact_it;
 		delete []outputFrame;
+        if (learnData_FF) {
+	        delete []LGN_V1_s;
+        }
 
 		checkCudaErrors(cudaEventDestroy(v_gFF_Ready));
 		checkCudaErrors(cudaEventDestroy(spReady));
 		checkCudaErrors(cudaEventDestroy(spHostReady));
 		checkCudaErrors(cudaEventDestroy(LGN_ready));
+		checkCudaErrors(cudaEventDestroy(learnFF_event));
 		for (PosInt i=0; i<nChunk; i++) {
 			checkCudaErrors(cudaEventDestroy(gReady[i]));
             if (i < matConcurrency) checkCudaErrors(cudaEventDestroy(matReady[i]));
@@ -2754,6 +2855,7 @@ int main(int argc, char **argv) {
         checkCudaErrors(cudaFree(dd_gI));
         checkCudaErrors(cudaFree(dd_hE));
         checkCudaErrors(cudaFree(dd_hI));
+        checkCudaErrors(cudaFree(learnVar));
 		if (frameVisV1output) checkCudaErrors(cudaFree(d_V1_visFrame));
 		if (frameVisLGNoutput) checkCudaErrors(cudaFree(d_LGN_visFrame));
 		checkCudaErrors(cudaFree(d_outputFrame));

@@ -42,7 +42,7 @@ void recal_G_vec(
 //template<int ntimesFF, int ntimesE, int ntimesI> extern
 __launch_bounds__(1024,2)
 __global__ 
-void compute_V_collect_spike(
+void compute_V_collect_spike+learnFF(
         Float* __restrict__ v,
         Float* __restrict__ gFF, // not in chunks
         Float* __restrict__ hFF,
@@ -50,17 +50,27 @@ void compute_V_collect_spike(
         Float** __restrict__ gI,
         Float** __restrict__ hE,
         Float** __restrict__ hI,
-        //Float** __restrict__ PreVar_LGN,
-        //Float** __restrict__ PostVar,
-        //Float** __restrict__ PripVar,
-        //Float** __restrict__ FrVar,
-        Float* __restrict__ spikeTrain, // [depth, nblock, blockSize]
-        Float* __restrict__ tBack,
         Size* __restrict__ nLGN,
         Float* __restrict__ sLGN,
         PosInt* __restrict__ LGN_idx,
         PosInt* __restrict__ LGN_idy,
-        PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeFF, Size ngTypeE, Size ngTypeI, ConductanceShape condFF, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nV1, PosIntL seed
+        Float* __restrict__ tBack,
+        Float* __restrict__ spikeTrain, //         [                depth, nblock, blockSize  ]
+        Float* __restrict__ vLTD_FF_E, //    post, [nLearnTypeFF_E,        nblock, nE         ]
+        Float* __restrict__ vTrip_FF_E, //   post, [nLearnTypeFF_E,        nblock, nE         ]
+        Float* __restrict__ vLTD_FF_I, //    post, [nLearnTypeFF_I,        nblock, nI         ]
+        Float* __restrict__ vTrip_FF_I, //   post, [nLearnTypeFF_I,        nblock, nI         ]
+        Float* __restrict__ vAvgE, //        post, [                       nblock, nE,       2]
+        Float* __restrict__ vAvgI, //        post, [                       nblock, nI,       2]
+        Float* __restrict__ vLTP_E, //        pre, [nLearnTypeE,    depth, nblock, nE,       2]
+        Float* __restrict__ vLTD_E, //       post, [nLearnTypeE,           nblock, nE,       2]
+        Float* __restrict__ vTripE, //       post, [nLearnTypeE,           nblock, nE,       2]
+        Float* __restrict__ vSTDP_QE,  //  E post, [nLearnTypeQ,           nblock, nE        2]
+        Float* __restrict__ vSTDP_QI,  //   I pre, [nLearnTypeQ,    depth, nblock, nI,       2]
+        PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeFF, Size ngTypeE, Size ngTypeI, ConductanceShape condFF, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, PosIntL seed,
+        LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
+        LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
+        LearnVarShapeE learnE, LearnVarShapeQ learnQ
 );
 
 //template<int ntimesE, int ntimesI> extern

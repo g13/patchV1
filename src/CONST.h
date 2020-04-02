@@ -12,7 +12,8 @@
 
 #define MAX_NLEARNTYPE_FF_I 1 // ff to inhibitory only
 #define MAX_NLEARNTYPE_FF_E 1 // ff to excitatory only
-#define MAX_NLEARNTYPE_FF (MAX_NLEARNTYPE_FF_E + MAX_NLEARNTYPE_FF_I) // maximum number of feedforward learning types
+#define MAX_NLEARNTYPE_FF 1 // maximum of either E or I ff learning types
+#define SUM_NLEARNTYPE_FF (MAX_NLEARNTYPE_FF_I + MAX_NLEARNTYPE_FF_E)
 
 #define MAX_NLEARNTYPE_E 2 // cortical excitatory to excitatory
 #define MAX_NLEARNTYPE_Q 1 // cortical inhibitory to excitatory 
@@ -29,7 +30,7 @@
 
 const int max_nLearnTypeFF_I = MAX_NLEARNTYPE_FF_I;
 const int max_nLearnTypeFF_E = MAX_NLEARNTYPE_FF_E;
-const int max_nLearnTypeFF = (MAX_NLEARNTYPE_FF_E + MAX_NLEARNTYPE_FF_I);
+const int max_nLearnTypeFF = MAX_NLEARNTYPE_FF;
 
 const int max_nLearnTypeE = MAX_NLEARNTYPE_E;
 const int max_nLearnTypeQ = MAX_NLEARNTYPE_Q;
