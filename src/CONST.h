@@ -31,6 +31,7 @@
 const int max_nLearnTypeFF_I = MAX_NLEARNTYPE_FF_I;
 const int max_nLearnTypeFF_E = MAX_NLEARNTYPE_FF_E;
 const int max_nLearnTypeFF = MAX_NLEARNTYPE_FF;
+const int sum_nLearnTypeFF = SUM_NLEARNTYPE_FF;
 
 const int max_nLearnTypeE = MAX_NLEARNTYPE_E;
 const int max_nLearnTypeQ = MAX_NLEARNTYPE_Q;

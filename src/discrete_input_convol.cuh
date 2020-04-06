@@ -38,18 +38,18 @@ void LGN_nonlinear(
         Float* __restrict__ max_convol,
         Float* __restrict__ current_convol,
         Float* __restrict__ LGN_fr,
-        PosInt* __restrict__ sx,
-        PosInt* __restrict__ sy,
+        Float* __restrict__ LGN_sInfo,
+        int* __restrict__ sx,
+        int* __restrict__ sy,
         Float* __restrict__ leftTimeRate,
         Float* __restrict__ lastNegLogRand,
 		curandStateMRG32k3a* __restrict__ state,
-        int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning
+        Float* __restrict__ lVar,
+        int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning, bool learnData_FF
 );
 
 __global__
 void store(// weights and max convolution
-        Float* __restrict__ max_convol,
-
         Temporal_component &temporal,
         Float* __restrict__ TW_storage,
         SmallSize nKernelSample,
@@ -66,6 +66,16 @@ void store(// weights and max convolution
 		Float R_y0,
 		Float normViewDistance,
         Float nsig // span of spatialRF sample in units of std
+);
+
+__launch_bounds__(1024, 2)
+__global__
+void get_maxConvol(
+        Spatial_component &spatial,
+        Float* __restrict__ TW_storage,
+        Float* __restrict__ covariant,
+        Float* __restrict__ max_convol,
+        Size nSample1D, Size nLGN, SmallSize nKernelSample, Float kernelSampleDt, Float nsig
 );
 
 __global__ 

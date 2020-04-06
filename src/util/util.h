@@ -29,7 +29,7 @@ inline Float get_rand_from_gauss(Float p[], std::default_random_engine &rGen, st
 	return v;
 }
 
-inline std::pair<Float, Float> get_rands_from_correlated_gauss(Float p1[], Float p2[], Float rho, Float rho_comp, std::default_random_engine &rGen1, std::default_random_engine &rGen2, std::function<bool(Float)> &outOfBound1, std::function<bool(Float)> &outOfBound2) {
+inline std::pair<Float, Float> get_rands_from_correlated_gauss(Float p1[], Float p2[], Float rho, Float rho_comp, std::default_random_engine &rGen1, std::default_random_engine &rGen2, std::function<bool(Float)> &outOfBound1, std::function<bool(Float)> &outOfBound2, std::function<bool(Float, Float)> &relation) {
     static std::normal_distribution<Float> norm(0.0, 1.0);
     Float rand1, rand2, v1, v2;
 	//Size count = 0;
@@ -55,7 +55,7 @@ inline std::pair<Float, Float> get_rands_from_correlated_gauss(Float p1[], Float
 		//if (count > 20) {
 		//	assert(count <= 20);
 		//}
-    } while (outOfBound2(v2));
+    } while (outOfBound2(v2) || relation(v1,v2));
     return std::make_pair(v1, v2);
 }
 
@@ -155,6 +155,7 @@ std::vector<std::vector<T>> read_listOfList(std::string filename, bool print = f
 		data.push_back(new_data);
     } while (true);
 	input_file.close();
+    if (print) print_listOfList<T>(data);
 	return data;
 } 
 
@@ -190,7 +191,7 @@ void write_listOfListForArray(std::string filename, std::vector<std::vector<T>> 
 }
 
 template <typename T>
-void read_listOfListToArray(std::string filename, T* &array, Size &maxList, bool print = false, T ratio = 1) {
+void read_listOfListToArray(std::string filename, T* &array, Size &maxList, bool print = false) {
 	std::ifstream input_file;
 	input_file.open(filename, std::fstream::in | std::fstream::binary);
 	if (!input_file) {
@@ -202,15 +203,19 @@ void read_listOfListToArray(std::string filename, T* &array, Size &maxList, bool
     input_file.read(reinterpret_cast<char*>(&maxList), sizeof(Size));
     size_t arraySize = nList*maxList;
     array = new T[arraySize];
+    std::cout << "#\n"; 
     for (PosInt i=0; i<nList; i++) {
         Size listSize;
         input_file.read(reinterpret_cast<char*>(&listSize), sizeof(Size));
 		input_file.read(reinterpret_cast<char*>(&array[i*maxList]), listSize * sizeof(T));
-		if (ratio != 1) {
-			for (PosInt j=0; j<listSize; j++) {
-				array[i*maxList + j] *= ratio;
-			}
-		}
+        if (print) {
+            std::cout << i << ": ";
+            for (PosInt j=0; j<listSize; j++) {
+                std::cout << array[i*maxList + j];
+                if (j == listSize-1) std::cout << "\n";
+                else std::cout << ", ";
+            }
+        }
     }
 	input_file.close();
 } 

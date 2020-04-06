@@ -18,7 +18,7 @@ void pixelizeOutput(
 
 void reshape_chunk_and_write(Float chunk[], std::ofstream &fRawData, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, bool hWrite);
 
-void getLGN_V1_surface(std::vector<PosInt> &xy, std::vector<std::vector<PosInt>> &LGN_V1_ID, PosInt surface_xy[], Size nLGNperV1[], Size max_LGNperV1, Size nLGN);
+void getLGN_V1_surface(std::vector<int> &xy, std::vector<std::vector<PosInt>> &LGN_V1_ID, int surface_xy[], Size nLGNperV1[], Size max_LGNperV1, Size nLGN);
 
 // VisLGN, VisV1 (visual field)  or PhyV1 (physical position) with mixed [C]ontralateral and [I]psilateral
 template<typename T>

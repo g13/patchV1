@@ -94,7 +94,7 @@ void reshape_chunk_and_write(Float chunk[], ofstream &fRawData, Size maxChunkSiz
     delete []flatten;
 }
 
-void getLGN_V1_surface(vector<PosInt> &xy, vector<vector<PosInt>> &LGN_V1_ID, PosInt surface_xy[], Size nLGNperV1[], Size max_LGNperV1, Size nLGN)
+void getLGN_V1_surface(vector<int> &xy, vector<vector<PosInt>> &LGN_V1_ID, int surface_xy[], Size nLGNperV1[], Size max_LGNperV1, Size nLGN)
 {
     Size nV1 = LGN_V1_ID.size();
     for (PosInt i=0; i<nV1; i++) {
@@ -104,7 +104,7 @@ void getLGN_V1_surface(vector<PosInt> &xy, vector<vector<PosInt>> &LGN_V1_ID, Po
             PosInt xid = i*max_LGNperV1 + j;
             surface_xy[xid] = xy[LGN_V1_ID[i][j]]; // x
             PosInt yid = nV1*max_LGNperV1 + xid;
-            surface_xy[yid] = xy[nLGN + LGN_V1_ID[i][j]];
+            surface_xy[yid] = xy[nLGN + LGN_V1_ID[i][j]]; // y
         }
     }
 }
@@ -114,7 +114,7 @@ bool fill_fSpikeTrain(std::vector<std::vector<std::vector<Float>>> &fsp, Float s
     for (PosInt i=0; i<nV1; i++) {
         for (PosInt j=0; j<nVec[i]; j++) {
             Float sInfo = sp[vecID[i][j]];
-            if (sInfo >= 0 && !outsideSpiked) {
+            if (sInfo > 0 && !outsideSpiked) {
                 outsideSpiked = true;
             }
             fsp[i][j][fcs[i][j]] = sInfo;

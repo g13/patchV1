@@ -50,19 +50,19 @@ __forceinline__ Float if_decay(Float var, Float tau, Float dt) {
 
 __host__ __device__
 __forceinline__ void tripLTD(Float &f, Float var, Float dt, // dt = t_preSpike - t_postSpike
-                              Float tauLTP, Float ALTP,
+                              Float tauLTP, Float A_LTP,
                               Float A_ratio, Float fr_ratio,
                               Float min) 
 { 
     var *= exponential(-dt/tauLTP);
-    Float ALTD = A_ratio*ALTP*fr_ratio*tauLTP;
-    f -= var*ALTD;
+    Float A_LTD = A_ratio*A_LTP*fr_ratio*tauLTP;
+    f -= var*A_LTD;
     if (f<min) f = min;
 }
 
 __host__ __device__
-__forceinline__ void tripLTP(Float &f, Float postVar, Float preVar, Float ALTP, Float max) {
-    f += postVar*preVar*ALTP;
+__forceinline__ void tripLTP(Float &f, Float postVar, Float preVar, Float A_LTP, Float max) {
+    f += postVar*preVar*A_LTP;
     if (f<max) f = max;
 }
 
@@ -115,24 +115,24 @@ void printFF_pre(T &l, int EI) {
 struct LearnVarShapeFF_E_post {
     Size n; // types of FF->E
     Float tau[2*max_nLearnTypeFF_E+1]; // tauLTD, tauTrip, tauAvg
-    Float ALTP[max_nLearnTypeFF_E]; // A_LGN
+    Float A_LTP[max_nLearnTypeFF_E]; // A_LGN
     Float A_ratio[max_nLearnTypeFF_E];
 };
 struct LearnVarShapeFF_I_post {
     Size n; // types of FF->I
     Float tau[2*max_nLearnTypeFF_I+1]; // tauLTD, tauTrip, tauAvg
-    Float ALTP[max_nLearnTypeFF_I]; // A_LGN
+    Float A_LTP[max_nLearnTypeFF_I]; // A_LGN
     Float A_ratio[max_nLearnTypeFF_I];
 };
 
 template<class T>
-void learnFF_post(T &l, Float tauLTD[], Float tauTrip[], Float tauAvg, Float ALTP[], Size n) {
+void learnFF_post(T &l, Float tauLTD[], Float tauTrip[], Float tauAvg, Float A_LTP[], Size n) {
     l.n = n;
     for (PosInt i=0; i<n; i++) {
         l.tau[2*i+0] = tauLTD[i];
         l.tau[2*i+1] = tauTrip[i];
-        l.ALTP[i] = ALTP[i];
-        l.A_ratio[i] = tauTrip[i]*ALTP[i]/(tauLTD[i]*(tauAvg*tauAvg)); // * tauLTP * filtered spike avg^2 / target firing rate = ALTD
+        l.A_LTP[i] = A_LTP[i];
+        l.A_ratio[i] = tauTrip[i]*A_LTP[i]/(tauLTD[i]*(tauAvg*tauAvg)); // * tauLTP * filtered spike avg^2 / target firing rate = A_LTD
     }
     l.tau[2*n] = tauAvg;
 }
@@ -144,27 +144,27 @@ void printFF_post(T &l, int EI) {
     } else {
         std::cout << "I";
     }
-    std::cout <<"(post) learning time scales, spAvg: " << l.tau[2*n] << "\n";
-    std::cout << "#     LTD     trip       sp avg     rLTP\n";
+    std::cout <<"(post) learning time scales, spAvg: " << l.tau[2*l.n] << "\n";
+    std::cout << "#     LTD     trip     rLTP\n";
     for (PosInt i=0; i<l.n; i++) {
-        std::cout << i << ":    " << l.tau[2*i+0] << ",   " << l.tau[2*i+1] << ",   " << l.ALTP[i] << "\n";
+        std::cout << i << ":    " << l.tau[2*i+0] << ",   " << l.tau[2*i+1] << ",   " << l.A_LTP[i] << "\n";
     }
 }
 
 struct LearnVarShapeE { // types of E->E
     Size n; 
     Float tau[3*max_nLearnTypeE+1]; // tauLTP, tauLTD, tauTrip, tauAvg
-    Float ALTP[max_nLearnTypeE]; // A_V1
+    Float A_LTP[max_nLearnTypeE]; // A_V1
     Float A_ratio[max_nLearnTypeE];
 };
-void learnE(LearnVarShapeE &l, Float tauLTP[], Float tauLTD[], Float tauTrip[], Float tauAvg, Float ALTP[], Size n);
+void learnE(LearnVarShapeE &l, Float tauLTP[], Float tauLTD[], Float tauTrip[], Float tauAvg, Float A_LTP[], Size n);
 void printE(LearnVarShapeE &l);
 
 struct LearnVarShapeQ {
     Size n; // types of I->E
     Float tau[2*max_nLearnTypeQ];
-    Float ALTP[max_nLearnTypeQ]; // A_Q
-    Float ALTD[max_nLearnTypeQ]; // A_Q
+    Float A_LTP[max_nLearnTypeQ]; // A_Q
+    Float A_LTD[max_nLearnTypeQ]; // A_Q
 };
 void learnQ(LearnVarShapeQ &l, Float tauQ[], Float A_Q[], Size n);
 void printQ(LearnVarShapeQ &l);

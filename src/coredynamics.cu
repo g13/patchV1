@@ -5,8 +5,8 @@ __launch_bounds__(1024,2)
 __global__
 void logRand_init(Float* __restrict__ logRand,
                   Float* __restrict__ lTR,
-                  PosInt* __restrict__ LGN_idx,
-                  PosInt* __restrict__ LGN_idy,
+                  int* __restrict__ LGN_idx,
+                  int* __restrict__ LGN_idy,
                   curandStateMRG32k3a *state,
                   PosIntL seed, Size n, Size nFF)
 {
@@ -18,11 +18,11 @@ void logRand_init(Float* __restrict__ logRand,
 		logRand[id] = -log(uniform(&localState));
 		state[id] = localState;
 		lTR[id] = logRand[id] * rand;
-        int x = static_cast<int>(LGN_idx[id]);
-        int y = static_cast<int>(LGN_idy[id]);
-        Float value = -1.0; // this is needed, otherwise surf2DLayeredwrite will raise runtime error
+        int x = LGN_idx[id];
+        int y = LGN_idy[id];
+        Float value = 0; // this is needed, otherwise surf2DLayeredwrite will raise runtime error
         surf2DLayeredwrite(value, LGNspikeSurface, 4*x, y, 0);
-        #pragma unroll max_ngTypeFF
+        #pragma unroll sum_nLearnTypeFF
         for (int i=0; i<nFF; i++) {
             surf2DLayeredwrite(value, LGNspikeSurface, 4*x, y, 1+3*i+0);
             surf2DLayeredwrite(value, LGNspikeSurface, 4*x, y, 1+3*i+1);
@@ -251,6 +251,10 @@ void compute_V_collect_spike_learnFF(
         Float** __restrict__ gI,
         Float** __restrict__ hE,
         Float** __restrict__ hI,
+        Size* __restrict__ nLGN,
+        Float* __restrict__ sLGN,
+        int* __restrict__ LGN_idx,
+        int* __restrict__ LGN_idy,
         Float* __restrict__ tBack,
         Float* __restrict__ spikeTrain, //         [                depth, nblock, blockSize  ]
         Float* __restrict__ vLTD_FF_E, //    post, [nLearnTypeFF_E,        nblock, nE         ]
@@ -264,11 +268,7 @@ void compute_V_collect_spike_learnFF(
         Float* __restrict__ vTripE, //       post, [nLearnTypeE,           nblock, nE,       2]
         Float* __restrict__ vSTDP_QE,  //  E post, [nLearnTypeQ,           nblock, nE        2]
         Float* __restrict__ vSTDP_QI,  //   I pre, [nLearnTypeQ,    depth, nblock, nI,       2]
-        Size* __restrict__ nLGN,
-        Float* __restrict__ sLGN,
-        PosInt* __restrict__ LGN_idx,
-        PosInt* __restrict__ LGN_idy,
-        PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeFF, Size ngTypeE, Size ngTypeI, ConductanceShape condFF, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, PosIntL seed,
+        PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeFF, Size ngTypeE, Size ngTypeI, ConductanceShape condFF, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, PosIntL seed, int learning, int varSlot,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
         LearnVarShapeE learnE, LearnVarShapeQ learnQ)
@@ -304,6 +304,7 @@ void compute_V_collect_spike_learnFF(
 	Float gE_t1 = 0.0;
     // cond FF
     //#pragma unroll (MAX_NGTYPE_FF)
+    Size m = nLGN[tid];
     #pragma unroll (max_ngTypeFF) //(ntimesFF)
     for (PosInt ig=0; ig<ngTypeFF; ig++) {
         PosInt gid = nV1*ig + tid; // not in chunks
@@ -313,14 +314,13 @@ void compute_V_collect_spike_learnFF(
         // conductance of the end of the last time step
         condFF.decay_conductance(g, h, dt, ig); //  decayed to the end of the current step
         // Get LGN input
-    	Size m = nLGN[tid];
 
         #pragma unroll (4)
         for (PosInt i = 0; i<m; i++) {
             PosInt lid = tid*max_nLGN + i;
             Float f = sLGN[lid];
-            int x = static_cast<int>(LGN_idx[lid]);
-            int y = static_cast<int>(LGN_idy[lid]);
+            int x = LGN_idx[lid];
+            int y = LGN_idy[lid];
             Float sInfo;
             surf2DLayeredread(&sInfo, LGNspikeSurface, 4*x, y, 0);
             if (sInfo >= 0.0) {
@@ -365,10 +365,10 @@ void compute_V_collect_spike_learnFF(
     /* evolve g to t+dt with ff input only */
     // step
     Float sInfo = step(&lif, dt, tRef, /*the last 3 args are for deugging*/ tid, gE_t1, gI_t1);
-    spikeTrain[nV1*currentTimeSlot + tid];
+    spikeTrain[nV1*currentTimeSlot + tid] = sInfo;
 	v[tid] = lif.v;
     tBack[tid] = lif.tBack;
-    if (learning)
+    if (learning) {
         Float nsp = flooring(sInfo);
         Float tsp = sInfo>0? sInfo - nsp: 1;
         // will compute ff learning, first row at start of time step, second row at tsp
@@ -384,16 +384,16 @@ void compute_V_collect_spike_learnFF(
                 if (threadIdx.x < nE) {
                     #pragma unroll max_nLearnTypeFF_E
                     for (PosInt i=0; i<learnE_post.n; i++) {
-                        lFF[2*i+0] =  vLTD_FF_E[nE*nblock*i + eid];
-                        lFF[2*i+1] = vTrip_FF_E[nE*nblock*i + eid];
+                        lFF[2*i+0] =  vLTD_FF_E[nE*gridDim.x*i + eid];
+                        lFF[2*i+1] = vTrip_FF_E[nE*gridDim.x*i + eid];
                     }
                 } else {
                     if (learnI_post.n) {
                         PosInt iid = nI*blockIdx.x+threadIdx.x-nE;
                         #pragma unroll max_nLearnTypeFF_I
                         for (PosInt i=0; i<learnI_post.n; i++) {
-                            lFF[2*i+0] =  vLTD_FF_I[nI*nblock*i + iid];
-                            lFF[2*i+1] = vTrip_FF_I[nI*nblock*i + iid];
+                            lFF[2*i+0] =  vLTD_FF_I[nI*gridDim.x*i + iid];
+                            lFF[2*i+1] = vTrip_FF_I[nI*gridDim.x*i + iid];
                         }
                         lAvg[0] = vAvgI[iid];
                     }
@@ -405,21 +405,21 @@ void compute_V_collect_spike_learnFF(
                 if (threadIdx.x < nE) {
                     #pragma unroll max_nLearnTypeE
                     for (PosInt i=0; i<learnE.n; i++) {
-                        lE[3*i+0] = vLTP_E[(nE*nblock*trainDepth*i + nE*nblock*currentTimeSlot + eid)*2];
-                        lE[3*i+1] = vLTD_E[(nE*nblock*i + eid)*2];
-                        lE[3*i+2] = vTripE[(nE*nblock*i + eid)*2];
+                        lE[3*i+0] = vLTP_E[(nE*gridDim.x*trainDepth*i + nE*gridDim.x*currentTimeSlot + eid)*2];
+                        lE[3*i+1] = vLTD_E[(nE*gridDim.x*i + eid)*2];
+                        lE[3*i+2] = vTripE[(nE*gridDim.x*i + eid)*2];
                     }
                     // Q_E
                     #pragma unroll max_nLearnTypeQ
                     for (PosInt i=0; i<learnQ.n; i++) {
-                        lQ[i] = vSTDP_QE[(nE*nblock*i + eid)*2];
+                        lQ[i] = vSTDP_QE[(nE*gridDim.x*i + eid)*2];
                     }
                 } else {
                     // Q_I
-                    PosInt iid = nI*(nblock*currentTimeSlot + blockIdx.x) + threadIdx.x-nE;
+                    PosInt iid = nI*(gridDim.x*currentTimeSlot + blockIdx.x) + threadIdx.x-nE;
                     #pragma unroll max_nLearnTypeQ
                     for (PosInt i=0; i<learnQ.n; i++) {
-                        lQ[i] = vSTDP_QI[(nI*nblock*trainDepth*i + iid)*2];
+                        lQ[i] = vSTDP_QI[(nI*gridDim.x*trainDepth*i + iid)*2];
                     }
                 }
             }
@@ -437,8 +437,8 @@ void compute_V_collect_spike_learnFF(
                     }
                     #pragma unroll max_nLearnTypeFF_E
                     for (PosInt i=0; i<learnE_post.n; i++) {
-                        decay(lFF[2*max_nLearnTypeFF + 2*i+0], learnFF_E.tau[2*i+0], tsp);
-                        decay(lFF[2*max_nLearnTypeFF + 2*i+1], learnFF_E.tau[2*i+1], tsp);
+                        decay(lFF[2*max_nLearnTypeFF + 2*i+0], learnE_post.tau[2*i+0], tsp);
+                        decay(lFF[2*max_nLearnTypeFF + 2*i+1], learnE_post.tau[2*i+1], tsp);
                     }
                 } else {
                     if (learnI_post.n) {
@@ -449,11 +449,11 @@ void compute_V_collect_spike_learnFF(
                         }
                         #pragma unroll max_nLearnTypeFF_I
                         for (PosInt i=0; i<learnI_post.n; i++) {
-                            decay(lFF[2*max_nLearnTypeFF + 2*i+0], learnFF_I.tau[2*i+0], tsp);
-                            decay(lFF[2*max_nLearnTypeFF + 2*i+1], learnFF_I.tau[2*i+1], tsp);
+                            decay(lFF[2*max_nLearnTypeFF + 2*i+0], learnI_post.tau[2*i+0], tsp);
+                            decay(lFF[2*max_nLearnTypeFF + 2*i+1], learnI_post.tau[2*i+1], tsp);
                         }
                         lAvg[1] = lAvg[0];
-                        decay(lAvg[1], learnFF_I.tau[2*learnFF_I.n], tsp);
+                        decay(lAvg[1], learnI_post.tau[2*learnI_post.n], tsp);
                     }
                 }
             }
@@ -485,20 +485,20 @@ void compute_V_collect_spike_learnFF(
                 if (threadIdx.x < nE) {
                     #pragma unroll max_nLearnTypeE
                     for (PosInt i=0; i<learnE.n; i++) {
-                         vLTP_E[(nE*nblock*trainDepth*i + nE*nblock*currentTimeSlot + eid)*2 + 1] = lE[3*i+0];
-                         vLTD_E[(nE*nblock*i + eid)*2 + 1] = lE[3*i+1];
-                         vTripE[(nE*nblock*i + eid)*2 + 1] = lE[3*i+2];
+                         vLTP_E[(nE*gridDim.x*trainDepth*i + nE*gridDim.x*currentTimeSlot + eid)*2 + 1] = lE[3*i+0];
+                         vLTD_E[(nE*gridDim.x*i + eid)*2 + 1] = lE[3*i+1];
+                         vTripE[(nE*gridDim.x*i + eid)*2 + 1] = lE[3*i+2];
                     }
                     vAvgE[2*eid+1] = lAvg[1];
                     #pragma unroll max_nLearnTypeQ
                     for (PosInt i=0; i<learnQ.n; i++) { // store to the second slot of the array
-                        vSTDP_QE[(nE*nblock*i + eid)*2 + 1] =  lQ[i];
+                        vSTDP_QE[(nE*gridDim.x*i + eid)*2 + 1] =  lQ[i];
                     }
                 } else {
-                    PosInt iid = nI*(nblock*currentTimeSlot + blockIdx.x) + threadIdx.x-nE;
+                    PosInt iid = nI*(gridDim.x*currentTimeSlot + blockIdx.x) + threadIdx.x-nE;
                     #pragma unroll max_nLearnTypeQ
                     for (PosInt i=0; i<learnQ.n; i++) { // store to the second slot of the array
-                        vSTDP_QI[(nI*nblock*trainDepth*i + iid)*2 + 1] =  lQ[i];
+                        vSTDP_QI[(nI*gridDim.x*trainDepth*i + iid)*2 + 1] =  lQ[i];
                     }
                 }
             }
@@ -509,8 +509,8 @@ void compute_V_collect_spike_learnFF(
             for (PosInt i = 0; i<m; i++) {
                 PosInt lid = tid*max_nLGN + i;
                 Float f = sLGN[lid];
-                int x = static_cast<int>(LGN_idx[lid]);
-                int y = static_cast<int>(LGN_idy[lid]);
+                int x = LGN_idx[lid];
+                int y = LGN_idy[lid];
                 Float sInfo_FF;
                 surf2DLayeredread(&sInfo_FF, LGNspikeSurface, 4*x, y, 0);
                 Float nsp_FF = flooring(sInfo_FF);
@@ -529,15 +529,15 @@ void compute_V_collect_spike_learnFF(
                     if (threadIdx.x < nE) {
                         #pragma unroll max_nLearnTypeFF_E
                         for (PosInt i=0; i<learnE_pre.n; i++) {
-                            Float A_LTD = learnFF_E.A_ratio[i] * learnFF_E_pre.tau[i] * lAvg[cPick] * lAvg[cPick]/ 8000.0;
+                            Float A_LTD = learnE_post.A_ratio[i] * learnE_pre.tauLTP[i] * lAvg[cPick] * lAvg[cPick]/ 8000.0;
                             //Float A_LTD = learnFF_E.A_LTP[i]; TODO: alternative homeostatic design
-                            f -= if_decay(lFF[cPick*max_nLearnTypeFF*2 + 2*i+0], learnE_pre.tau[2*i+0], delta_t) * A_LTD * nsp_FF;
+                            f -= if_decay(lFF[cPick*max_nLearnTypeFF*2 + 2*i+0], learnE_post.tau[2*i+0], delta_t) * A_LTD * nsp_FF;
                         }
                     } else {
                         #pragma unroll max_nLearnTypeFF_I
                         for (PosInt i=0; i<learnI_pre.n; i++) {
-                            Float A_LTD = learnI_post.A_ratio[i] * learnI_pre.tau[i] * lAvg[cPick] * lAvg[cPick]/ 8000.0;
-                            f -= if_decay(lFF[cPick*max_nLearnTypeFF*2 + 2*i+0], learnI_pre.tau[2*i+0], delta_t) * A_LTD * nsp_FF;
+                            Float A_LTD = learnI_post.A_ratio[i] * learnI_pre.tauLTP[i] * lAvg[cPick] * lAvg[cPick]/ 8000.0;
+                            f -= if_decay(lFF[cPick*max_nLearnTypeFF*2 + 2*i+0], learnI_post.tau[2*i+0], delta_t) * A_LTD * nsp_FF;
                         }
                     }
                 } 
@@ -556,16 +556,16 @@ void compute_V_collect_spike_learnFF(
                         #pragma unroll max_nLearnTypeFF_E
                         for (PosInt i=0; i<learnE_pre.n; i++) {
                             Float lFF_pre;
-                            surf2DLayeredread(&lFF_pre, 4*x, y, 1+3*i+fPick);
-                            f += if_decay(lFF_pre, learnE_pre.tau[i], delta_t) * lFF[max_nLearnTypeFF*2 + 2*i+1] * learnE_post.A_LTP[i] * nsp;
+                            surf2DLayeredread(&lFF_pre, LGNspikeSurface, 4*x, y, 1+3*i+fPick);
+                            f += if_decay(lFF_pre, learnE_pre.tauLTP[i], delta_t) * lFF[max_nLearnTypeFF*2 + 2*i+1] * learnE_post.A_LTP[i] * nsp;
                         }
                     } else {
                         if (learnI_pre.n) {
                             #pragma unroll max_nLearnTypeFF_I
                             for (PosInt i=0; i<learnI_pre.n; i++) {
                                 Float lFF_pre;
-                                surf2DLayeredread(&lFF_pre, 4*x, y, 1+3*i+fPick);
-                                f += if_decay(lFF_pre, learnI_pre.tau[i], delta_t) * lFF[max_nLearnTypeFF*2 + 2*i+1] * learnI_post.A_LTP[i] * nsp;
+                                surf2DLayeredread(&lFF_pre, LGNspikeSurface, 4*x, y, 1+3*i+fPick);
+                                f += if_decay(lFF_pre, learnI_pre.tauLTP[i], delta_t) * lFF[max_nLearnTypeFF*2 + 2*i+1] * learnI_post.A_LTP[i] * nsp;
                             }
                         }
                     }
@@ -578,21 +578,19 @@ void compute_V_collect_spike_learnFF(
             if (nsp > 0) { 
                 delta_t -= tsp;
             }
-            delta *= dt;
+            delta_t *= dt;
             if (threadIdx.x < nE) {
-                PosInt eid = nE*blockIdx.x+threadIdx.x;
                 #pragma unroll max_nLearnTypeFF_E
-                for (PosInt i=0; i<nLearnTypeFF_E; i++) {
-                    decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+0], learnFF_E.tau[2*i+0], delta_t);
-                    decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+1], learnFF_E.tau[2*i+1], delta_t);
+                for (PosInt i=0; i<learnE_post.n; i++) {
+                    decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+0], learnE_post.tau[2*i+0], delta_t);
+                    decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+1], learnE_post.tau[2*i+1], delta_t);
                 }
             } else {
                 if (learnI_post.n) {
-                    PosInt iid = nI*blockIdx.x+threadIdx.x-nE;
                     #pragma unroll max_nLearnTypeFF_I
-                    for (PosInt i=0; i<nLearnTypeFF_I; i++) {
-                        decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+0], learnFF_I.tau[2*i+0], delta_t);
-                        decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+1], learnFF_I.tau[2*i+1], delta_t);
+                    for (PosInt i=0; i<learnI_post.n; i++) {
+                        decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+0], learnI_post.tau[2*i+0], delta_t);
+                        decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+1], learnI_post.tau[2*i+1], delta_t);
                     }
                 }
             }
@@ -602,16 +600,16 @@ void compute_V_collect_spike_learnFF(
                 #pragma unroll max_nLearnTypeFF_E
                 #pragma unroll max_nLearnTypeFF_E
                 for (PosInt i=0; i<learnE_post.n; i++) {
-                    vLTD_FF_E[nE*nblock*i + eid]  = lFF[cPick*2*max_nLearnTypeFF + 2*i+0];
-                    vTrip_FF_E[nE*nblock*i + eid] = lFF[cPick*2*max_nLearnTypeFF + 2*i+1];
+                    vLTD_FF_E[nE*gridDim.x*i + eid]  = lFF[cPick*2*max_nLearnTypeFF + 2*i+0];
+                    vTrip_FF_E[nE*gridDim.x*i + eid] = lFF[cPick*2*max_nLearnTypeFF + 2*i+1];
                 }
             } else {
                 if (learnI_post.n) {
                     PosInt iid = nI*blockIdx.x+threadIdx.x-nE;
                     #pragma unroll max_nLearnTypeFF_I
                     for (PosInt i=0; i<learnI_post.n; i++) {
-                        vLTD_FF_I[nI*nblock*i + iid]  = lFF[cPick*2*max_nLearnTypeFF + 2*i+0];
-                        vTrip_FF_I[nI*nblock*i + iid] = lFF[cPick*2*max_nLearnTypeFF + 2*i+1];
+                        vLTD_FF_I[nI*gridDim.x*i + iid]  = lFF[cPick*2*max_nLearnTypeFF + 2*i+0];
+                        vTrip_FF_I[nI*gridDim.x*i + iid] = lFF[cPick*2*max_nLearnTypeFF + 2*i+1];
                     }
                 }
             }
@@ -674,8 +672,8 @@ void recal_G_mat(
             PosIntL mid = static_cast<PosIntL>((local_bid*blockSize + i)*blockSize + threadIdx.x);
             Float strength = conMat[mid];
             if (strength != 0) {
-                Float LTP_pre[max_nLearnTypeE];
-                Float Q_pre[max_nLearnTypeQ];
+                //Float LTP_pre[max_nLearnTypeE];
+                //Float Q_pre[max_nLearnTypeQ];
                 Float time2post = delayMat[mid]/speedOfThought;
                 Float *local_g;
                 Float *local_h;

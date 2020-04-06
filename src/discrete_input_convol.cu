@@ -242,6 +242,17 @@ void store_temporalWeight(
             temporalWeight += reduced[0];
         }
     }
+    if (tid == 0) {
+        reduced[0] = temporalWeight;
+    }
+    __syncthreads();
+    // normalize
+    for (Size iPatch = 0; iPatch < nPatch+1; iPatch++) {
+        if (iPatch < nPatch || tid < remain) {
+            Size storeID = (id*nType + iType)*nKernelSample + iPatch*patchSize + tid;
+            TW_storage[storeID] /= reduced[0];
+        }
+    }
 }
 
 // coordinates are stored as (2, nLGN, nType, nSample), 
@@ -317,9 +328,7 @@ void store_spatialWeight(
 //__launch_bounds__(MAX_THREADS_PER_BLOCK, MIN_BLOCKS_PER_MP)
 __launch_bounds__(1024, 2)
 __global__
-void store(Float* __restrict__ max_convol,
-
-    	   Temporal_component &temporal,
+void store(Temporal_component &temporal,
            Float* __restrict__ TW_storage,
            SmallSize nKernelSample,
            Float kernelSampleDt,
@@ -348,13 +357,6 @@ void store(Float* __restrict__ max_convol,
 
     Float temporalWeight;
     store_temporalWeight(temporal, TW_storage, reduced, temporalWeight, nKernelSample, kernelSampleDt, kernelSampleT0, id, tid, lid, iType, nType);
-    /* DEBUG
-        __syncthreads();
-	    if (id == 0 && blockIdx.y == 0 && tid == 0) {
-            printf("temporalWeights stored\n");
-            assert(!isnan(temporalWeight));
-        }
-    */
 	Float LR_x0, LR_y0;
     bool LR = id < nLGN_L;
 	if (LR) {
@@ -364,9 +366,11 @@ void store(Float* __restrict__ max_convol,
 		LR_x0 = R_x0;
 		LR_y0 = R_y0;
 	}
+    //if (tid == 0) {
+    //    printf("id:%u-%u, sum_tw = %f\n", id, iType, temporalWeight); 
+    //}
 
     bool use_shared = true;
-    Float k;
     if (use_shared) { // TODO: *compare with global broadcast
         Size offset = id*nType + iType;
         if (tid == 0) {
@@ -377,7 +381,6 @@ void store(Float* __restrict__ max_convol,
 
             Float hSpan = nsig * spat.ry / SQRT2;
             Float dh = 2*hSpan/blockDim.y;
-			k = spat.k;
 			{
             	shared_spat[0] = spat.x;
 				shared_spat[1] = spat.y;
@@ -395,17 +398,144 @@ void store(Float* __restrict__ max_convol,
         // load from shared mem
         store_spatialWeight(reduced, shared_spat[0], shared_spat[1], shared_spat[2], shared_spat[3], shared_spat[4], shared_spat[5], shared_spat[6], shared_spat[7], shared_spat[8], shared_spat[9], normViewDistance, LR_x0, LR_y0, LR, SW_storage, SC_storage, offset*nSample+tid, nSample);
     } 
-    //spatialWeight = abs(spatialWeight); // get absolute values ready for max_convol, always positive, not necessary
-    /* DEBUG
-        __syncthreads();
-	    if (id == 0 && blockIdx.y == 0 && tid == 0) {
-            printf("spatialWeights stored\n");
+}
+
+
+__launch_bounds__(1024, 2) // must be launched by 1024
+__global__
+void get_maxConvol(Spatial_component &spatial,
+                   Float* __restrict__ TW_storage,
+                   Float* __restrict__ covariant,
+                   Float* __restrict__ max_convol,
+                   Size nSample1D, Size nLGN, SmallSize nKernelSample, Float kernelSampleDt, Float nsig)
+{
+    extern __shared__ Float swC[];
+    Size nSample = nSample1D * nSample1D;
+    Float* swS = swC + nSample;
+    __shared__ Float reduced[warpSize];
+    PosInt id = blockIdx.x;
+    Float rxs = spatial.rx[nLGN+id];
+    Float rys = spatial.ry[nLGN+id];
+
+    Float xs = spatial.x[nLGN+id];
+    Float ys = spatial.y[nLGN+id];
+
+    Float wSpan = nsig * rxs / SQRT2;
+    Float hSpan = nsig * rys / SQRT2;
+
+    Float rxc = spatial.rx[id];
+    Float ryc = spatial.ry[id];
+
+    Float R = wSpan > hSpan? wSpan: hSpan;
+
+    Float xc = spatial.x[id];
+    Float yc = spatial.y[id];
+
+    wSpan = nsig * rxc / SQRT2;
+    hSpan = nsig * ryc / SQRT2;
+
+    Float dx = yc*cosine(xc)-ys*cosine(xs);
+    Float dy = yc*sine(xc)-ys*sine(xs);
+    Float r = square_root(dx*dx + dy*dy);
+
+    Float cov = covariant[id];
+    Float orients = spatial.orient[nLGN+id];
+    Float orientc = spatial.orient[id];
+
+    r += wSpan>hSpan? wSpan:hSpan;
+
+	Float coss = cosine(orients); 
+    R = r > R? r: R;
+	Float sins = sine(orients);
+
+	Float cosc = cosine(orientc); 
+	Float sinc = sine(orientc); 
+    Float ks = spatial.k[nLGN + id];
+    Float kc = spatial.k[id];
+
+    Float ds = 2*R/nSample1D;
+    Size nPatch = nSample/blockDim.x;
+    assert(nSample%blockDim.x == 0);
+
+    Float sumC, sumS;
+    if (threadIdx.x == 0) {
+        sumC = 0.0;
+        sumS = 0.0;
+    }
+    #pragma unroll 9
+    for (PosInt iPatch = 0; iPatch < nPatch; iPatch++) {
+        PosInt pid = iPatch*blockDim.x + threadIdx.x;
+        PosInt w = pid % nSample1D;
+        PosInt h = pid / nSample1D;
+        Float lx = (w + 0.5)*ds - R; // origin at the center of the surround RF
+        Float ly = (h + 0.5)*ds - R;
+        Float x = cosc*(lx-dx) + sinc*(ly-dy);
+        Float y = -sinc*(lx-dx) + cosc*(ly-dy);
+        Float local_sw = spatialKernel(x, y, rxc, ryc); 
+        swC[pid] = local_sw;
+	    block_reduce<Float>(reduced, local_sw);
+        if (threadIdx.x == 0) {
+            sumC += reduced[0];
         }
-    */
-    // k is now integrated amplitude over space 
-    if (tid == 0) { // add center surround together, iType = 0, 1
+        x = coss*lx + sins*ly;
+        y = -sins*lx + coss*ly;
+        local_sw = spatialKernel(x, y, rxs, rys);
+        swS[pid] = local_sw;
+	    block_reduce<Float>(reduced, local_sw);
+        if (threadIdx.x == 0) {
+            sumS += reduced[0];
+        }
+    }
+    if (threadIdx.x == 0) {
+        reduced[0] = sumC;
+        reduced[1] = sumS;
+    }
+    __syncthreads();
+    #pragma unroll 9
+    for (PosInt iPatch = 0; iPatch < nPatch; iPatch++) {
+        PosInt pid = iPatch*blockDim.x + threadIdx.x;
+        swC[pid] /= reduced[0];
+        swS[pid] /= reduced[1];
+    }
+    __syncthreads();
+
+    Float convol;
+    if (threadIdx.x == 0) {
+        convol = 0.0;
+    }
+    #pragma unroll 16
+    for (PosInt it = 0; it<nKernelSample; it++) {
+        Float tc = TW_storage[id*2*nKernelSample + it];
+        Float ts = TW_storage[(id*2 + 1)*nKernelSample + it];
+
+        #pragma unroll 9
+        for (PosInt iPatch = 0; iPatch < nPatch; iPatch++) {
+            PosInt pid = iPatch*blockDim.x + threadIdx.x;
+            Float local_decide;
+            Float local_center = swC[pid] * tc*kc;
+            Float local_surround = swS[pid] * ts*ks;
+            if (abs(local_center) > abs(local_surround)) { // assumed contrast must have the same sign as local_center
+                local_decide = abs(local_center) + local_surround * copysign(cov, local_center);
+            } else { // assumed contrast must have the same sign as local_surround
+                local_decide = abs(local_surround) + local_center * copysign(cov, local_surround);
+            }
+	        block_reduce<Float>(reduced, local_decide);
+            if (threadIdx.x == 0) {
+                convol += reduced[0];
+                if (reduced[0] > abs(tc*kc) + abs(ts*ks) + 1e-6  || reduced[0] < 0) {
+                    printf("c:%e*%e=%e, s:%e*%e=%e, cov:%e, reduced=%e, ref=%e\n", tc, kc, abs(tc*kc), ts, ks, abs(ts*ks), cov, reduced[0], abs(tc*kc) + abs(ts*ks) + 1e-6);
+                    assert(reduced[0] <= abs(tc*kc) + abs(ts*ks) + 1e-6);
+                }
+            }
+        }
+    }
+    if (threadIdx.x == 0) { // add center surround together, iType = 0, 1
+        if (convol > abs(kc) + abs(ks) + 1e-6) {
+            printf("c:%e, s:%e, cov:%e, convol=%e, ref=%e\n", kc, ks, cov, convol, abs(kc) + abs(ks) + 1e-6);
+            assert(convol <= abs(kc) + abs(ks) + 1e-6);
+        }
 		// max_convol should be initialized elsewhere 
-        atomicAdd(max_convol+id, temporalWeight * abs(k) * kernelSampleDt);
+        max_convol[id] = convol;
     }
 }
 
@@ -811,7 +941,8 @@ void LGN_convol_c1s(
         // times amplitude and space-time volume, k is amplitude*dwdh
         convolC *= kC;
         convolS *= kS;
-        convol[blockIdx.x] = (convolC + convolS)*kernelSampleInterval*dt;
+        convol[blockIdx.x] = (convolC + convolS);        
+        //convol[blockIdx.x] = (convolC + convolS)*kernelSampleInterval*dt;
 		/*DEBUG
 			if (blockIdx.x == 52583) {
 				printf("convol: %e*%e = %e\n", (convolC + convolS), kernelSampleInterval*dt, (convolC + convolS)*kernelSampleInterval*dt);
@@ -857,12 +988,14 @@ void LGN_nonlinear(
         Float* __restrict__ max_convol,
         Float* __restrict__ current_convol,
         Float* __restrict__ LGN_fr,
-        PosInt* __restrict__ sx,
-        PosInt* __restrict__ sy,
+        Float* __restrict__ LGN_sInfo,
+        int* __restrict__ sx,
+        int* __restrict__ sy,
         Float* __restrict__ leftTimeRate,
         Float* __restrict__ lastNegLogRand,
 		curandStateMRG32k3a* __restrict__ state,
-        int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning)
+        Float* __restrict__ lVar,
+        int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning, bool learnData_FF)
 {
 	unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     bool engaging = id<nLGN;
@@ -896,20 +1029,25 @@ void LGN_nonlinear(
         LGN_fr[id] = fr;
         Float var[MAX_NLEARNTYPE_FF];
         if (learning < 4) {
-            #pragma unroll (max_nLearnTypeFF)
+            #pragma unroll (sum_nLearnTypeFF)
             for (int i=0; i<nFF; i++) {
                 surf2DLayeredread(&(var[i]), LGNspikeSurface, 4*x, y, 1+(3*i+varSlot)); // varSlot already 'mod'ed
             }
         }
 
         Size nsp;
-        Float tsp = get_spike(nsp, lTR, lNL, dt, fr, &local_state);
+        Float tsp = get_spike(nsp, lTR, lNL, dt, fr/1000.0, &local_state);
         Float sInfo = nsp + tsp/dt; // must be float, integer part = #spikes decimals: mean tsp normalized by dt
         if (sInfo > 0) {
             lastNegLogRand[id] = lNL;
+            //if (id == 37054 || id == 37223 || id == 37647) {
+            //    printf("LGN# %u fired\n");
+            //}
+            //printf("LGN fired, ");
         }
         leftTimeRate[id] = lTR;
         state[id] = local_state;
+        if (learnData_FF) LGN_sInfo[id] = sInfo;
         // write to surface memory 
         surf2DLayeredwrite(sInfo, LGNspikeSurface, 4*x, y, 0);
         if (learning < 4) {
@@ -927,7 +1065,7 @@ void LGN_nonlinear(
                     var[lE.n+i]++; // increase learning variable after spike, not to be increased right after read to hide latency
                     decay(var[lE.n+i], lI.tauLTP[i], delta_t);
                 }
-                #pragma unroll (max_nLearnTypeFF)
+                #pragma unroll (sum_nLearnTypeFF)
                 for (int i=0; i<nFF; i++) {
                     surf2DLayeredwrite(var[i], LGNspikeSurface, 4*x, y, 1+(3*i+2)); // update at the third slot
                 }
@@ -944,9 +1082,15 @@ void LGN_nonlinear(
                 decay(var[lE.n+i], lI.tauLTP[i], delta_t);
             }
             // write to the next slot in surface
-            #pragma unroll (max_nLearnTypeFF)
+            #pragma unroll (sum_nLearnTypeFF)
             for (int i=0; i<nFF; i++) {
                 surf2DLayeredwrite(var[i], LGNspikeSurface, 4*x, y, 1+(3*i+(varSlot+1)%2)); // update at next slot
+            }
+            if (learnData_FF) {
+                #pragma unroll (sum_nLearnTypeFF)
+                for (int i=0; i<nFF; i++) {
+                    lVar[nLGN*i + id] = var[i];
+                }
             }
         }
     }

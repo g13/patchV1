@@ -13,9 +13,9 @@
 
 struct Spatial_component {
     Float* mem_block;
-    Float* __restrict__ x; // normalize to (0,1)
+    Float* __restrict__ x; // polar angle in rad
     Float* __restrict__ rx;
-    Float* __restrict__ y; // normalize to (0,1)
+    Float* __restrict__ y; // ecc in rad 
     Float* __restrict__ ry;
     Float* __restrict__ orient;
     Float* __restrict__ k; // its sign determine On-Off

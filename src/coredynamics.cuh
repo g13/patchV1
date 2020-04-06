@@ -30,7 +30,7 @@ struct LIF {
     __device__ virtual void reset_v();
 };
 
-__global__ void logRand_init(Float *logRand, Float *lTR, PosInt* LGN_idx, PosInt* LGN_idy, curandStateMRG32k3a *state, PosIntL seed, Size n, Size nFF);
+__global__ void logRand_init(Float *logRand, Float *lTR, int* LGN_idx, int* LGN_idy, curandStateMRG32k3a *state, PosIntL seed, Size n, Size nFF);
 
 void recal_G_vec(
         std::vector<std::vector<std::vector<Float>>> &spikeTrain, std::vector<std::vector<Size>> &trainDepth, std::vector<std::vector<PosInt>> &currentTimeSlot,
@@ -42,7 +42,7 @@ void recal_G_vec(
 //template<int ntimesFF, int ntimesE, int ntimesI> extern
 __launch_bounds__(1024,2)
 __global__ 
-void compute_V_collect_spike+learnFF(
+void compute_V_collect_spike_learnFF(
         Float* __restrict__ v,
         Float* __restrict__ gFF, // not in chunks
         Float* __restrict__ hFF,
@@ -52,8 +52,8 @@ void compute_V_collect_spike+learnFF(
         Float** __restrict__ hI,
         Size* __restrict__ nLGN,
         Float* __restrict__ sLGN,
-        PosInt* __restrict__ LGN_idx,
-        PosInt* __restrict__ LGN_idy,
+        int* __restrict__ LGN_idx,
+        int* __restrict__ LGN_idy,
         Float* __restrict__ tBack,
         Float* __restrict__ spikeTrain, //         [                depth, nblock, blockSize  ]
         Float* __restrict__ vLTD_FF_E, //    post, [nLearnTypeFF_E,        nblock, nE         ]
@@ -67,7 +67,7 @@ void compute_V_collect_spike+learnFF(
         Float* __restrict__ vTripE, //       post, [nLearnTypeE,           nblock, nE,       2]
         Float* __restrict__ vSTDP_QE,  //  E post, [nLearnTypeQ,           nblock, nE        2]
         Float* __restrict__ vSTDP_QI,  //   I pre, [nLearnTypeQ,    depth, nblock, nI,       2]
-        PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeFF, Size ngTypeE, Size ngTypeI, ConductanceShape condFF, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, PosIntL seed,
+        PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeFF, Size ngTypeE, Size ngTypeI, ConductanceShape condFF, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, PosIntL seed, int learning, int varSlot,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
         LearnVarShapeE learnE, LearnVarShapeQ learnQ

@@ -4,6 +4,7 @@
 
 //#define DEBUG 
 //#define CHECK
+//#define SYNC
 
 #ifdef DOUBLE_PRECISION
     #define flooringb floor 
