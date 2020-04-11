@@ -69,11 +69,11 @@ Float get_intensity(SmallSize coneType, float x, float y, unsigned int iLayer) {
         case 2:
             contrast = static_cast<Float>(tex2DLayered(S_retinaInput, x, y, iLayer));
             break;
-        case 3:
+        case 3: // On-Off only magnocellular excluding S cone
             contrast = static_cast<Float>(tex2DLayered(L_retinaInput, x, y, iLayer) 
                                         + tex2DLayered(M_retinaInput, x, y, iLayer))/2.0; 
             break;
-        case 4:
+        case 4: 
             contrast = static_cast<Float>(tex2DLayered(L_retinaInput, x, y, iLayer) 
                                         + tex2DLayered(M_retinaInput, x, y, iLayer) 
                                         + tex2DLayered(S_retinaInput, x, y, iLayer))/3.0;
@@ -236,7 +236,11 @@ void store_temporalWeight(
         } else {
             tw = 0.0;
         }
-        assert(!isnan(tw));
+        /* DEBUG
+        if (isnan(tw)) {
+            printf("%u-%u: fac = %f, %f\n", lid, nKernelSample-1 - iPatch*patchSize - tid, lfac1, lfac2);
+            assert(!isnan(tw));
+        } */
         block_reduce<Float>(reduced, tw);
         if (tid == 0) {
             temporalWeight += reduced[0];
@@ -278,7 +282,8 @@ void store_spatialWeight(
         Float* __restrict__ SW_storage,
         float* __restrict__ SC_storage,
         Size storeID, // (id*nType + iType) * nSample + tid;
-        Size nSample
+        Size nSample,
+        bool uniform_retina
 ) {
     // rads relative to center
     Float w = (threadIdx.x + 0.5)*dw - wSpan;
@@ -289,35 +294,52 @@ void store_spatialWeight(
 	    block_reduce<Float>(reduced, spatialWeight);
 		SW_storage[threadIdx.x + threadIdx.y*blockDim.x] = spatialWeight/reduced[0];
 	}
-	Float cosp, sinp; 
-    Float cosEcc, sinEcc;
-	orthPhiRotate3D(centerPolar, centerEcc + h, w, cosp, sinp, cosEcc, sinEcc);
-
-    Float tanEcc;
-	axisRotate3D(centerPolar, centerEcc, coso, sino, cosp, sinp, cosEcc, sinEcc, tanEcc);
-
     float x, y;
-    retina_to_plane(cosp, sinp, tanEcc, x, y, normViewDistance, LR_x0, LR_y0);
-    // DEBUG visual field and stimulus field not matching
-        if (LR) {
-            if (x < 0 || x > 0.5) {
-                printf("x = %1.15e\n", x);
-                //assert(x>=0);
-                //assert(x<=0.5);
+    if (!uniform_retina) {
+	    Float cosp, sinp; 
+        Float cosEcc, sinEcc;
+	    orthPhiRotate3D(centerPolar, centerEcc + h, w, cosp, sinp, cosEcc, sinEcc);
+
+        Float tanEcc;
+	    axisRotate3D(centerPolar, centerEcc, coso, sino, cosp, sinp, cosEcc, sinEcc, tanEcc);
+
+        retina_to_plane(cosp, sinp, tanEcc, x, y, normViewDistance, LR_x0, LR_y0);
+        // DEBUG visual field and stimulus field not matching
+            if (LR) {
+                if (x < 0 || x > 0.5) {
+                    printf("x = %1.15e\n", x);
+                    //assert(x>=0);
+                    //assert(x<=0.5);
+                }
+            } else {
+                if (x < 0.5 || x > 1) {
+                    printf("x = %1.15e\n", x);
+                    //assert(x>=0.5);
+                    //assert(x<=1);
+                }
             }
-        } else {
-            if (x < 0.5 || x > 1) {
-                printf("x = %1.15e\n", x);
-                //assert(x>=0.5);
-                //assert(x<=1);
+            if (y<0 || y>1) {
+                printf("y = %1.15e\n", y);
+                //assert(y>=0);
+                //assert(y<=1);
             }
-        }
-        if (y<0 || y>1) {
-            printf("y = %1.15e\n", y);
-            //assert(y>=0);
-            //assert(y<=1);
-        }
-    //
+        //
+    } else {
+        x = LR_x0 + centerEcc * cosine(centerPolar) + w;
+        y = LR_x0 + centerEcc * sine(centerPolar) + h;
+        // DEBUG visual field and stimulus field not matching
+            if (x<0 || x>1) {
+                printf("x = %1.15e\n", x);
+                assert(x>=0);
+                assert(x<=1);
+            }
+            if (y<0 || y>1) {
+                printf("y = %1.15e\n", y);
+                assert(y>=0);
+                assert(y<=1);
+            }
+        //
+    }
     
     // store coords for retrieve data from texture
     SC_storage[storeID] = x; // x
@@ -343,7 +365,8 @@ void store(Temporal_component &temporal,
 	       Float R_x0,
 	       Float R_y0,
 	       Float normViewDistance,
-           Float nsig // span of spatialRF sample in units of std
+           Float nsig, // span of spatialRF sample in units of std
+           bool uniform_retina
 ) {
     __shared__ Float reduced[warpSize];
     __shared__ Float shared_spat[10]; // centerPolar, centerEcc, coso, sino, wSpan, hSpan, dw, dh, wSigSqrt2, hSigSqrt2
@@ -396,7 +419,7 @@ void store(Temporal_component &temporal,
         }
         __syncthreads();
         // load from shared mem
-        store_spatialWeight(reduced, shared_spat[0], shared_spat[1], shared_spat[2], shared_spat[3], shared_spat[4], shared_spat[5], shared_spat[6], shared_spat[7], shared_spat[8], shared_spat[9], normViewDistance, LR_x0, LR_y0, LR, SW_storage, SC_storage, offset*nSample+tid, nSample);
+        store_spatialWeight(reduced, shared_spat[0], shared_spat[1], shared_spat[2], shared_spat[3], shared_spat[4], shared_spat[5], shared_spat[6], shared_spat[7], shared_spat[8], shared_spat[9], normViewDistance, LR_x0, LR_y0, LR, SW_storage, SC_storage, offset*nSample+tid, nSample, uniform_retina);
     } 
 }
 
@@ -522,18 +545,10 @@ void get_maxConvol(Spatial_component &spatial,
 	        block_reduce<Float>(reduced, local_decide);
             if (threadIdx.x == 0) {
                 convol += reduced[0];
-                if (reduced[0] > abs(tc*kc) + abs(ts*ks) + 1e-6  || reduced[0] < 0) {
-                    printf("c:%e*%e=%e, s:%e*%e=%e, cov:%e, reduced=%e, ref=%e\n", tc, kc, abs(tc*kc), ts, ks, abs(ts*ks), cov, reduced[0], abs(tc*kc) + abs(ts*ks) + 1e-6);
-                    assert(reduced[0] <= abs(tc*kc) + abs(ts*ks) + 1e-6);
-                }
             }
         }
     }
     if (threadIdx.x == 0) { // add center surround together, iType = 0, 1
-        if (convol > abs(kc) + abs(ks) + 1e-6) {
-            printf("c:%e, s:%e, cov:%e, convol=%e, ref=%e\n", kc, ks, cov, convol, abs(kc) + abs(ks) + 1e-6);
-            assert(convol <= abs(kc) + abs(ks) + 1e-6);
-        }
 		// max_convol should be initialized elsewhere 
         max_convol[id] = convol;
     }
@@ -1010,8 +1025,6 @@ void LGN_nonlinear(
         int x = sx[id];
         int y = sy[id];
         curandStateMRG32k3a local_state = state[id];
-		// initialize for next time step
-		current_convol[id] = 0.0;
 
         // get firing rate
         logistic.load_first(id, C50, K, A, B);
@@ -1057,12 +1070,12 @@ void LGN_nonlinear(
                 // decay from start to tsp
                 #pragma unroll (max_nLearnTypeFF_E)
                 for (PosInt i=0; i<lE.n; i++) {
-                    var[i]++; // increase learning variable after spike
+                    var[i] += nsp; // increase learning variable after spike (not to be increased right after read to hide latency)
                     decay(var[i], lE.tauLTP[i], delta_t);
                 }
                 #pragma unroll (max_nLearnTypeFF_I)
                 for (PosInt i=0; i<lI.n; i++) {
-                    var[lE.n+i]++; // increase learning variable after spike, not to be increased right after read to hide latency
+                    var[lE.n+i] += nsp; // increase learning variable after spike
                     decay(var[lE.n+i], lI.tauLTP[i], delta_t);
                 }
                 #pragma unroll (sum_nLearnTypeFF)

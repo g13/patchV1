@@ -8,6 +8,8 @@
 #include "DIRECTIVE.h"
 #include "CONST.h"
 
+// TODO: ngTypeRatio
+// TODO: different learning types not implemented
 struct ConductanceShape {
     Float riseTime[max_ngType], decayTime[max_ngType], dod[max_ngType], coef2[max_ngType];
 
@@ -117,16 +119,20 @@ struct LearnVarShapeFF_E_post {
     Float tau[2*max_nLearnTypeFF_E+1]; // tauLTD, tauTrip, tauAvg
     Float A_LTP[max_nLearnTypeFF_E]; // A_LGN
     Float A_ratio[max_nLearnTypeFF_E];
+    Float gmax;
+    Float gmin;
 };
 struct LearnVarShapeFF_I_post {
     Size n; // types of FF->I
     Float tau[2*max_nLearnTypeFF_I+1]; // tauLTD, tauTrip, tauAvg
     Float A_LTP[max_nLearnTypeFF_I]; // A_LGN
     Float A_ratio[max_nLearnTypeFF_I];
+    Float gmax;
+    Float gmin;
 };
 
 template<class T>
-void learnFF_post(T &l, Float tauLTD[], Float tauTrip[], Float tauAvg, Float A_LTP[], Size n) {
+void learnFF_post(T &l, Float tauLTD[], Float tauTrip[], Float tauAvg, Float A_LTP[], Float gmax, Float gmin, Size n) {
     l.n = n;
     for (PosInt i=0; i<n; i++) {
         l.tau[2*i+0] = tauLTD[i];
@@ -135,6 +141,8 @@ void learnFF_post(T &l, Float tauLTD[], Float tauTrip[], Float tauAvg, Float A_L
         l.A_ratio[i] = tauTrip[i]*A_LTP[i]/(tauLTD[i]*(tauAvg*tauAvg)); // * tauLTP * filtered spike avg^2 / target firing rate = A_LTD
     }
     l.tau[2*n] = tauAvg;
+    l.gmax = gmax;
+    l.gmin = gmin;
 }
 template<class T>
 void printFF_post(T &l, int EI) {
@@ -149,6 +157,7 @@ void printFF_post(T &l, int EI) {
     for (PosInt i=0; i<l.n; i++) {
         std::cout << i << ":    " << l.tau[2*i+0] << ",   " << l.tau[2*i+1] << ",   " << l.A_LTP[i] << "\n";
     }
+    std::cout << "strength range from: " << l.gmin << " to " << l.gmax << "\n";
 }
 
 struct LearnVarShapeE { // types of E->E
@@ -156,8 +165,11 @@ struct LearnVarShapeE { // types of E->E
     Float tau[3*max_nLearnTypeE+1]; // tauLTP, tauLTD, tauTrip, tauAvg
     Float A_LTP[max_nLearnTypeE]; // A_V1
     Float A_ratio[max_nLearnTypeE];
+    Float gmax;
+    Float gmin;
 };
-void learnE(LearnVarShapeE &l, Float tauLTP[], Float tauLTD[], Float tauTrip[], Float tauAvg, Float A_LTP[], Size n);
+
+void learnE(LearnVarShapeE &l, Float tauLTP[], Float tauLTD[], Float tauTrip[], Float tauAvg, Float A_LTP[], Float gmax, Float gmin, Size n);
 void printE(LearnVarShapeE &l);
 
 struct LearnVarShapeQ {
@@ -165,7 +177,9 @@ struct LearnVarShapeQ {
     Float tau[2*max_nLearnTypeQ];
     Float A_LTP[max_nLearnTypeQ]; // A_Q
     Float A_LTD[max_nLearnTypeQ]; // A_Q
+    Float gmax;
+    Float gmin;
 };
-void learnQ(LearnVarShapeQ &l, Float tauQ[], Float A_Q[], Size n);
+void learnQ(LearnVarShapeQ &l, Float tauQ[], Float A_Q[], Float gmax, Float gmin, Size n);
 void printQ(LearnVarShapeQ &l);
 #endif

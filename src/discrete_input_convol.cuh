@@ -65,7 +65,8 @@ void store(// weights and max convolution
 		Float R_x0,
 		Float R_y0,
 		Float normViewDistance,
-        Float nsig // span of spatialRF sample in units of std
+        Float nsig, // span of spatialRF sample in units of std
+        bool uniform_retina
 );
 
 __launch_bounds__(1024, 2)

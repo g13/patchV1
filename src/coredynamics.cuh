@@ -61,7 +61,7 @@ void compute_V_collect_spike_learnFF(
         Float* __restrict__ vLTD_FF_I, //    post, [nLearnTypeFF_I,        nblock, nI         ]
         Float* __restrict__ vTrip_FF_I, //   post, [nLearnTypeFF_I,        nblock, nI         ]
         Float* __restrict__ vAvgE, //        post, [                       nblock, nE,       2]
-        Float* __restrict__ vAvgI, //        post, [                       nblock, nI,       2]
+        Float* __restrict__ vAvgI, //        post, [                       nblock, nI,        ]
         Float* __restrict__ vLTP_E, //        pre, [nLearnTypeE,    depth, nblock, nE,       2]
         Float* __restrict__ vLTD_E, //       post, [nLearnTypeE,           nblock, nE,       2]
         Float* __restrict__ vTripE, //       post, [nLearnTypeE,           nblock, nE,       2]
@@ -77,21 +77,22 @@ void compute_V_collect_spike_learnFF(
 __launch_bounds__(1024, 2)
 __global__  
 void recal_G_mat( // <<< nblock[partial], blockSize >>>
-        Float* __restrict__ spikeTrain, // [depth, nblock, blockSize]
-        Float* __restrict__ conMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
-        Float* __restrict__ delayMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
+        Float* __restrict__ spikeTrain,
+        Float* __restrict__ conMat,
+        Float* __restrict__ delayMat,
         Size* __restrict__ nNeighborBlock,
         PosInt* __restrict__ neighborBlockId,
-        Float* __restrict__ gE, // [ngTypeE, nV1]
-        Float* __restrict__ gI, // [ngTypeI, nV1] 
+        Float* __restrict__ gE,
+        Float* __restrict__ gI,
         Float* __restrict__ hE,
         Float* __restrict__ hI,
-        //Float* __restrict__ PreVar_V1,
-        //Float* __restrict__ PostVar,
-        //Float* __restrict__ PripVar,
-        //Float* __restrict__ FrVar,
-        //Float* __restrict__ qVar,
-        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nE, Size nV1, Float speedOfThought
+        Float* __restrict__ vAvgE,
+        Float* __restrict__ vLTP_E,
+        Float* __restrict__ vLTD_E,
+        Float* __restrict__ vTripE,
+        Float* __restrict__ vSTDP_QE,
+        Float* __restrict__ vSTDP_QI,
+        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nE, Size nI, Size nV1, Float speedOfThought, int learning, PosInt block_offset, LearnVarShapeE lE, LearnVarShapeQ lQ
 );
 
 //template<int ntimesE, int ntimesI> extern
