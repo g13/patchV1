@@ -31,14 +31,14 @@ enum class OutputType: PosInt { // V1 local RF subregion
 	LoffMon = 3
 };
 
-// TODO: add On-Off
 enum class InputType: PosInt { // LGN
     // center-surround
-    LonMoff = 0,
+    LonMoff = 0, // parvocellular
     LoffMon = 1,
     MonLoff = 2,
-    MoffLon = 3
-	// even -> on, odd -> off
+    MoffLon = 3,
+    OnOff = 4, // magnocellular
+    OffOn = 5
     // ignore mixed surround, almost always from a different cone type
 };
 
@@ -63,18 +63,18 @@ inline Int match_OnOff(InputType iType, OutputType oType, Float &modulation) {
    	switch (oType) {
    	    case OutputType::LonMon:
    			switch (iType) {
-   				case InputType::LonMoff: case InputType::MonLoff: match = 1;
+                case InputType::LonMoff: case InputType::MonLoff: case InputType::OnOff: match = 1;
    					break;
-   				case InputType::LoffMon: case InputType::MoffLon: match = -1;
+                case InputType::LoffMon: case InputType::MoffLon: case InputType::OffOn: match = -1;
 					break;
 				default: throw("There's no implementation of such combination of cone types for center-surround RF");
    	        }
    	        break;
    	    case OutputType::LoffMoff:
    	        switch (iType) {
-   				case InputType::LoffMon: case InputType::MoffLon: match = 1;
-   					break;
-   				case InputType::LonMoff: case InputType::MonLoff: match = -1;
+   				case InputType::LoffMon: case InputType::MoffLon: case InputType::OffOn: match = 1;
+   					break;                                                               
+   				case InputType::LonMoff: case InputType::MonLoff: case InputType::OnOff: match = -1;
 					break;
 				default: throw("There's no implementation of such combination of cone types for center-surround RF");
    	        }
@@ -93,6 +93,8 @@ inline Int oppose_Cone_OnOff_double(InputType iType, OutputType oType, Float &mo
    					break;
    				case InputType::LoffMon: case InputType::MonLoff: opponent = -1;
 					break;
+                case InputType::OnOff: case InputType::OffOn: opponent = 0;
+                    break;
 				default: throw("There's no implementation of such combination of cone types for center-surround RF");
    	        }
    	        break;
@@ -102,6 +104,8 @@ inline Int oppose_Cone_OnOff_double(InputType iType, OutputType oType, Float &mo
    					break;
    				case InputType::LonMoff: case InputType::MoffLon: opponent = -1;
 					break;
+                case InputType::OnOff: case InputType::OffOn: opponent = 0;
+                    break;
 				default: throw("There's no implementation of such combination of cone types for center-surround RF");
    	        }
 			break;
@@ -117,8 +121,10 @@ inline Int oppose_Cone_OnOff_single(InputType iType, OutputType oType, Float &mo
    			switch (iType) {
    				case InputType::LonMoff: opponent = 1;
    					break;
-				case InputType::LoffMon: case InputType::MoffLon: case InputType::MonLoff: opponent = -1;
+                case InputType::LoffMon: case InputType::MoffLon: case InputType::MonLoff: case InputType::OffOn: opponent = -1;
 					break;
+                case InputType::OnOff: opponent = 0;
+                    break;
 				default: throw("There's no implementation of such combination of cone types for center-surround RF");
    	        }
    	        break;
@@ -126,8 +132,10 @@ inline Int oppose_Cone_OnOff_single(InputType iType, OutputType oType, Float &mo
    	        switch (iType) {
    				case InputType::LoffMon: opponent = 1;
    					break;
-   				case InputType::LonMoff: case InputType::MonLoff: case InputType::MoffLon: opponent = -1;
+                case InputType::LonMoff: case InputType::MonLoff: case InputType::MoffLon: case InputType::OnOff: opponent = -1;
 					break;
+                case InputType::OffOn: opponent = 0;
+                    break;
 				default: throw("There's no implementation of such combination of cone types for center-surround RF");
    	        }
 			break;
@@ -265,7 +273,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 		}
 		idList = newList;
 		idList.shrink_to_fit();
-        return idList.size();
+        return static_cast<Size>(idList.size());
     }
 };
 

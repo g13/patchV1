@@ -52,7 +52,7 @@ int main(int argc, char *argv[])
     	("usingPosDim", po::value<Size>(&usingPosDim)->default_value(2), "using <2>D coord. or <3>D coord. when calculating distance between neurons, influencing how the position data is read") 
         ("maxDistantNeighbor", po::value<Size>(&maxDistantNeighbor), "the preserved size of the array that store the presynaptic neurons' ID, who are not in the neighboring blocks")
         ("maxNeighborBlock", po::value<Size>(&maxNeighborBlock)->default_value(12), "the preserved size (minus the nearNeighborBlock) of the array that store the neighboring blocks ID that goes into conVec")
-        ("nearNeighborBlock", po::value<Size>(&nearNeighborBlock)->default_value(8), "the preserved size of the array that store the neighboring blocks ID that goes into conMat, excluding the self block")
+        ("nearNeighborBlock", po::value<Size>(&nearNeighborBlock)->default_value(8), "the preserved size of the array that store the neighboring blocks ID that goes into conMat, excluding the self block, self will be added later")
 		("fV1_typeMat", po::value<string>(&typeMat_filename)->default_value(""), "read nTypeHierarchy, pTypeMat, sTypeMat from this file, not implemented")
         ("fV1_type", po::value<string>(&V1_type_filename)->default_value("V1_type.bin"), "file to read predetermined neuronal types based on nTypeHierarchy")
         ("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file to read spatially predetermined functional features of neurons")
@@ -256,7 +256,7 @@ int main(int argc, char *argv[])
     hInitialize_package hInit_pack(nArchtype, nType, nHierarchy, nTypeHierarchy, archtypeAccCount, rAxon, rDend, dAxon, dDend, sTypeMat, pTypeMat, preTypeN);
 	initialize_package init_pack(nArchtype, nType, nHierarchy, hInit_pack);
 	hInit_pack.freeMem();
-    Float speedOfThought = 1.0f; // mm/ms
+    //Float speedOfThought = 1.0f; specify instead in patch.cu through patchV1.cfg
 
     // TODO: types that shares a smaller portion than 1/neuronPerBlock
     if (archtypeAccCount.back() != neuronPerBlock) {
@@ -312,8 +312,8 @@ int main(int argc, char *argv[])
 
     size_t statSize = 2*nType*networkSize*sizeof(Size) + // preTypeConnected and *Avail
         	          nType*networkSize*sizeof(Float); // preTypeStrSum
-    size_t vecSize = 2*maxDistantNeighbor*networkSize*sizeof(Float) + // con and delayVec
-        		     maxDistantNeighbor*networkSize*sizeof(Size) + // vecID
+    size_t vecSize = 2*static_cast<size_t>(maxDistantNeighbor)*networkSize*sizeof(Float) + // con and delayVec
+        		     static_cast<size_t>(maxDistantNeighbor)*networkSize*sizeof(Size) + // vecID
         		     networkSize*sizeof(Size); // nVec
 
 	size_t deviceOnlyMemSize = 2*networkSize*sizeof(Float) + // rden and raxn
@@ -475,17 +475,21 @@ int main(int argc, char *argv[])
     //cout << "number of neighbors: ";
     for (Size i=0; i<nblock; i++) {
         //cout << nNeighborBlock[i] <<  ", ";
-        fNeighborBlock.write((char*)&neighborBlockId[i*maxNeighborBlock], nNeighborBlock[i]*sizeof(PosInt));
+        Size nn = (nNeighborBlock[i] > nearNeighborBlock)? nearNeighborBlock: nNeighborBlock[i]; // sorted, only choose the nearest nearNeighborBlock blocks
+        fNeighborBlock.write((char*)&neighborBlockId[i*maxNeighborBlock], nn*sizeof(PosInt));
     }
     //cout << "\n";
     fNeighborBlock.close();
 
+    //TODO: generate conMat concurrently
     //shared_mem = neuronPerBlock*sizeof(Float) + neuronPerBlock*sizeof(Float) + neuronPerBlock*sizeof(Size);
     Size current_nblock;
     PosInt offset = 0; // memory offset
     for (PosInt iChunk = 0; iChunk < nChunk+1; iChunk++) {
         if (iChunk < nChunk) current_nblock = maxChunkSize;
         else current_nblock = remainChunkSize;
+        size_t current_matSize = static_cast<size_t>(current_nblock)*nearNeighborBlock*neuronPerBlock*neuronPerBlock*sizeof(Float);
+	    checkCudaErrors(cudaMemset(d_conMat, 0, current_matSize)); // initialize for each chunk
 		cout << "generate_connections<<<" << current_nblock << ", " << neuronPerBlock << ">>>\n";
         generate_connections<<<current_nblock, neuronPerBlock>>>(
             d_pos,
@@ -499,12 +503,12 @@ int main(int argc, char *argv[])
 	    	d_preType, d_feature,
 	    	dden, daxn,
 	    	state,
-	    	offset, networkSize, maxDistantNeighbor, nearNeighborBlock, maxNeighborBlock, speedOfThought, nType, nFeature, gaussian_profile);
+	    	offset, networkSize, maxDistantNeighbor, nearNeighborBlock, maxNeighborBlock, nType, nFeature, gaussian_profile);
 	    getLastCudaError("generate_connections failed");
-        offset += current_nblock*neuronPerBlock;
+        //offset += current_nblock*neuronPerBlock;
+        offset += current_nblock; // offset is block_offset
 
-        size_t current_matSize = current_nblock*nearNeighborBlock*neuronPerBlock*neuronPerBlock*sizeof(Float);
-	    checkCudaErrors(cudaMemcpy(conMat, d_conMat, 2*current_matSize, cudaMemcpyDeviceToHost)); 	
+	    checkCudaErrors(cudaMemcpy(conMat, d_conMat, 2*current_matSize, cudaMemcpyDeviceToHost)); // con and delay both copied
         // output connectome data
         fV1_conMat.write((char*)conMat, current_matSize);
         fV1_delayMat.write((char*)delayMat, current_matSize);
@@ -531,7 +535,12 @@ int main(int argc, char *argv[])
     fStats.write((char*)preTypeAvail, nType*networkSize*sizeof(Size));
     fStats.write((char*)preTypeStrSum, nType*networkSize*sizeof(Float));
     fStats.close();
-
+    
+    cout << "number of connections: \n";
+    for (PosInt i=0; i<nType; i++) {
+        cout << "[" << *min_element(preTypeConnected+i*networkSize, preTypeConnected+(i+1)*networkSize) << ", " << accumulate(preTypeConnected+i*networkSize, preTypeConnected+(i+1)*networkSize, 0)/networkSize << ", " << *max_element(preTypeConnected+i*networkSize, preTypeConnected+(i+1)*networkSize) <<"]\n";
+    }
+    
 	checkCudaErrors(cudaDeviceSynchronize());
     checkCudaErrors(cudaFree(gpu_chunk));
 	free(cpu_chunk);

@@ -5,6 +5,7 @@
 #include "../CUDA_MACRO.h"
 #include "../types.h"
 
+
 // 1D
 template <typename T>
 __global__ void init(T *array, T value, PosInt nData) {
@@ -25,7 +26,8 @@ __device__ void warps_reduce(T array[], T data, PosInt tid, Size n) {
     if (n % warpSize != 0 && iWarp == n/warpSize) {
         // get the ceil power of 2 for the last warp
         n = n % warpSize; // remaining element in the last warp
-        Size width = 2;
+        //Size width = 2;
+        width = 2;
         n--;
         while(n >>= 1) width <<=1;
     }

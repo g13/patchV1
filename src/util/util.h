@@ -29,7 +29,7 @@ inline Float get_rand_from_gauss(Float p[], std::default_random_engine &rGen, st
 	return v;
 }
 
-inline std::pair<Float, Float> get_rands_from_correlated_gauss(Float p1[], Float p2[], Float rho, Float rho_comp, std::default_random_engine &rGen1, std::default_random_engine &rGen2, std::function<bool(Float)> &outOfBound1, std::function<bool(Float)> &outOfBound2) {
+inline std::pair<Float, Float> get_rands_from_correlated_gauss(Float p1[], Float p2[], Float rho, Float rho_comp, std::default_random_engine &rGen1, std::default_random_engine &rGen2, std::function<bool(Float)> &outOfBound1, std::function<bool(Float)> &outOfBound2, std::function<bool(Float, Float)> &relation) {
     static std::normal_distribution<Float> norm(0.0, 1.0);
     Float rand1, rand2, v1, v2;
 	//Size count = 0;
@@ -55,7 +55,7 @@ inline std::pair<Float, Float> get_rands_from_correlated_gauss(Float p1[], Float
 		//if (count > 20) {
 		//	assert(count <= 20);
 		//}
-    } while (outOfBound2(v2));
+    } while (outOfBound2(v2) || relation(v1,v2));
     return std::make_pair(v1, v2);
 }
 
@@ -155,6 +155,7 @@ std::vector<std::vector<T>> read_listOfList(std::string filename, bool print = f
 		data.push_back(new_data);
     } while (true);
 	input_file.close();
+    if (print) print_listOfList<T>(data);
 	return data;
 } 
 
@@ -202,10 +203,19 @@ void read_listOfListToArray(std::string filename, T* &array, Size &maxList, bool
     input_file.read(reinterpret_cast<char*>(&maxList), sizeof(Size));
     size_t arraySize = nList*maxList;
     array = new T[arraySize];
+    std::cout << "#\n"; 
     for (PosInt i=0; i<nList; i++) {
         Size listSize;
         input_file.read(reinterpret_cast<char*>(&listSize), sizeof(Size));
 		input_file.read(reinterpret_cast<char*>(&array[i*maxList]), listSize * sizeof(T));
+        if (print) {
+            std::cout << i << ": ";
+            for (PosInt j=0; j<listSize; j++) {
+                std::cout << array[i*maxList + j];
+                if (j == listSize-1) std::cout << "\n";
+                else std::cout << ", ";
+            }
+        }
     }
 	input_file.close();
 } 
@@ -264,18 +274,5 @@ std::pair<T, T> array_minmax(T* v, size_t n) {
         }
     }
     return std::make_pair(min, max);
-}
-
-template <typename T>
-T array_max(T* v, size_t n) {
-    T max;
-    assert(n>0);
-    max = v[0];
-    for (PosInt i=1; i<n; i++) {
-        if (v[i] > max) {
-            max =  v[i];
-        }
-    }
-    return max;
 }
 #endif

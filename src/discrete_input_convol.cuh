@@ -12,6 +12,8 @@
 #include "DIRECTIVE.h"
 #include "LGN_props.cuh"
 #include "types.h"
+#include "CONST.h"
+#include "condShape.h"
 #include "util/cuda_util.cuh"
 
 // block_reduce works fine when block is not fully occupied
@@ -23,6 +25,12 @@ void testTexture(Float L, Float M, Float S);
 __global__
 void cudaMemsetNonzero(Float* array, Size n, Float value);
 
+__device__
+__forceinline__
+Float get_spike(Size &nsp, Float &leftTimeRate, Float &lastNegLogRand, Float dt, Float rate, curandStateMRG32k3a *state);
+
+//template<int ntimes> extern
+__launch_bounds__(1024, 2)
 __global__ 
 void LGN_nonlinear(
         Size nLGN,
@@ -30,18 +38,18 @@ void LGN_nonlinear(
         Float* __restrict__ max_convol,
         Float* __restrict__ current_convol,
         Float* __restrict__ LGN_fr,
-        PosInt* __restrict__ sx,
-        PosInt* __restrict__ sy,
+        Float* __restrict__ LGN_sInfo,
+        int* __restrict__ sx,
+        int* __restrict__ sy,
         Float* __restrict__ leftTimeRate,
         Float* __restrict__ lastNegLogRand,
 		curandStateMRG32k3a* __restrict__ state,
-        Float dt
+        Float* __restrict__ lVar,
+        int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning, bool learnData_FF
 );
 
 __global__
-void store(// weights and max convolution
-        Float* __restrict__ max_convol,
-
+void store_parvo(// weights and max convolution
         Temporal_component &temporal,
         Float* __restrict__ TW_storage,
         SmallSize nKernelSample,
@@ -51,17 +59,28 @@ void store(// weights and max convolution
         Spatial_component &spatial,
         Float* __restrict__ SW_storage,
         float* __restrict__ SC_storage,
-		Size nLGN_L,
+		Size nParvo_L, Size nMagno_L, Size nLGN,
 		Float L_x0,
 		Float L_y0,
 		Float R_x0,
 		Float R_y0,
 		Float normViewDistance,
-        Float nsig // span of spatialRF sample in units of std
+        Float nsig, // span of spatialRF sample in units of std
+        bool uniform_retina
+);
+
+__launch_bounds__(1024, 2)
+__global__
+void parvo_maxConvol(
+        Spatial_component &spatial,
+        Float* __restrict__ TW_storage,
+        Float* __restrict__ covariant,
+        Float* __restrict__ max_convol,
+        Size nSample1D, Size nParvo_L, Size nMagno_L, Size nLGN, SmallSize nKernelSample, Float kernelSampleDt, Float nsig
 );
 
 __global__ 
-void LGN_convol_c1s(
+void LGN_convol_parvo(
         Float* __restrict__ luminance,
         Float* __restrict__ SW_storage,
         float* __restrict__ SC_storage,
@@ -70,7 +89,7 @@ void LGN_convol_c1s(
         Float* __restrict__ contrast,
         SmallSize* __restrict__ coneType,
         Spatial_component &spatial,
-		Size nLGN_L,
+		Size nParvo_L, Size nMagno_L, Size nLGN,
 		Float normViewDistance,
         PosInt currentFrame,
         Size maxFrame,
