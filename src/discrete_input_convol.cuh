@@ -49,7 +49,7 @@ void LGN_nonlinear(
 );
 
 __global__
-void store(// weights and max convolution
+void store_parvo(// weights and max convolution
         Temporal_component &temporal,
         Float* __restrict__ TW_storage,
         SmallSize nKernelSample,
@@ -59,7 +59,7 @@ void store(// weights and max convolution
         Spatial_component &spatial,
         Float* __restrict__ SW_storage,
         float* __restrict__ SC_storage,
-		Size nLGN_L,
+		Size nParvo_L, Size nMagno_L, Size nLGN,
 		Float L_x0,
 		Float L_y0,
 		Float R_x0,
@@ -71,16 +71,16 @@ void store(// weights and max convolution
 
 __launch_bounds__(1024, 2)
 __global__
-void get_maxConvol(
+void parvo_maxConvol(
         Spatial_component &spatial,
         Float* __restrict__ TW_storage,
         Float* __restrict__ covariant,
         Float* __restrict__ max_convol,
-        Size nSample1D, Size nLGN, SmallSize nKernelSample, Float kernelSampleDt, Float nsig
+        Size nSample1D, Size nParvo_L, Size nMagno_L, Size nLGN, SmallSize nKernelSample, Float kernelSampleDt, Float nsig
 );
 
 __global__ 
-void LGN_convol_c1s(
+void LGN_convol_parvo(
         Float* __restrict__ luminance,
         Float* __restrict__ SW_storage,
         float* __restrict__ SC_storage,
@@ -89,7 +89,7 @@ void LGN_convol_c1s(
         Float* __restrict__ contrast,
         SmallSize* __restrict__ coneType,
         Spatial_component &spatial,
-		Size nLGN_L,
+		Size nParvo_L, Size nMagno_L, Size nLGN,
 		Float normViewDistance,
         PosInt currentFrame,
         Size maxFrame,

@@ -217,8 +217,9 @@ void vf_pool_CUDA( // for each eye
     __shared__ Float sx[blockSize]; 
     __shared__ Float sy[blockSize]; 
     Size V1_id = i0 + blockDim.x*blockIdx.x + threadIdx.x;
-    Size nPatch = (m + blockSize - 1)/blockSize;
-    Size nRemain = m%blockSize;
+    Size nPatch = (m + blockSize - 1)/blockDim.x;
+    Size nRemain = m%blockDim.x;
+	if (nRemain == 0) nRemain = blockDim.x;
     assert((nPatch-1)*blockSize + nRemain == m);
     curandStateMRG32k3a rGen;
     Float V1_x, V1_y, r;
@@ -242,11 +243,11 @@ void vf_pool_CUDA( // for each eye
         // load LGN pos to __shared__
         Size nLGN;
         if (iPatch < nPatch - 1 || threadIdx.x < nRemain) {
-            Size LGN_id = j0 + iPatch*blockSize + threadIdx.x;
+            Size LGN_id = j0 + iPatch*blockDim.x + threadIdx.x;
             sx[threadIdx.x] = x0[LGN_id];
             sy[threadIdx.x] = y0[LGN_id];
             if (iPatch < nPatch - 1) {
-                nLGN = blockSize;
+                nLGN = blockDim.x;
             } else {
                 nLGN = nRemain;
             }
@@ -254,20 +255,21 @@ void vf_pool_CUDA( // for each eye
         __syncthreads();
         // check for distance
         if (V1_id < i0+n) {
+			#pragma unroll (16)
             for (Size i = 0; i < nLGN; i++) {
                 Size iLGN = (threadIdx.x + i)%nLGN;
                 Float dis = get_distance(sx[iLGN]-V1_x, sy[iLGN]-V1_y);
                 if (dis < r) {
-                    PosInt LGN_id = j0 + iPatch*blockSize + iLGN;
+                    PosInt LGN_id = j0 + iPatch*blockDim.x + iLGN;
                     PosIntL pid = static_cast<PosIntL>(V1_id)*maxLGNperV1pool + iPool;
                     poolList[pid] = LGN_id;
                     if (LGN_id >= j0+m) {
-                        printf("LGN_id:%u < %u\n", LGN_id, j0+m); 
+                        printf("%u/%u, LGN_id:%u < %u\n", iPatch, nPatch, LGN_id, j0+m); 
                         assert(LGN_id < j0+m);
                     }
                     iPool++;
                     if (iPool > maxLGNperV1pool) {
-                        printf("V1_id:%u, r = %f\n", V1_id, r);
+                        printf("%u/%u, V1_id:%u, dis:%f < r:%f\n", iPatch, nPatch, V1_id, dis, r);
                         assert(iPool <= maxLGNperV1pool);
                     }
                 }

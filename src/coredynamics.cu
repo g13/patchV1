@@ -85,6 +85,7 @@ Float step(LIF* lif, Float dt, Float tRef, PosInt id, Float gE, Float gI) {
     #endif
     if (lif->spikeCount > 0) sInfo /= lif->spikeCount*dt; //decimal part: tsp (normalize by dt)
     sInfo += lif->spikeCount; // integer part: nsp
+    assert(sInfo == 0 || (sInfo >= 1 && sInfo < 2));
     __syncwarp();
     return sInfo;
 }
@@ -209,7 +210,7 @@ void recal_G_vec(
             #pragma unroll 2
             for (PosInt k = 0; k < 2; k++) {
                 Float sInfo = spikeTrain[i0+i][j][k0+k];
-                if (sInfo >= 0) {
+                if (sInfo > 0) {
                     Float nsp = flooring(sInfo);
                     Float tsp = (sInfo - nsp + k)*dt - time2post;
                     if (tsp < dt && tsp >= 0){
@@ -322,7 +323,7 @@ void compute_V_collect_spike_learnFF(
             int y = LGN_idy[lid];
             Float sInfo;
             surf2DLayeredread(&sInfo, LGNspikeSurface, 4*x, y, 0);
-            Float nsp = flooring(sInfo); // integer part: #spikes - 1
+            Float nsp = flooring(sInfo); // integer part: #spikes
             Float tsp = sInfo - nsp; // decimal part: normalized mean tsp
             //nsp_FFt += nsp;
             if (nsp > 0) {
@@ -368,6 +369,10 @@ void compute_V_collect_spike_learnFF(
     // step
     Float sInfo = step(&lif, dt, tRef, /*the last 3 args are for deugging*/ tid, gE_t1, gI_t1);
     spikeTrain[nV1*currentTimeSlot + tid] = sInfo;
+    if (sInfo > 0) {
+        Size nsp = flooring(sInfo);
+        printf("%u: spiked at sInfo: %u + %f\n", tid, nsp, sInfo - nsp);
+    }
 	v[tid] = lif.v;
     tBack[tid] = lif.tBack;
     if (learning) {
@@ -403,8 +408,8 @@ void compute_V_collect_spike_learnFF(
         }
         if (nsp > 0) {
             if (learning !=3) { // E and Q are active, read cortical lVar and AvgE if previouly not read
-                // E
                 if (threadIdx.x < nE) {
+                    // E
                     #pragma unroll max_nLearnTypeE
                     for (PosInt i=0; i<learnE.n; i++) {
                         lE[3*i+0] = vLTP_E[(nE*gridDim.x*trainDepth*i + nE*gridDim.x*currentTimeSlot + eid)*2];
@@ -754,7 +759,10 @@ void recal_G_mat(
                 }
                 PosInt it2post = static_cast<PosInt>(ceiling(time2post/dt));
                 time2post = it2post*dt - time2post;
-                assert(time2post>=0);
+                if (time2post < 0) {
+                    printf("time2post = %e, it2post*dt = %e\n", time2post, it2post);
+                    assert(time2post>=0);
+                }
                 assert(time2post<dt);
                 PosInt j0 = currentTimeSlot - it2post + trainDepth;
                 //|<-   it2post               ->|
@@ -769,7 +777,7 @@ void recal_G_mat(
                     // from older to newer
                     PosInt isp = nV1*((j0 + j)%trainDepth) + ipre;
                     Float sInfo = spikeTrain[isp];
-                    if (sInfo >= 0) { // could fire at the instant t = t_i
+                    if (sInfo > 0) { // could fire at the instant t = t_i
                         Float nsp = flooring(sInfo);
                         Float tsp = (sInfo - nsp + j)*dt - time2post;
 			    	    // DEBUG
@@ -803,9 +811,10 @@ void recal_G_mat(
             lAvgE += postNsp;
             decay(lAvgE, lE.tau[3*lE.n], delta_t);
             vAvgE[eid*2] = lAvgE;
+            //
             if (postNsp > 0) {
                 printf("lAvgE:%e of %u, eid:%u is updated\n", lAvgE, ipost, eid);
-            }
+            }//
             /*
             #pragma unroll (max_nLearnTypeE)
             for (PosInt i=0; i<lE.n; i++) {
