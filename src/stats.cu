@@ -7,11 +7,11 @@ void pixelizeOutput(
         Float* __restrict__ output,
         PosInt* __restrict__ pid, 
 		Size* __restrict__ m, // within one pixel
-		Size nPerPixel_I, Size nPerPixel_C, Size nPixel_I, Size nPixel, Size n, bool debug)
+		Size nPerPixel_I, Size nPerPixel_C, Size nPixel_I, Size nPixel, Size n, Float odt)
 {
 	PosInt tid = blockDim.x*blockIdx.x + threadIdx.x;
 	if (tid < nPixel) {
-		Size m_local = m[tid];
+		Size m_local = m[tid]*odt;
 		Float value = 0;
 		if (m_local > 0) {
 			Size nPerPixel = tid < nPixel_I? nPerPixel_I: nPerPixel_C;
@@ -23,7 +23,7 @@ void pixelizeOutput(
 				PosInt id = pid[offset + i];
 				Float sInfo = fr[id];
 				if (sInfo >= 0) {
-					value += flooring(sInfo) + 1;
+					value += flooring(sInfo);
                     #ifdef DEBUG
                         if (id == 0) {
                             printf("i fired, sInfo = %f\n", sInfo);

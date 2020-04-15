@@ -369,10 +369,11 @@ void compute_V_collect_spike_learnFF(
     // step
     Float sInfo = step(&lif, dt, tRef, /*the last 3 args are for deugging*/ tid, gE_t1, gI_t1);
     spikeTrain[nV1*currentTimeSlot + tid] = sInfo;
+    /*DEBUG
     if (sInfo > 0) {
         Size nsp = flooring(sInfo);
         printf("%u: spiked at sInfo: %u + %f\n", tid, nsp, sInfo - nsp);
-    }
+    }*/
 	v[tid] = lif.v;
     tBack[tid] = lif.tBack;
     if (learning) {
@@ -811,10 +812,10 @@ void recal_G_mat(
             lAvgE += postNsp;
             decay(lAvgE, lE.tau[3*lE.n], delta_t);
             vAvgE[eid*2] = lAvgE;
-            //
+            /* DEBUG
             if (postNsp > 0) {
                 printf("lAvgE:%e of %u, eid:%u is updated\n", lAvgE, ipost, eid);
-            }//
+            }*/
             /*
             #pragma unroll (max_nLearnTypeE)
             for (PosInt i=0; i<lE.n; i++) {

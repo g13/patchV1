@@ -324,9 +324,17 @@ void store_spatialWeight_parvo(
                 //assert(y<=1);
             }
         //
+        /* DEBUG
+        if (blockIdx.x == 0 && blockIdx.y == 0) {
+            Float x0 = normViewDistance * cosine(centerPolar);
+            Float y0 = normViewDistance * sine(centerPolar);
+            Float x1 = LR_x0 + x0 * centerEcc + w * normViewDistance;
+            Float y1 = LR_y0 + y0 * centerEcc + h * normViewDistance;
+            printf("x:%e->%e; dx:%e,%e\n", x1, x, x1-(LR_x0 + x0*centerEcc), x-(LR_x0 + tanEcc * x0));
+        }*/
     } else {
-        x = LR_x0 + centerEcc * cosine(centerPolar) + w;
-        y = LR_x0 + centerEcc * sine(centerPolar) + h;
+        x = LR_x0 + (centerEcc * cosine(centerPolar) + w) * normViewDistance;
+        y = LR_y0 + (centerEcc * sine(centerPolar) + h) * normViewDistance;
         // DEBUG visual field and stimulus field not matching
             if (x<0 || x>1) {
                 printf("x = %1.15e\n", x);

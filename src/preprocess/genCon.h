@@ -52,7 +52,7 @@ void initializePreferenceFunctions(Size nFeature) {
         assert(nFunc == nFeature);
     }
     checkCudaErrors(cudaMemcpyFromSymbol(&h_pref[0], p_OD, sizeof(pFeature), 0, cudaMemcpyDeviceToHost));
-    checkCudaErrors(cudaMemcpyFromSymbol(&h_pref[1], p_pass, sizeof(pFeature), 0, cudaMemcpyDeviceToHost));
+    checkCudaErrors(cudaMemcpyFromSymbol(&h_pref[1], p_OP, sizeof(pFeature), 0, cudaMemcpyDeviceToHost));
     checkCudaErrors(cudaMemcpyToSymbol(pref, h_pref, nFunc*sizeof(pFeature), 0, cudaMemcpyHostToDevice));
 }
 
