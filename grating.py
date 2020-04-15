@@ -14,7 +14,7 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
     c1, c2: the two opposite color in rgb values
     sharpness:  y = A/(1+exp(-sharpness*(x-0.5)) + C, y=x when sharpness = 0
     buffer_ecc: buffering area, to avoid border problems in texture memory accesses
-    frame from 2 visual fields: 2(ecc+buffer_ecc) x 2(ecc+buffer_ecc) (width x height)
+    frame from 2 visual fields: (ecc+2*buffer_ecc) x 2(ecc+buffer_ecc+buffer_ecc(unused)) (width x height)
     each has a temporal axis: [-buffer_ecc, ecc], and vertical axis [-ecc-buffer_ecc, ecc+buffer_ecc] in degree
     """
     if np.mod(npixel,2) != 0:
@@ -35,7 +35,7 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
     c1 = np.reshape(c1[::-1],(1,3))
     c2 = np.reshape(c2[::-1],(1,3))
 
-    X, Y = meshgrid((np.linspace(0,1,a)*(ecc+buffer_ecc)-buffer_ecc)*np.pi/180,np.linspace(-1,1,b)*(ecc+buffer_ecc)*np.pi/180)
+    X, Y = meshgrid((np.linspace(0,1,a)*(ecc+2*buffer_ecc)-buffer_ecc)*np.pi/180,np.linspace(-1,1,b)*(ecc+2*buffer_ecc)*np.pi/180)
 
     print(f'sharpness={sharpness}')
     @logistic(sharpness)
