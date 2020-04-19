@@ -10,6 +10,7 @@ rm -f discrete_convol.o
 rm -f cuda_util.o
 rm -f coredynamics.o
 rm -f stats.o
+rm -f condShape.o
 
 sm=sm_60
 

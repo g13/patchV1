@@ -370,7 +370,7 @@ void compute_V_collect_spike_learnFF(
     Float sInfo = step(&lif, dt, tRef, /*the last 3 args are for deugging*/ tid, gE_t1, gI_t1);
     spikeTrain[nV1*currentTimeSlot + tid] = sInfo;
     /*DEBUG
-    if (sInfo > 0) {
+    if (sInfo > 0 && threadIdx.x == 0) {
         Size nsp = flooring(sInfo);
         printf("%u: spiked at sInfo: %u + %f\n", tid, nsp, sInfo - nsp);
     }*/
@@ -514,21 +514,6 @@ void compute_V_collect_spike_learnFF(
             for (PosInt i = 0; i<m; i++) {
                 PosInt lid = tid*max_nLGN + i;
                 Float f = sLGN[lid];
-                if (threadIdx.x < nE) {
-                   if (f <= learnE_post.gmin) {
-                        continue;
-                   }
-                   if (f >= learnE_post.gmax) {
-                       continue;
-                   }
-                } else {
-                   if (f <= learnI_post.gmin) {
-                       continue;
-                   }
-                   if (f >= learnI_post.gmax) {
-                       continue;
-                   }
-                }
                 int x = LGN_idx[lid];
                 int y = LGN_idy[lid];
                 Float sInfo_FF;
@@ -551,7 +536,18 @@ void compute_V_collect_spike_learnFF(
                         for (PosInt i=0; i<learnE_pre.n; i++) {
                             Float A_LTD = learnE_post.A_ratio[i] * learnE_pre.tauLTP[i] * lAvg[cPick] * lAvg[cPick]/ 0.008;
                             //Float A_LTD = learnFF_E.A_LTP[i]; TODO: alternative homeostatic design
+                            /*debug
+							if (threadIdx.x == 0) {
+                                printf("%u, A_LTD: %e = %e*%e*%e^2/8\n", lid, A_LTD, learnE_post.A_ratio[i], learnE_pre.tauLTP[i], lAvg[cPick]);
+								printf("%u, old_f: %e\n", lid, f);
+                            }*/
                             f -= if_decay(lFF[cPick*max_nLearnTypeFF*2 + 2*i+0], learnE_post.tau[2*i+0], delta_t) * A_LTD;
+                            /*debug
+							if (threadIdx.x == 0) {
+								printf("%u, new_f: %e\n", lid, f);
+								Float df = if_decay(lFF[cPick*max_nLearnTypeFF*2 + 2*i+0], learnE_post.tau[2*i+0], delta_t) * A_LTD;
+								printf("%u, df %e = %e*%e\n", lid, df, if_decay(lFF[cPick*max_nLearnTypeFF*2 + 2*i+0], learnE_post.tau[2*i+0], delta_t), A_LTD);
+							}*/
                         }
                     } else {
                         #pragma unroll max_nLearnTypeFF_I
@@ -577,13 +573,15 @@ void compute_V_collect_spike_learnFF(
                         for (PosInt i=0; i<learnE_pre.n; i++) {
                             Float lFF_pre;
                             surf2DLayeredread(&lFF_pre, LGNspikeSurface, 4*x, y, 1+3*i+fPick);
-                            //if (tid == 2634) {
-                            //    printf("f = %e\n", f);
-                            //}
+                            /*debug
+                            if (tid == 0) {
+                                printf("%u, old_f = %e, lFF_pre = %e\n", lid, f, lFF_pre);
+                            }*/
                             f += if_decay(lFF_pre, learnE_pre.tauLTP[i], delta_t) * lFF[max_nLearnTypeFF*2 + 2*i+1] * learnE_post.A_LTP[i];
-                            //if (tid == 2634) {
-                            //    printf("f:%e += %e*%e*%e\n", f, if_decay(lFF_pre, learnE_pre.tauLTP[i], delta_t), lFF[max_nLearnTypeFF*2 + 2*i+1], learnE_post.A_LTP[i]);
-                            //}
+                            /*debug
+                            if (tid == 0) {
+                                printf("%u, new_f:%e += %e*%e*%e\n", lid, f, if_decay(lFF_pre, learnE_pre.tauLTP[i], delta_t), lFF[max_nLearnTypeFF*2 + 2*i+1], learnE_post.A_LTP[i]);
+                            }*/
                         }
                     } else {
                         if (learnI_pre.n) {
@@ -629,7 +627,7 @@ void compute_V_collect_spike_learnFF(
                     decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+1], learnE_post.tau[2*i+1], delta_t);
                 }
                 if (learning == 3) { // no E, only FF_E, otherwise to be used again and update in recal_G
-                    lAvg[cPick] += nsp;
+                    lAvg[cPick] += nsp/learnE_post.tau[2*learnE_post.n];
                     decay(lAvg[cPick], learnE_post.tau[2*learnE_post.n], delta_t);
                 }
             } else {
@@ -641,7 +639,7 @@ void compute_V_collect_spike_learnFF(
                         decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+0], learnI_post.tau[2*i+0], delta_t);
                         decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+1], learnI_post.tau[2*i+1], delta_t);
                     }
-                    lAvg[cPick] += nsp;
+                    lAvg[cPick] += nsp/learnI_post.tau[2*learnI_post.n];
                     decay(lAvg[cPick], learnI_post.tau[2*learnI_post.n], delta_t);
                 }
             }

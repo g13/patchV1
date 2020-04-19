@@ -30,6 +30,10 @@ exist_data = False
 dpi = 2000
 if exist_data:
     with open('LGN_surfaceID.bin', 'rb') as f:
+        ids = np.fromfile(f, 'u4', count = 2)
+        xmax_id = ids[0]
+        ymax_id = ids[1]
+        pos_ind = np.fromfile(f)
         xs = np.fromfile(f, 'f8', count = 3)
         xmin = xs[0]
         mid = xs[1]
@@ -37,10 +41,6 @@ if exist_data:
         ys = np.fromfile(f, 'f8', count = 2)
         ymin = ys[0]
         ymax = ys[1]
-        ids = np.fromfile(f, 'u4', count = 2)
-        xmax_id = ids[0]
-        ymax_id = ids[1]
-        pos_ind = np.fromfile(f)
         pos_ind_fill = np.fromfile(f, dtype=bool)
     
 else:
@@ -77,7 +77,7 @@ else:
     
     nLGN = nL + nR
     print(f'nLGN {nLGN} = {nL} + {nR}')
-    pos_ind = np.zeros((2,nLGN), dtype = 'u4')
+    pos_ind = np.zeros((2,nLGN), dtype = 'i4')
     pos_ind_fill = np.zeros(nLGN, dtype = bool)
     
     fig = plt.figure('surface_chop', dpi = dpi)
@@ -166,6 +166,9 @@ else:
                 pos_ind[1,ind_x[ind][ind1]] = len(y[iy])-2
                 pos_ind_fill[ind_x[ind][ind1]] = True
                 idy[iy].append(ind_x[ind][ind1])
+                if 'other' in locals():
+                    if len(y[iy]) - 2 < ymin_id:
+                        ymin_id = len(y[iy]) - 2
                 assert(len(x)-2 >= 0)
                 assert(len(y[iy])-2 >= 0)
                 if breaked0:
@@ -176,6 +179,9 @@ else:
                 pos_ind[1,ind_x[ind]] = len(y[iy])-2
                 pos_ind_fill[ind_x[ind]] = True
                 idy[iy].append(ind_x[ind])
+                if 'other' in locals():
+                    if len(y[iy]) - 2 < ymin_id:
+                        ymin_id = len(y[iy]) - 2
             else:
                 assert(m==0)
                 assert(len(ind)==0)
@@ -199,8 +205,8 @@ else:
             break
         print(f'# of rows: {len(y[iy])}')
         if len(x) > 2 and len(y[iy]) > len(y[iy-1]) and not new:
-            print(f'{len(y[iy])} <= {len(y[iy-1])}')
-            break
+            print(f'{len(y[iy])} <= {len(y[iy-1])}, don''t break')
+            #break
         if new:
             new = False
         if belonged < n:
@@ -222,15 +228,17 @@ else:
             print('new')
             new = True
             other = len(y)
+            ymin_id = np.max(pos_ind[1,:])
             
         stdout.write(f'\r progress: {total_belonged}/{nLGN}\n')
         #r0 = r1
     assert(total_belonged == nLGN)
     assert(pos_ind_fill.all())
     
+    xmin_id = np.min(pos_ind[0,:])
     xmax_id = np.max(pos_ind[0,:])
-    xmin_id = np.max(pos_ind[0,:])
     ymax_id = np.max(pos_ind[1,:])
+
     print(f'xid range: {[xmin_id, xmax_id]}')
     assert(np.min(pos_ind[0,:]) >= 0)
     assert(np.min(pos_ind[1,:]) >= 0)
@@ -238,8 +246,7 @@ else:
     iy = np.argmax([len(col) for col in y]) - 1 # n = lines-1
     n_max = len(y[iy])
     assert(ymax_id <= n_max-1) # max id = n-1
-    assert(ymax_id == pos_ind[1,idy[iy][-1]]) # max id = n-1
-    ymin_id = pos_ind[1,idy[iy][0]]
+
     print(f'yid range: {[ymin_id, ymax_id]}')
     
     # adjust id to get a smaller footprint
@@ -251,6 +258,7 @@ else:
                 for k in range(len(idy[i])):
                     pos_ind[1, idy[i][k]] = pos_ind[1, idy[i][k]] + n0
     pos_ind[1,:] = pos_ind[1,:] - ymin_id
+
 assert(np.min(pos_ind[0,:]) == 0)
 assert(np.min(pos_ind[1,:]) == 0)
 
@@ -293,9 +301,10 @@ ax.plot(pos[0,np.logical_not(pos_ind_fill)], pos[1,np.logical_not(pos_ind_fill)]
 
 ax.set_aspect('equal')
 fig.savefig('LGNsurface_grid.png', dpi = dpi)
-with open('LGN_surfaceID.bin', 'wb') as f:
-    np.array([xmax_id, ymax_id]).astype('u4').tofile(f)
-    pos_ind.tofile(f)
-    np.array([xmin, mid, xmax]).tofile(f)
-    np.array([ymin, ymax]).tofile(f)
-    pos_ind_fill.tofile(f)
+if not exist_data:
+    with open('LGN_surfaceID.bin', 'wb') as f:
+        np.array([xmax_id, ymax_id]).astype('u4').tofile(f)
+        pos_ind.tofile(f)
+        np.array([xmin, mid, xmax]).tofile(f)
+        np.array([ymin, ymax]).tofile(f)
+        pos_ind_fill.tofile(f)
