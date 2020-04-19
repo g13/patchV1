@@ -138,7 +138,7 @@ void learnFF_post(T &l, Float tauLTD[], Float tauTrip[], Float tauAvg, Float A_L
         l.tau[2*i+0] = tauLTD[i];
         l.tau[2*i+1] = tauTrip[i];
         l.A_LTP[i] = A_LTP[i];
-        l.A_ratio[i] = tauTrip[i]*A_LTP[i]/(tauLTD[i]*(tauAvg*tauAvg)); // * tauLTP * filtered spike avg^2 / target firing rate = A_LTD
+        l.A_ratio[i] = tauTrip[i]*A_LTP[i]/tauLTD[i]; // * tauLTP * filtered spike avg^2 / target firing rate = A_LTD
     }
     l.tau[2*n] = tauAvg;
     l.gmax = gmax;

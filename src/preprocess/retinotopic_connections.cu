@@ -41,7 +41,7 @@ void LR2original(vector<T> &seqByLR, vector<T> &original, vector<Int> LR, Size n
 vector<vector<Float>> retinotopic_connection(
         vector<vector<Size>> &poolList,
         RandomEngine &rGen,
-        const Float p_n_LGNeff,
+        Float p_n_LGNeff,
         const Size n,
 		const pair<vector<Float>, vector<Float>> &cart, // V1 VF position (tentative)
         const pair<vector<Float>,vector<Float>> &cart0, // LGN VF position
@@ -114,12 +114,16 @@ vector<vector<Float>> retinotopic_connection(
 			}
 			// construct pooled LGN neurons' connection to the V1 neuron
 			vector<Float> strengthList;
+            bool percentOrNumber = p_n_LGNeff < 0;
+            if (percentOrNumber) {
+                p_n_LGNeff = -p_n_LGNeff; 
+            }
             if (SimpleComplex == 0) {
 			    RF->setup_param(m, sfreq[i], phase[i], modAmp_nCon[i], theta[i], a[i], baRatio[i], RefType[i]);
-			    m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen, p_n_LGNeff*1.0, p_n_LGNeff < 0);
+			    m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen, p_n_LGNeff*1.0, percentOrNumber);
             } else {
 			    RF->setup_param(m, sfreq[i], phase[i], 1.0, theta[i], a[i], baRatio[i], RefType[i]);
-			    m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen, p_n_LGNeff*modAmp_nCon[i], p_n_LGNeff < 0);
+			    m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen, p_n_LGNeff*modAmp_nCon[i], percentOrNumber);
             }
 			srList.push_back(strengthList);
 			if (m > 0) { 
@@ -451,7 +455,7 @@ int main(int argc, char *argv[]) {
 
 	po::options_description input_opt("input options");
 	input_opt.add_options()
-		("p_n_LGNeff", po::value<Float>(&p_n_LGNeff)->default_value(10), "LGN conneciton probability [0,1], or number of connections [0,n]")
+		("p_n_LGNeff", po::value<Float>(&p_n_LGNeff)->default_value(10), "LGN conneciton probability [-1,0], or number of connections [0,n]")
 		("LGN_V1_RFratio,r", po::value<Float>(&LGN_V1_RFratio)->default_value(1.0), "LGN's contribution to the total RF size")
 		("maxLGNperV1pool,m", po::value<Size>(&maxLGNperV1pool)->default_value(100), "maximum pooling of LGN neurons per V1 neuron")
 		("SimpleComplex", po::value<Int>(&SimpleComplex)->default_value(0), "determine how simple complex is implemented, through modulation modAmp_nCon(0) or number of LGN connection(1)")
@@ -760,7 +764,8 @@ int main(int argc, char *argv[]) {
     }
 	cout << "V1 RF properties ready.\n";
 
-    assert(p_n_LGNeff > 0);
+    assert(p_n_LGNeff != 0);
+    assert(p_n_LGNeff >= -1);
 
 	vector<Float> sfreq = generate_sfreq(n, rGen);
 	vector<Float> cx(n);

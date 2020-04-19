@@ -1,20 +1,18 @@
-% connection heatmaps
-fLGN_vpos = 'LGN_vpos_lFF.bin'
-f_sLGN = 'sLGN.bin'
-LGN_V1_id_fn = 'LGN_V1_idList_lFF.bin';
+% connection strength heatmaps
+
+% better to choose from testLearnFF
+iV1 = 91
+
+suffix = 'lFF';
+if ~isempty(suffix)
+    suffix = ['_', suffix];
+end
+f_sLGN = ['sLGN', suffix, '.bin']
+LGN_V1_id_fn = ['LGN_V1_idList', suffix, '.bin']
 
 fid = fopen(fLGN_vpos, 'r');
 nLGN = fread(fid, 1, 'uint') % # ipsi-lateral LGN 
-fread(fid, 1, 'uint'); % skip contra-lateral LGN all from the ipsi eye
-fread(fid, 1, 'float'); % skip max-ecc
-
-% not needed 
-x0 = fread(fid, 1, 'float'); % x0
-xspan = fread(fid, 1, 'float'); % xspan
-y0 = fread(fid, 1, 'float'); % y0
-yspan = fread(fid, 1, 'float'); % yspan
-LGN_x = fread(fid, nLGN, 'float');
-LGN_y = fread(fid, nLGN, 'float');
+fclose(fid);
 
 nLGN_1D = sqrt(double(nLGN))
 
@@ -40,13 +38,12 @@ nt = fread(fid, 1, 'uint');
 nV1 = fread(fid, 1, 'uint');
 max_LGNperV1 = fread(fid, 1, 'uint')
 
-% sample connection
-while iV1 > 768 % make sure is excitatory 
-    iV1 = randi(nV1, 1);
+if ~exist('iV1', 'var') 
+    % sample connection if not provided
+    while iV1 > 768 % make sure is excitatory 
+        iV1 = randi(nV1, 1);
+    end
 end
-% better to choose from testLearnFF
-iV1 = 91
-
 
 ht = round(nt/2);
 % skip times
@@ -69,13 +66,13 @@ subplot(1,3,1)
 %heatmap(sLGN(:,:,1));
 imagesc(sLGN(:,:,1)./gmax);
 colorbar;
-title('initial');
+title(['initial ', num2str(sum(sum(sLGN(:,:,1)>0)))]);
 
 subplot(1,3,2)
 %heatmap(sLGN(:,:,2));
 imagesc(sLGN(:,:,2)./gmax);
 colorbar;
-title('halfway');
+title(['halfway ', num2str(sum(sum(sLGN(:,:,2)>0)))]);
 
 subplot(1,3,3)
 %heatmap(sLGN(:,:,3)); % old matlab version may not have heatmap function
@@ -83,8 +80,8 @@ subplot(1,3,3)
 imagesc(sLGN(:,:,3)./gmax);
 %daspect([1,1,1]);
 colorbar;
-title(['final LGN->V1 #', num2str(iV1)]);
-saveas(f, ['LGN_V1_',num2str(iV1)], 'fig');
+title(['final ', num2str(sum(sum(sLGN(:,:,3)>0)))]);
+saveas(f, ['sLGN_V1-',num2str(iV1)], 'fig');
 
 disp(sum(sum(abs(sLGN(:,:,2) - sLGN(:,:,1))))); % total half change
 disp(sum(sum(abs(sLGN(:,:,3) - sLGN(:,:,1))))); % total change

@@ -1,4 +1,5 @@
 #include <fstream>
+#include <iostream>
 #include <vector>
 #include <numeric>
 #include <cuda.h>
@@ -13,7 +14,7 @@ void pixelizeOutput(
         Float* __restrict__ output,
         PosInt* __restrict__ pid, 
 		Size* __restrict__ m, // within one pixel
-		Size nPerPixel_I, Size nPerPixel_C, Size nPixel_I, Size nPixel, Size n, bool debug = false
+		Size nPerPixel_I, Size nPerPixel_C, Size nPixel_I, Size nPixel, Size n, Float odt
 );
 
 void reshape_chunk_and_write(Float chunk[], std::ofstream &fRawData, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, bool hWrite);
@@ -30,22 +31,32 @@ std::vector<std::vector<PosInt>> getUnderlyingID(T x[], T y[], Int* pick, Size n
         if (pick[i] > 0) {
             PosInt idx = static_cast<PosInt>(((x[i]-x0)/xspan)*width);
             PosInt idy = static_cast<PosInt>(((y[i]-y0)/yspan)*height);
+            if (idx == width) idx--;
+            if (idy == height) idy--;
             PosInt id = idx+idy*width;
-            assert(idy<height);
-            assert(idx<width);
+            if (idx >= width) {
+                std::cout << "x[" << i << "]: " << x[i] << ", width: " << width << ", x0: " << x0 << ", xspan: " << xspan << "\n";
+                assert(idx<width);
+            }
+            if (idy >= height) {
+                std::cout << "y[" << i << "]: " << y[i] << ", height: " << height << ", y0: " << y0 << ", yspan: " << yspan << "\n";
+                assert(idy<height);
+            }
             uid[id].push_back(i+n0);
             if (uid[id].size() > *maxPerPixel) *maxPerPixel = uid[id].size();
         }
     }
-    std::vector<bool> picked(n-n0, false);
-    for (PosInt i=0; i<height*width; i++) {
-        for (PosInt j=0; j<uid[i].size(); j++) {
-            assert(uid[i][j] >= n0);
-            assert(uid[i][j] < n0+n);
-            picked[uid[i][j]-n0] = true;
+    if (n-n0 > 0) {
+        std::vector<bool> picked(n-n0, false);
+        for (PosInt i=0; i<height*width; i++) {
+            for (PosInt j=0; j<uid[i].size(); j++) {
+                assert(uid[i][j] >= n0);
+                assert(uid[i][j] < n0+n);
+                picked[uid[i][j]-n0] = true;
+            }
         }
+        assert(std::accumulate(picked.begin(), picked.end(), 0) == checkN);
     }
-    assert(std::accumulate(picked.begin(), picked.end(), 0) == checkN);
     return uid;
 }
 

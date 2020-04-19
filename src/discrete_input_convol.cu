@@ -324,9 +324,17 @@ void store_spatialWeight_parvo(
                 //assert(y<=1);
             }
         //
+        /* DEBUG
+        if (blockIdx.x == 0 && blockIdx.y == 0) {
+            Float x0 = normViewDistance * cosine(centerPolar);
+            Float y0 = normViewDistance * sine(centerPolar);
+            Float x1 = LR_x0 + x0 * centerEcc + w * normViewDistance;
+            Float y1 = LR_y0 + y0 * centerEcc + h * normViewDistance;
+            printf("x:%e->%e; dx:%e,%e\n", x1, x, x1-(LR_x0 + x0*centerEcc), x-(LR_x0 + tanEcc * x0));
+        }*/
     } else {
-        x = LR_x0 + centerEcc * cosine(centerPolar) + w;
-        y = LR_x0 + centerEcc * sine(centerPolar) + h;
+        x = LR_x0 + (centerEcc * cosine(centerPolar) + w) * normViewDistance;
+        y = LR_y0 + (centerEcc * sine(centerPolar) + h) * normViewDistance;
         // DEBUG visual field and stimulus field not matching
             if (x<0 || x>1) {
                 printf("x = %1.15e\n", x);
@@ -345,6 +353,9 @@ void store_spatialWeight_parvo(
     SC_storage[storeID] = x; // x
                //nLGN * nType * nSample (all the x)
     SC_storage[gridDim.x*gridDim.y*nSample + storeID] = y; // y
+    if (blockIdx.x == 3 && blockIdx.y == 1) {
+		printf("%i-coord = (%1.6e, %1.6e)\n", blockDim.x*threadIdx.y + threadIdx.x, x, y);
+    }
 }
 
 //__launch_bounds__(MAX_THREADS_PER_BLOCK, MIN_BLOCKS_PER_MP)
@@ -420,6 +431,7 @@ void store_parvo(
 				shared_spat[8] = spat.rx; 
 				shared_spat[9] = spat.ry;
 			}
+            //spat.k /= dw*dh;
         }
         __syncthreads();
         // load from shared mem
@@ -630,9 +642,9 @@ void LGN_convol_parvo(
 
     // coord on the stimulus plane
     float x0C = SC_storage[storeIDC];
-    float y0C = SC_storage[gridDim.x*nSample + storeIDC];
+    float y0C = SC_storage[gridDim.x*2*nSample + storeIDC];
     float x0S = SC_storage[storeIDS];
-    float y0S = SC_storage[gridDim.x*nSample + storeIDS];
+    float y0S = SC_storage[gridDim.x*2*nSample + storeIDS];
     assert(x0S <= 1.0);
     assert(y0S <= 1.0);
     assert(x0C <= 1.0);
@@ -853,12 +865,18 @@ void LGN_convol_parvo(
                 if (saveOutputB4V1 && iPatch == nPatch && iFrame == nFrame-1 && tid ==0) {
                     contrast[nLGN+id] = reducedS[0];
                     luminance[id] = mean_I;
-					/*DEBUG
-						if (blockIdx.x == 52583) {
-							printf("contrastS = %e, mean_I = %e, local_I = %e -> lc = %e\n", reducedS[0], mean_I, local_I, local_contrast);
-						}
-					*/
                 }
+				/*DEBUG
+                if (iPatch == nPatch && iFrame == nFrame-1) {
+					if (blockIdx.x == 3) {
+                        if (tid == 0) {
+					    	printf("typeS:%u, contrastS = %e, mean_I = %e:\n", typeS, reducedS[0], mean_I);
+                        }
+                        __syncthreads();
+						printf("local_I = %i-%1.2e*%1.2e, coord = (%1.6e, %1.6e)\n", tid, local_I, spatialWeight, x0S, y0S);
+					}
+                }
+                */
 
                 // center
                 local_I = get_intensity(typeC, x0C, y0C, frameNow % maxFrame);

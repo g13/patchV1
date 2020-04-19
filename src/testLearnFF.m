@@ -1,8 +1,14 @@
-%LGN_V1_id_fn = 'LGN_V1_idList.bin';
-LGN_V1_id_fn = 'LGN_V1_idList_lFF.bin';
-nt_ = 1000; % choose time steps to plot
+nt_ = 800; % choose time steps to plot
+nsub = 3;
+suffix = 'lFF';
+if ~isempty(suffix) 
+    suffix = ['_', suffix];
+end
+learnDataFn = ['learnData_FF', suffix, '.bin']
+rawDataFn = ['rawData', suffix, '.bin']
+LGN_V1_id_fn = ['LGN_V1_idList', suffix, '.bin'];
 %%
-fid = fopen('learnData_FF.bin', 'r');
+fid = fopen(learnDataFn, 'r');
 dt = fread(fid, 1, 'float')
 nt = fread(fid, 1, 'uint')
 nLGN = fread(fid, 1, 'uint')
@@ -24,7 +30,7 @@ disp(['plotting time: ', num2str(dt*nt_)]);
 assert(max_LGNperV1 > 0);
 if rawData
     disp('will be reading from rawData for V1 spikes and gFF');
-    rid = fopen('rawData.bin', 'r');
+    rid = fopen(rawDataFn, 'r');
     % skip some constants
     fread(rid, 1, 'float')
     fread(rid, 1, 'uint') 
@@ -52,62 +58,66 @@ end
 fclose(sid);
 disp('LGN_V1 conn ID read');
 
-%% find a test neuron
-nsp = zeros(nV1,1);
-% read V1 spikes only
-for i = 1:nt_
-    if rawData 
-        V1_sInfo = fread(rid, nV1, 'float');
-        fseek(rid, (1+(1+haveH)*(ngTypeFF + ngTypeE + ngTypeI))*nV1*4, 0); % skip
-    else
-        fseek(fid, (1+nLearnTypeFF)*nLGN*4, 0); % skip
-        V1_sInfo = fread(fid, nV1, 'float');
-        skip_size = nV1 + nV1*max_LGNperV1 + 2*(nE*nLearnTypeFF_E + nI*nLearnTypeFF_I) + (nE+nV1) ;
-        fseek(fid, skip_size*4, 0); % skip
+if ~exist('iV1', 'var')
+    %% find a test neuron
+    nsp = zeros(nV1,1);
+    % read V1 spikes only
+    for i = 1:nt_
+        if rawData 
+            V1_sInfo = fread(rid, nV1, 'float');
+            fseek(rid, (1+(1+haveH)*(ngTypeFF + ngTypeE + ngTypeI))*nV1*4, 0); % skip
+        else
+            fseek(fid, (1+nLearnTypeFF)*nLGN*4, 0); % skip
+            V1_sInfo = fread(fid, nV1, 'float');
+            skip_size = nV1 + nV1*max_LGNperV1 + 2*(nE*nLearnTypeFF_E + nI*nLearnTypeFF_I) + (nE+nV1) ;
+            fseek(fid, skip_size*4, 0); % skip
+        end
+        assert(sum(V1_sInfo >=0) == nV1);
+        assert(sum(V1_sInfo > 0 & V1_sInfo < 1) == 0);
+        assert(sum(V1_sInfo < 2) == nV1);
+        nsp = nsp + floor(V1_sInfo);
     end
-    assert(sum(V1_sInfo >=0) == nV1);
-    assert(sum(V1_sInfo > 0 & V1_sInfo < 1) == 0);
-    assert(sum(V1_sInfo < 2) == nV1);
-    nsp = nsp + floor(V1_sInfo);
-end
-if rawData
-    fclose(rid);
-    rid = fopen('rawData.bin', 'r'); % reopen
-    fseek(rid, 7*4, 0); % skip
-else
-    fclose(fid);
-    fid = fopen('learnData_FF.bin', 'r'); %reopen
-    fseek(fid, 10*4, 0); % skip
-end
-%% with i spikes
-i = 5;
-disp(['network spiked ', num2str(sum(nsp)), ' times']);
-if sum(nsp) > 0
-    iV1 = [];
-    ei = 0;
-    while (length(iV1) == 0 || ei == 0) && i <= max(nsp)
-        iV1 = find(nsp == i, 1);
-        i = i+1; % if no one 
-        % detemine EI
-        if length(iV1)
-            iblock = idivide(int32(iV1-1),int32(blockSize));
-            if mod(iV1-1,blockSize) < mE
-                j = mE*iblock + (iV1 - blockSize*iblock)
-                EI = 'E'
-                ei = 1;
-            else
-                j = mI*iblock + (iV1 - blockSize*iblock - mE)
-                EI = 'I'
-                ei = 0;
+    if rawData
+        fclose(rid);
+        rid = fopen(rawDataFn, 'r'); % reopen
+        fseek(rid, 7*4, 0); % skip
+    else
+        fclose(fid);
+        fid = fopen(learnDataFn', 'r'); %reopen
+        fseek(fid, 10*4, 0); % skip
+    end
+    %% with i spikes
+    i = 5;
+    if i > max(nsp)
+        i = max(nsp);
+    end
+    disp(['network spiked ', num2str(sum(nsp)), ' times']);
+    if sum(nsp) > 0
+        iV1 = [];
+        ei = 0;
+        while (length(iV1) == 0 || ei == 0) && i <= max(nsp)
+            iV1 = find(nsp == i, 1);
+            % detemine EI
+            if length(iV1)
+                iblock = idivide(int32(iV1-1),int32(blockSize));
+                if mod(iV1-1,blockSize) < mE
+                    j = mE*iblock + (iV1 - blockSize*iblock)
+                    EI = 'E'
+                    ei = 1;
+                else
+                    j = mI*iblock + (iV1 - blockSize*iblock - mE)
+                    EI = 'I'
+                    ei = 0;
+                end
             end
         end
-    end
-    if i > max(nsp) 
+    else
         iV1 = randi(nV1, 1);
     end
-else
-    iV1 = randi(nV1, 1);
+    nsp(iV1)
+    disp(['this V1 firing rate ', num2str(nsp(iV1)/(nt_*dt/1000)), 'Hz']);
 end
+
 % detemine EI
 iblock = idivide(int32(iV1-1),int32(blockSize));
 if mod(iV1-1,blockSize) < mE
@@ -120,16 +130,12 @@ else
     ei = 0;
 end
 
-iV1
-nsp(iV1)
-
-nsub = 3;
 if nsub > nLGN_V1(iV1)
     nsub = nLGN_V1(iV1);
 end
-disp(nLGN_V1(iV1));
+disp(['number of LGN connections: ', num2str(nLGN_V1(iV1))]);
 iLGN = LGN_V1_ID(1:nLGN_V1(iV1), iV1)+1;
-disp(iLGN');
+%disp(iLGN');
 
 iLGN_sInfo = zeros(nt_, nLGN_V1(iV1)); % LGN spike
 iLTP = zeros(nt_, nLGN_V1(iV1)); %r1
@@ -230,18 +236,19 @@ for i = 1:nt_
 end
 
 fclose(fid);
-disp('nsp: V1')
-disp([min(nsp), mean(nsp), max(nsp)]);
-disp('     LGN')
-disp([min(nsp_LGN), mean(nsp_LGN), max(nsp_LGN)]);
+disp('V1 firing across population in Hz:')
+disp([min(nsp), mean(nsp), max(nsp)]./(nt_*dt/1000));
+disp('firing rate across LGN in Hz')
+disp([min(nsp_LGN), mean(nsp_LGN), max(nsp_LGN)]./(nt_*dt/1000));
 if rawData
     fclose(rid);
 end
 if fstatus == 0
     format long
     disp(size_t);
-    [~, id] = sort(sum(floor(iLGN_sInfo), 1), 'descend'); % pick the LGNs that fires the most
-    pLGN = id(1:nsub);
+    %[~, id] = sort(sum(floor(iLGN_sInfo), 1), 'descend'); % pick the LGNs that fires the most
+    %pLGN = id(1:nsub);
+    pLGN = randi(nLGN_V1(iV1), nsub,1)
     f = figure;
     it = 1:nt_; % end points, spike times counts from start points, (iAvg as well, for now, TODO)
     t = it*dt; 
@@ -253,27 +260,55 @@ if fstatus == 0
         subplot(nsub,1,j);
         hold on
         yyaxis left
-        plot(t, igFF, ':g');
+        lines = [];
+        labels = {};
+        gl = plot(t, igFF, ':g');
+        lines = [lines, gl];
+        labels = [labels, 'LGN cond'];
         xlim([0,t(end)]);
-        ymax = max(igFF);
-        pick = iLGN_sInfo(:,i) > 0;
-        if sum(pick) > 0
-            plot((it(pick)-1+iLGN_sInfo(pick,i)' - floor(iLGN_sInfo(pick,i)'))*dt, zeros(sum(pick),1) + ymax, '*g', 'MarkerSize', 1.0);
+        gs = plot(t, sLGN(:,i), '-b');
+        lines = [lines, gs];
+        labels = [labels, 'LGN strength'];
+        xlim([0,t(end)]);
+        avgl = plot(t-dt, iAvg, '-k');
+        lines = [lines, avgl];
+        labels = [labels, '<fr>/1000'];
+        if j == 1
+            legend(lines, labels, 'Location', 'northwest');
         end
-        plot(t, sLGN(:,i), '-b');
-        xlim([0,t(end)]);
 
         yyaxis right
+        lines = [];
+        labels = {};
         if rawData 
-            plot(t, iv, ':k');
+            vl = plot(t, iv, ':k');
+            lines = [lines, vl];
+            labels = [labels, 'voltage'];
         end
         if nV1sp > 0
-            plot((it(v1_pick)-1+iV1_sInfo(v1_pick)' - floor(iV1_sInfo(v1_pick)'))*dt, ones(nV1sp,1), '*k', 'MarkerSize', 1.0);
+            v1sp = plot((it(v1_pick)-1+iV1_sInfo(v1_pick)' - floor(iV1_sInfo(v1_pick)'))*dt, ones(nV1sp,1), '*k', 'MarkerSize', 2.0);
+            lines = [lines, v1sp];
+            labels = [labels, 'V1 tsp'];
         end
-        plot(t, iLTP(:,i), '-g');
-        plot(t, iLTD, '-m');
-        plot(t, iTrip, '-y');
-        plot(t-dt, iAvg, '-k');
+        r1 = plot(t, iLTP(:,i), '-g');
+        lines = [lines, r1];
+        labels = [labels, 'r1'];
+        ymax = max(iLTP(:,i));
+        pick = iLGN_sInfo(:,i) > 0;
+        if sum(pick) > 0
+            gsp = plot((it(pick)-1+iLGN_sInfo(pick,i)' - floor(iLGN_sInfo(pick,i)'))*dt, zeros(sum(pick),1) + ymax, '*g', 'MarkerSize', 2.0);
+            lines = [lines, gsp];
+            labels = [labels, 'LGN tsp'];
+        end
+        o1 = plot(t, iLTD, '-m');
+        lines = [lines, o1];
+        labels = [labels, 'o1'];
+        o2 = plot(t, iTrip, '-r');
+        lines = [lines, o2];
+        labels = [labels, 'o2'];
+        if j == 1
+            legend(lines, labels, 'Location', 'northwest');
+        end
     end
     titl = ['check-learnFF-', num2str(iV1), EI];
     title(titl)
