@@ -18,8 +18,9 @@ nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std
 nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c util/cuda_util.cu -o cuda_util.o
 nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c stats.cu
 nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c coredynamics.cu
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c condShape.cu
 
-nvcc -arch=$sm -lcudadevrt -lcudart -lboost_program_options main.o cuda_util.o stats.o discrete_input_convol.o coredynamics.o -o patch #-lcurand
+nvcc -arch=$sm -lcudadevrt -lcudart -lboost_program_options main.o cuda_util.o stats.o discrete_input_convol.o coredynamics.o condShape.o -o patch #-lcurand
 # === RAND === nvcc -arch=compute_70 -lcudadevrt -lcudart coredynamics.o patch.o -o patch
 
 #nvcc -arch=compute_70 -Xcompiler -Wall,-pedantic -std=c++11 -O0 -c coredynamics.cu 
