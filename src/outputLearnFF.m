@@ -9,6 +9,7 @@ if ~isempty(suffix)
 end
 f_sLGN = ['sLGN', suffix, '.bin']
 LGN_V1_id_fn = ['LGN_V1_idList', suffix, '.bin']
+fLGN_vpos = ['LGN_vpos', suffix, '.bin'];
 
 fid = fopen(fLGN_vpos, 'r');
 nLGN = fread(fid, 1, 'uint') % # ipsi-lateral LGN 
@@ -54,7 +55,7 @@ for j = 1:3
     end
     data = fread(fid, [max_LGNperV1, nV1], 'float');
     for i = 1:nLGN_V1(iV1)
-        iLGN = LGN_V1_ID(i, iV1);
+        iLGN = LGN_V1_ID(i, iV1)+1;
         [row, col] = ind2sub([nLGN_1D, nLGN_1D], iLGN);
         sLGN(row,col,j) = data(i,iV1);
     end
