@@ -8,14 +8,18 @@ import numpy as np
 from mpl_toolkits.mplot3d import axes3d
 from matplotlib import cm
 
-suffix = "macaque"
-#suffix = "lFF"
-iLGN = np.array([71, 459])
-ns = 5
+import sys
+if len(sys.argv) == 1:
+    suffix = ""
+else:
+    suffix = sys.argv[1]
 
 print(suffix)
 if suffix:
     suffix = "_" + suffix 
+
+#iLGN = np.array([3])
+ns = 5
 
 output = "LGN_gallery" + suffix + ".bin"
 with open(output, 'rb') as f:
@@ -62,6 +66,7 @@ with open(output_fn, 'rb') as f:
     convol  = np.zeros((nt,ns), dtype=float)
     luminance  = np.zeros((nt, ns), dtype=float)
     contrast  = np.zeros((nt, 2, ns), dtype=float)
+    contrast_t  = np.zeros((nt, 2, nLGN), dtype=float)
     for it in range(nt):
         data = np.fromfile(f, 'f4', count = nLGN)
         LGNfr[it,:] = data[iLGN]
@@ -69,10 +74,12 @@ with open(output_fn, 'rb') as f:
         convol[it,:] = data[iLGN]
         data = np.fromfile(f, 'f4', count = nLGN)
         luminance[it,:] = data[iLGN]
-        data = np.fromfile(f, 'f4', count = nLGN)
-        contrast[it,0,:] = data[iLGN]
-        data = np.fromfile(f, 'f4', count = nLGN)
-        contrast[it,1,:] = data[iLGN]
+
+        contrast_t[it,0,:] = np.fromfile(f, 'f4', count = nLGN)
+        contrast[it,0,:] = contrast_t[it,0,iLGN]
+
+        contrast_t[it,1,:] = np.fromfile(f, 'f4', count = nLGN)
+        contrast[it,1,:] = contrast_t[it,1,iLGN]
 
 t = np.arange(nt)*dt + dt
 fig = plt.figure('LGN', dpi = 600)
@@ -95,3 +102,13 @@ for i in range(ns):
         on_off = 'off'
     ax.set_title(f'LGN #{j}, ' + on_off)
 fig.savefig('lgn-response' + suffix + '.png')
+
+fig = plt.figure('contrast', dpi = 300) 
+ax = fig.add_subplot(111)
+pick = LGN_k[0,:] > 0
+ax.hist(np.max(abs(contrast_t[:,0,pick]), axis=0), range = (0,1), color = 'r', alpha = 0.5)
+ax.hist(np.max(abs(contrast_t[:,1,pick]), axis=0), range = (0,1), color = 'b', alpha = 0.5)
+pick = LGN_k[0,:] < 0 
+ax.hist(np.max(abs(contrast_t[:,0,pick]), axis=0), range = (0,1), color = 'm', alpha = 0.5)
+ax.hist(np.max(abs(contrast_t[:,1,pick]), axis=0), range = (0,1), color = 'c', alpha = 0.5)
+fig.savefig('lgn-contrast' + suffix + '.png')

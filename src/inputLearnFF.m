@@ -8,17 +8,18 @@ fLGN_vpos = 'LGN_vpos_lFF.bin'
 parvoMagno = 1 % parvo
 %parvoMagno = 2 % magno 
 
-initialConnectionStrength = 1; % change also by ratioLGN in .cfg file
+initialConnectionStrength = 1; % also can be changed by ratioLGN in .cfg file
 iCS_std = 0.2;
 nblock = 1;
 blockSize = 1024;
 nV1 = nblock*blockSize;
-nLGN_1D = 32;
+nLGN_1D = 16;
 frameVisV1output = false; % if need framed V1 output, write visual pos to fV1_pos
 
 nLGN = nLGN_1D*nLGN_1D;
 
-nLGNperV1 = round(nLGN * 0.2)
+%nLGNperV1 = round(nLGN * 0.2)
+nLGNperV1 = 200;
 
 fid = fopen(fLGN_V1_ID, 'w'); % format follows read_listOfList in util/util.h
 for i = 1:nV1
@@ -85,8 +86,8 @@ fwrite(fid, -max_ecc, 'float'); % x0
 fwrite(fid, 2*max_ecc, 'float'); % xspan
 fwrite(fid, -max_ecc, 'float'); % y0
 fwrite(fid, 2*max_ecc, 'float'); % yspan
-LGN_x = (LGN_idx(:)-nLGN_1D/2+0.5)./nLGN_1D.*max_ecc./0.5; % [-0.5, 0.5]
-LGN_y = (LGN_idy(:)-nLGN_1D/2+0.5)./nLGN_1D.*max_ecc./0.5; % [-0.5, 0.5]
+LGN_x = (LGN_idx(:)-nLGN_1D/2+0.5)./nLGN_1D.*max_ecc./0.5;
+LGN_y = (LGN_idy(:)-nLGN_1D/2+0.5)./nLGN_1D.*max_ecc./0.5;
 disp([min(LGN_x), max(LGN_x)]);
 disp([min(LGN_y), max(LGN_y)]);
 fwrite(fid, LGN_x, 'float');
@@ -113,6 +114,7 @@ fNeighborBlock = 'neighborBlock_lFF.bin'
 % not in use, may use if cortical inhibition is needed
 fV1_delayMat = 'V1_delayMat_lFF.bin' % zeros
 fV1_conMat = 'V1_conMat_lFF.bin' % zeros
+fV1_vec = 'V1_vec_lFF.bin' % zeros
 
 nearNeighborBlock = 1; % self-only
 fid = fopen(fV1_conMat, 'w');
@@ -141,4 +143,10 @@ nNeighborBlock = [1];
 fwrite(fid, nNeighborBlock, 'uint'); % number of neighbor
 nBlockId = [[0]]
 fwrite(fid, nBlockId, 'uint'); % number of neighbor
+fclose(fid);
+
+
+fid = fopen(fV1_vec, 'w');
+nVec = zeros(nV1,1);
+fwrite(fid, nVec, 'uint');
 fclose(fid);

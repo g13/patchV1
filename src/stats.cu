@@ -11,7 +11,7 @@ void pixelizeOutput(
 {
 	PosInt tid = blockDim.x*blockIdx.x + threadIdx.x;
 	if (tid < nPixel) {
-		Size m_local = m[tid]*odt;
+		Size m_local = m[tid];
 		Float value = 0;
 		if (m_local > 0) {
 			Size nPerPixel = tid < nPixel_I? nPerPixel_I: nPerPixel_C;
@@ -31,7 +31,7 @@ void pixelizeOutput(
                     #endif
 				}
 			}
-			value /= m_local;
+			value /= m_local*odt;
 		}
 		__syncwarp();
 		output[tid] += value;

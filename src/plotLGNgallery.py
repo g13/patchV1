@@ -7,12 +7,21 @@ import numpy as np
 from mpl_toolkits.mplot3d import axes3d
 from matplotlib import cm
 
-suffix = "lFF"
-#suffix = "macaque"
+import sys
+if len(sys.argv) == 1:
+    suffix = ""
+else:
+    suffix = sys.argv[1]
 
 print(suffix)
 if suffix:
     suffix = "_" + suffix
+
+
+#iLGN = np.array([232, 222, 99, 98, 46])
+iLGN = np.array([143, 95, 248, 6, 227])
+#iLGN = np.random.randint(nLGN, size=1)[0]
+
 output = "LGN_gallery" + suffix + ".bin"
 with open(output, 'rb') as f:
     nLGN = np.fromfile(f, 'u4', 1)[0]
@@ -90,59 +99,33 @@ ax.plot(sc[0,:,0,nSample-1],               sc[1,:,0,nSample-1], 'or', ms = 0.001
 ax.set_aspect('equal')
 fig.savefig('check_coord'+suffix + '.png')
 
-fig = plt.figure('check_min', dpi = 600)
-ax = fig.add_subplot(221)
-i = np.random.randint(nLGN, size=1)[0]
-#i = imin
-print(f'k: {LGN_k[0, i]}, {LGN_k[1, i]}')
-print(f'rw: {LGN_rw[0, i]}, {LGN_rw[1, i]}')
-ax.plot(sc[0,i,0,:], sc[1,i,0,:], 'ob', ms = 0.001)
-ax.plot(sc[0,i,1,:], sc[1,i,1,:], '>r', ms = 0.001)
-ax.set_aspect('equal')
-dwdhC = np.linalg.norm([sc[0,i,0,1] - sc[0,i,0,0], sc[1,i,0,1] - sc[1,i,0,0]]) * np.linalg.norm([sc[0,i,0,nSample1D] - sc[0,i,0,0], sc[1,i,0,nSample1D] - sc[1,i,0,0]])
-dwdhS = np.linalg.norm([sc[0,i,1,1] - sc[0,i,1,0], sc[1,i,1,1] - sc[1,i,1,0]]) * np.linalg.norm([sc[0,i,1,nSample1D] - sc[0,i,1,0], sc[1,i,1,nSample1D] - sc[1,i,1,0]])
-print(f'dwdh: {[dwdhC, dwdhS]}')
-
-nSample1D = int(np.sqrt(nSample));
-ax = fig.add_subplot(222, projection = '3d')
-ax.plot3D(sc[0,i,0,:], sc[1,i,0,:], sw/dwdhC, '*', ms = 0.001)
-ax.plot3D(sc[0,i,1,:], sc[1,i,1,:], sw/dwdhS, '>', ms = 0.001)
-
-ax1 = fig.add_subplot(223)
-#ax2 = fig.add_subplot(224)
-#for j in np.random.randint(0,nLGN,(1000,)):
-#    ax1.plot(t, tw[j,0,:], 'r', lw = 0.1)
-#    ax2.plot(t, tw[j,1,:], 'b', lw = 0.1)
-ax1.plot(t, np.flipud(tw[i,0,:]*LGN_k[0,i]), 'm', lw = 1)
-ax1.plot(t, np.flipud(tw[i,1,:]*LGN_k[1,i]), 'g', lw = 1)
-ax1.plot(t, np.flipud(tw[i,0,:]*LGN_k[0,i] + tw[i,1,:]*LGN_k[1,i]), 'k', lw = 1)
-fig.savefig(f'check_kernel-{i}' + suffix + '.png')
-print([np.sum(sw[:]), np.sum(tw[i,0,:]), np.sum(tw[i,1,:])])
-
-fig = plt.figure('check_max', dpi = 600)
-ax = fig.add_subplot(221)
-i = np.random.randint(nLGN, size=1)[0]
-#i = imax
-print(f'k: {LGN_k[0, i]}, {LGN_k[1, i]}')
-print(f'rw: {LGN_rw[0, i]}, {LGN_rw[1, i]}')
-ax.plot(sc[0,i,0,:], sc[1,i,0,:], 'ob', ms = 0.001)
-ax.plot(sc[0,i,1,:], sc[1,i,1,:], '>r', ms = 0.001)
-ax.set_aspect('equal')
-dwdhC = np.linalg.norm([sc[0,i,0,1] - sc[0,i,0,0], sc[1,i,0,1] - sc[1,i,0,0]]) * np.linalg.norm([sc[0,i,0,nSample1D] - sc[0,i,0,0], sc[1,i,0,nSample1D] - sc[1,i,0,0]])
-dwdhS = np.linalg.norm([sc[0,i,1,1] - sc[0,i,1,0], sc[1,i,1,1] - sc[1,i,1,0]]) * np.linalg.norm([sc[0,i,1,nSample1D] - sc[0,i,1,0], sc[1,i,1,nSample1D] - sc[1,i,1,0]])
-print(f'dwdh: {[dwdhC, dwdhS]}')
-
-nSample1D = int(np.sqrt(nSample));
-ax = fig.add_subplot(222, projection = '3d')
-ax.plot3D(sc[0,i,0,:], sc[1,i,0,:], sw/dwdhC, '*', ms = 0.001)
-ax.plot3D(sc[0,i,1,:], sc[1,i,1,:], sw/dwdhS, '>', ms = 0.001)
-
-ax1 = fig.add_subplot(223)
-ax1.plot(t, np.flipud(tw[i,0,:]*LGN_k[0,i]), 'm', lw = 1)
-ax1.plot(t, np.flipud(tw[i,1,:]*LGN_k[1,i]), 'g', lw = 1)
-ax1.plot(t, np.flipud(tw[i,0,:]*LGN_k[0,i] + tw[i,1,:]*LGN_k[1,i]), 'k', lw = 1)
-fig.savefig(f'check_kernel-{i}' + suffix + '.png')
-print(f'spatial weight sum: {np.sum(sw[:])}, tw sum: {np.sum(tw[i,0,:])}, {np.sum(tw[i,1,:])}')
+for i in iLGN:
+    fig = plt.figure(f'check_{i}', dpi = 600)
+    ax = fig.add_subplot(221)
+    print(f'k: {LGN_k[0, i]}, {LGN_k[1, i]}')
+    print(f'rw: {LGN_rw[0, i]}, {LGN_rw[1, i]}')
+    ax.plot(sc[0,i,0,:], sc[1,i,0,:], 'ob', ms = 0.001)
+    ax.plot(sc[0,i,1,:], sc[1,i,1,:], '>r', ms = 0.001)
+    ax.set_aspect('equal')
+    dwdhC = np.linalg.norm([sc[0,i,0,1] - sc[0,i,0,0], sc[1,i,0,1] - sc[1,i,0,0]]) * np.linalg.norm([sc[0,i,0,nSample1D] - sc[0,i,0,0], sc[1,i,0,nSample1D] - sc[1,i,0,0]])
+    dwdhS = np.linalg.norm([sc[0,i,1,1] - sc[0,i,1,0], sc[1,i,1,1] - sc[1,i,1,0]]) * np.linalg.norm([sc[0,i,1,nSample1D] - sc[0,i,1,0], sc[1,i,1,nSample1D] - sc[1,i,1,0]])
+    print(f'dwdh: {[dwdhC, dwdhS]}')
+    
+    nSample1D = int(np.sqrt(nSample));
+    ax = fig.add_subplot(222, projection = '3d')
+    ax.plot3D(sc[0,i,0,:], sc[1,i,0,:], sw/dwdhC, '*', ms = 0.001)
+    ax.plot3D(sc[0,i,1,:], sc[1,i,1,:], sw/dwdhS, '>', ms = 0.001)
+    
+    ax1 = fig.add_subplot(223)
+    #ax2 = fig.add_subplot(224)
+    #for j in np.random.randint(0,nLGN,(1000,)):
+    #    ax1.plot(t, tw[j,0,:], 'r', lw = 0.1)
+    #    ax2.plot(t, tw[j,1,:], 'b', lw = 0.1)
+    ax1.plot(t, np.flipud(tw[i,0,:]*LGN_k[0,i]), 'm', lw = 1)
+    ax1.plot(t, np.flipud(tw[i,1,:]*LGN_k[1,i]), 'g', lw = 1)
+    ax1.plot(t, np.flipud(tw[i,0,:]*LGN_k[0,i] + tw[i,1,:]*LGN_k[1,i]), 'k', lw = 1)
+    fig.savefig(f'check_kernel-{i}' + suffix + '.png')
+    print([np.sum(sw[:]), np.sum(tw[i,0,:]), np.sum(tw[i,1,:])])
 
 fig = plt.figure('tw', dpi = 600)
 ax = fig.add_subplot(121)
