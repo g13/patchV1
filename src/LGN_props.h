@@ -14,6 +14,7 @@ struct hSpatial_component {
     Float* ry;
     Float* orient;
     Float* k; // its sign determine On-Off
+    Size arraySize;
     // TODO: construct from file directly, save memory
 	hSpatial_component() {};
     hSpatial_component(
@@ -27,6 +28,7 @@ struct hSpatial_component {
             const std::vector<Float> &_k
     ) {
         Size arraySize = nLGN*nType;
+        this->arraySize = arraySize;
         mem_block = new Float[6*arraySize];
         x = mem_block;
         rx = x + arraySize;
@@ -59,8 +61,10 @@ struct hSpatial_component {
             assert(!isnan(k[i]));
         }
     }
-	void freeMem() {
+	size_t freeMem() {
 		delete []mem_block;
+        size_t usingGMem = arraySize*6*sizeof(Float);
+        return usingGMem;
 	}
 };
 
@@ -73,6 +77,7 @@ struct hTemporal_component {
 	Float* ratio;
 	Float* nR; // factorials are also defined for floats as gamma function
 	Float* nD;
+    Size arraySize;
 
 	hTemporal_component() {};
     hTemporal_component(
@@ -86,6 +91,7 @@ struct hTemporal_component {
             const std::vector<Float> &_nD
     ) {
         Size arraySize = nLGN*nType;
+        this->arraySize = arraySize;
         mem_block = new Float[6*arraySize];
         tauR = mem_block;
         tauD = tauR + arraySize;
@@ -118,8 +124,10 @@ struct hTemporal_component {
             assert(!isnan(nD[i]));
         }
     }
-	void freeMem() {
+	size_t freeMem() {
 		delete []mem_block;
+        size_t usingGMem = arraySize*6*sizeof(Float);
+        return usingGMem;
 	}
 };
 
@@ -129,6 +137,7 @@ struct hStatic_nonlinear {
     Float* sharpness;
     Float* a;
     Float* b;
+    Size nLGN;
 
 	hStatic_nonlinear() {};
     hStatic_nonlinear(
@@ -137,6 +146,7 @@ struct hStatic_nonlinear {
             const std::vector<Float> &_c50,
             const std::vector<Float> &_sharpness
     ) {
+        this->nLGN = nLGN;
         mem_block = new Float[4*nLGN];
         c50 = mem_block;
         sharpness = c50 + nLGN;
@@ -158,8 +168,10 @@ struct hStatic_nonlinear {
             b[i] = 1-a[i]/(1+e_kc50_k);
         }
     }
-	void freeMem() {
+	size_t freeMem() {
 		delete []mem_block;
+        size_t usingGMem = 4*nLGN*sizeof(Float);
+        return usingGMem;
 	}
     // to do: recalculate individual parameters when learning
 };
@@ -211,11 +223,13 @@ struct hLGN_parameter {
             assert(!isnan(covariant[i]));
         }
     }
-	void freeMem() {
-		spatial.freeMem();
-		temporal.freeMem();
-		logistic.freeMem();
+	size_t freeMem() {
+        size_t usingGMem = nLGN*nType*sizeof(SmallSize)+sizeof(Float)*(nType-1)*nType/2*nLGN;
+		usingGMem += spatial.freeMem();
+		usingGMem += temporal.freeMem();
+		usingGMem += logistic.freeMem();
 		delete []mem_block;
+        return usingGMem;
 	}
 };
 

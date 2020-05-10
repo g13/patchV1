@@ -20,8 +20,8 @@ outputB4V1_fn = 'outputB4V1' + suffix + '.bin'
 LGN_fr_fn = 'LGN_fr' + suffix + '.bin'
 seed = 8746251
 
-#plotSampleTrace = False
-plotSampleTrace = True 
+plotSampleTrace = False
+#plotSampleTrace = True 
 plot_gFFtsp = False
 plotFrame = True 
 #plotFrame = False 
@@ -93,28 +93,31 @@ if plotFrame:
         Y = np.tile(y,(len(x),1)).T
         return X, Y
     
-    i = -1
-    if phyV1:
-        fig = plt.figure('phyV1', dpi = 1024)
-        ax = fig.add_subplot(111)
-        #plt.Normalize, norm =
-        image = ax.imshow(phyV1frame[i,::-1,:], aspect = 'equal')
-        fig.colorbar(image, ax=ax)
-        fig.savefig(f'phyV1-{i}.png')
-    
-    if visV1:
-        fig = plt.figure('visV1', dpi = 1024)
-        ax = fig.add_subplot(111)
-        image = ax.imshow(np.hstack((visV1frame[i,0,::-1,:], visV1frame[i,1,::-1,:])), aspect = 'equal')
-        fig.colorbar(image, ax=ax)
-        fig.savefig(f'visV1-{i}.png')
-    
-    if visLGN:
-        fig = plt.figure('visLGN', dpi = 1024)
-        ax = fig.add_subplot(111)
-        image = ax.imshow(np.hstack((visLGNframe[i,0,::-1,:], visLGNframe[i,1,::-1,:])), aspect = 'equal')
-        fig.colorbar(image, ax=ax)
-        fig.savefig(f'visLGN-{i}.png')
+    for i in range(ont):
+        if phyV1:
+            fig = plt.figure(f'phyV1-{i}', dpi = 1024)
+            ax = fig.add_subplot(111)
+            #plt.Normalize, norm =
+            image = ax.imshow(phyV1frame[i,::-1,:], aspect = 'equal', origin = 'lower')
+            fig.colorbar(image, ax=ax)
+            fig.savefig(f'phyV1-{i}.png')
+            plt.close(fig)
+        
+        if visV1:
+            fig = plt.figure(f'visV1-{i}', dpi = 1024)
+            ax = fig.add_subplot(111)
+            image = ax.imshow(np.hstack((visV1frame[i,0,::-1,:], visV1frame[i,1,::-1,:])), aspect = 'equal', origin = 'lower')
+            fig.colorbar(image, ax=ax)
+            fig.savefig(f'visV1-{i}.png')
+            plt.close(fig)
+        
+        if visLGN:
+            fig = plt.figure(f'visLGN-{i}', dpi = 1024)
+            ax = fig.add_subplot(111)
+            image = ax.imshow(np.hstack((visLGNframe[i,0,::-1,:], visLGNframe[i,1,::-1,:])), aspect = 'equal', origin = 'lower')
+            fig.colorbar(image, ax=ax)
+            fig.savefig(f'visLGN-{i}.png')
+            plt.close(fig)
 
 if plotSampleTrace:
     with open(rawData_fn, 'rb') as f:
