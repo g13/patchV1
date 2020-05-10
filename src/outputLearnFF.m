@@ -1,88 +1,174 @@
-% connection strength heatmaps
-
-% better to choose from testLearnFF
-iV1 = 91
-
-suffix = 'lFF';
-if ~isempty(suffix)
-    suffix = ['_', suffix];
-end
-f_sLGN = ['sLGN', suffix, '.bin']
-LGN_V1_id_fn = ['LGN_V1_idList', suffix, '.bin']
-fLGN_vpos = ['LGN_vpos', suffix, '.bin'];
-
-fid = fopen(fLGN_vpos, 'r');
-nLGN = fread(fid, 1, 'uint') % # ipsi-lateral LGN 
-fclose(fid);
-
-nLGN_1D = sqrt(double(nLGN))
-
-% read connection id
-sid = fopen(LGN_V1_id_fn, 'r');
-LGN_V1_ID = zeros(max_LGNperV1, nV1);
-nLGN_V1 = zeros(nV1,1);
-for i = 1:nV1
-    nLGN_V1(i) = fread(sid, 1, 'uint');
-    assert(nLGN_V1(i) <= max_LGNperV1);
-    %disp(nLGN_V1(i));
-    if nLGN_V1(i) > 0
-        LGN_V1_ID(1:nLGN_V1(i),i) = fread(sid, nLGN_V1(i), 'uint');
-        %disp(LGN_V1_ID(1:nLGN_V1(i),i)');
+% connection strength heatmaps % better to choose from testLearnFF 
+st = 2; %0 for temporal, 1 for spatial, 2 for both
+%iV1 = randi(768,1);
+rng(1390845)
+ns = 6
+V1_pick = randi(256,[ns,1]);
+for iq = 1:ns
+    iV1 = V1_pick(iq);
+    thres = 0.0
+    %iV1 = 218 
+    nstep = 1000
+    dt = 1.0;
+    nbins = 20;
+    nit = 20;
+    
+    suffix = 'lFF';
+    if ~isempty(suffix)
+        suffix = ['_', suffix];
+    end
+    f_sLGN = ['sLGN', suffix, '.bin']
+    LGN_V1_id_fn = ['LGN_V1_idList', suffix, '.bin']
+    fLGN_vpos = ['LGN_vpos', suffix, '.bin'];
+    
+    fid = fopen(fLGN_vpos, 'r');
+    nLGN = fread(fid, 1, 'uint') % # ipsi-lateral LGN 
+    fclose(fid);
+    mix = false;
+    
+    nLGN_1D = sqrt(double(nLGN))
+    
+    % read the constants first only 
+    fid = fopen(f_sLGN, 'r');
+    nt = fread(fid, 1, 'uint');
+    nV1 = fread(fid, 1, 'uint');
+    max_LGNperV1 = fread(fid, 1, 'uint')
+    sRatio = fread(fid, 1, 'float')
+    nLearnFF = fread(fid, 1, 'uint')
+    gmaxLGN = fread(fid, nLearnFF, 'float')
+    gmax = gmaxLGN(1)*sRatio; % TODO, separate E and I
+    fclose(fid);
+    
+    if ~exist('iV1', 'var') 
+        % sample connection if not provided
+        iV1 = 0;
+        while iV1 < 1 || iV1 > 768 % make sure is excitatory 
+            iV1 = randi(nV1, 1);
+        end
+    end
+    
+    % read connection id
+    sid = fopen(LGN_V1_id_fn, 'r');
+    LGN_V1_ID = zeros(max_LGNperV1, nV1);
+    nLGN_V1 = zeros(nV1,1);
+    for i = 1:nV1
+        nLGN_V1(i) = fread(sid, 1, 'uint');
+        assert(nLGN_V1(i) <= max_LGNperV1);
+        if nLGN_V1(i) > 0
+            LGN_V1_ID(1:nLGN_V1(i),i) = fread(sid, nLGN_V1(i), 'uint')  + 1;
+        end
+    end
+    fclose(sid);
+    %disp(nLGN_V1(iV1));
+    %disp(LGN_V1_ID(1:nLGN_V1(iV1),iV1)');
+    
+    if st == 2 || st == 1
+        fid = fopen(fLGN_vpos, 'r');
+        fseek(fid, (7+2*nLGN)*4, 0);
+        LGN_type = fread(fid, nLGN, 'uint');
+        fclose(fid);
+        types = unique(LGN_type);
+        ntype = length(types)
+    
+        sLGN = zeros(nLGN, 3);
+        
+        fid = fopen(f_sLGN, 'r');
+        fseek(fid, 6*4, 0); % skip till time
+    
+        % skip times
+        %ht = round(nt/2);
+        %it = [0, ht-1, nt-1 - (ht+1)]
+        qt = int32(floor(linspace(1, nt, nit)));
+        it = diff([0, qt])-1;
+        for j = 1:nit
+            if it(j) > 0
+                fseek(fid, max_LGNperV1*nV1*int64(it(j))*4, 0); % skip till time
+            end
+            data = fread(fid, [max_LGNperV1, nV1], 'float');
+            sLGN(LGN_V1_ID(1:nLGN_V1(iV1),iV1),j) = data(1:nLGN_V1(iV1),iV1);
+        end
+        fclose(fid);
+        sLGN = reshape(sLGN, [nLGN_1D, nLGN_1D, nit]);
+        
+        f = figure();
+        if mix
+            clims = [-1, 1];
+            for i = 1:nit
+                subplot(1,nit,i)
+                stmp = sLGN(:,:,i);
+                offPick = LGN_type == 5;
+                stmp(offPick) = -stmp(offPick);
+                stmp = stmp./gmax;
+                stmp(abs(stmp)<thres) = 0;
+                imagesc(stmp, clims);
+                colormap('jet');
+                daspect([1,1,1]);
+                %set(gca,'YDir','normal')
+                title(['it: ', num2str(qt(i)), '; #sLGN > ', num2str(thres), ': ',num2str(sum(sum(sLGN(:,:,i)>thres)))]);
+                if i == nit
+                    colorbar;
+                end
+            end
+        else
+            clims = [0, 1];
+            for itype = 1:ntype
+                for i = 1:nit
+                    subplot(ntype,nit,(itype-1)*nit + i)
+                    stmp = sLGN(:,:,i);
+                    stmp(LGN_type ~= types(itype)) = 0;
+                    stmp = stmp./gmax;
+                    stmp(stmp<thres) = 0;
+                    imagesc(stmp, clims);
+                    %set(gca,'YDir','normal')
+                    if itype == 1
+                        title(['it: ', num2str(qt(i)), '; #sLGN > ', num2str(thres), ': ',num2str(sum(sum(sLGN(:,:,i)>thres)))]);
+                    end
+                    if i == 1
+                        ylabel(['type: ', num2str(types(itype))]);
+                    end
+                    if i == nit
+                        colorbar;
+                    end
+                end
+            end
+        end
+        saveas(f, ['sLGN_V1-',num2str(iV1)], 'fig');
+    end
+    if st == 2 || st == 0
+        if ~exist('nstep', 'var')
+            nstep = 100;
+        end
+        if nstep > nt
+            nstep = nt;
+        end
+        tstep = int64(round(nt/nstep))
+        it = 1:tstep:nt;
+        nstep = length(it)
+        tLGN = zeros(max_LGNperV1, nstep);
+        
+        fid = fopen(f_sLGN, 'r');
+        fseek(fid, 6*4, 0); % skip till time
+        
+        for j = 1:nstep
+            if j > 1
+                fseek(fid, max_LGNperV1*nV1*int64(tstep-1)*4, 0); % skip till time
+            end
+            data = fread(fid, [max_LGNperV1, nV1], 'float');
+            tLGN(:,j) = data(:,iV1);
+        end
+        fclose(fid);
+        
+        qt = int32(floor(linspace(1,nstep,nit)));
+        f = figure();
+        subplot(1,2,1)
+        plot(it*dt, tLGN./gmax*100, '-');
+        ylabel('% of max strength');
+        xlabel('ms');
+        edges = linspace(0,100,nbins);
+        for i = 1:nit
+            subplot(nit,2,2*i)
+            histogram(tLGN(:,qt(i))./gmax*100, 'BinEdges', edges);
+        end
+        saveas(f, ['tLGN_V1-',num2str(iV1)], 'fig');
     end
 end
-fclose(sid);
-
-sLGN = zeros(nLGN_1D, nLGN_1D, 3);
-
-fid = fopen(f_sLGN, 'r');
-nt = fread(fid, 1, 'uint');
-nV1 = fread(fid, 1, 'uint');
-max_LGNperV1 = fread(fid, 1, 'uint')
-
-if ~exist('iV1', 'var') 
-    % sample connection if not provided
-    while iV1 > 768 % make sure is excitatory 
-        iV1 = randi(nV1, 1);
-    end
-end
-
-ht = round(nt/2);
-% skip times
-it = [0, ht, nt-1 - (ht+2)]
-for j = 1:3
-    if it(j) > 0
-        fseek(fid, max_LGNperV1*nV1*it(j)*4, 0); % skip till time
-    end
-    data = fread(fid, [max_LGNperV1, nV1], 'float');
-    for i = 1:nLGN_V1(iV1)
-        iLGN = LGN_V1_ID(i, iV1)+1;
-        [row, col] = ind2sub([nLGN_1D, nLGN_1D], iLGN);
-        sLGN(row,col,j) = data(i,iV1);
-    end
-end
-fclose(fid);
-gmax = 0.02
-f = figure();
-subplot(1,3,1)
-%heatmap(sLGN(:,:,1));
-imagesc(sLGN(:,:,1)./gmax);
-colorbar;
-title(['initial ', num2str(sum(sum(sLGN(:,:,1)>0)))]);
-
-subplot(1,3,2)
-%heatmap(sLGN(:,:,2));
-imagesc(sLGN(:,:,2)./gmax);
-colorbar;
-title(['halfway ', num2str(sum(sum(sLGN(:,:,2)>0)))]);
-
-subplot(1,3,3)
-%heatmap(sLGN(:,:,3)); % old matlab version may not have heatmap function
-%imagesc(sLGN(:,:,3)./gmax*255);
-imagesc(sLGN(:,:,3)./gmax);
-%daspect([1,1,1]);
-colorbar;
-title(['final ', num2str(sum(sum(sLGN(:,:,3)>0)))]);
-saveas(f, ['sLGN_V1-',num2str(iV1)], 'fig');
-
-disp(sum(sum(abs(sLGN(:,:,2) - sLGN(:,:,1))))); % total half change
-disp(sum(sum(abs(sLGN(:,:,3) - sLGN(:,:,1))))); % total change

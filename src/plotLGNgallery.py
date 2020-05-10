@@ -18,23 +18,38 @@ if suffix:
     suffix = "_" + suffix
 
 
-#iLGN = np.array([232, 222, 99, 98, 46])
+#iLGN = np.array([0])
 iLGN = np.array([143, 95, 248, 6, 227])
 #iLGN = np.random.randint(nLGN, size=1)[0]
 
 output = "LGN_gallery" + suffix + ".bin"
 with open(output, 'rb') as f:
-    nLGN = np.fromfile(f, 'u4', 1)[0]
+    nParvo = np.fromfile(f, 'u4', 1)[0]
     nType = np.fromfile(f, 'u4', 1)[0]
     nKernelSample = np.fromfile(f, 'u4', 1)[0]
     nSample = np.fromfile(f, 'u4', 1)[0]
+    nMagno = np.fromfile(f, 'u4', 1)[0]
+    mType = np.fromfile(f, 'u4', 1)[0]
+    assert(mType == 1)
+    mKernelSample = np.fromfile(f, 'u4', 1)[0]
+    mSample = np.fromfile(f, 'u4', 1)[0]
+    nParvo_I = np.fromfile(f, 'u4', 1)[0]
+    nParvo_C = np.fromfile(f, 'u4', 1)[0]
+    nMagno_I = np.fromfile(f, 'u4', 1)[0]
+    nMagno_C = np.fromfile(f, 'u4', 1)[0]
+    print(f'parvo:{(nParvo_I, nParvo_C)}, magno: {(nMagno_I, nMagno_C)}')
+    nLGN = nParvo + nMagno
     max_convol = np.fromfile(f, 'f4', nLGN)
-    tw = np.fromfile(f, 'f4', nLGN*nType*nKernelSample).reshape((nLGN,nType,nKernelSample))
-    #np.fromfile(f, precision, nLGN*nType*nKernelSample) # skip
-    sw = np.fromfile(f, 'f4', nSample)
-    sc = np.fromfile(f, 'f4', 2*nLGN*nType*nSample).reshape((2,nLGN,nType,nSample))
+    tw = np.fromfile(f, 'f4', nParvo*nType*nKernelSample).reshape((nParvo,nType,nKernelSample))
+    sw = np.fromfile(f, 'f4', nSample*(nParvo>0))
+    sc = np.fromfile(f, 'f4', 2*nParvo*nType*nSample).reshape((2,nParvo,nType,nSample))
+    tw_m = np.fromfile(f, 'f4', nMagno*mKernelSample).reshape((nMagno,mKernelSample))
+    sw_m = np.fromfile(f, 'f4', nMagno*mSample).reshape((nMagno,mSample))
+    sc_m = np.fromfile(f, 'f4', 2*nMagno*mSample).reshape((2,nMagno,mSample))
 nSample1D = np.sqrt(nSample).astype(int)
-print(f'nLGN = {nLGN}, nType = {nType}, nKernelSample = {nKernelSample}, nSample = {nSample}, nSample1D = {nSample1D}')
+mSample1D = np.sqrt(mSample).astype(int)
+print(f'nParvo = {nParvo}, nType = {nType}, nKernelSample = {nKernelSample}, nSample = {nSample}, nSample1D = {nSample1D}')
+print(f'nMagno = {nMagno}, mType = {mType}, mKernelSample = {mKernelSample}, mSample = {mSample}, mSample1D = {mSample1D}')
 
 output = "LGN" + suffix + ".bin"
 precision = 'f4'
@@ -79,64 +94,92 @@ imin = np.argmin(max_convol)
 print([imin, imax])
 print([LGN_k[0, imin], LGN_k[1, imin]])
 print([LGN_k[0, imax], LGN_k[1, imax]])
-t = np.arange(nKernelSample)*250.0/500.0
 
 fig = plt.figure('check_coord', dpi = 600)
 ax = fig.add_subplot(111)
 #for i in range(nLGN):
 #    ax.plot(sc[0,i,0,:], sc[1,i,0,:], 'o', ms = 0.001)
 #    ax.plot(sc[0,i,1,:], sc[1,i,1,:], '>', ms = 0.001)
-# surround boundary
-ax.plot(sc[0,:,1,0],                       sc[1,:,1,0], '>b', ms = 0.001)
-ax.plot(sc[0,:,1,nSample1D-1],             sc[1,:,1,nSample1D-1], '>b', ms = 0.001)
-ax.plot(sc[0,:,1,(nSample1D-1)*nSample1D], sc[1,:,1,(nSample1D-1)*nSample1D], '>b', ms = 0.001)
-ax.plot(sc[0,:,1,nSample-1],               sc[1,:,1,nSample-1], '>b', ms = 0.001)
-# center boundary
-ax.plot(sc[0,:,0,0],                       sc[1,:,0,0], 'or', ms = 0.001)
-ax.plot(sc[0,:,0,nSample1D-1],             sc[1,:,0,nSample1D-1], 'or', ms = 0.001)
-ax.plot(sc[0,:,0,(nSample1D-1)*nSample1D], sc[1,:,0,(nSample1D-1)*nSample1D], 'or', ms = 0.001)
-ax.plot(sc[0,:,0,nSample-1],               sc[1,:,0,nSample-1], 'or', ms = 0.001)
+if nParvo > 0:
+    # surround boundary
+    ax.plot(sc[0,:,1,0],                       sc[1,:,1,0], '>b', ms = 0.001)
+    ax.plot(sc[0,:,1,nSample1D-1],             sc[1,:,1,nSample1D-1], '>b', ms = 0.001)
+    ax.plot(sc[0,:,1,(nSample1D-1)*nSample1D], sc[1,:,1,(nSample1D-1)*nSample1D], '>b', ms = 0.001)
+    ax.plot(sc[0,:,1,nSample-1],               sc[1,:,1,nSample-1], '>b', ms = 0.001)
+    # center boundary
+    ax.plot(sc[0,:,0,0],                       sc[1,:,0,0], 'or', ms = 0.001)
+    ax.plot(sc[0,:,0,nSample1D-1],             sc[1,:,0,nSample1D-1], 'or', ms = 0.001)
+    ax.plot(sc[0,:,0,(nSample1D-1)*nSample1D], sc[1,:,0,(nSample1D-1)*nSample1D], 'or', ms = 0.001)
+    ax.plot(sc[0,:,0,nSample-1],               sc[1,:,0,nSample-1], 'or', ms = 0.001)
+if nMagno > 0:
+    ax.plot(sc_m[0,:,0],                       sc_m[1,:,0], '*k', ms = 0.001)
+    ax.plot(sc_m[0,:,mSample1D-1],             sc_m[1,:,mSample1D-1], '*k', ms = 0.001)
+    ax.plot(sc_m[0,:,(mSample1D-1)*mSample1D], sc_m[1,:,(mSample1D-1)*mSample1D], '*k', ms = 0.001)
+    ax.plot(sc_m[0,:,mSample-1],               sc_m[1,:,mSample-1], '*k', ms = 0.001)
 ax.set_aspect('equal')
 fig.savefig('check_coord'+suffix + '.png')
 
-for i in iLGN:
-    fig = plt.figure(f'check_{i}', dpi = 600)
-    ax = fig.add_subplot(221)
-    print(f'k: {LGN_k[0, i]}, {LGN_k[1, i]}')
-    print(f'rw: {LGN_rw[0, i]}, {LGN_rw[1, i]}')
-    ax.plot(sc[0,i,0,:], sc[1,i,0,:], 'ob', ms = 0.001)
-    ax.plot(sc[0,i,1,:], sc[1,i,1,:], '>r', ms = 0.001)
-    ax.set_aspect('equal')
-    dwdhC = np.linalg.norm([sc[0,i,0,1] - sc[0,i,0,0], sc[1,i,0,1] - sc[1,i,0,0]]) * np.linalg.norm([sc[0,i,0,nSample1D] - sc[0,i,0,0], sc[1,i,0,nSample1D] - sc[1,i,0,0]])
-    dwdhS = np.linalg.norm([sc[0,i,1,1] - sc[0,i,1,0], sc[1,i,1,1] - sc[1,i,1,0]]) * np.linalg.norm([sc[0,i,1,nSample1D] - sc[0,i,1,0], sc[1,i,1,nSample1D] - sc[1,i,1,0]])
-    print(f'dwdh: {[dwdhC, dwdhS]}')
-    
-    nSample1D = int(np.sqrt(nSample));
-    ax = fig.add_subplot(222, projection = '3d')
-    ax.plot3D(sc[0,i,0,:], sc[1,i,0,:], sw/dwdhC, '*', ms = 0.001)
-    ax.plot3D(sc[0,i,1,:], sc[1,i,1,:], sw/dwdhS, '>', ms = 0.001)
-    
-    ax1 = fig.add_subplot(223)
-    #ax2 = fig.add_subplot(224)
-    #for j in np.random.randint(0,nLGN,(1000,)):
-    #    ax1.plot(t, tw[j,0,:], 'r', lw = 0.1)
-    #    ax2.plot(t, tw[j,1,:], 'b', lw = 0.1)
-    ax1.plot(t, np.flipud(tw[i,0,:]*LGN_k[0,i]), 'm', lw = 1)
-    ax1.plot(t, np.flipud(tw[i,1,:]*LGN_k[1,i]), 'g', lw = 1)
-    ax1.plot(t, np.flipud(tw[i,0,:]*LGN_k[0,i] + tw[i,1,:]*LGN_k[1,i]), 'k', lw = 1)
-    fig.savefig(f'check_kernel-{i}' + suffix + '.png')
-    print([np.sum(sw[:]), np.sum(tw[i,0,:]), np.sum(tw[i,1,:])])
-
-fig = plt.figure('tw', dpi = 600)
-ax = fig.add_subplot(121)
-_, bins, _ = ax.hist(np.sum(tw[:,0,:],axis=-1), bins = 20, color = 'r', alpha = 0.5)
-ax.hist(np.sum(tw[:,1,:],axis=-1), bins = bins, color = 'b', alpha = 0.5)
-ax.set_title('sum')
-ax = fig.add_subplot(122)
-_, bins, _ = ax.hist(np.sum(abs(tw[:,0,:]),axis=-1), color = 'r', alpha = 0.5)
-ax.hist(np.sum(abs(tw[:,1,:]),axis=-1), bins = bins, color = 'b', alpha = 0.5)
-ax.set_title('abs sum')
-fig.savefig('tw' + suffix + '.png')
+for j in iLGN:
+    print(f'#{j}')
+    if j < nParvo_I or (j >= nMagno_I + nParvo_I and j < nMagno_I + nParvo_I + nParvo_C):
+        t = np.arange(nKernelSample)
+        i = j
+        if i >= nMagno_I + nParvo_I:
+            i = i - nMagno_I
+        assert(i>=0 and i<nParvo)
+        fig = plt.figure(f'check_{j}-p{i}', dpi = 600)
+        ax = fig.add_subplot(221)
+        print(f'k: {LGN_k[0, i]}, {LGN_k[1, i]}')
+        print(f'rw: {LGN_rw[0, i]}, {LGN_rw[1, i]}')
+        ax.plot(sc[0,i,0,:], sc[1,i,0,:], 'ob', ms = 0.001)
+        ax.plot(sc[0,i,1,:], sc[1,i,1,:], '>r', ms = 0.001)
+        ax.set_aspect('equal')
+        dwdhC = np.linalg.norm([sc[0,i,0,1] - sc[0,i,0,0], sc[1,i,0,1] - sc[1,i,0,0]]) * np.linalg.norm([sc[0,i,0,nSample1D] - sc[0,i,0,0], sc[1,i,0,nSample1D] - sc[1,i,0,0]])
+        dwdhS = np.linalg.norm([sc[0,i,1,1] - sc[0,i,1,0], sc[1,i,1,1] - sc[1,i,1,0]]) * np.linalg.norm([sc[0,i,1,nSample1D] - sc[0,i,1,0], sc[1,i,1,nSample1D] - sc[1,i,1,0]])
+        print(f'dwdh: {[dwdhC, dwdhS]}')
+        
+        nSample1D = int(np.sqrt(nSample));
+        ax = fig.add_subplot(222, projection = '3d')
+        ax.plot3D(sc[0,i,0,:], sc[1,i,0,:], sw/dwdhC, '*', ms = 0.001)
+        ax.plot3D(sc[0,i,1,:], sc[1,i,1,:], sw/dwdhS, '>', ms = 0.001)
+        
+        ax1 = fig.add_subplot(223)
+        #ax2 = fig.add_subplot(224)
+        #for j in np.random.randint(0,nLGN,(1000,)):
+        #    ax1.plot(t, tw[j,0,:], 'r', lw = 0.1)
+        #    ax2.plot(t, tw[j,1,:], 'b', lw = 0.1)
+        ax1.plot(t, np.flipud(tw[i,0,:]*LGN_k[0,i]), 'm', lw = 1)
+        ax1.plot(t, np.flipud(tw[i,1,:]*LGN_k[1,i]), 'g', lw = 1)
+        ax1.plot(t, np.flipud(tw[i,0,:]*LGN_k[0,i] + tw[i,1,:]*LGN_k[1,i]), 'k', lw = 1)
+        fig.savefig(f'check_kernel_{j}-p{i}' + suffix + '.png')
+        print([np.sum(sw[:]), np.sum(tw[i,0,:]), np.sum(tw[i,1,:])])
+    else:
+        t = np.arange(mKernelSample)
+        i = j - nParvo_I
+        if i >= nMagno_I:
+            i = i - nParvo_C
+        assert(i>=0 and i<nMagno)
+        fig = plt.figure(f'check_{j}-m{i}', dpi = 600)
+        ax = fig.add_subplot(221)
+        print(f'k: {LGN_k[0, j]}, {LGN_k[1, j]}')
+        print(f'rw: {LGN_rw[0, j]}, {LGN_rw[1, j]}')
+        ax.plot(sc_m[0,i,:], sc_m[1,i,:], 'ob', ms = 0.001)
+        ax.set_aspect('equal')
+        dwdh = np.linalg.norm([sc_m[0,i,1] - sc_m[0,i,0], sc_m[1,i,1] - sc_m[1,i,0]]) * np.linalg.norm([sc_m[0,i,mSample1D] - sc_m[0,i,0], sc_m[1,i,mSample1D] - sc_m[1,i,0]])
+        print(f'dwdh: {dwdh}')
+        
+        mSample1D = int(np.sqrt(mSample));
+        ax = fig.add_subplot(222, projection = '3d')
+        ax.plot3D(sc_m[0,i,:], sc_m[1,i,:], sw_m[i,:]/dwdh, '*', ms = 0.001)
+        
+        ax1 = fig.add_subplot(223)
+        #ax2 = fig.add_subplot(224)
+        #for j in np.random.randint(0,nLGN,(1000,)):
+        #    ax1.plot(t, tw[j,0,:], 'r', lw = 0.1)
+        #    ax2.plot(t, tw[j,1,:], 'b', lw = 0.1)
+        ax1.plot(t, np.flipud(tw_m[i,:]), 'm', lw = 1)
+        fig.savefig(f'check_kernel_{j}-m{i}' + suffix + '.png')
+        print([np.sum(sw_m[i,:]), np.sum(tw_m[i,:])])
 
 fig = plt.figure('hist', dpi = 600)
 ax = fig.add_subplot(221)
@@ -152,14 +195,15 @@ print(f'on-centers: {np.sum(LGN_k[0,:] > 0)}, off-centers: {np.sum(LGN_k[0,:] < 
 ax.hist(LGN_k[1,:], bins = bins, color = 'b', alpha = 0.5)
 print(f'on-surround: {np.sum(LGN_k[1,:] > 0)}, off-surround: {np.sum(LGN_k[1,:] < 0)}')
 ax.set_title('amp')
-ax = fig.add_subplot(223)
-ratio = np.abs(LGN_k[0,:]/(LGN_k[1,:]*np.max(tw[:,1,:])/np.max(tw[:,0,:])))
-max_k = np.max(abs(LGN_k[0,:]))
-for i in range(10):
-    pick = np.logical_and(abs(LGN_k[0,:]) > i/10*max_k, abs(LGN_k[0,:]) < (i+1)/10*max_k)
-    ax.plot(max_convol[pick], ratio[pick] , 'o', ms = 0.1, alpha = 0.5)
-ax.set_xlabel('max_convol')
-ax.set_ylabel('amp ratio')
+if nParvo > 0:
+    ax = fig.add_subplot(223)
+    ratio = np.abs(LGN_k[0,:]/(LGN_k[1,:]*np.max(tw[:,1,:])/np.max(tw[:,0,:])))
+    max_k = np.max(abs(LGN_k[0,:]))
+    for i in range(10):
+        pick = np.logical_and(abs(LGN_k[0,:]) > i/10*max_k, abs(LGN_k[0,:]) < (i+1)/10*max_k)
+        ax.plot(max_convol[pick], ratio[pick] , 'o', ms = 0.1, alpha = 0.5)
+    ax.set_xlabel('max_convol')
+    ax.set_ylabel('amp ratio')
 
 ax = fig.add_subplot(224)
 ax.plot(LGN_k[0,:], LGN_k[1,:] , 'o', ms = 0.1, alpha = 0.5)

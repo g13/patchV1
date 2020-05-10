@@ -336,15 +336,12 @@ void generate_connections(double* __restrict__ pos,
 	    		// update weight with density of axon dendrites and preference over type
                 p *= daxn[ipre] * dd * preP_type[ip*networkSize + id];
                 for (Size iFeature = 0; iFeature < nFeature; iFeature++) {
-                    p *= pref[iFeature](feature[id], feature[ipre]);
+                    p *= pref[iFeature](feature[iFeature*networkSize + id], feature[iFeature*networkSize + ipre]);
                 }
                 sumP += p;
                 conMat[mid] = p;
             }
             delayMat[mid] = distance; // record even if not connected, for LFP
-        }
-        if (blockIdx.x == 2 && threadIdx.x == 0) {
-            printf("accumulated sumP for %uth neuron = %e\n", threadIdx.x, sumP);
         }
     }
     // the remaining neighbors
@@ -372,7 +369,7 @@ void generate_connections(double* __restrict__ pos,
                     sumType[ip] += 1;
                     p *= daxn[ipre] * dden[id] * preP_type[ip*networkSize+id];
                     for (Size iFeature = 0; iFeature < nFeature; iFeature ++) {
-                        p *= pref[iFeature](feature[id], feature[ipre]);
+                        p *= pref[iFeature](feature[iFeature*networkSize + id], feature[iFeature*networkSize + ipre]);
                     }
                     sumP += p;
                     tempNeighbor[tid] = p;
@@ -380,9 +377,6 @@ void generate_connections(double* __restrict__ pos,
                 	tempNeighbor[tid] = 0;
 	    		}
             }
-        }
-        if (blockIdx.x == 2 && threadIdx.x == 0) {
-            printf("accumulated sumP for %uth neuron = %e\n", threadIdx.x, sumP);
         }
     }
     __syncwarp();
@@ -459,11 +453,18 @@ void generate_connections(double* __restrict__ pos,
         }
     }
     nVec[id] = nid;
+    if (blockIdx.x == 2 && threadIdx.x == 0) {
+        printf("connections for %uth neuron in block %u", threadIdx.x, blockIdx.x);
+    }
     #pragma unroll
     for (Size i=0; i<nType; i++) {
         preTypeConnected[i*networkSize + id] = sumConType[i];
         preTypeAvail[i*networkSize + id] = sumType[i];
         preTypeStrSum[i*networkSize + id] = sumStrType[i];
+        if (blockIdx.x == 2 && threadIdx.x == 0) {
+            printf("connections from type %u: %u/%u\n", i, sumConType[i], sumType[i]);
+            printf("summed strength: %1.5e\n", sumStrType[i]);
+        }
     }
     delete []sumConType;
     delete []sumType;

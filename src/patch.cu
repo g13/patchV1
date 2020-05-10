@@ -1,5 +1,5 @@
 #include "patch.h"
-
+//TODO: gap junction and learning in cortex
 int main(int argc, char **argv) {
 	namespace po = boost::program_options;
 	using namespace std;
@@ -41,6 +41,7 @@ int main(int argc, char **argv) {
 	bool storeSpatial = true;
 	Float dt; // in ms, better in fractions of binary 
 	Float dot;
+    bool print_log;
 	bool useNewLGN, readFeature;
 	bool saveLGN_fr, saveLGN_gallery, saveOutputB4V1;
 	bool frameVisV1output, frameVisLGNoutput, framePhyV1output;
@@ -51,6 +52,7 @@ int main(int argc, char **argv) {
     bool manual;
     bool symQ;
     bool uniform_retina;
+    bool LGN_switch;
     int rebound;
     int learning;
 	Size nChunk;
@@ -80,6 +82,7 @@ int main(int argc, char **argv) {
 	vector<Float> tauLTD;
 	vector<Float> tauTrip;
 	vector<Float> tauAvg;
+	vector<Float> targetFR;
 	vector<Float> gmaxLGN;
 	vector<Float> gmaxE;
 	vector<Float> gmaxQ;
@@ -92,7 +95,8 @@ int main(int argc, char **argv) {
 	Float nsig; // extent of spatial RF sampling in units of std
 	Float tau, mau;
 	Float Itau; // in ms .. cone adaptation at 300ms https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1003289
-	Float sRatioLGN;
+	Float sRatio;
+	Float convolRatio;
 	Float frRatioLGN;
 	Float speedOfThought;
 	PosInt frameRate; // Hz
@@ -103,6 +107,7 @@ int main(int argc, char **argv) {
 	generic_opt.add_options()
 		("seed,s", po::value<PosIntL>(&seed),"seed for trial")
 		("cfg_file,c", po::value<string>()->default_value("patchV1.cfg"), "filename for configuration file")
+		("print,p", po::value<bool>(&print_log)->default_value(false), "print outputs")
 		("help,h", "print usage");
 	po::options_description top_opt("top-level configuration");
 	// non-files
@@ -120,7 +125,8 @@ int main(int argc, char **argv) {
 		("tau", po::value<Float>(&tau)->default_value(250.0), "the backward time interval that a parvo-LGN temporal RF should cover")
 		("mau", po::value<Float>(&mau)->default_value(250.0), "the backward time interval that a magno-LGN temporal RF should cover")
 		("Itau", po::value<Float>(&Itau)->default_value(300.0), "the light intensity adaptation time-scale of a cone")
-		("sRatioLGN", po::value<Float>(&sRatioLGN)->default_value(1), "scale LGN->V1 strength")
+		("sRatio", po::value<Float>(&sRatio)->default_value(1), "scale connection strength")
+		("convolRatio", po::value<Float>(&convolRatio)->default_value(1), "scale convol value")
 		("frRatioLGN", po::value<Float>(&frRatioLGN)->default_value(1), "scale LGN firing rate")
 		("nKernelSample", po::value<Size>(&nKernelSample)->default_value(500), "number of samples per parvo-temporal kernel")
 		("mKernelSample", po::value<Size>(&mKernelSample)->default_value(500), "number of samples per magno-temporal kernel")
@@ -147,7 +153,8 @@ int main(int argc, char **argv) {
 		("tauLTP", po::value<vector<Float>>(&tauLTP), "array for the decay timescale of LTP variable of the triplet rule")
 		("tauLTD", po::value<vector<Float>>(&tauLTD), "array for the decay timescale of LTD variable of the triplet rule")
 		("tauTrip", po::value<vector<Float>>(&tauTrip), "array for the decay timescale of the triplet variable of the triplet rule")
-		("tauAvg", po::value<vector<Float>>(&tauAvg), "the decay timescale of the filtered firing rate for the triplet rule, size of 2")
+		("tauAvg", po::value<vector<Float>>(&tauAvg), "the decay timescale of the filtered firing rate for the triplet rule, size of 2, (E, I)")
+		("targetFR", po::value<vector<Float>>(&targetFR), "the target firing rate for the triplet rule LTD, size of 2, (E, I)")
 		("gmaxLGN", po::value<vector<Float>>(&gmaxLGN), "maximum connection strength for LGN->V1, size of nLearnTypeFF")
 		("gmaxE", po::value<vector<Float>>(&gmaxE), "maximum connection strength for E->E, size of nLearnTypeE")
 		("gmaxQ", po::value<vector<Float>>(&gmaxQ), "maximum connection strength for I->E, size of nLearnTypeQ")
@@ -173,11 +180,12 @@ int main(int argc, char **argv) {
 		("saveOutputB4V1", po::value<bool>(&saveOutputB4V1)->default_value(true), "check adapted luminance values, write data to disk, specify filename through outputB4V1_filename")
 		("ignoreRetinogeniculateDelay", po::value<bool>(&ignoreRetinogeniculateDelay)->default_value(true), "ignore the delay")
 		("uniform_retina", po::value<bool>(&uniform_retina)->default_value(false), "flat retina to flat stimulus, no special transformations") // TODO
+		("LGN_switch", po::value<bool>(&LGN_switch)->default_value(false), "control LGN activation during retinal waves, make sure LGN_switch file is ready") // TODO
 		("useNewLGN", po::value<bool>(&useNewLGN)->default_value(true), "regenerate the a new ensemble of LGN parameters according to their distribution");
 
 	// files
     string output_suffix; // suffix to be added to all output filename
-	string stimulus_filename;
+	string stimulus_filename, LGN_switch_filename;
 	string V1_RF_filename, V1_feature_filename, V1_pos_filename;
 	string neighborBlock_filename;
 	string V1_vec_filename, V1_delayMat_filename, V1_conMat_filename;
@@ -187,6 +195,7 @@ int main(int argc, char **argv) {
 	string LGN_convol_filename, LGN_gallery_filename, outputB4V1_filename, rawData_filename, learnData_FF_filename, learnData_V1_filename, sLGN_filename;
 	top_opt.add_options()
 		("output_suffix", po::value<string>(&output_suffix)->default_value(""),"output file suffix")
+		("fLGN_switch", po::value<string>(&LGN_switch_filename)->default_value("LGN_switch.bin"),"file that stores which types of LGN to turn on and off over time, ints of size: (nInputType, nStatus)")
 		("fStimulus", po::value<string>(&stimulus_filename)->default_value("stimulus.bin"),"file that stores LGN firing rates, array of size (nframes,width,height,3)")
 		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"),"file that stores LGN neurons information")
 		("fLGN_V1_ID", po::value<string>(&LGN_V1_ID_filename)->default_value("LGN_V1_idList.bin"),"file stores LGN to V1 connections")
@@ -317,6 +326,19 @@ int main(int argc, char **argv) {
             } 
             if (tauAvg.size() != 2) {
                 cout << "tauAvg is not given\n";
+                return EXIT_FAILURE;
+            }
+        }
+
+        if (targetFR.size() > 2) {
+            cout << "only E and I having different target firing rate is implemented\n";
+            return EXIT_FAILURE;
+        } else {
+            if (targetFR.size() == 1) {
+                targetFR.push_back(targetFR[0]);
+            } 
+            if (targetFR.size() != 2) {
+                cout << "targetFR is not given\n";
                 return EXIT_FAILURE;
             }
         }
@@ -461,16 +483,16 @@ int main(int argc, char **argv) {
 
         if (nLearnTypeFF_E) learnFF_pre<LearnVarShapeFF_E_pre>(lFF_E_pre, &(tauLTP[0]), nLearnTypeFF_E);
         if (nLearnTypeFF_I) learnFF_pre<LearnVarShapeFF_I_pre>(lFF_I_pre, &(tauLTP[nLearnTypeFF_E]), nLearnTypeFF_I);
-        if (nLearnTypeFF_E) learnFF_post<LearnVarShapeFF_E_post>(lFF_E_post, &(tauLTD[0]), &(tauTrip[0]), tauAvg[0], &(A_LGN[0]), gmaxLGN[0], gminLGN[0], nLearnTypeFF_E);
-        if (nLearnTypeFF_I) learnFF_post<LearnVarShapeFF_I_post>(lFF_I_post, &(tauLTD[nLearnTypeFF_E]), &(tauTrip[nLearnTypeFF_E]), tauAvg[1], &(A_LGN[nLearnTypeFF_E]), gmaxLGN[nLearnTypeFF_E], gminLGN[nLearnTypeFF_E], nLearnTypeFF_I);
+        if (nLearnTypeFF_E) learnFF_post<LearnVarShapeFF_E_post>(lFF_E_post, &(tauLTD[0]), &(tauTrip[0]), tauAvg[0], targetFR[0], &(A_LGN[0]), gmaxLGN[0], gminLGN[0], nLearnTypeFF_E, sRatio);
+        if (nLearnTypeFF_I) learnFF_post<LearnVarShapeFF_I_post>(lFF_I_post, &(tauLTD[nLearnTypeFF_E]), &(tauTrip[nLearnTypeFF_E]), tauAvg[1], targetFR[1], &(A_LGN[nLearnTypeFF_E]), gmaxLGN[nLearnTypeFF_E], gminLGN[nLearnTypeFF_E], nLearnTypeFF_I, sRatio);
 
         if (nLearnTypeFF_E) printFF_pre<LearnVarShapeFF_E_pre>(lFF_E_pre, 1);
         if (nLearnTypeFF_I) printFF_pre<LearnVarShapeFF_I_pre>(lFF_I_pre, 0);
         if (nLearnTypeFF_E) printFF_post<LearnVarShapeFF_E_post>(lFF_E_post, 1);
         if (nLearnTypeFF_I) printFF_post<LearnVarShapeFF_I_post>(lFF_I_post, 0);
 
-        if (nLearnTypeE) learnE(lE, &(tauLTP[nLearnTypeFF]), &(tauLTD[nLearnTypeFF]), &(tauTrip[nLearnTypeFF]), tauAvg[0], &(A_V1[0]), gmaxE[0], gminE[0], nLearnTypeE);
-        if (nLearnTypeQ) learnQ(lQ, &(tauQ[0]), &(A_Q[0]), gmaxQ[0], gminQ[0], nLearnTypeQ);
+        if (nLearnTypeE) learnE(lE, &(tauLTP[nLearnTypeFF]), &(tauLTD[nLearnTypeFF]), &(tauTrip[nLearnTypeFF]), tauAvg[0], targetFR[0], &(A_V1[0]), gmaxE[0], gminE[0], nLearnTypeE, sRatio);
+        if (nLearnTypeQ) learnQ(lQ, &(tauQ[0]), &(A_Q[0]), gmaxQ[0], gminQ[0], nLearnTypeQ, sRatio);
 
         if (nLearnTypeE) printE(lE);
         if (nLearnTypeQ) printQ(lQ);
@@ -515,7 +537,7 @@ int main(int argc, char **argv) {
 	}
 
 	// from the retina facing out
-	ifstream fStimulus; // ext. inputs
+	ifstream fStimulus, fLGN_switch; // ext. inputs
 	ifstream fV1_RF, fV1_feature; // V1 related
 	ifstream fLGN_vpos; // LGN VF pos 
 	fstream fLGN; // LGN properties
@@ -619,6 +641,39 @@ int main(int argc, char **argv) {
 		cout << "max_ecc: " << max_ecc << "must not be larger than " << stimulus_range << "\n";
         return EXIT_FAILURE;
 	}
+    
+    Size nStatus;
+    vector<Float> LGN_status;
+    vector<Float> LGN_sDur;
+    vector<Size> LGN_switchIt;
+    if (LGN_switch) {
+        fLGN_switch.open(LGN_switch_filename, fstream::in | fstream::binary);
+        if (!fLGN_switch) {
+		    cout << "Cannot open or find " << LGN_vpos_filename <<" to read in LGN properties.\n";
+		    return EXIT_FAILURE;
+        } else {
+            fLGN_switch.read(reinterpret_cast<char*>(&nStatus), sizeof(Size));
+            LGN_status.assign(nStatus*nInputType,0);
+            LGN_sDur.assign(nStatus,0.0);
+            LGN_switchIt.assign(nStatus,0);
+		    fLGN_switch.read(reinterpret_cast<char*>(&LGN_status[0]), nInputType*nStatus*sizeof(int));
+		    fLGN_switch.read(reinterpret_cast<char*>(&LGN_sDur[0]), nStatus*sizeof(Float));
+            Float totalDur = accumulate(LGN_sDur.begin(), LGN_sDur.end(), 0.0);
+            for (PosInt i = 1; i < nStatus; i++) {
+                LGN_switchIt[i] = static_cast<Size>(std::floor(LGN_sDur[i]/totalDur*nt)) + LGN_switchIt[i-1];
+            }
+            cout << "number of status change: " << nStatus << ": " << totalDur << "\n";
+            for (PosInt i = 0; i < nStatus; i++) {
+                cout << "starting tstep: " << LGN_switchIt[i] << "\n";
+                for (PosInt j=0; j<nInputType; j++) {
+                    cout << LGN_status[i*nInputType + j] << "; " << LGN_sDur[i];
+                    if (j<nInputType-1) cout << ", ";
+                    else  cout << "\n";
+                }
+            }
+        }
+    }
+
     if (!uniform_retina) {
 	    Float stimulus_extent = stimulus_range + 2*stimulus_buffer;
 	    normEccMaxStimulus_extent = max_ecc/(2*stimulus_extent); // origin at left boundary, just the ecc at VF center, its surround can be much bigger, normalized for texture coordinates
@@ -644,6 +699,7 @@ int main(int argc, char **argv) {
 	cout << "normalized view distance: " << normViewDistance << "\n";
 
 	Size nRegion = 2;
+	Size mRegion = 1;
 	Size nSample = nSpatialSample1D * nSpatialSample1D;
 	Size mSample = mSpatialSample1D * mSpatialSample1D;
 	if (nKernelSample == 0) {
@@ -707,7 +763,7 @@ int main(int argc, char **argv) {
 		fLGN_vpos.close();
 
         // Magno-cellular have no sustain response, std is arbitarily set
-        Float K_onMagno[2] = {60.0f, 0.1f};
+        Float K_onMagno[2] = {60.0f * frRatioLGN, 0.1f};
         Float ratio_onMagno[2] = {1.0f, 0.1f};
         Float tauR_onMagno[2] = {1.5f, 0.1f};
         Float tauD_onMagno[2] = {4.5f, 0.1f};
@@ -715,7 +771,7 @@ int main(int argc, char **argv) {
         Float nD_onMagno[2] = {9.5f, 0.1f};
         Float delay_onMagno[2] = {14.0f, 0.1f};
 
-        Float K_offMagno[2] = {45.0f, 0.1f};
+        Float K_offMagno[2] = {60.0f * frRatioLGN, 0.1f};
         Float ratio_offMagno[2] = {1.0f, 0.1f};
         Float tauR_offMagno[2] = {1.5f, 0.1f};
         Float tauD_offMagno[2] = {4.5f, 0.1f};
@@ -826,12 +882,16 @@ int main(int argc, char **argv) {
 		};
 		Float acuityC[2] = {0.03f*deg2rad, 0.01f*deg2rad/1.349f}; // interquartile/1.349 = std 
 		Float acuityS[2] = {0.18f*deg2rad, 0.07f*deg2rad/1.349f};
+		Float acuityC_M[2] = {0.06f*deg2rad, 0.02f*deg2rad/1.349f}; // interquartile/1.349 = std 
+		Float acuityS_M[2] = {0.18f*deg2rad, 0.06f*deg2rad/1.349f};
 		Float pTspD[2];
 		Float tspR, tspD;
         Float sharpness_dist[2] = {10.0, 1.0};
-        Float c50_dist[2] = {0.25/3.0, 0.03}; //
-		Float spontPercentUL = 0.15;
-		Float spontPercent = 0.05;
+        Float c50_dist[2] = {0.25, 0.03}; //
+        //Float sharpness_dist[2] = {1.0, 1.0};
+        //Float c50_dist[2] = {0.5, 0.03}; //
+		Float spontPercentUL = 0.15; // 0.15
+		Float spontPercent = 0.05; // 0.05
         if (!uniform_retina) {
             default_random_engine rGen_LGNsetup(seed);
 		    seed++; // so that next random_engine use a different seed;
@@ -882,8 +942,16 @@ int main(int argc, char **argv) {
 		    Float rho_SC = 0.99;
 		    Float rho_SC_comp = sqrt(1.0-rho_SC*rho_SC);
             for (PosInt i=0; i<nLGN; i++) {
-		        tie(LGN_rw[i], LGN_rw[i+nLGN]) = get_rands_from_correlated_gauss(acuityC, acuityS, rho_SC, rho_SC_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound, smaller);
-
+                switch (LGNtype[i]) {
+		    		case InputType::MonLoff: case InputType::MoffLon: case InputType::LonMoff: case InputType::LoffMon:
+		                tie(LGN_rw[i], LGN_rw[i+nLGN]) = get_rands_from_correlated_gauss(acuityC, acuityS, rho_SC, rho_SC_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound, smaller);
+		    			break;
+                    case InputType::OnOff: case InputType::OffOn:
+		                tie(LGN_rw[i], LGN_rw[i+nLGN]) = get_rands_from_correlated_gauss(acuityC_M, acuityS_M, rho_SC, rho_SC_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound, smaller);
+                        break;
+                    default:
+		    			throw("There's no implementation of this type with non-uniform LGN");
+                }
             }
             // ry ~ rx circular sub RF, not necessary
 	        normal_distribution<Float> norm(1.0, 1.0/30.0);
@@ -980,6 +1048,7 @@ int main(int argc, char **argv) {
 		    cout << "initializing LGN temporal parameters...\n";
 		    // for spontaneous firing rate
 		    Float log_mean, log_std;
+            assert(spontPercent > 0);
 		    tie(log_mean, log_std) = lognstats<Float>(spontPercent, 0.01);
             auto halfBound_onC = get_incLowBound(0.5*K_onC[0]);
             //auto halfBound_offS = get_incLowBound(0.5*K_offS[0]);
@@ -1125,10 +1194,20 @@ int main(int argc, char **argv) {
 		    }    
         } else {
             for (PosInt i=0; i<nLGN; i++) {
-                LGN_rw[i] = acuityC[0];
-                LGN_rw[i+nLGN] = acuityS[0];
-                LGN_rh[i] = acuityC[0];
-                LGN_rh[i+nLGN] = acuityS[0];
+                switch (LGNtype[i]) {
+		    		case InputType::MonLoff: case InputType::MoffLon: case InputType::LonMoff: case InputType::LoffMon:
+                        LGN_rw[i] = acuityC[0];
+                        LGN_rw[i+nLGN] = acuityS[0];
+                        LGN_rh[i] = acuityC[0];
+                        LGN_rh[i+nLGN] = acuityS[0];
+		    			break;
+                    case InputType::OnOff: case InputType::OffOn:
+                        LGN_rw[i] = acuityC_M[0];
+                        LGN_rw[i+nLGN] = acuityS_M[0];
+                        LGN_rh[i] = acuityC_M[0];
+                        LGN_rh[i+nLGN] = acuityS_M[0];
+		    			break;
+                }
                 LGN_ecc[i+nLGN] = LGN_ecc[i];
                 LGN_polar[i+nLGN] = LGN_polar[i];
             }
@@ -1384,7 +1463,7 @@ int main(int argc, char **argv) {
         }
     }
     cout << nParvo << " parvo-cellular LGN (" << nParvo_I << ", " << nParvo_C << ") and " << nMagno << " (" << nMagno_I << ", " << nMagno_C << ") magno-cellular LGN\n";
-
+    
 	hSpatial_component hSpat(nLGN, 2, LGN_polar, LGN_rw, LGN_ecc, LGN_rh, LGN_orient, LGN_k);
 	hTemporal_component hTemp(nLGN, 2, tauR, tauD, delay, ratio, nR, nD);
 	hStatic_nonlinear hStat(nLGN, spont, c50, sharpness);
@@ -1392,7 +1471,13 @@ int main(int argc, char **argv) {
 	hLGN_parameter hLGN(nLGN, 2, hSpat, hTemp, hStat, coneType, covariant);
 
 	LGN_parameter dLGN(hLGN);
-	hLGN.freeMem();
+	size_t usingGMem = hLGN.freeMem();
+
+    InputType_t* dLGN_type;
+    if (LGN_switch) {
+		checkCudaErrors(cudaMalloc((void **) &dLGN_type, nLGN*sizeof(InputType_t)));
+		checkCudaErrors(cudaMemcpy(dLGN_type, &(LGNtype[0]), nLGN*sizeof(InputType_t), cudaMemcpyHostToDevice));
+    }
 
 	vector<int> sxyID(2*nLGN);
 	ifstream fLGN_surfaceID;
@@ -1420,7 +1505,6 @@ int main(int argc, char **argv) {
 		}
 	}
 	fLGN_surfaceID.close();
-	size_t usingGMem = 0;
 
 	// malloc for LGN
 	size_t spikeGenSize = (2*sizeof(PosInt) + 2*sizeof(Float) + sizeof(curandStateMRG32k3a)) * nLGN;
@@ -1502,8 +1586,8 @@ int main(int argc, char **argv) {
 	size_t parvo_SC_size = 2*nRegion*nSample*nParvo;
 	size_t parvo_SW_size = nSample*(nParvo>0); // normalized Gaussian has constant values at constant intervals, heterogeneity is reflected by Spatial Coordinates (SC_storage)
 	size_t magno_TW_size = mKernelSample*nMagno;
-	size_t magno_SC_size = mSample*nMagno;
-	size_t magno_SW_size = mSample*nMagno; // normalized Gaussian has constant values at constant intervals, heterogeneity is reflected by Spatial Coordinates (SC_storage)
+	size_t magno_SC_size = 2*mSample*nMagno;
+	size_t magno_SW_size = mSample*nMagno; // heterogeneity is also in the weights, not like parvo
 	size_t gallerySize = (maxConvolSize + parvo_TW_size + parvo_SW_size + magno_TW_size + magno_SW_size)*sizeof(Float) + (magno_SC_size + parvo_SC_size)*sizeof(float);
 	char* galleryOutput = new char[gallerySize]; 
 
@@ -2081,10 +2165,14 @@ int main(int argc, char **argv) {
     };
 	assert(delayMat[nChunk-1] + chunkSize == conDelayMat0 + matSize*2);
 	chunkSize = matChunkSize;
+    auto scaleStrength =[sRatio] (Float v) {
+        return v*sRatio;
+    };
 	for (PosInt i=0; i<nChunk; i++) {
 		if (i >= iSizeSplit) chunkSize = remainChunkSize*nearBlockSize;
 		if (fV1_conMat) fV1_conMat.read(reinterpret_cast<char*>(conMat[i]), chunkSize*sizeof(Float));
 		else assert(fV1_conMat);
+        transform(conMat[i], conMat[i]+chunkSize, conMat[i], scaleStrength);
 		if (fV1_delayMat) fV1_delayMat.read(reinterpret_cast<char*>(delayMat[i]), chunkSize*sizeof(Float));
 		else assert(fV1_delayMat);
 	}
@@ -2359,7 +2447,7 @@ int main(int argc, char **argv) {
 
 	Size max_LGNperV1;
 	Float* LGN_V1_s;
-	read_LGN(LGN_V1_s_filename, LGN_V1_s, max_LGNperV1, sRatioLGN, learnData_FF, nV1 <= 32); // assign LGN_V1_s and max_LGNperV1
+	read_LGN(LGN_V1_s_filename, LGN_V1_s, max_LGNperV1, sRatio, learnData_FF, nV1 <= 32); // assign LGN_V1_s and max_LGNperV1
 	Float* sLGN;
 	size_t sLGN_size = static_cast<size_t>(max_LGNperV1)*nV1*sizeof(Float);
 	checkCudaErrors(cudaMalloc((void**)&sLGN, sLGN_size));
@@ -2532,6 +2620,9 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		    	f_sLGN.write((char*) &nt, sizeof(Size));
 		    	f_sLGN.write((char*) &nV1, sizeof(Size));
 		    	f_sLGN.write((char*) &max_LGNperV1, sizeof(Size));
+		    	f_sLGN.write((char*) &sRatio, sizeof(Float));
+		    	f_sLGN.write((char*) &nLearnTypeFF, sizeof(Size));
+		    	f_sLGN.write((char*) &(gmaxLGN[0]), nLearnTypeFF*sizeof(Float));
             }
         }
 		fOutputFrame.open(outputFrame_filename + output_suffix + ".bin", fstream::out | fstream::binary);
@@ -2562,10 +2653,18 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 				cout << "Cannot open or find " << LGN_gallery_filename <<" for storage check.\n";
 				return EXIT_FAILURE;
 			} else {
-				fLGN_gallery.write((char*)&nLGN, sizeof(Size));
+				fLGN_gallery.write((char*)&nParvo, sizeof(Size));
 				fLGN_gallery.write((char*)&nRegion, sizeof(Size));
 				fLGN_gallery.write((char*)&nKernelSample, sizeof(Size));
 				fLGN_gallery.write((char*)&nSample, sizeof(Size));
+				fLGN_gallery.write((char*)&nMagno, sizeof(Size));
+				fLGN_gallery.write((char*)&mRegion, sizeof(Size));
+				fLGN_gallery.write((char*)&mKernelSample, sizeof(Size));
+				fLGN_gallery.write((char*)&mSample, sizeof(Size));
+				fLGN_gallery.write((char*)&nParvo_I, sizeof(Size));
+				fLGN_gallery.write((char*)&nParvo_C, sizeof(Size));
+				fLGN_gallery.write((char*)&nMagno_I, sizeof(Size));
+				fLGN_gallery.write((char*)&nMagno_C, sizeof(Size));
 			}
 		}
 		if (saveOutputB4V1) {
@@ -2597,9 +2696,25 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 	Float kernelSampleDt = kernelSampleInterval*dt;
 	Float kernelSampleT0 = iKernelSampleT0*dt;
 	Size kernelSampleRate = stepRate/kernelSampleInterval; 
-	printf("temporal kernel retraces %f ms, samples %u points, sample rate = %u Hz\n", tau, nKernelSample, kernelSampleRate);
+	printf("parvo temporal kernel retraces %f ms, samples %u points, sample rate = %u Hz\n", tau, nKernelSample, kernelSampleRate);
 
-    // TODO: mKernelSampleT0
+    Size mKernelSampleT0;
+    PosInt kermelSampleInterval = mRetrace/mKernelSample;
+    if (kermelSampleInterval%2 == 0) {
+		mKernelSampleT0 = kermelSampleInterval/2;
+		cout << "sample magno in intervals of " << kermelSampleInterval << " starting with " << mKernelSampleT0 << " in units of dt\n";
+	} else {
+		mKernelSampleT0 = 0;
+		if (kermelSampleInterval > 1) {
+			cout << "make magno sample interval (" << kermelSampleInterval << ") even in the units of dt\n";
+		}
+	}
+	// |--*--|--*--|--*--|, e.g., nKernelSample = 3->*
+	Float kermelSampleDt = kermelSampleInterval*dt;
+	Float kermelSampleT0 = mKernelSampleT0*dt;
+	Size kermelSampleRate = stepRate/kermelSampleInterval; 
+	printf("magno temporal kernel retraces %f ms, samples %u points, sample rate = %u Hz\n", mau, mKernelSample, kermelSampleRate);
+
 
 	// calculate phase difference between sampling point and next-frame point  
 	bool moreDt = true;
@@ -2639,8 +2754,12 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 	// the number of non-zero minimum steps to meet frameLength * denorm with 0 phase
 	Size ntPerFrame = co_product; // tPerFrame in the units of dt/denorm
 
-    Size maxRetrace = nRetrace > mRetrace? nRetrace: mRetrace;
-	Size maxFrame = (maxRetrace*denorm + ntPerFrame-1)/ntPerFrame + 1; 
+    Size parvoFrame = (nRetrace*denorm + ntPerFrame-1)/ntPerFrame + 1;
+    Size magnoFrame = (mRetrace*denorm + ntPerFrame-1)/ntPerFrame + 1;
+	Size maxFrame = parvoFrame > magnoFrame? parvoFrame: magnoFrame;
+    bool pLongerThanM = parvoFrame > magnoFrame;
+    Size dFrame = magnoFrame > parvoFrame? magnoFrame - parvoFrame: parvoFrame - magnoFrame;
+    cout << "difference in number of frames between parvo and magno |" << parvoFrame << " - " << magnoFrame << "| = " << dFrame << "\n";
 	if (maxFrame > 2048) {
 		cout << "a single layered texture object only allows 2048 layers < " << maxFrame << "\n";
 		return EXIT_FAILURE;
@@ -2741,20 +2860,25 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 	cudaEvent_t storeReady;
 	checkCudaErrors(cudaEventCreate(&storeReady));
 
-	cout << "store_parvo<<<" << parvoGrid.x  << "x" << parvoGrid.y  << "x" << parvoGrid.z << ", " << parvoBlock.x  << "x" << parvoBlock.y  << "x" << parvoBlock.z << ">>>\n";
 	// store spatial and temporal weights determine the maximums of LGN kernel convolutions
     if (nParvo > 0) {
-	    store_parvo<<<parvoGrid, parvoBlock>>>(
+	    cout << "store_PM(0)<<<" << parvoGrid.x  << "x" << parvoGrid.y  << "x" << parvoGrid.z << ", " << parvoBlock.x  << "x" << parvoBlock.y  << "x" << parvoBlock.z << ">>>\n";
+	    store_PM<<<parvoGrid, parvoBlock>>>(
 	    		*dLGN.temporal,
 	    		parvo_TW_storage,
 	    		nKernelSample, kernelSampleDt, kernelSampleT0,
 	    		*dLGN.spatial,
 	    		parvo_SW_storage,
 	    		parvo_SC_storage,
-	    		nParvo_I, nMagno_I, nLGN, L_x0, L_y0, R_x0, R_y0,
-	    		normViewDistance, nsig, uniform_retina);
+                maxConvol, // not filled
+	    		0, nMagno_I, nParvo_I, nLGN,
+                L_x0, L_y0, R_x0, R_y0,
+	    		normViewDistance, nsig, 0, uniform_retina);
         #ifdef CHECK
 	        getLastCudaError("store failed");
+        #endif
+        #ifdef SYNC
+            checkCudaErrors(cudaDeviceSynchronize());
         #endif
 
         // for max_convol
@@ -2810,9 +2934,31 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
         #ifdef CHECK
 	        getLastCudaError("get_maxConvol failed");
         #endif
+        #ifdef SYNC
+            checkCudaErrors(cudaDeviceSynchronize());
+        #endif
     }
+	dim3 magnoBlock(mSpatialSample1D, mSpatialSample1D, 1);
+	dim3 magnoGrid(nMagno, 1, 1);
     if (nMagno > 0) {
-        // TODO:
+	    cout << "store_PM(1)<<<" << magnoGrid.x  << "x" << magnoGrid.y  << "x" << magnoGrid.z << ", " << magnoBlock.x  << "x" << magnoBlock.y  << "x" << magnoBlock.z << ">>>\n";
+	    store_PM<<<magnoGrid, magnoBlock>>>(
+	    		*dLGN.temporal,
+	    		magno_TW_storage,
+	    		mKernelSample, kermelSampleDt, kermelSampleT0,
+	    		*dLGN.spatial,
+	    		magno_SW_storage,
+	    		magno_SC_storage,
+                maxConvol, // magno part wil be filled
+	    		nParvo_I, nParvo_C, nMagno_I, nLGN,
+                L_x0, L_y0, R_x0, R_y0,
+	    		normViewDistance, nsig, 1, uniform_retina);
+        #ifdef CHECK
+	        getLastCudaError("store failed");
+        #endif
+        #ifdef SYNC
+            checkCudaErrors(cudaDeviceSynchronize());
+        #endif
     }
     cudaEventRecord(storeReady, 0);
     cudaEventSynchronize(storeReady);
@@ -2828,13 +2974,18 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 	//PosInt oldFrame = currentFrame;
 	// framePhase is fractionalized by denorm to fit frame duration with integer units.
 	PosInt iFramePhaseHead = 0;
-	PosInt remain = (maxRetrace*denorm) % ntPerFrame;
-	PosInt comp = (ntPerFrame - remain) % ntPerFrame;
-	PosInt iFramePhaseTail = comp;
+	PosInt parvoRemain = (nRetrace*denorm) % ntPerFrame;
+	PosInt parvoComp = (ntPerFrame - parvoRemain) % ntPerFrame;
+	PosInt iFramePhaseTail = parvoComp;
+
+	PosInt mFramePhaseHead = 0;
+	PosInt magnoRemain = (mRetrace*denorm) % ntPerFrame;
+	PosInt magnoComp = (ntPerFrame - magnoRemain) % ntPerFrame;
+	PosInt mFramePhaseTail = magnoComp;
 
 	PosInt iFrameHead = currentFrame % maxFrame;
 	//PosInt iPhase = 0;
-	auto getTail = [comp](PosInt phaseTail, PosInt phaseHead, PosInt head) {
+	auto getTail = [](PosInt comp, PosInt phaseTail, PosInt phaseHead, PosInt head) {
 		// point frametail to the tail of the LGN temporal convolution at t-tau
 		PosInt tail;
 		if (phaseTail < comp) {
@@ -2847,11 +2998,13 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		return tail;
 	};
 
-	cudaEvent_t v_gFF_Ready, spReady, spHostReady, LGN_ready, learnFF_event;
+	cudaEvent_t v_gFF_Ready, spReady, frameReady, spHostReady, LGN_ready, learnFF_event, magnoDone;
 	checkCudaErrors(cudaEventCreate(&v_gFF_Ready));
 	checkCudaErrors(cudaEventCreate(&spReady));
+	checkCudaErrors(cudaEventCreate(&frameReady));
 	checkCudaErrors(cudaEventCreate(&spHostReady));
 	checkCudaErrors(cudaEventCreate(&LGN_ready));
+	checkCudaErrors(cudaEventCreate(&magnoDone));
 	checkCudaErrors(cudaEventCreate(&learnFF_event));
 
 	cudaEvent_t *gReady1 = new cudaEvent_t[nChunk];
@@ -2867,8 +3020,9 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		checkCudaErrors(cudaEventCreate(&eTmp[i]));
 	}
 
-	cudaStream_t mainStream, LGN_stream;
+	cudaStream_t mainStream, LGN_stream, magnoStream;
 	checkCudaErrors(cudaStreamCreate(&mainStream));
+	checkCudaErrors(cudaStreamCreate(&magnoStream));
 	checkCudaErrors(cudaStreamCreate(&LGN_stream));
 
 	cudaStream_t *stream = new cudaStream_t[nChunk];
@@ -2881,18 +3035,18 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		checkCudaErrors(cudaStreamCreate(&ostream[i]));
 	}
 
-    Size ont; 
-    Size rot;
-    if (framePhyV1output) {
-        ont = nt/ot; // "not" cannot be a variable name!!
-        rot = nt%ot;
-    }
-    Float odt;
+    //Size ont; 
+    //if (framePhyV1output) {
+    //    ont = nt/ot; // "not" cannot be a variable name!!
+    //}
+    Float odt = ot*dt/1000.0;// get interval in sec
 	PosInt currentTimeSlot = 0;
     bool spiked;
     bool farSpiked;
 	cout << "simulation starts: \n";
     int varSlot = 0;
+    InputActivation typeStatus;
+    PosInt iStatus = 0;
 	for (unsigned int it = 0; it < nt; it++) {
 		Float t = it*dt;
 		PosInt oldFrameHead;
@@ -2905,7 +3059,9 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 				streampos current_fpos = fStimulus.tellg();
 				if (current_fpos == eofStimulus) { // if at the end of input file loop back to the beginning of frame data
 					fStimulus.seekg(sofStimulus);
-					cout << "next frame loops\n";
+                    if (print_log) {
+					    cout << "next frame loops\n";
+                    }
 				}
 			} else {
 				cout << "stimulus format corrupted\n";
@@ -2922,15 +3078,19 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 			oldFrameHead = iFrameHead;
 			iFrameHead = (iFrameHead+1) % maxFrame;
 
-			printf("\rsimulating@t = %f -> %f, frame %d#%d-%d, %.1f%%\n", t, t+dt, currentFrame/nFrame, currentFrame%nFrame, nFrame, 100*static_cast<float>(it+1)/nt);
+            if (print_log) {
+			    printf("\rsimulating@t = %f -> %f, frame %d#%d-%d, %.1f%%\n", t, t+dt, currentFrame/nFrame, currentFrame%nFrame, nFrame, 100*static_cast<float>(it+1)/nt);
+            }
 		}
 		// update frame for head and tail for convolution at t=(it + 1)*dt
 		iFramePhaseTail = (iFramePhaseTail + denorm) % ntPerFrame;
-		//if (iFramePhaseTail == 0) iFramePhaseTail = ntPerFrame;
 		iFramePhaseHead = (iFramePhaseHead + denorm) % ntPerFrame;
+		mFramePhaseTail = (mFramePhaseTail + denorm) % ntPerFrame;
+		mFramePhaseHead = (mFramePhaseHead + denorm) % ntPerFrame;
 		// point frametail to the tail of the LGN temporal convolution at t-tau
-		PosInt iFrameTail = getTail(iFramePhaseTail, iFramePhaseHead, oldFrameHead);
-		cout << "it = " << it << ", head at " << oldFrameHead << "\n";
+		PosInt iFrameTail = getTail(parvoComp, iFramePhaseTail, iFramePhaseHead, oldFrameHead + (1-pLongerThanM)*dFrame);
+		PosInt mFrameTail = getTail(magnoComp, mFramePhaseTail, mFramePhaseHead, oldFrameHead + pLongerThanM*dFrame);
+		//cout << "it = " << it << ", head at " << oldFrameHead << "\n";
 
 		/* if it < nRetrace, padded zero-valued frames for t<0
 		   -->|        |<-- framePhase
@@ -2953,11 +3113,31 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		    		iKernelSampleT0, kernelSampleInterval, nKernelSample,
 		    		dt, denorm, saveOutputB4V1);
             #ifdef CHECK
-		        getLastCudaError("LGN_convol_c1s failed");
+		        getLastCudaError("LGN_convol_parvo failed");
             #endif
             #ifdef SYNC
                 checkCudaErrors(cudaDeviceSynchronize());
             #endif
+        }
+        if (nMagno > 0) {
+            LGN_convol_magno<<<magnoGrid, magnoBlock, sizeof(Float)*mSample, magnoStream>>>(
+                    luminance,
+		    		magno_SW_storage, magno_SC_storage, magno_TW_storage,
+		    		currentConvol, contrast,
+		    		dLGN.coneType, *dLGN.spatial,
+		    		nParvo_I, nMagno_I, nParvo_C,
+		    		normViewDistance,
+		    		mFrameTail, maxFrame, ntPerFrame, mFramePhaseTail,
+		    		Itau,
+		    		mKernelSampleT0, kermelSampleInterval, mKernelSample,
+		    		dt, denorm, saveOutputB4V1);
+            #ifdef CHECK
+		        getLastCudaError("LGN_convol_magno failed");
+            #endif
+            #ifdef SYNC
+                checkCudaErrors(cudaDeviceSynchronize());
+            #endif
+		    cudaEventRecord(magnoDone, magnoStream);
         }
 
 		if (it > 0) { // seeking for overlap of data output with LGN input
@@ -2995,9 +3175,24 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 			currentTimeSlot++;
             currentTimeSlot = currentTimeSlot%trainDepth;
 		}
+        if (nMagno > 0) {
+            cudaStreamWaitEvent(mainStream, magnoDone, 0);
+        }
 
 		// generate LGN fr with logistic function
-		LGN_nonlinear<<<nLGN_block, nLGN_thread, 0, mainStream>>>(nLGN, *dLGN.logistic, maxConvol, currentConvol, d_LGN_fr, LGN_sInfo, d_sx, d_sy, leftTimeRate, lastNegLogRand, randState, lVarFFpre, varSlot, lFF_E_pre, lFF_I_pre, nLearnTypeFF, dt, learning, learnData_FF);
+        if (LGN_switch) {
+            if (it == LGN_switchIt[iStatus]) {
+                typeStatus.assign(&(LGN_status[nInputType*iStatus]));
+                cout << "status changed at tstep: " << LGN_switchIt[iStatus] << "\n";
+                for (PosInt j=0; j<nInputType; j++) {
+                    cout << typeStatus.actPercent[j];
+                    if (j<nInputType-1) cout << ", ";
+                    else  cout << "\n";
+                }
+                iStatus++;
+            }
+        }
+		LGN_nonlinear<<<nLGN_block, nLGN_thread, 0, mainStream>>>(nLGN, *dLGN.logistic, maxConvol, currentConvol, convolRatio, d_LGN_fr, LGN_sInfo, d_sx, d_sy, leftTimeRate, lastNegLogRand, randState, dLGN_type, typeStatus, lVarFFpre, varSlot, lFF_E_pre, lFF_I_pre, nLearnTypeFF, dt, learning, learnData_FF, LGN_switch);
         #ifdef CHECK
 		    getLastCudaError("LGN_nonlinear failed");
         #endif
@@ -3041,7 +3236,7 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
             #endif
 		}
         //cout << "LGN done\n";
-		if (it == nt-1) {
+		if (it == nt-1 & print_log) {
 			printf("\r@t = %f -> %f simulated, frame %d#%d-%d, %.1f%%", t, t+dt, currentFrame/nFrame, currentFrame%nFrame, nFrame, 100*static_cast<float>(it+1)/nt);
 			//oldFrame = currentFrame;
 		}
@@ -3122,7 +3317,7 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		    memcpy((void*)(p_conDelayMat), (void*) conDelayMat[0], 2*initial_size*nearBlockSize*sizeof(Float));
             auto end = chrono::high_resolution_clock::now();
             double time_taken = chrono::duration_cast<chrono::nanoseconds>(end-start).count();
-            cout << "memcpy of " << 2*initial_size*nearBlockSize*sizeof(Float)/1024.0/1024.0 << " Mb took " << time_taken/1e6 << " ms\n";
+            //cout << "memcpy of " << 2*initial_size*nearBlockSize*sizeof(Float)/1024.0/1024.0 << " Mb took " << time_taken/1e6 << " ms\n";
         } // else mats are already allocated to pinned memory
 
 		Size chunkSize = maxChunkSize;
@@ -3220,8 +3415,10 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
             }
         }
         spiked = nsp>0;
-        if (spiked) cout << "there's " << nsp << " spiking events during the current time step\n";
-        else cout << "no near-neighbor spiking events in the time step\n";
+        if (print_log) {
+            if (spiked) cout << "there's " << nsp << " spiking events during the current time step\n";
+            else cout << "no near-neighbor spiking events in the time step\n";
+        }
 
         farSpiked = fill_fSpikeTrain(fSpikeTrain,  spikeTrain + nV1*currentTimeSlot, fCurrenSlot, vecID, nVec,nV1);
         if (farSpiked) {
@@ -3262,7 +3459,9 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		    	cudaEventRecord(gReady2[i], stream[i]);
 		    }
         } else {
-            cout << "no spikes from distant neighbor\n";
+            if (print_log) {
+                cout << "no spikes from distant neighbor\n";
+            }
 		    for (PosInt i = 0; i < matConcurrency; i++) {
 		    	cudaStreamWaitEvent(stream[0], gReady1[i], 0);
             }
@@ -3290,12 +3489,6 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
             checkCudaErrors(cudaDeviceSynchronize());
         #endif
         if (framePhyV1output || frameVisV1output || frameVisLGNoutput) { // framed output
-            // get interval in sec
-            if (it/ot == ont) {
-                odt = rot*dt/1000.0;
-            } else {
-                odt = ot*dt/1000.0;
-            }
 		    if (it%ot == 0) {
                 #ifdef CHECK
 		    	    checkCudaErrors(cudaMemsetAsync(d_outputFrame, 0, framesSize, ostream[0]));
@@ -3303,6 +3496,13 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		    	    cudaMemsetAsync(d_outputFrame, 0, framesSize, ostream[0]);
                 #endif
                 //cout << it << "%" << ot << " = " << it%ot << " reset phyV1\n";
+		        cudaEventRecord(frameReady, ostream[0]);
+		        if (frameVisV1output) {
+		            cudaStreamWaitEvent(ostream[1], frameReady, 0);
+                }
+		        if (frameVisLGNoutput) {
+		            cudaStreamWaitEvent(ostream[2], frameReady, 0);
+                }
 		    }
             if (spiked) {
                 if (framePhyV1output) {
@@ -3347,6 +3547,9 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
             #ifdef SYNC
                 checkCudaErrors(cudaDeviceSynchronize());
             #endif
+        }
+        if (!print_log) {
+			printf("\r%.1f%%", 100*static_cast<float>(it+1)/nt);
         }
 	}
     if (rawData) {
@@ -3407,6 +3610,7 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 
 		checkCudaErrors(cudaEventDestroy(v_gFF_Ready));
 		checkCudaErrors(cudaEventDestroy(spReady));
+		checkCudaErrors(cudaEventDestroy(frameReady));
 		checkCudaErrors(cudaEventDestroy(spHostReady));
 		checkCudaErrors(cudaEventDestroy(LGN_ready));
 		checkCudaErrors(cudaEventDestroy(learnFF_event));
@@ -3437,6 +3641,10 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		    checkCudaErrors(cudaFreeHost(outputB4V1));
         }
 		dLGN.freeMem();
+
+        if (LGN_switch) {
+		    checkCudaErrors(cudaFree(dLGN_type));
+        }
 		checkCudaErrors(cudaFree(gpu_B4V1));
 		checkCudaErrors(cudaFree(gpu_LGN_gallery));
 		checkCudaErrors(cudaFree(d_mat));

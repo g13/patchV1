@@ -10,7 +10,7 @@
 
 #define nRFtype 5
 #define nOutputType 4
-#define nInputType 4
+#define nInputType 6
 
 enum class RFtype: PosInt {
 	nonOppopent_gabor = 0,  // different cone input correlates, i.e., have the same sign, in gabor form, find in V1
@@ -31,6 +31,26 @@ enum class OutputType: PosInt { // V1 local RF subregion
 	LoffMon = 3
 };
 
+struct InputActivation {
+    Float actPercent[nInputType];
+    __host__ __device__
+    __forceinline__ InputActivation() {};
+
+    __host__ __device__
+    __forceinline__ InputActivation(Float percent[]) {
+        for (PosInt i=0; i<nInputType; i++) {
+            actPercent[i] = percent[i];
+        }
+    }
+
+    __host__ __device__
+    __forceinline__ void assign(Float percent[]) {
+        for (PosInt i=0; i<nInputType; i++) {
+            actPercent[i] = percent[i];
+        }
+    }
+};
+
 enum class InputType: PosInt { // LGN
     // center-surround
     LonMoff = 0, // parvocellular
@@ -47,7 +67,7 @@ typedef std::underlying_type<InputType>::type InputType_t;
 typedef std::underlying_type<OutputType>::type OutputType_t;
 
 // normalize x to [-1,1], y to baRatio*[-1,1]
-std::pair<Float, Float> transform_coord_to_unitRF(Float x, Float y, const Float mx, const Float my, const Float theta, const Float a) {
+inline std::pair<Float, Float> transform_coord_to_unitRF(Float x, Float y, const Float mx, const Float my, const Float theta, const Float a) {
     // a is half-width at the x-axis
     x = (x - mx)/a;
     y = (y - my)/a;

@@ -1,13 +1,32 @@
-nt_ = 800; % choose time steps to plot
+%nt_ = 800000; % choose time steps to plot
+nt_ = 800000; % choose time steps to plot
+clear iV1
+targetfr = 5
+iV1 = randi(768,1);
 nsub = 3;
+thres = 0.5;  % as a percent of gmax
 suffix = 'lFF';
 if ~isempty(suffix) 
     suffix = ['_', suffix];
 end
 learnDataFn = ['learnData_FF', suffix, '.bin']
 rawDataFn = ['rawData', suffix, '.bin']
-LGN_V1_id_fn = ['LGN_V1_idList', suffix, '.bin'];
+LGN_V1_id_fn = ['LGN_V1_idList', suffix, '.bin']
+f_sLGN = ['sLGN', suffix, '.bin']
+f_LGNoutput = ['outputB4V1', suffix, '.bin']
 %%
+
+fid = fopen(f_sLGN, 'r');
+nt = fread(fid, 1, 'uint');
+nV1 = fread(fid, 1, 'uint');
+max_LGNperV1 = fread(fid, 1, 'uint')
+sRatio = fread(fid, 1, 'float')
+nLearnFF = fread(fid, 1, 'uint')
+gmaxLGN = fread(fid, nLearnFF, 'float')
+gmax = gmaxLGN(1)*sRatio; % TODO, separate E and I
+fclose(fid);
+thres = gmax*thres;
+
 fid = fopen(learnDataFn, 'r');
 dt = fread(fid, 1, 'float')
 nt = fread(fid, 1, 'uint')
@@ -25,7 +44,9 @@ nLearnTypeFF_E = fread(fid, 1, 'uint')
 nLearnTypeFF_I = fread(fid, 1, 'uint')
 nLearnTypeFF = nLearnTypeFF_I + nLearnTypeFF_E;
 size_t = int64(10*4);
-assert(nt_ <= nt);
+if nt_ > nt
+    nt_ = nt;
+end
 disp(['plotting time: ', num2str(dt*nt_)]);
 assert(max_LGNperV1 > 0);
 if rawData
@@ -49,10 +70,8 @@ nLGN_V1 = zeros(nV1,1);
 for i = 1:nV1
     nLGN_V1(i) = fread(sid, 1, 'uint');
     assert(nLGN_V1(i) <= max_LGNperV1);
-    %disp(nLGN_V1(i));
     if nLGN_V1(i) > 0
-        LGN_V1_ID(1:nLGN_V1(i),i) = fread(sid, nLGN_V1(i), 'uint');
-        %disp(LGN_V1_ID(1:nLGN_V1(i),i)');
+        LGN_V1_ID(1:nLGN_V1(i),i) = fread(sid, nLGN_V1(i), 'uint') + 1;
     end
 end
 fclose(sid);
@@ -87,7 +106,8 @@ if ~exist('iV1', 'var')
         fseek(fid, 10*4, 0); % skip
     end
     %% with i spikes
-    i = 5;
+    disp(max(nsp));
+    i = targetfr;
     if i > max(nsp)
         i = max(nsp);
     end
@@ -110,6 +130,10 @@ if ~exist('iV1', 'var')
                     ei = 0;
                 end
             end
+            i = i + 1;
+        end
+        if length(iV1) == 0
+            iV1 = randi(mE, 1);
         end
     else
         iV1 = randi(nV1, 1);
@@ -130,12 +154,22 @@ else
     ei = 0;
 end
 
+oid = fopen(f_LGNoutput, 'r');
+fseek(oid, 3*4, 0);
+LGNfr = zeros(nLGN, nt_);
+for it = 1:nt_
+    if it > 1
+        fseek(oid, nLGN*4*4, 0);
+    end
+    LGNfr(:, it) = fread(oid, nLGN, 'float');
+end
+fclose(oid);
+
 if nsub > nLGN_V1(iV1)
     nsub = nLGN_V1(iV1);
 end
 disp(['number of LGN connections: ', num2str(nLGN_V1(iV1))]);
-iLGN = LGN_V1_ID(1:nLGN_V1(iV1), iV1)+1;
-%disp(iLGN');
+iLGN = LGN_V1_ID(1:nLGN_V1(iV1), iV1);
 
 iLGN_sInfo = zeros(nt_, nLGN_V1(iV1)); % LGN spike
 iLTP = zeros(nt_, nLGN_V1(iV1)); %r1
@@ -144,6 +178,8 @@ iLTD = zeros(nt_,1); %o1
 iTrip = zeros(nt_,1); %o2
 iAvg = zeros(nt_,1); %fr average
 sLGN = zeros(nt_, nLGN_V1(iV1)); % connection strength over time
+sLGN_final = zeros(nV1,1);
+nLGN_final = zeros(nV1,1);
 avg_total = zeros(nV1,1); % not needed
 
 iV1_sInfo = zeros(nt_,1);
@@ -155,12 +191,17 @@ fstatus = 0;
 if rawData 
     iv = zeros(nt_,1);
 end
+iV1
 
+tsp_LGN = [];
+id_LGN = [];
+id = (1:nLGN)';
 for i = 1:nt_
     LGN_sInfo = fread(fid, nLGN, 'float');
-    assert(length(LGN_sInfo) == nLGN);
-    assert(sum(LGN_sInfo < 0) == 0);
-    nsp_LGN = nsp_LGN + floor(LGN_sInfo);
+    nsp_ = floor(LGN_sInfo);
+    id_LGN = [id_LGN; id(LGN_sInfo > 0)];
+    tsp_LGN = [tsp_LGN; (i + (LGN_sInfo(nsp_>0) - nsp_(nsp_>0)))*dt];
+    nsp_LGN = nsp_LGN + nsp_;
     vLTP = fread(fid, [nLGN, nLearnTypeFF], 'float');
     assert(size(vLTP,1) == nLGN);
     assert(size(vLTP,2) == nLearnTypeFF);
@@ -190,9 +231,12 @@ for i = 1:nt_
     assert(sum(V1_sInfo < 0) == 0);
     nsp = nsp + floor(V1_sInfo);
     LGN_V1_s = fread(fid, [max_LGNperV1, nV1], 'float');
+    if i==nt_
+        sLGN_final = sum(LGN_V1_s);
+        nLGN_final = sum(LGN_V1_s>thres);
+    end
     assert(size(LGN_V1_s,1) == max_LGNperV1);
-    assert(size(LGN_V1_s,2) == nV1);
-    size_t = size_t + nV1*max_LGNperV1*4;
+    assert(size(LGN_V1_s,2) == nV1); size_t = size_t + nV1*max_LGNperV1*4;
     vLTD_E = fread(fid, [nE, nLearnTypeFF_E], 'float');
     assert(size(vLTD_E,1) == nE);
     assert(size(vLTD_E,2) == nLearnTypeFF_E);
@@ -240,6 +284,12 @@ disp('V1 firing across population in Hz:')
 disp([min(nsp), mean(nsp), max(nsp)]./(nt_*dt/1000));
 disp('firing rate across LGN in Hz')
 disp([min(nsp_LGN), mean(nsp_LGN), max(nsp_LGN)]./(nt_*dt/1000));
+
+f = figure;
+titl = 'LGNspike_scatter';
+plot(tsp_LGN, id_LGN, '*k');
+saveas(f, titl, 'fig');
+
 if rawData
     fclose(rid);
 end
@@ -248,7 +298,11 @@ if fstatus == 0
     disp(size_t);
     %[~, id] = sort(sum(floor(iLGN_sInfo), 1), 'descend'); % pick the LGNs that fires the most
     %pLGN = id(1:nsub);
-    pLGN = randi(nLGN_V1(iV1), nsub,1)
+    %pLGN = randi(nLGN_V1(iV1), nsub,1)
+    %nLGN_1D = int32(sqrt(nLGN));
+    pLGN = int32([6*16+7, 7*16+7, 8*16+7]);
+    %pLGN = [1,2,3]
+    disp(iLGN(pLGN)');
     f = figure;
     it = 1:nt_; % end points, spike times counts from start points, (iAvg as well, for now, TODO)
     t = it*dt; 
@@ -266,13 +320,31 @@ if fstatus == 0
         lines = [lines, gl];
         labels = [labels, 'LGN cond'];
         xlim([0,t(end)]);
-        gs = plot(t, sLGN(:,i), '-b');
+        max_igFF = max(igFF);
+        ylim([0,max_igFF*1.1]);
+        ss = sLGN(:,i)/gmax*max_igFF;
+        gs = plot(t, ss, '-b');
         lines = [lines, gs];
         labels = [labels, 'LGN strength'];
+        max_gFr = max(LGNfr(iLGN(pLGN(j)),:));
+        gfr = plot(t, LGNfr(iLGN(pLGN(j)),:)./max_gFr*max_igFF, '-y');
+        lines = [lines, gfr];
+        labels = [labels, 'LGN fr'];
         xlim([0,t(end)]);
-        avgl = plot(t-dt, iAvg, '-k');
-        lines = [lines, avgl];
-        labels = [labels, '<fr>/1000'];
+
+        pick = iLGN_sInfo(:,i) > 0;
+        if sum(pick) > 0
+            gsp = plot((it(pick)-1+iLGN_sInfo(pick,i)' - floor(iLGN_sInfo(pick,i)'))*dt, zeros(sum(pick),1) + ss(pick), '*g', 'MarkerSize', 2.0);
+            lines = [lines, gsp];
+            labels = [labels, 'LGN tsp'];
+        end
+
+        if nV1sp > 0
+            v1sp = plot((it(v1_pick)-1+iV1_sInfo(v1_pick)' - floor(iV1_sInfo(v1_pick)'))*dt, zeros(nV1sp,1) + ss(v1_pick), '*k', 'MarkerSize', 2.0);
+            lines = [lines, v1sp];
+            labels = [labels, 'V1 tsp'];
+        end
+
         if j == 1
             legend(lines, labels, 'Location', 'northwest');
         end
@@ -285,27 +357,34 @@ if fstatus == 0
             lines = [lines, vl];
             labels = [labels, 'voltage'];
         end
-        if nV1sp > 0
-            v1sp = plot((it(v1_pick)-1+iV1_sInfo(v1_pick)' - floor(iV1_sInfo(v1_pick)'))*dt, ones(nV1sp,1), '*k', 'MarkerSize', 2.0);
-            lines = [lines, v1sp];
-            labels = [labels, 'V1 tsp'];
-        end
+        %if nV1sp > 0
+        %    v1sp = plot((it(v1_pick)-1+iV1_sInfo(v1_pick)' - floor(iV1_sInfo(v1_pick)'))*dt, ones(nV1sp,1), '*k', 'MarkerSize', 2.0);
+        %    lines = [lines, v1sp];
+        %    labels = [labels, 'V1 tsp'];
+        %end
         r1 = plot(t, iLTP(:,i), '-g');
         lines = [lines, r1];
         labels = [labels, 'r1'];
-        ymax = max(iLTP(:,i));
-        pick = iLGN_sInfo(:,i) > 0;
-        if sum(pick) > 0
-            gsp = plot((it(pick)-1+iLGN_sInfo(pick,i)' - floor(iLGN_sInfo(pick,i)'))*dt, zeros(sum(pick),1) + ymax, '*g', 'MarkerSize', 2.0);
-            lines = [lines, gsp];
-            labels = [labels, 'LGN tsp'];
-        end
+
+        %ymax = max(iLTP(:,i));
+        %pick = iLGN_sInfo(:,i) > 0;
+        %if sum(pick) > 0
+        %    gsp = plot((it(pick)-1+iLGN_sInfo(pick,i)' - floor(iLGN_sInfo(pick,i)'))*dt, zeros(sum(pick),1) + ymax, '*g', 'MarkerSize', 2.0);
+        %    lines = [lines, gsp];
+        %    labels = [labels, 'LGN tsp'];
+        %end
+
         o1 = plot(t, iLTD, '-m');
         lines = [lines, o1];
         labels = [labels, 'o1'];
+
         o2 = plot(t, iTrip, '-r');
         lines = [lines, o2];
         labels = [labels, 'o2'];
+
+        avgl = plot(t-dt, iAvg, '-k');
+        lines = [lines, avgl];
+        labels = [labels, '<fr>'];
         if j == 1
             legend(lines, labels, 'Location', 'northwest');
         end
@@ -315,16 +394,63 @@ if fstatus == 0
     %%
     saveas(f, titl, 'fig');
 end
-% scatter plot of the spiked neurons (red)
-avg_total = avg_total./nt_;
+
+fid = fopen(['LGN_fr', suffix, '.bin'], 'r');
+fread(fid, 2, 'uint');
+LGN_fr = fread(fid,[nLGN, nt_], 'float');
+fclose(fid);
 f = figure;
-subplot(2,1,1)
-histogram(avg_total);
-subplot(2,1,2)
+subplot(2,2,1)
+%hold on
+%h = histogram(nsp_LGN./(nt_*dt/1000), 50);
+%histogram(mean(LGN_fr'), h.BinEdges)
+%title('LGN FR dist.');
+
+fid = fopen(f_sLGN, 'r');
+nt = fread(fid, 1, 'uint');
+nV1 = fread(fid, 1, 'uint');
+max_LGNperV1 = fread(fid, 1, 'uint')
+sRatio = fread(fid, 1, 'float')
+nLearnFF = fread(fid, 1, 'uint')
+gmaxLGN = fread(fid, nLearnFF, 'float')
+gmax = gmaxLGN(1)*sRatio; % TODO, separate E and I
+
+thres = gmax*thres;
+sLGN = zeros(nLGN, 2, nV1);
+data = fread(fid, [max_LGNperV1, nV1], 'float');
+for i=1:nV1
+    sLGN(LGN_V1_ID(1:nLGN_V1(i),i),1,i) = data(:,i);
+end
+fseek(fid, max_LGNperV1*nV1*(nt-2)*4, 0); % skip till end 
+data = fread(fid, [max_LGNperV1, nV1], 'float');
+for i=1:nV1
+    sLGN(LGN_V1_ID(1:nLGN_V1(i),i),2,i) = data(:,i);
+end
+fclose(fid);
+% normalize
+sLGN = sLGN - repmat(mean(sLGN), [nLGN,1]);
+max_sLGN = max(abs(sLGN));
+%take pearson corr coef
+sLGN = sLGN./(repmat(max_sLGN, [nLGN,1]));
+spat_corr = mean(sLGN(:,1,:).*sLGN(:,2,:));
+plot(nsp./(nt_*dt/1000), squeeze(spat_corr), '*g');
+xlabel('V1 fr Hz')
+ylabel('spatial pearson corr')
+
+% scatter plot of the spiked neurons (red)
+subplot(2,2,2)
 hold on
-id = find(avg_total == 0);
-plot(id, ones(length(id), 1).*avg_total(id), '*b', 'MarkerSize', 2.0);
-id = find(avg_total > 0);
-plot(id, ones(length(id), 1).*avg_total(id), '*r',  'MarkerSize', 2.0);
+id = find(nsp == 0);
+plot(id, ones(length(id), 1).*nsp(id)./(nt_*dt/1000), '*b', 'MarkerSize', 2.0);
+id = find(nsp > 0);
+plot(id, ones(length(id), 1).*nsp(id)./(nt_*dt/1000), '*r',  'MarkerSize', 2.0);
 grid on
+subplot(2,2,3)
+plot(nsp./(nt_*dt/1000), sLGN_final, '*b');
+xlabel('V1 fr Hz')
+ylabel('sLGN sum streng Hz')
+subplot(2,2,4)
+plot(nsp./(nt_*dt/1000), nLGN_final, '*b');
+xlabel('V1 fr Hz')
+ylabel(['nLGN with s > ', num2str(thres)])
 saveas(f, 'hist', 'fig');

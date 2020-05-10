@@ -50,6 +50,12 @@ void test_sum(curandStateMRG32k3a *state, PosIntL seed) {
 	Float data = curand_uniform(&localState);
     serial[tid] = data;
 
+    if (tid == 0) {
+        for (PosInt i = 0; i<warpSize; i++) {
+            array[i] = 100;
+        }
+    }
+    __syncthreads();
     block_reduce<Float>(array, data);
 
     if (tid == 0) {

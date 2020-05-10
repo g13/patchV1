@@ -7,14 +7,16 @@ module load boost/gcc_4.9.3/openmpi_1.10.2/avx2/1.57.0
 
 cd preprocess
 
-rm -f genCon.o
-rm -f connect.o
-rm -f cuda_util.o
 
 sm=sm_70
 
+rm -f genCon.o
 nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c genCon.cu
+
+rm -f connect.o
 nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c connect.cu
+
+rm -f cuda_util.o
 nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c ../util/cuda_util.cu -o cuda_util.o
 
 nvcc -arch=$sm -lcudadevrt -lcudart -lboost_program_options cuda_util.o connect.o genCon.o -o ../genCon #-lcurand

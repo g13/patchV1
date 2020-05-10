@@ -14,6 +14,7 @@
 #include "types.h"
 #include "CONST.h"
 #include "condShape.h"
+#include "preprocess/RFtype.h"
 #include "util/cuda_util.cuh"
 
 // block_reduce works fine when block is not fully occupied
@@ -37,6 +38,7 @@ void LGN_nonlinear(
         Static_nonlinear &logistic,
         Float* __restrict__ max_convol,
         Float* __restrict__ current_convol,
+        Float convolRatio,
         Float* __restrict__ LGN_fr,
         Float* __restrict__ LGN_sInfo,
         int* __restrict__ sx,
@@ -44,12 +46,14 @@ void LGN_nonlinear(
         Float* __restrict__ leftTimeRate,
         Float* __restrict__ lastNegLogRand,
 		curandStateMRG32k3a* __restrict__ state,
+		InputType_t* __restrict__ LGN_type,
+        InputActivation typeStatus,
         Float* __restrict__ lVar,
-        int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning, bool learnData_FF
+        int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning, bool learnData_FF, bool LGN_switch
 );
 
 __global__
-void store_parvo(// weights and max convolution
+void store_PM(// weights and max convolution
         Temporal_component &temporal,
         Float* __restrict__ TW_storage,
         SmallSize nKernelSample,
@@ -59,13 +63,15 @@ void store_parvo(// weights and max convolution
         Spatial_component &spatial,
         Float* __restrict__ SW_storage,
         float* __restrict__ SC_storage,
-		Size nParvo_L, Size nMagno_L, Size nLGN,
+        Float* __restrict__ max_convol,
+		Size nBefore, Size nAfter, Size nL, Size nLGN,
 		Float L_x0,
 		Float L_y0,
 		Float R_x0,
 		Float R_y0,
 		Float normViewDistance,
         Float nsig, // span of spatialRF sample in units of std
+        int PM,
         bool uniform_retina
 );
 
@@ -90,6 +96,31 @@ void LGN_convol_parvo(
         SmallSize* __restrict__ coneType,
         Spatial_component &spatial,
 		Size nParvo_L, Size nMagno_L, Size nLGN,
+		Float normViewDistance,
+        PosInt currentFrame,
+        Size maxFrame,
+		Size ntPerFrame,
+        PosInt iFramePhase,
+        Float Itau,
+        Size iKernelSampleT0,
+        Size kernelSampleInterval,
+        Size nKernelSample,
+        Float dt,
+        Size denorm,
+        bool saveOutputB4V1
+);
+
+__global__ 
+void LGN_convol_magno(
+        Float* __restrict__ luminance,
+        Float* __restrict__ SW_storage,
+        float* __restrict__ SC_storage,
+        Float* __restrict__ TW_storage,
+        Float* __restrict__ current_convol,
+        Float* __restrict__ contrast,
+        SmallSize* __restrict__ coneType,
+        Spatial_component &spatial,
+		Size nParvo_L, Size nMagno_L, Size nParvo_R,
 		Float normViewDistance,
         PosInt currentFrame,
         Size maxFrame,
