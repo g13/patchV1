@@ -203,35 +203,41 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
     virtual Size construct_connection(std::vector<Float> &x, std::vector<Float> &y, std::vector<InputType> &iType, std::vector<Size> &idList, std::vector<Float> &strengthList, RandomEngine &rGen, Float fnLGNeff, bool p_n) {
         Size nConnected;
         if (n > 0) {
-		    prob.reserve(n);
-            // putative RF center
-			Float cx, cy;
-            std::tie(cx, cy) = average2D<Float>(x, y);
-		    for (Size i = 0; i < n; i++) {
-                Float norm_x, norm_y;
-                // orient and normalize LGN coord
-		        std::tie(norm_x, norm_y) = transform_coord_to_unitRF(x[i], y[i], cx, cy, theta, a);
-                // calc. prob. dist. distance-dependent envelope at coord.
-                Float envelope = get_envelope(norm_x, norm_y, amp, baRatio, sig);
-                // calc. modulation of prob at coord.
-                Float modulation = modulate(norm_x, norm_y);
-                /* TEST with no modulation: bool RefShift = false;
-                if (modulation < 0.5) {
-                    RefShift = true;
-                } */
-                // calc. cone and position opponency at coord.
-	            Float opponent = check_opponency(iType[i], modulation);
-                prob.push_back(get_prob(opponent, modulation, envelope));
-                /* TEST with no modulation: if (opponent < 0.0 && RefShift || (opponent < 0.0 && (rfType == RFtype::doubleOppopent_cs || rfType == RFtype::singleOppopent || rfType == RFtype::nonOppopent_cs))) {
-                    if (prob.back() > 0.0) {
-                        std::cout << envelope << " * (0.5 + " << amp << " * " << opponent << " * " << modulation <<  ") = " << prob.back() << "\n";
-                        assert(prob.back() == 0.0);
-                    }
-                } */
+            if (fnLGNeff > 0) {
+		        prob.reserve(n);
+                // putative RF center
+			    Float cx, cy;
+                std::tie(cx, cy) = average2D<Float>(x, y);
+		        for (Size i = 0; i < n; i++) {
+                    Float norm_x, norm_y;
+                    // orient and normalize LGN coord
+		            std::tie(norm_x, norm_y) = transform_coord_to_unitRF(x[i], y[i], cx, cy, theta, a);
+                    // calc. prob. dist. distance-dependent envelope at coord.
+                    Float envelope = get_envelope(norm_x, norm_y, amp, baRatio, sig);
+                    // calc. modulation of prob at coord.
+                    Float modulation = modulate(norm_x, norm_y);
+                    /* TEST with no modulation: bool RefShift = false;
+                    if (modulation < 0.5) {
+                        RefShift = true;
+                    } */
+                    // calc. cone and position opponency at coord.
+	                Float opponent = check_opponency(iType[i], modulation);
+                    prob.push_back(get_prob(opponent, modulation, envelope));
+                    /* TEST with no modulation: if (opponent < 0.0 && RefShift || (opponent < 0.0 && (rfType == RFtype::doubleOppopent_cs || rfType == RFtype::singleOppopent || rfType == RFtype::nonOppopent_cs))) {
+                        if (prob.back() > 0.0) {
+                            std::cout << envelope << " * (0.5 + " << amp << " * " << opponent << " * " << modulation <<  ") = " << prob.back() << "\n";
+                            assert(prob.back() == 0.0);
+                        }
+                    } */
+                }
+                normalize(fnLGNeff, p_n);
+                // make connection and update ID and strength list
+                nConnected = connect(idList, strengthList, rGen);
+            } else {
+                idList = std::vector<Size>();
+                idList.shrink_to_fit();
+                nConnected = 0;
             }
-            normalize(fnLGNeff, p_n);
-            // make connection and update ID and strength list
-            nConnected = connect(idList, strengthList, rGen);
         }  else {
             nConnected = 0;
         }
@@ -239,13 +245,17 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
     }
     // Probability envelope based on distance
     virtual Float get_envelope(Float x, Float y, Float amp, Float baRatio, Float sig = 1.1775) {
-        return exp(-0.5*(pow(x/sig,2)+pow(y/(sig*baRatio),2)));
+        Float v = exp(-0.5*(pow(x/sig,2)+pow(y/(sig*baRatio),2)));
+        if (v < 0.5) {
+            v = 0;
+        }
+        return v;
         //return 1.0;
         // baRatio comes from Dow et al., 1981
     }
     // Full cosine modulation, modulation is on cone and on-off types
     virtual Float modulate(Float x, Float y) {
-        return 0.5 + 0.5 * cos(sfreq * x * M_PI + phase);
+        return 0.5 + 0.5 * cos(sfreq*x * M_PI + phase);
         // sfreq should be given as a percentage of the width
         // when sfreq == 1, the RF contain a full cycle of cos(x), x\in[-pi, pi]
     }
@@ -266,10 +276,11 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         }
 	    //std::cout << "norm = " << norm << "\n";
 	    //print_list<Float>(prob);
-	    assert(!isnan(norm));
         //Float sum = 0.0;
-        for (Size i=0; i<prob.size(); i++) {
-            prob[i] = prob[i] / norm;
+        for (PosInt i=0; i<prob.size(); i++) {
+            if (norm != 0) {
+                prob[i] = prob[i] / norm;
+            }
             //sum += prob[i];
         }
     //std::cout << fnLGNeff*prob.size() << " ~ " << sum << "\n";
@@ -348,7 +359,14 @@ struct DoubleOpponent_Gabor: LinearReceptiveField {
     }
 
     Float get_prob(Float opponent, Float modulation, Float envelope) {
-        return envelope * (1.0 + amp * opponent * modulation);
+        Float v = (1.0 + amp * opponent * modulation);
+        if (v < 0.5) {
+            v = 0;
+        }
+        v = envelope * v;
+
+	    assert(!isnan(v));
+        return v;
     }
 };
 

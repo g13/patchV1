@@ -119,10 +119,10 @@ vector<vector<Float>> retinotopic_connection(
                 p_n_LGNeff = -p_n_LGNeff; 
             }
             if (SimpleComplex == 0) {
-			    RF->setup_param(m, sfreq[i], phase[i], modAmp_nCon[i], theta[i], a[i], baRatio[i], RefType[i]);
+			    RF->setup_param(m, sfreq[i], phase[i], modAmp_nCon[i], theta[i], a[i], baRatio[i], RefType[i], envelopeSig);
 			    m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen, p_n_LGNeff*1.0, percentOrNumber);
             } else {
-			    RF->setup_param(m, sfreq[i], phase[i], 1.0, theta[i], a[i], baRatio[i], RefType[i]);
+			    RF->setup_param(m, sfreq[i], phase[i], 1.0, theta[i], a[i], baRatio[i], RefType[i], envelopeSig);
 			    m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen, p_n_LGNeff*modAmp_nCon[i], percentOrNumber);
             }
 			srList.push_back(strengthList);
@@ -440,11 +440,13 @@ int main(int argc, char *argv[]) {
 	Float p_n_LGNeff;
 	Size maxLGNperV1pool;
     Int SimpleComplex;
+    Float sc_ratio;
     Float LGN_V1_RFratio;
+    Float envelopeSig;
     BigSize seed;
     vector<Size> nRefTypeV1_RF, V1_RefTypeID;
     vector<Float> V1_RFtypeAccDist, V1_RefTypeDist;
-	string LGN_vpos_filename, V1_vpos_filename, V1_RFprop_filename, V1_feature_filename;
+	string LGN_vpos_filename, V1_vpos_filename, V1_RFprop_filename, V1_feature_filename, suffix;
 	po::options_description generic("generic options");
 	generic.add_options()
 		("help,h", "print usage")
@@ -458,7 +460,9 @@ int main(int argc, char *argv[]) {
 		("p_n_LGNeff", po::value<Float>(&p_n_LGNeff)->default_value(10), "LGN conneciton probability [-1,0], or number of connections [0,n]")
 		("LGN_V1_RFratio,r", po::value<Float>(&LGN_V1_RFratio)->default_value(1.0), "LGN's contribution to the total RF size")
 		("maxLGNperV1pool,m", po::value<Size>(&maxLGNperV1pool)->default_value(100), "maximum pooling of LGN neurons per V1 neuron")
+		("envelopeSig", po::value<Float>(&envelopeSig)->default_value(1.177), "LGN's pools connection probability envelope sigma on distance")
 		("SimpleComplex", po::value<Int>(&SimpleComplex)->default_value(0), "determine how simple complex is implemented, through modulation modAmp_nCon(0) or number of LGN connection(1)")
+		("sc_ratio", po::value<Float>(&sc_ratio)->default_value(0.5), "determine the proportion of simple and complex in V1")
 		("V1_RFtypeAccDist", po::value<vector<Float>>(&V1_RFtypeAccDist), "determine the relative portion of each V1 RF type")
 		("nRefTypeV1_RF", po::value<vector<Size>>(&nRefTypeV1_RF), "determine the number of cone/ON-OFF combinations for each V1 RF type")
 		("V1_RefTypeID", po::value<vector<Size>>(&V1_RefTypeID), "determine the ID of the available cone/ON-OFF combinations in each V1 RF type")
@@ -471,9 +475,10 @@ int main(int argc, char *argv[]) {
     string V1_filename, idList_filename, sList_filename;
 	po::options_description output_opt("output options");
 	output_opt.add_options()
-		("fV1", po::value<string>(&V1_filename)->default_value("V1RF.bin"), "file that stores V1 neurons' information")
-		("fLGN_vpos_V1_ID", po::value<string>(&idList_filename)->default_value("LGN_V1_idList.bin"), "file stores LGN to V1 connections")
-		("fLGN_vpos_V1_s", po::value<string>(&sList_filename)->default_value("LGN_V1_sList.bin"), "file stores LGN to V1 connection strengths");
+		("suffix", po::value<string>(&suffix)->default_value(""), "suffix for output file")
+		("fV1", po::value<string>(&V1_filename)->default_value("V1RF"), "file that stores V1 neurons' information")
+		("fLGN_V1_ID", po::value<string>(&idList_filename)->default_value("LGN_V1_idList"), "file stores LGN to V1 connections")
+		("fLGN_V1_s", po::value<string>(&sList_filename)->default_value("LGN_V1_sList"), "file stores LGN to V1 connection strengths");
 
 	po::options_description cmdline_options;
 	cmdline_options.add(generic).add(input_opt).add(output_opt);
@@ -496,6 +501,11 @@ int main(int argc, char *argv[]) {
 		cout << "No configuration file is given, default values are used for non-specified parameters\n";
 	}
 	po::notify(vm);
+    
+    if (!suffix.empty()) {
+        suffix = '_' + suffix;
+    }
+    suffix = suffix + ".bin";
 
     if (useCuda) {
         cudaDeviceProp deviceProps;
@@ -643,7 +653,7 @@ int main(int argc, char *argv[]) {
             LR[i] = 1;
             nR++;
         }
-        theta[i] = (theta[i] - 0.5) * M_PI;
+        theta[i] = (theta[i]-0.5)*M_PI;
     }
 	fV1_feature.close();
     cout << "left eye: " << nL << " V1 neurons\n";
@@ -685,7 +695,7 @@ int main(int argc, char *argv[]) {
     // theta is read from fV1_feature
 	vector<Float> modAmp_nCon(n); // [0,1] controls simple complex ratio, through subregion overlap ratio, or number of LGN connected.
     if (readFromFile) {
-        ifstream fV1_RFprop(V1_RFprop_filename, fstream::in | fstream::binary);
+        fstream fV1_RFprop(V1_RFprop_filename, fstream::in | fstream::binary);
 	    if (!fV1_RFprop) {
 	    	cout << "Cannot open or find " << V1_RFprop_filename <<"\n";
 	    	return EXIT_FAILURE;
@@ -699,16 +709,23 @@ int main(int argc, char *argv[]) {
         // discrete portions randomly distributed
         uniform_real_distribution<Float> uniform_01(0,1.0);
 
+        vector<Size> nTypes(nRFtype,0);
         assert(V1_RFtypeAccDist.size() == nRFtype  && V1_RFtypeAccDist.back() == 1.0);
-        auto genV1_RFtype = [&uniform_01, &V1_RFtypeAccDist, &rGen] () {
+        auto genV1_RFtype = [&uniform_01, &V1_RFtypeAccDist, &rGen, &nTypes] () {
             Float rand = uniform_01(rGen);
-            for (Size i=0; i<V1_RFtypeAccDist.size(); i++) {
+            for (PosInt i=0; i<V1_RFtypeAccDist.size(); i++) {
                 if (rand < V1_RFtypeAccDist[i]) {
+                    nTypes[i]++;
                     return static_cast<RFtype>(i);
                 }
             }
         };
         generate(V1Type.begin(), V1Type.end(), genV1_RFtype);
+        cout << "None-G,    None-CS,   Single,  Double-CS,   Double-G\n";
+        for (PosInt i=0; i<nRFtype; i++) {
+            cout << nTypes[i] << "    ";
+        }
+        cout << "\n";
 
         // vec to list of vec
         vector<vector<Float>> RefTypeDist;
@@ -746,10 +763,20 @@ int main(int argc, char *argv[]) {
             return uniform_01(rGen) * 2 * M_PI;
         };
         generate(phase.begin(), phase.end(), genPhase);
-        auto genModAmp_nCon = [&uniform_01, &rGen] () {
-            return uniform_01(rGen);
+
+        auto genModAmp_nCon = [&uniform_01, &rGen, &sc_ratio] () {
+            Float v = uniform_01(rGen);
+            if (v >= sc_ratio) {
+                v = 1.0;
+            } else {
+                v = 0.0;
+            }
+            return v;
+            //return uniform_01(rGen);
         };
         generate(modAmp_nCon.begin(), modAmp_nCon.end(), genModAmp_nCon);
+        Float sc_count = accumulate(modAmp_nCon.begin(), modAmp_nCon.end(), 0.0);
+        cout << "sc_count = " << sc_count << "\n";
 
         ofstream fV1_RFprop(V1_RFprop_filename, fstream::out | fstream::binary);
 	    if (!fV1_RFprop) {
@@ -762,19 +789,31 @@ int main(int argc, char *argv[]) {
 	    fV1_RFprop.write((char*)&modAmp_nCon[0], n * sizeof(Float));
         fV1_RFprop.close();
     }
+    // 
+    //fV1_RFprop.open(V1_RFprop_filename, fstream::out | fstream::binary | fstream::append);
+	//fV1_RFprop.write((char*)&SimpleComplex, sizeof(Int));
+    //fV1_RFprop.close();
 	cout << "V1 RF properties ready.\n";
 
     assert(p_n_LGNeff != 0);
     assert(p_n_LGNeff >= -1);
 
 	vector<Float> sfreq = generate_sfreq(n, rGen);
+
+    Float mean_sfreq = accumulate(sfreq.begin(), sfreq.end(), 0.0)/n;
+    Float mean_a = accumulate(a.begin(), a.end(), 0.0)/n;
+    Float suggesting_SF = mean_sfreq/mean_a/2;
+    cout << "mean a: " << mean_a << " degPerRF\n";
+    cout << "mean sfreq: " << mean_sfreq << " cpRF\n";
+    cout << "mean SF suggested: " << suggesting_SF << " cpd\n";
+
 	vector<Float> cx(n);
 	vector<Float> cy(n);
     vector<vector<Float>> srList = retinotopic_connection(poolList, rGen, p_n_LGNeff, n, cart, cart0, V1Type, theta, phase, sfreq, modAmp_nCon, baRatio, a, RefType, LGNtype, cx, cy, SimpleComplex);
 
-	ofstream fV1(V1_filename, fstream::out | fstream::binary);
+	ofstream fV1(V1_filename + suffix, fstream::out | fstream::binary);
 	if (!fV1) {
-		cout << "Cannot open or find V1." << V1_filename <<"\n";
+		cout << "Cannot open or find V1." << V1_filename + suffix <<"\n";
 		return EXIT_FAILURE;
 	}
     fV1.write((char*)&n, sizeof(Size));
@@ -801,7 +840,7 @@ int main(int argc, char *argv[]) {
     cout << "among them " << zeroPool << " would have no connection from LGN\n";
 
     // write poolList to disk, to be used in ext_input.cu and genCon.cu
-	write_listOfList<Size>(idList_filename, poolList, false);
-	write_listOfListForArray<Float>(sList_filename, srList, false); // read with read_listOfListToArray
+	write_listOfList<Size>(idList_filename + suffix, poolList, false);
+	write_listOfListForArray<Float>(sList_filename + suffix, srList, false); // read with read_listOfListToArray
     return 0;
 }

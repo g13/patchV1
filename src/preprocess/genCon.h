@@ -16,21 +16,24 @@
 #define nFunc 2
 
 __device__
-Float ODpref(Float post, Float pre) { // ocular dominance
+Float ODpref(Float post, Float pre, Float r) { // ocular dominance
     Float p;
     if (post*pre < 0) {
-        p = 0.0;
+        p = r;
     } else {
-        p = 1.0;
+        p = 1-r;
     }
     return p; 
 }
 __device__ pFeature p_OD = ODpref;
 
 __device__
-Float OPpref(Float post, Float pre) { // orientation preference
+Float OPpref(Float post, Float pre, Float r) { // orientation preference
     Float dp = pre-post;
-    Float sig = M_PI/12; // set spread here
+    if (abs(dp) > M_PI/2) {
+        dp += copyms(M_PI, -dp);
+    }
+    Float sig = M_PI/r; // set spread here
     Float A = square_root(2*M_PI);
     Float p = exponential(-dp*dp/(2*sig*sig))/(A*sig);
     return p; 
@@ -38,7 +41,7 @@ Float OPpref(Float post, Float pre) { // orientation preference
 __device__ pFeature p_OP = OPpref;
 
 __device__
-Float pass(Float post, Float pre) {
+Float pass(Float post, Float pre, Float r) {
     return 1.0;
 }
 __device__ pFeature p_pass = pass;
@@ -56,9 +59,36 @@ void initializePreferenceFunctions(Size nFeature) {
     checkCudaErrors(cudaMemcpyToSymbol(pref, h_pref, nFunc*sizeof(pFeature), 0, cudaMemcpyHostToDevice));
 }
 
-/* TODO:
-template <typename T, typename I>
-void check_statistics(T* array, I n, T &max, T &min, T &mean, T &std) {
+inline void read_LGN_sSum(std::string filename, Float sSum[], Float &sSumMean, bool print) {
+	std::ifstream input_file;
+	input_file.open(filename, std::fstream::in | std::fstream::binary);
+	if (!input_file) {
+		std::string errMsg{ "Cannot open or find " + filename + "\n" };
+		throw errMsg;
+	}
+    Size nList, maxList;
+    input_file.read(reinterpret_cast<char*>(&nList), sizeof(Size));
+    input_file.read(reinterpret_cast<char*>(&maxList), sizeof(Size));
 
+    Float *array = new Float[nList*maxList];
+    sSumMean = 0.0;
+    for (PosInt i=0; i<nList; i++) {
+        Size listSize;
+        input_file.read(reinterpret_cast<char*>(&listSize), sizeof(Size));
+		input_file.read(reinterpret_cast<char*>(&array[i*maxList]), listSize * sizeof(Float));
+		for (PosInt j=0; j<listSize; j++) {
+		    sSum[i] += array[i*maxList+j];
+		}
+        sSumMean += sSum[i];
+        if (print) {
+            std::cout << i << ": ";
+            for (PosInt j=0; j<listSize; j++) {
+                std::cout << array[i*maxList + j];
+                if (j == listSize-1) std::cout << "\n";
+                else std::cout << ", ";
+            }
+        }
+    }
+	input_file.close();
+    sSumMean /= nList;
 }
-*/

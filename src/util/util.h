@@ -125,6 +125,8 @@ void write_listOfList(std::string filename, std::vector<std::vector<T>> data, bo
 		std::string errMsg{ "Cannot open or find " + filename + "\n" };
 		throw errMsg;
 	}
+    Size nList = data.size();
+    output_file.write((char*)&nList, sizeof(Size));
 	for (Size i=0; i<data.size(); i++) {
         Size listSize = data[i].size();
         output_file.write((char*)&listSize, sizeof(Size));
@@ -143,17 +145,19 @@ std::vector<std::vector<T>> read_listOfList(std::string filename, bool print = f
 		std::string errMsg{ "Cannot open or find " + filename + "\n" };
 		throw errMsg;
 	}
+    Size nList;
+    input_file.read(reinterpret_cast<char*>(&nList), sizeof(Size));
 	std::vector<std::vector<T>>	data;
-	do {
+    data.reserve(nList);
+    for (PosInt i=0;i<nList;i++) {
         Size listSize;
         input_file.read(reinterpret_cast<char*>(&listSize), sizeof(Size));
-        if (!input_file) break;
 		std::vector<T> new_data(listSize);
 		if (listSize > 0) {
 			input_file.read(reinterpret_cast<char*>(&new_data[0]), listSize * sizeof(T));
 		}
 		data.push_back(new_data);
-    } while (true);
+    }
 	input_file.close();
     if (print) print_listOfList<T>(data);
 	return data;
@@ -179,6 +183,7 @@ void write_listOfListForArray(std::string filename, std::vector<std::vector<T>> 
             maxList = data[i].size();
         }
     }
+    std::cout << "maxList = " << maxList << "\n";
     output_file.write((char*)&maxList, sizeof(Size));
 	for (Size i=0; i<nList; i++) {
         Size listSize = data[i].size();

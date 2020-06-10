@@ -80,7 +80,10 @@ Float step(LIF* lif, Float dt, Float tRef, PosInt id, Float gE, Float gI) {
     #endif
     if (lif->spikeCount > 0) sInfo /= lif->spikeCount*dt; //decimal part: tsp (normalize by dt)
     sInfo += lif->spikeCount; // integer part: nsp
-    assert(sInfo == 0 || (sInfo >= 1 && sInfo < 2));
+    if ((sInfo > 0 && sInfo < 1) || lif->spikeCount >= 2) {
+        printf("sInfo = %.3f, gE = %.3f, gI = %.3f, spikeCount = %u\n", sInfo, gE, gI, lif->spikeCount);
+        assert(sInfo == 0 || (sInfo >= 1 && sInfo < 2) || lif->spikeCount < 10);
+    }
     __syncwarp();
     return sInfo;
 }
@@ -178,6 +181,7 @@ void recal_G_vec(
             PosInt ipre = vecID[i0+i][j];
             PosInt tid = ipre%blockSize; 
             Float strength = conVec[i0+i][j];
+
             Float time2post = delayVec[i0+i][j]/speedOfThought;
             Float *local_g;
             Float *local_h;
@@ -747,7 +751,7 @@ void recal_G_mat(
                 PosInt it2post = static_cast<PosInt>(ceiling(time2post/dt));
                 time2post = it2post*dt - time2post;
                 if (time2post < 0) {
-                    printf("time2post = %e, it2post*dt = %e\n", time2post, it2post);
+                    printf("time2post = distance/speed = %1.3e/%1.3e = %1.3e, it2post*dt, %1.3e*%1.3e = %1.3e\n", delayMat[mid], speedOfThought, delayMat[mid]/speedOfThought, it2post, dt, it2post*dt);
                     assert(time2post>=0);
                 }
                 assert(time2post<dt);

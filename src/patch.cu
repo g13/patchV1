@@ -51,14 +51,16 @@ int main(int argc, char **argv) {
     bool learnData_V1;
     bool manual;
     bool symQ;
-    bool uniform_retina;
+    bool flat_retina;
+    bool uniform_LGN;
     bool LGN_switch;
+    bool getLGN_sp;
     int rebound;
     int learning;
 	Size nChunk;
 	Size matConcurrency;
-	Size phyWidth;
-	Size visWidth;
+	Float phyWidth_scale;
+	Float visWidth_scale;
     Size nLearnTypeFF_E, nLearnTypeFF_I, nLearnTypeE;
 	SmallSize nSpatialSample1D;
 	SmallSize mSpatialSample1D;
@@ -95,7 +97,7 @@ int main(int argc, char **argv) {
 	Float nsig; // extent of spatial RF sampling in units of std
 	Float tau, mau;
 	Float Itau; // in ms .. cone adaptation at 300ms https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1003289
-	Float sRatio;
+	Float sRatioLGN, sRatioV1;
 	Float convolRatio;
 	Float frRatioLGN;
 	Float speedOfThought;
@@ -120,12 +122,13 @@ int main(int argc, char **argv) {
 		("nsig", po::value<Float>(&nsig)->default_value(3), "extent of spatial RF sampling in units of std")
 		("nSpatialSample1D", po::value<SmallSize>(&nSpatialSample1D)->default_value(warpSize), "number of samples per x,y direction for a parvo-LGN spatial RF")
 		("mSpatialSample1D", po::value<SmallSize>(&mSpatialSample1D)->default_value(warpSize), "number of samples per x,y direction for a magno-LGN spatial RF")
-        ("phyWidth", po::value<Size>(&phyWidth)->default_value(256), "pixel width of the physical V1 sheet frame output")
-        ("visWidth", po::value<Size>(&visWidth)->default_value(126), "pixel width of the halfi visual field frame output")
+        ("phyWidth_scale", po::value<Float>(&phyWidth_scale)->default_value(1), "pixel width of the physical V1 sheet frame output")
+        ("visWidth_scale", po::value<Float>(&visWidth_scale)->default_value(1), "pixel width of the half visual field frame output")
 		("tau", po::value<Float>(&tau)->default_value(250.0), "the backward time interval that a parvo-LGN temporal RF should cover")
 		("mau", po::value<Float>(&mau)->default_value(250.0), "the backward time interval that a magno-LGN temporal RF should cover")
 		("Itau", po::value<Float>(&Itau)->default_value(300.0), "the light intensity adaptation time-scale of a cone")
-		("sRatio", po::value<Float>(&sRatio)->default_value(1), "scale connection strength")
+		("sRatioLGN", po::value<Float>(&sRatioLGN)->default_value(1), "scale connection strength from LGN")
+		("sRatioV1", po::value<Float>(&sRatioV1)->default_value(1), "scale connection strength from V1")
 		("convolRatio", po::value<Float>(&convolRatio)->default_value(1), "scale convol value")
 		("frRatioLGN", po::value<Float>(&frRatioLGN)->default_value(1), "scale LGN firing rate")
 		("nKernelSample", po::value<Size>(&nKernelSample)->default_value(500), "number of samples per parvo-temporal kernel")
@@ -179,12 +182,16 @@ int main(int argc, char **argv) {
 		("saveLGN_gallery", po::value<bool>(&saveLGN_gallery)->default_value(true), "check convolution kernels and maximum convolution values, write data to disk, specify filename through LGN_gallery_filename")
 		("saveOutputB4V1", po::value<bool>(&saveOutputB4V1)->default_value(true), "check adapted luminance values, write data to disk, specify filename through outputB4V1_filename")
 		("ignoreRetinogeniculateDelay", po::value<bool>(&ignoreRetinogeniculateDelay)->default_value(true), "ignore the delay")
-		("uniform_retina", po::value<bool>(&uniform_retina)->default_value(false), "flat retina to flat stimulus, no special transformations") // TODO
-		("LGN_switch", po::value<bool>(&LGN_switch)->default_value(false), "control LGN activation during retinal waves, make sure LGN_switch file is ready") // TODO
+		("flat_retina", po::value<bool>(&flat_retina)->default_value(false), "flat retina to flat stimulus, no special transformations")
+		("uniform_LGN", po::value<bool>(&uniform_LGN)->default_value(false), "uniform LGN properties within cell type")
+		("LGN_switch", po::value<bool>(&LGN_switch)->default_value(false), "control LGN activation during retinal waves, make sure LGN_switch file is ready")
+		("getLGN_sp", po::value<bool>(&getLGN_sp)->default_value(false), "if write LGN spikes to file")
 		("useNewLGN", po::value<bool>(&useNewLGN)->default_value(true), "regenerate the a new ensemble of LGN parameters according to their distribution");
 
 	// files
     string output_suffix; // suffix to be added to all output filename
+    string conV1_suffix; // suffix of the input filenames, if suffix is not the same, set f*
+    string conLGN_suffix; // suffix of the input filenames, if suffix is not the same, set f*
 	string stimulus_filename, LGN_switch_filename;
 	string V1_RF_filename, V1_feature_filename, V1_pos_filename;
 	string neighborBlock_filename;
@@ -192,27 +199,30 @@ int main(int argc, char **argv) {
 	string LGN_surfaceID_filename;
 	string LGN_filename, LGN_vpos_filename, LGN_V1_s_filename, LGN_V1_ID_filename; // inputs
 	string LGN_fr_filename, outputFrame_filename; // outputs
-	string LGN_convol_filename, LGN_gallery_filename, outputB4V1_filename, rawData_filename, learnData_FF_filename, learnData_V1_filename, sLGN_filename;
+	string LGN_convol_filename, LGN_gallery_filename, outputB4V1_filename, rawData_filename, learnData_FF_filename, learnData_V1_filename, sLGN_filename, LGN_sp_filename;
 	top_opt.add_options()
 		("output_suffix", po::value<string>(&output_suffix)->default_value(""),"output file suffix")
-		("fLGN_switch", po::value<string>(&LGN_switch_filename)->default_value("LGN_switch.bin"),"file that stores which types of LGN to turn on and off over time, ints of size: (nInputType, nStatus)")
+		("conV1_suffix", po::value<string>(&conV1_suffix)->default_value(""),"suffix for V1 connectome files")
+		("conLGN_suffix", po::value<string>(&conLGN_suffix)->default_value(""),"suffix for LGN to V1 connectome files")
+		("fLGN_switch", po::value<string>(&LGN_switch_filename)->default_value("LGN_switch"),"file that stores which types of LGN to turn on and off over time, ints of size: (nInputType, nStatus)")
 		("fStimulus", po::value<string>(&stimulus_filename)->default_value("stimulus.bin"),"file that stores LGN firing rates, array of size (nframes,width,height,3)")
 		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"),"file that stores LGN neurons information")
-		("fLGN_V1_ID", po::value<string>(&LGN_V1_ID_filename)->default_value("LGN_V1_idList.bin"),"file stores LGN to V1 connections")
-		("fLGN_V1_s", po::value<string>(&LGN_V1_s_filename)->default_value("LGN_V1_sList.bin"),"file stores LGN to V1 connection strengths")
+		("fLGN_V1_ID", po::value<string>(&LGN_V1_ID_filename)->default_value("LGN_V1_idList"),"file stores LGN to V1 connections")
+		("fLGN_V1_s", po::value<string>(&LGN_V1_s_filename)->default_value("LGN_V1_sList"),"file stores LGN to V1 connection strengths")
 		("fLGN_surfaceID", po::value<string>(&LGN_surfaceID_filename)->default_value("LGN_surfaceID.bin"),"file stores LGN position ID on surface memory")
 		("fV1_pos", po::value<string>(&V1_pos_filename)->default_value("V1_allpos.bin"), "file that stores V1 coritcal position and visual field position")
 		("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file to read spatially predetermined functional features of neurons")
-		("fV1_conMat", po::value<string>(&V1_conMat_filename)->default_value("V1_conMat.bin"), "file that stores V1 to V1 connection within the neighboring blocks")
-		("fV1_delayMat", po::value<string>(&V1_delayMat_filename)->default_value("V1_delayMat.bin"), "file that stores V1 to V1 transmission delay within the neighboring blocks")
-		("fV1_vec", po::value<string>(&V1_vec_filename)->default_value("V1_vec.bin"), "file that stores V1 to V1 connection ID, strength and transmission delay far the neighboring blocks")
-		("fNeighborBlock", po::value<string>(&neighborBlock_filename)->default_value("neighborBlock.bin"), "file that stores V1 to V1 connection ID, strength and transmission delay far the neighboring blocks")
-		("fV1_RF", po::value<string>(&V1_RF_filename)->default_value("V1_RF.bin"), "file that stores V1 RF properties, (orientation info is in fV1_feature)")
+		("fV1_conMat", po::value<string>(&V1_conMat_filename)->default_value("V1_conMat"), "file that stores V1 to V1 connection within the neighboring blocks")
+		("fV1_delayMat", po::value<string>(&V1_delayMat_filename)->default_value("V1_delayMat"), "file that stores V1 to V1 transmission delay within the neighboring blocks")
+		("fV1_vec", po::value<string>(&V1_vec_filename)->default_value("V1_vec"), "file that stores V1 to V1 connection ID, strength and transmission delay far the neighboring blocks")
+		("fNeighborBlock", po::value<string>(&neighborBlock_filename)->default_value("neighborBlock"), "file that stores V1 to V1 connection ID, strength and transmission delay far the neighboring blocks")
+		("fV1_RF", po::value<string>(&V1_RF_filename)->default_value("V1_RF"), "file that stores V1 RF properties, (orientation info is in fV1_feature)")
 		("fLGN", po::value<string>(&LGN_filename)->default_value("LGN"),"file that stores all the information of LGN neurons")
 		("fLGN_fr", po::value<string>(&LGN_fr_filename)->default_value("LGN_fr"),"file stores LGN firing rates")
 		("fRawData", po::value<string>(&rawData_filename)->default_value("rawData"), "file that stores V1 response (spike, v, g) over time")
 		("fLearnData_FF", po::value<string>(&learnData_FF_filename)->default_value("learnData_FF"), "file that stores LGN->V1 connection strength and the related variables over time, make sure learnData_FF is set")
 		("f_sLGN", po::value<string>(&sLGN_filename)->default_value("sLGN"), "file that stores the LGN->V1 connection strength over time, make sure learnData_FF is set")
+		("fLGN_sp", po::value<string>(&LGN_sp_filename)->default_value("LGN_sp"), "write LGN spikes to file")
 		("fOutputFrame", po::value<string>(&outputFrame_filename)->default_value("outputFrame"),"file that stores firing rate from LGN and/or V1 (in physical location or visual field) spatially to be ready for frame production") // TEST 
 		("fOutputB4V1", po::value<string>(&outputB4V1_filename)->default_value("outputB4V1"),"file that stores luminance values, contrasts, LGN convolution and their firing rates") // TEST 
 		("fLGN_gallery", po::value<string>(&LGN_gallery_filename)->default_value("LGN_gallery"),"file that stores spatial and temporal convolution parameters"); // TEST 
@@ -251,6 +261,17 @@ int main(int argc, char **argv) {
     if (!output_suffix.empty())  {
         output_suffix = "_" + output_suffix;
     }
+    output_suffix = output_suffix + ".bin";
+
+    if (!conLGN_suffix.empty())  {
+        conLGN_suffix = "_" + conLGN_suffix;
+    }
+    conLGN_suffix = conLGN_suffix + ".bin";
+
+    if (!conV1_suffix.empty())  {
+        conV1_suffix = "_" + conV1_suffix;
+    }
+    conV1_suffix = conV1_suffix + ".bin";
 
 	if (nSpatialSample1D > 32) {
 		cout << "nSpatialSample1D has to be smaller than 32 (1024 threads per block).\n";
@@ -483,16 +504,16 @@ int main(int argc, char **argv) {
 
         if (nLearnTypeFF_E) learnFF_pre<LearnVarShapeFF_E_pre>(lFF_E_pre, &(tauLTP[0]), nLearnTypeFF_E);
         if (nLearnTypeFF_I) learnFF_pre<LearnVarShapeFF_I_pre>(lFF_I_pre, &(tauLTP[nLearnTypeFF_E]), nLearnTypeFF_I);
-        if (nLearnTypeFF_E) learnFF_post<LearnVarShapeFF_E_post>(lFF_E_post, &(tauLTD[0]), &(tauTrip[0]), tauAvg[0], targetFR[0], &(A_LGN[0]), gmaxLGN[0], gminLGN[0], nLearnTypeFF_E, sRatio);
-        if (nLearnTypeFF_I) learnFF_post<LearnVarShapeFF_I_post>(lFF_I_post, &(tauLTD[nLearnTypeFF_E]), &(tauTrip[nLearnTypeFF_E]), tauAvg[1], targetFR[1], &(A_LGN[nLearnTypeFF_E]), gmaxLGN[nLearnTypeFF_E], gminLGN[nLearnTypeFF_E], nLearnTypeFF_I, sRatio);
+        if (nLearnTypeFF_E) learnFF_post<LearnVarShapeFF_E_post>(lFF_E_post, &(tauLTD[0]), &(tauTrip[0]), tauAvg[0], targetFR[0], &(A_LGN[0]), gmaxLGN[0], gminLGN[0], nLearnTypeFF_E, sRatioLGN);
+        if (nLearnTypeFF_I) learnFF_post<LearnVarShapeFF_I_post>(lFF_I_post, &(tauLTD[nLearnTypeFF_E]), &(tauTrip[nLearnTypeFF_E]), tauAvg[1], targetFR[1], &(A_LGN[nLearnTypeFF_E]), gmaxLGN[nLearnTypeFF_E], gminLGN[nLearnTypeFF_E], nLearnTypeFF_I, sRatioLGN);
 
         if (nLearnTypeFF_E) printFF_pre<LearnVarShapeFF_E_pre>(lFF_E_pre, 1);
         if (nLearnTypeFF_I) printFF_pre<LearnVarShapeFF_I_pre>(lFF_I_pre, 0);
         if (nLearnTypeFF_E) printFF_post<LearnVarShapeFF_E_post>(lFF_E_post, 1);
         if (nLearnTypeFF_I) printFF_post<LearnVarShapeFF_I_post>(lFF_I_post, 0);
 
-        if (nLearnTypeE) learnE(lE, &(tauLTP[nLearnTypeFF]), &(tauLTD[nLearnTypeFF]), &(tauTrip[nLearnTypeFF]), tauAvg[0], targetFR[0], &(A_V1[0]), gmaxE[0], gminE[0], nLearnTypeE, sRatio);
-        if (nLearnTypeQ) learnQ(lQ, &(tauQ[0]), &(A_Q[0]), gmaxQ[0], gminQ[0], nLearnTypeQ, sRatio);
+        if (nLearnTypeE) learnE(lE, &(tauLTP[nLearnTypeFF]), &(tauLTD[nLearnTypeFF]), &(tauTrip[nLearnTypeFF]), tauAvg[0], targetFR[0], &(A_V1[0]), gmaxE[0], gminE[0], nLearnTypeE, sRatioV1);
+        if (nLearnTypeQ) learnQ(lQ, &(tauQ[0]), &(A_Q[0]), gmaxQ[0], gminQ[0], nLearnTypeQ, sRatioV1);
 
         if (nLearnTypeE) printE(lE);
         if (nLearnTypeQ) printQ(lQ);
@@ -542,6 +563,7 @@ int main(int argc, char **argv) {
 	ifstream fLGN_vpos; // LGN VF pos 
 	fstream fLGN; // LGN properties
 	ofstream fLGN_fr; // outputs
+	ofstream fLGN_sp;
 	ofstream fLGN_gallery, fOutputB4V1;
 	ofstream fRawData, fOutputFrame, fLearnData_FF, f_sLGN;
 
@@ -600,7 +622,7 @@ int main(int argc, char **argv) {
 				0------------------------------>1
 				  |b| <- range ->|b| <- range ->|				 
 	 */
-    /* uniform_retina:
+    /* flat_retina:
 				            left-eye (cyclop)
 				1  ______________________________
 				^ |b--------------------------|b| <- buffer(b)  
@@ -647,9 +669,9 @@ int main(int argc, char **argv) {
     vector<Float> LGN_sDur;
     vector<Size> LGN_switchIt;
     if (LGN_switch) {
-        fLGN_switch.open(LGN_switch_filename, fstream::in | fstream::binary);
+        fLGN_switch.open(LGN_switch_filename + conLGN_suffix, fstream::in | fstream::binary);
         if (!fLGN_switch) {
-		    cout << "Cannot open or find " << LGN_vpos_filename <<" to read in LGN properties.\n";
+		    cout << "Cannot open or find " << LGN_switch_filename + conLGN_suffix <<" to read in LGN properties.\n";
 		    return EXIT_FAILURE;
         } else {
             fLGN_switch.read(reinterpret_cast<char*>(&nStatus), sizeof(Size));
@@ -674,7 +696,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (!uniform_retina) {
+    if (!flat_retina) {
 	    Float stimulus_extent = stimulus_range + 2*stimulus_buffer;
 	    normEccMaxStimulus_extent = max_ecc/(2*stimulus_extent); // origin at left boundary, just the ecc at VF center, its surround can be much bigger, normalized for texture coordinates
 	    // normalized stimulus reading points for stimulus access
@@ -892,54 +914,48 @@ int main(int argc, char **argv) {
         //Float c50_dist[2] = {0.5, 0.03}; //
 		Float spontPercentUL = 0.15; // 0.15
 		Float spontPercent = 0.05; // 0.05
-        if (!uniform_retina) {
-            default_random_engine rGen_LGNsetup(seed);
-		    seed++; // so that next random_engine use a different seed;
-		    // lambda to return a function that generates random numbers from a given distribution
-		    auto get_rand_from_gauss0 = [](default_random_engine &rGen, normal_distribution<Float> &dist, function<bool(Float)> &outOfBound) {
-		    	function<float()> get_rand = [&rGen, &dist, &outOfBound] () {
-		    		Float rand;
-		    		Size count = 0;
-		    		do {
-		    			rand = dist(rGen);
-		    			count++;
-		    			if (count > 10) {
-		    				cout << rand << "\n";
-		    			}
-		    			if (count > 20) {
-		    				assert(count <= 20);
-		    			}
-		    		} while (outOfBound(rand));
-		    		return rand;
-		    	};
-		    	return get_rand;
-		    };
-		    auto get_excLowBound = [](Float thres) {
-		    	function<bool(Float)> bound = [thres] (Float value) {
-		    		return value <= thres;
-		    	};
-		    	return bound;
-		    };
-		    auto positiveBound = get_excLowBound(0.0);
-		    auto unityExcBound = get_excLowBound(1.0);
-		    auto get_incLowBound = [](Float thres) {
-		    	function<bool(Float)> bound = [thres] (Float value) {
-		    		return value < thres;
-		    	};
-		    	return bound;
-		    };
-		    auto unityIncBound = get_incLowBound(1.0);
-		    auto nonNegativeBound = get_incLowBound(0.0);
-            function<bool(Float, Float)> larger = [](Float v1, Float v2) {
-                return v1<=v2 || v2<0.1*v1; // i.e., requring 0.1*v1 <= v2 < v1
-            };
-            function<bool(Float, Float)> smaller = [](Float v1, Float v2) {
-                return v1>=v2;
-            };
-		    // set test param for LGN subregion RF spatial kernel 
-		    // Croner and Kaplan 1995
-		    // center and surround RF size correlates
-		    Float rho_SC = 0.99;
+        //============
+        default_random_engine rGen_LGNsetup(seed);
+		seed++; // so that next random_engine use a different seed;
+		// lambda to return a function that generates random numbers from a given distribution
+		auto get_rand_from_gauss0 = [](default_random_engine &rGen, normal_distribution<Float> &dist, function<bool(Float)> &outOfBound) {
+			function<float()> get_rand = [&rGen, &dist, &outOfBound] () {
+				Float rand;
+				Size count = 0;
+				do {
+					rand = dist(rGen);
+					count++;
+					if (count > 10) {
+						cout << rand << "\n";
+					}
+					if (count > 20) {
+						assert(count <= 20);
+					}
+				} while (outOfBound(rand));
+				return rand;
+			};
+			return get_rand;
+		};
+		auto get_excLowBound = [](Float thres) {
+			function<bool(Float)> bound = [thres] (Float value) {
+				return value <= thres;
+			};
+			return bound;
+		};
+		auto positiveBound = get_excLowBound(0.0);
+        function<bool(Float, Float)> larger = [](Float v1, Float v2) {
+            return v1<=v2 || v2<0.1*v1; // i.e., requring 0.1*v1 <= v2 < v1
+        };
+        function<bool(Float, Float)> smaller = [](Float v1, Float v2) {
+            return v1>=v2;
+        };
+		// set test param for LGN subregion RF spatial kernel 
+		// Croner and Kaplan 1995
+		// center and surround RF size correlates
+        Float maxSecc, minSecc, maxSpolar, minSpolar;
+        Float maxCecc, minCecc, maxCpolar, minCpolar;
+        if (!uniform_LGN) {
+		    Float rho_SC = 0.8; // empirical guess
 		    Float rho_SC_comp = sqrt(1.0-rho_SC*rho_SC);
             for (PosInt i=0; i<nLGN; i++) {
                 switch (LGNtype[i]) {
@@ -959,82 +975,110 @@ int main(int argc, char **argv) {
 		    	return input * norm(rGen_LGNsetup);
 		    };
 		    transform(LGN_rw.begin(), LGN_rw.end(), LGN_rh.begin(), add_noise);
-
-		    // orientation of LGN RF
+            // orientation of LGN RF
 		    auto uniform = uniform_real_distribution<Float>(0, M_PI);
 		    std::function<Float()> get_rand_from_uniform = [&rGen_LGNsetup, &uniform] () {
 		    	return uniform(rGen_LGNsetup);
 		    };
 		    generate(LGN_orient.begin(), LGN_orient.end(), get_rand_from_uniform);
+
             // surround origin shift
 		    function<bool(Float)> noBound = [] (Float value) {
 		    	return false;
 		    };
 		    norm = normal_distribution<Float>(0.0, 1.0/3.0/sqrt(2)); // within a 1/3 of the std of the gauss0ian
 		    auto get_rand = get_rand_from_gauss0(rGen_LGNsetup, norm, noBound);
-            Float maxSecc, minSecc, maxSpolar, minSpolar;
-            Float maxCecc, minCecc, maxCpolar, minCpolar;
 		    for (Size i=0; i<nLGN; i++) {
 		    	// not your usual transform 
-		    	Float intermediateEcc = LGN_ecc[i]+LGN_rh[i]*get_rand();
 		    	Float eta = LGN_rw[i]*get_rand();
-		    	orthPhiRotate3D_arc(LGN_polar[i], intermediateEcc, eta, LGN_polar[i+nLGN], LGN_ecc[i+nLGN]);
-                if (i==0) {
-                    minSecc = LGN_ecc[i+nLGN];
-                    maxSecc = LGN_ecc[i+nLGN];
-                    minSpolar = LGN_polar[i+nLGN];
-                    maxSpolar = LGN_polar[i+nLGN];
-                    minCecc = LGN_ecc[i];
-                    maxCecc = LGN_ecc[i];
-                    minCpolar = LGN_polar[i];
-                    maxCpolar = LGN_polar[i];
+		    	Float intermediateEcc = LGN_ecc[i]+LGN_rh[i]*get_rand();
+                if (!flat_retina) {
+		    	    orthPhiRotate3D_arc(LGN_polar[i], intermediateEcc, eta, LGN_polar[i+nLGN], LGN_ecc[i+nLGN]);
                 } else {
-                    if (LGN_ecc[i+nLGN] < minSecc) minSecc = LGN_ecc[i+nLGN];
-                    if (LGN_polar[i+nLGN] < minSpolar) minSpolar = LGN_polar[i+nLGN];
-                    if (LGN_ecc[i+nLGN] > maxSecc) maxSecc = LGN_ecc[i+nLGN];
-                    if (LGN_polar[i+nLGN] > maxSpolar) maxSpolar = LGN_polar[i+nLGN];
-                    if (LGN_ecc[i] < minCecc) minCecc = LGN_ecc[i];
-                    if (LGN_polar[i] < minCpolar) minCpolar = LGN_polar[i];
-                    if (LGN_ecc[i] > maxCecc) maxCecc = LGN_ecc[i];
-                    if (LGN_polar[i] > maxCpolar) maxCpolar = LGN_polar[i];
+                    LGN_ecc[i+nLGN] = intermediateEcc;    
+                    LGN_polar[i+nLGN] = LGN_polar[i] + eta/intermediateEcc;
                 }
-		    }
-            printf("Cen ecc: %f, %f\n", minCecc*180/M_PI, maxCecc*180/M_PI);
-            printf("Cen polar: %f, %f\n", minCpolar*180/M_PI, maxCpolar*180/M_PI);
-            printf("Sur ecc: %f, %f\n", minSecc*180/M_PI, maxSecc*180/M_PI);
-            printf("Sur polar: %f, %f\n", minSpolar*180/M_PI, maxSpolar*180/M_PI);
-            auto get_rand_from_clipped_gauss = [](Float param[2], Float lb, Float ub) {
-		    	assert(lb < 1);
-		    	assert(ub > 1);
-		    	//function<Float(RandomEngine)> get_rand = [param, lb, ub](RandomEngine &rGen) {
-		    	auto get_rand = [param, lb, ub](RandomEngine &rGen) {
-		    		static normal_distribution<Float> norm(0.0, 1.0);
-		    		Size count = 0;
-		    		Float v;
-		    		do {
-		    			v = norm(rGen)*param[1] + param[0];
-		    			count++;
-		    			if (count > 10) {
-		    				std::cout << "mean: " << param[0] << ", std: " << param[1] << "\n";
-		    				std::cout << "lb: " << lb << ", ub: " << ub << "\n";
-		    				std::cout << count << ": " << v << "\n";
-		    			}
-		    			if (count > 20) {
-		    				assert(lb < 1);
-		    				assert(ub > 1);
-		    				assert(count <= 20);
-		    			}
-		    		} while (v < lb*param[0] || v > ub*param[0]);
-		    		return v; 
-		    	};
-		    	return get_rand;
-		    };
+            }
+        } else {
+            // no orientation prefence
+            // no surrond origin shift;
+            for (PosInt i=0; i<nLGN; i++) {
+                switch (LGNtype[i]) {
+                    case InputType::MonLoff: case InputType::MoffLon: case InputType::LonMoff: case InputType::LoffMon:
+                        LGN_rw[i] = acuityC[0];
+                        LGN_rw[i+nLGN] = acuityS[0];
+                        LGN_rh[i] = acuityC[0];
+                        LGN_rh[i+nLGN] = acuityS[0];
+                        break;
+                    case InputType::OnOff: case InputType::OffOn:
+                        LGN_rw[i] = acuityC_M[0];
+                        LGN_rw[i+nLGN] = acuityS_M[0];
+                        LGN_rh[i] = acuityC_M[0];
+                        LGN_rh[i+nLGN] = acuityS_M[0];
+                        break;
+                }
+                LGN_ecc[i+nLGN] = LGN_ecc[i];
+                LGN_polar[i+nLGN] = LGN_polar[i];
+            }
+        }
+		for (Size i=0; i<nLGN; i++) {
+            if (i==0) {
+                minSecc = LGN_ecc[i+nLGN];
+                maxSecc = LGN_ecc[i+nLGN];
+                minSpolar = LGN_polar[i+nLGN];
+                maxSpolar = LGN_polar[i+nLGN];
+                minCecc = LGN_ecc[i];
+                maxCecc = LGN_ecc[i];
+                minCpolar = LGN_polar[i];
+                maxCpolar = LGN_polar[i];
+            } else {
+                if (LGN_ecc[i+nLGN] < minSecc) minSecc = LGN_ecc[i+nLGN];
+                if (LGN_polar[i+nLGN] < minSpolar) minSpolar = LGN_polar[i+nLGN];
+                if (LGN_ecc[i+nLGN] > maxSecc) maxSecc = LGN_ecc[i+nLGN];
+                if (LGN_polar[i+nLGN] > maxSpolar) maxSpolar = LGN_polar[i+nLGN];
+                if (LGN_ecc[i] < minCecc) minCecc = LGN_ecc[i];
+                if (LGN_polar[i] < minCpolar) minCpolar = LGN_polar[i];
+                if (LGN_ecc[i] > maxCecc) maxCecc = LGN_ecc[i];
+                if (LGN_polar[i] > maxCpolar) maxCpolar = LGN_polar[i];
+            }
+		}
+        printf("Cen ecc: %f, %f\n", minCecc*180/M_PI, maxCecc*180/M_PI);
+        printf("Cen polar: %f, %f\n", minCpolar*180/M_PI, maxCpolar*180/M_PI);
+        printf("Sur ecc: %f, %f\n", minSecc*180/M_PI, maxSecc*180/M_PI);
+        printf("Sur polar: %f, %f\n", minSpolar*180/M_PI, maxSpolar*180/M_PI);
+        auto get_rand_from_clipped_gauss = [](Float param[2], Float lb, Float ub) {
+			assert(lb < 1);
+			assert(ub > 1);
+			//function<Float(RandomEngine)> get_rand = [param, lb, ub](RandomEngine &rGen) {
+			auto get_rand = [param, lb, ub](RandomEngine &rGen) {
+				static normal_distribution<Float> norm(0.0, 1.0);
+				Size count = 0;
+				Float v;
+				do {
+					v = norm(rGen)*param[1] + param[0];
+					count++;
+					if (count > 10) {
+						std::cout << "mean: " << param[0] << ", std: " << param[1] << "\n";
+						std::cout << "lb: " << lb << ", ub: " << ub << "\n";
+						std::cout << count << ": " << v << "\n";
+					}
+					if (count > 20) {
+						assert(lb < 1);
+						assert(ub > 1);
+						assert(count <= 20);
+					}
+				} while (v < lb*param[0] || v > ub*param[0]);
+				return v; 
+			};
+			return get_rand;
+		};
 
-		    // TODO: Group the same cone-specific types together for warp performance
-		    // set test param for LGN subregion RF temporal kernel, also the K_c and K_s
-		    // Benardete and Kaplan 1997 (source fitted by LGN_kernel.ipynb (mean))
-		    // empirical value
-		    
+		// TODO: Group the same cone-specific types together for warp performance
+		// set test param for LGN subregion RF temporal kernel, also the K_c and K_s
+		// Benardete and Kaplan 1997 (source fitted by LGN_kernel.ipynb (mean))
+		// empirical value
+		
+        if (!uniform_LGN) {
 		    auto get_nRonC = get_rand_from_clipped_gauss(nR_onC, nR_onClowBound, nR_onCupBound);
 		    auto get_nRoffC = get_rand_from_clipped_gauss(nR_offC, nR_offClowBound, nR_offCupBound);
 		    auto get_nRonS = get_rand_from_clipped_gauss(nR_onS, nR_onSlowBound, nR_onSupBound);
@@ -1043,17 +1087,26 @@ int main(int argc, char **argv) {
 		    Float rho_Kc_Ks = 0.5;
 		    Float rho_Kc_Ks_comp = sqrt(1.0-rho_Kc_Ks*rho_Kc_Ks);
 		    // reset norm to standard normal distribution
-		    norm = normal_distribution<Float>(0.0, 1.0);
+		    normal_distribution<Float> norm(0.0, 1.0);
 
 		    cout << "initializing LGN temporal parameters...\n";
 		    // for spontaneous firing rate
 		    Float log_mean, log_std;
             assert(spontPercent > 0);
 		    tie(log_mean, log_std) = lognstats<Float>(spontPercent, 0.01);
+
+		    auto get_incLowBound = [](Float thres) {
+		    	function<bool(Float)> bound = [thres] (Float value) {
+		    		return value < thres;
+		    	};
+		    	return bound;
+		    };
             auto halfBound_onC = get_incLowBound(0.5*K_onC[0]);
             //auto halfBound_offS = get_incLowBound(0.5*K_offS[0]);
             auto halfBound_offC = get_incLowBound(0.5*K_offC[0]);
             //auto halfBound_onS = get_incLowBound(0.5*K_onS[0]);
+
+		    auto nonNegativeBound = get_incLowBound(0.0);
 
             function<bool(Float)> tauD_Cbound;
             function<bool(Float)> tauD_Sbound;
@@ -1186,6 +1239,7 @@ int main(int argc, char **argv) {
 		    	assert(c50[j] < 1.0);
 		    }
 
+		    auto unityIncBound = get_incLowBound(1.0);
 		    norm = normal_distribution<Float>(sharpness_dist[0], sharpness_dist[1]);
 		    auto get_sharpness = get_rand_from_gauss0(rGen_LGNsetup, norm, unityIncBound);
 		    generate(sharpness.begin(), sharpness.end(), get_sharpness);
@@ -1193,26 +1247,6 @@ int main(int argc, char **argv) {
 		    	assert(sharpness[j] >= 1.0);
 		    }    
         } else {
-            for (PosInt i=0; i<nLGN; i++) {
-                switch (LGNtype[i]) {
-		    		case InputType::MonLoff: case InputType::MoffLon: case InputType::LonMoff: case InputType::LoffMon:
-                        LGN_rw[i] = acuityC[0];
-                        LGN_rw[i+nLGN] = acuityS[0];
-                        LGN_rh[i] = acuityC[0];
-                        LGN_rh[i+nLGN] = acuityS[0];
-		    			break;
-                    case InputType::OnOff: case InputType::OffOn:
-                        LGN_rw[i] = acuityC_M[0];
-                        LGN_rw[i+nLGN] = acuityS_M[0];
-                        LGN_rh[i] = acuityC_M[0];
-                        LGN_rh[i+nLGN] = acuityS_M[0];
-		    			break;
-                }
-                LGN_ecc[i+nLGN] = LGN_ecc[i];
-                LGN_polar[i+nLGN] = LGN_polar[i];
-            }
-            // no orientation prefence
-            // no surrond origin shift;
 		    for (unsigned int i=0; i<nLGN; i++) {
 		    	// using median from table 2,3  (on,off)/all * table 5,6 with matching c.v.# Benardete and Kaplan 1997
 		    	// fit with difference of exponentials in LGN_kernel.ipynb
@@ -1362,6 +1396,7 @@ int main(int argc, char **argv) {
             sharpness.assign(nLGN, sharpness_dist[0]);
             c50.assign(nLGN, c50_dist[0]);
         }
+        //============
         if (ignoreRetinogeniculateDelay) {
             Float minDelay = *min_element(delay.begin(), delay.end());
             auto substract = [minDelay](Float v) {
@@ -1371,7 +1406,7 @@ int main(int argc, char **argv) {
             cout << "the first " << minDelay << "ms delay from retina to LGN is ignored\n";
         }
 		
-		fLGN.open(LGN_filename + output_suffix + ".bin", fstream::out | fstream::binary);
+		fLGN.open(LGN_filename + output_suffix, fstream::out | fstream::binary);
 		// append to LGN_polar and LGN_ecc positions
 		// surround origin is changed
 		if (!fLGN) {
@@ -1722,12 +1757,15 @@ int main(int argc, char **argv) {
     
 	// stats: frames, rawdata
 	// cortical and LGN surface
+
+    Size phyWidth = width*phyWidth_scale;
 	Float V1_hwPhyRatio = V1_yspan/V1_xspan;
 	Size phyHeight = ceil(V1_hwPhyRatio * phyWidth);
 	if (phyHeight%2 == 1) phyHeight++;
 	Size nPixel_phyV1 = phyWidth * phyHeight;
 
 	// two visual field surface, left and right
+    Size visWidth = width*visWidth_scale;
 	Size nPixel_visV1, visHeight; // share with visLGN
 	if (frameVisV1output || frameVisLGNoutput) {
 		Float hwVisRatioV = LGN_yspan/LGN_xspan;
@@ -2018,9 +2056,9 @@ int main(int argc, char **argv) {
 	vector<vector<PosInt>> vecID(nV1);
 	vector<vector<Float>> conVec(nV1);
 	vector<vector<Float>> delayVec(nV1);
-	fV1_vec.open(V1_vec_filename, fstream::in | fstream::binary);
+	fV1_vec.open(V1_vec_filename + conV1_suffix, fstream::in | fstream::binary);
 	if (!fV1_vec) {
-		cout << "Cannot open or find " << V1_vec_filename <<" to read V1 connection to farther neighbor.\n";
+		cout << "Cannot open or find " << V1_vec_filename + conV1_suffix <<" to read V1 connection to farther neighbor.\n";
 		return EXIT_FAILURE;
 	} else {
 		fV1_vec.read(reinterpret_cast<char*>(&nVec[0]), nV1*sizeof(Size));
@@ -2055,16 +2093,17 @@ int main(int argc, char **argv) {
 	assert(maxChunkSize * iSizeSplit + remainChunkSize * (nChunk - iSizeSplit) == nblock);
 
 	Size nearNeighborBlock;
-	fV1_conMat.open(V1_conMat_filename, fstream::in | fstream::binary);
+	fV1_conMat.open(V1_conMat_filename + conV1_suffix, fstream::in | fstream::binary);
 	if (!fV1_conMat) {
-		cout << "Cannot open or find " << V1_conMat_filename <<" to read V1 cortical connection matrices.\n";
+		cout << "Cannot open or find " << V1_conMat_filename + conV1_suffix <<" to read V1 cortical connection matrices.\n";
 		return EXIT_FAILURE;
 	} else {
+		cout << "reading connectome from " << V1_conMat_filename << "\n";
 		fV1_conMat.read(reinterpret_cast<char*>(&nearNeighborBlock), sizeof(Size));
 	}
-	fV1_delayMat.open(V1_delayMat_filename, fstream::in | fstream::binary);
+	fV1_delayMat.open(V1_delayMat_filename + conV1_suffix, fstream::in | fstream::binary);
 	if (!fV1_delayMat) {
-		cout << "Cannot open or find " << V1_delayMat_filename <<" to read V1 cortical distance matrices.\n";
+		cout << "Cannot open or find " << V1_delayMat_filename + conV1_suffix <<" to read V1 cortical distance matrices.\n";
 		return EXIT_FAILURE;
 	} else {
 		Size tmp;
@@ -2165,8 +2204,8 @@ int main(int argc, char **argv) {
     };
 	assert(delayMat[nChunk-1] + chunkSize == conDelayMat0 + matSize*2);
 	chunkSize = matChunkSize;
-    auto scaleStrength =[sRatio] (Float v) {
-        return v*sRatio;
+    auto scaleStrength =[sRatioV1] (Float v) {
+        return v*sRatioV1;
     };
 	for (PosInt i=0; i<nChunk; i++) {
 		if (i >= iSizeSplit) chunkSize = remainChunkSize*nearBlockSize;
@@ -2185,9 +2224,9 @@ int main(int argc, char **argv) {
 	PosInt *nBlockId = new PosInt[nearNeighborBlock*nblock];
 
     // neighboring blocks
-	fNeighborBlock.open(neighborBlock_filename, fstream::in | fstream::binary);
+	fNeighborBlock.open(neighborBlock_filename + conV1_suffix, fstream::in | fstream::binary);
 	if (!fNeighborBlock) {
-		cout << "Cannot open or find " << V1_vec_filename <<" to read V1 neighbor block info.\n";
+		cout << "Cannot open or find " << neighborBlock_filename + conV1_suffix <<" to read V1 neighbor block info.\n";
 		return EXIT_FAILURE;
 	} else {
 		fNeighborBlock.read(reinterpret_cast<char*>(&nNeighborBlock[0]), nblock*sizeof(Size));
@@ -2447,7 +2486,7 @@ int main(int argc, char **argv) {
 
 	Size max_LGNperV1;
 	Float* LGN_V1_s;
-	read_LGN(LGN_V1_s_filename, LGN_V1_s, max_LGNperV1, sRatio, learnData_FF, nV1 <= 32); // assign LGN_V1_s and max_LGNperV1
+	read_LGN(LGN_V1_s_filename + conLGN_suffix, LGN_V1_s, max_LGNperV1, sRatioLGN, learnData_FF, nV1 <= 32); // assign LGN_V1_s and max_LGNperV1
 	Float* sLGN;
 	size_t sLGN_size = static_cast<size_t>(max_LGNperV1)*nV1*sizeof(Float);
 	checkCudaErrors(cudaMalloc((void**)&sLGN, sLGN_size));
@@ -2455,14 +2494,20 @@ int main(int argc, char **argv) {
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	checkCudaErrors(cudaMemcpy(sLGN, LGN_V1_s, sLGN_size, cudaMemcpyHostToDevice));
-    Float* LGN_sInfo;
     if (!learnData_FF) { // free memory if not used later
 	    delete []LGN_V1_s;
-    } else {
-        checkCudaErrors(cudaMalloc((void**)&LGN_sInfo, nLGN*sizeof(Float)));
+    }
+    Float* d_LGN_sInfo;
+    if (learnData_FF || getLGN_sp) {
+        checkCudaErrors(cudaMalloc((void**)&d_LGN_sInfo, nLGN*sizeof(Float)));
     }
 
-	vector<vector<PosInt>> LGN_V1_ID = read_listOfList<PosInt>(LGN_V1_ID_filename, false);
+    Float* LGN_sInfo;
+    if (getLGN_sp) {
+	    checkCudaErrors(cudaMallocHost((void**) &LGN_sInfo, nLGN*sizeof(Float)));
+    }
+
+	vector<vector<PosInt>> LGN_V1_ID = read_listOfList<PosInt>(LGN_V1_ID_filename + conLGN_suffix, false);
     Size avgLGNperV1 = 0;
     for (PosInt i=0; i<nV1; i++) {
         avgLGNperV1 += LGN_V1_ID[i].size();
@@ -2564,9 +2609,9 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 
 	{ // output file tests
 		if (saveLGN_fr) {
-			fLGN_fr.open(LGN_fr_filename + output_suffix + ".bin", fstream::out | fstream::binary);
+			fLGN_fr.open(LGN_fr_filename + output_suffix, fstream::out | fstream::binary);
 			if (!fLGN_fr) {
-				cout << "Cannot open or find " << LGN_fr_filename <<" for LGN firing rate output\n";
+				cout << "Cannot open or find " << LGN_fr_filename + output_suffix <<" for LGN firing rate output\n";
 				return EXIT_FAILURE;
 			} else {
 				fLGN_fr.write((char*)&nt, sizeof(Size));
@@ -2575,9 +2620,9 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		}
 
         if (rawData) {
-		    fRawData.open(rawData_filename + output_suffix + ".bin", fstream::out | fstream::binary);
+		    fRawData.open(rawData_filename + output_suffix, fstream::out | fstream::binary);
 		    if (!fRawData) {
-		    	cout << "Cannot open or find " << rawData_filename <<" for V1 simulation results.\n";
+		    	cout << "Cannot open or find " << rawData_filename + output_suffix <<" for V1 simulation results.\n";
 		    	return EXIT_FAILURE;
 		    } else {
 		    	fRawData.write((char*) &dt, sizeof(Float));
@@ -2591,9 +2636,9 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		    }
         }
         if (learnData_FF) {
-		    fLearnData_FF.open(learnData_FF_filename + output_suffix + ".bin", fstream::out | fstream::binary);
+		    fLearnData_FF.open(learnData_FF_filename + output_suffix, fstream::out | fstream::binary);
 		    if (!fLearnData_FF) {
-		    	cout << "Cannot open or find " << learnData_FF_filename <<" for data related to LGN->V1 plasticity.\n";
+		    	cout << "Cannot open or find " << learnData_FF_filename + output_suffix <<" for data related to LGN->V1 plasticity.\n";
 		    	return EXIT_FAILURE;
             } else {
 		    	fLearnData_FF.write((char*) &dt, sizeof(Float));
@@ -2608,26 +2653,39 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		    	fLearnData_FF.write((char*) &nLearnTypeFF_E, sizeof(Size));
 		    	fLearnData_FF.write((char*) &nLearnTypeFF_I, sizeof(Size));
                 if (rawData) {
-                    cout << "find V1 spike and gFF in rawData.bin for learnData_FF\n";
+                    cout << "find V1 spike and gFF in " << rawData_filename + output_suffix << " for learnData_FF\n";
                 }
                 // loop in LGN spike, V1 spike, LGN->V1 strength
             }
-            f_sLGN.open(sLGN_filename + output_suffix + ".bin", fstream::out | fstream::binary);
+            f_sLGN.open(sLGN_filename + output_suffix, fstream::out | fstream::binary);
             if (!f_sLGN) {
-		    	cout << "Cannot open or find " << sLGN_filename <<" to store the LGN->V1 connection strength over time.\n";
+		    	cout << "Cannot open or find " << sLGN_filename + output_suffix <<" to store the LGN->V1 connection strength over time.\n";
 		    	return EXIT_FAILURE;
             } else {
 		    	f_sLGN.write((char*) &nt, sizeof(Size));
 		    	f_sLGN.write((char*) &nV1, sizeof(Size));
 		    	f_sLGN.write((char*) &max_LGNperV1, sizeof(Size));
-		    	f_sLGN.write((char*) &sRatio, sizeof(Float));
+		    	f_sLGN.write((char*) &sRatioLGN, sizeof(Float));
 		    	f_sLGN.write((char*) &nLearnTypeFF, sizeof(Size));
 		    	f_sLGN.write((char*) &(gmaxLGN[0]), nLearnTypeFF*sizeof(Float));
             }
         }
-		fOutputFrame.open(outputFrame_filename + output_suffix + ".bin", fstream::out | fstream::binary);
+        
+        if (getLGN_sp) {
+            fLGN_sp.open(LGN_sp_filename + output_suffix, fstream::out | fstream::binary);
+            if (!f_sLGN) {
+		    	cout << "Cannot open or find " << LGN_sp_filename + output_suffix <<" to store the LGN tsp.\n";
+		    	return EXIT_FAILURE;
+            } else {
+		    	fLGN_sp.write((char*) &dt, sizeof(Float));
+		    	fLGN_sp.write((char*) &nt, sizeof(Size));
+		    	fLGN_sp.write((char*) &nLGN, sizeof(Size));
+            }
+        }
+
+		fOutputFrame.open(outputFrame_filename + output_suffix, fstream::out | fstream::binary);
 		if (!fOutputFrame) {
-			cout << "Cannot open or find " << outputFrame_filename <<" for output V1 simulation results to frames.\n";
+			cout << "Cannot open or find " << outputFrame_filename + output_suffix <<" for output V1 simulation results to frames.\n";
 			return EXIT_FAILURE;
 		} else {
 			fOutputFrame.write((char*)&dt, sizeof(Float));
@@ -2648,9 +2706,9 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		}
 
 		if (saveLGN_gallery) {
-			fLGN_gallery.open(LGN_gallery_filename + output_suffix + ".bin", fstream::out | fstream::binary);
+			fLGN_gallery.open(LGN_gallery_filename + output_suffix, fstream::out | fstream::binary);
 			if (!fLGN_gallery) {
-				cout << "Cannot open or find " << LGN_gallery_filename <<" for storage check.\n";
+				cout << "Cannot open or find " << LGN_gallery_filename + output_suffix <<" for storage check.\n";
 				return EXIT_FAILURE;
 			} else {
 				fLGN_gallery.write((char*)&nParvo, sizeof(Size));
@@ -2668,9 +2726,9 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 			}
 		}
 		if (saveOutputB4V1) {
-			fOutputB4V1.open(outputB4V1_filename + output_suffix + ".bin", fstream::out | fstream::binary);
+			fOutputB4V1.open(outputB4V1_filename + output_suffix, fstream::out | fstream::binary);
 			if (!fOutputB4V1) {
-				cout << "Cannot open or find " << outputB4V1_filename <<" to store ouput before V1.\n";
+				cout << "Cannot open or find " << outputB4V1_filename + output_suffix <<" to store ouput before V1.\n";
 				return EXIT_FAILURE;
 			} else {
 				fOutputB4V1.write((char*)&nt, sizeof(Size));
@@ -2873,7 +2931,7 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
                 maxConvol, // not filled
 	    		0, nMagno_I, nParvo_I, nLGN,
                 L_x0, L_y0, R_x0, R_y0,
-	    		normViewDistance, nsig, 0, uniform_retina);
+	    		normViewDistance, nsig, 0, flat_retina);
         #ifdef CHECK
 	        getLastCudaError("store failed");
         #endif
@@ -2952,7 +3010,7 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
                 maxConvol, // magno part wil be filled
 	    		nParvo_I, nParvo_C, nMagno_I, nLGN,
                 L_x0, L_y0, R_x0, R_y0,
-	    		normViewDistance, nsig, 1, uniform_retina);
+	    		normViewDistance, nsig, 1, flat_retina);
         #ifdef CHECK
 	        getLastCudaError("store failed");
         #endif
@@ -3192,7 +3250,7 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
                 iStatus++;
             }
         }
-		LGN_nonlinear<<<nLGN_block, nLGN_thread, 0, mainStream>>>(nLGN, *dLGN.logistic, maxConvol, currentConvol, convolRatio, d_LGN_fr, LGN_sInfo, d_sx, d_sy, leftTimeRate, lastNegLogRand, randState, dLGN_type, typeStatus, lVarFFpre, varSlot, lFF_E_pre, lFF_I_pre, nLearnTypeFF, dt, learning, learnData_FF, LGN_switch);
+		LGN_nonlinear<<<nLGN_block, nLGN_thread, 0, mainStream>>>(nLGN, *dLGN.logistic, maxConvol, currentConvol, convolRatio, d_LGN_fr, d_LGN_sInfo, d_sx, d_sy, leftTimeRate, lastNegLogRand, randState, dLGN_type, typeStatus, lVarFFpre, varSlot, lFF_E_pre, lFF_I_pre, nLearnTypeFF, dt, learning, learnData_FF, LGN_switch, getLGN_sp);
         #ifdef CHECK
 		    getLastCudaError("LGN_nonlinear failed");
         #endif
@@ -3273,11 +3331,22 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
         }
         if (learnData_FF) {
             #ifdef CHECK
-			    checkCudaErrors(cudaMemcpyAsync(outputB4V1, LGN_sInfo, nLGN*sizeof(Float), cudaMemcpyDeviceToHost, LGN_stream));
+			    checkCudaErrors(cudaMemcpyAsync(outputB4V1, d_LGN_sInfo, nLGN*sizeof(Float), cudaMemcpyDeviceToHost, LGN_stream));
 			    checkCudaErrors(cudaMemcpyAsync(outputB4V1+nLGN, lVarFFpre, nLearnTypeFF*nLGN*sizeof(Float), cudaMemcpyDeviceToHost, LGN_stream));
             #else
-			    cudaMemcpyAsync(outputB4V1, LGN_sInfo, nLGN*sizeof(Float), cudaMemcpyDeviceToHost, LGN_stream);
+			    cudaMemcpyAsync(outputB4V1, d_LGN_sInfo, nLGN*sizeof(Float), cudaMemcpyDeviceToHost, LGN_stream);
 			    cudaMemcpyAsync(outputB4V1+nLGN, lVarFFpre, nLearnTypeFF*nLGN*sizeof(Float), cudaMemcpyDeviceToHost, LGN_stream);
+            #endif
+		    cudaEventRecord(LGN_ready, LGN_stream);
+            #ifdef SYNC
+                checkCudaErrors(cudaDeviceSynchronize());
+            #endif
+        }
+        if (getLGN_sp && !learnData_FF) {
+            #ifdef CHECK
+			    checkCudaErrors(cudaMemcpyAsync(LGN_sInfo, d_LGN_sInfo, nLGN*sizeof(Float), cudaMemcpyDeviceToHost, LGN_stream));
+            #else
+			    cudaMemcpyAsync(LGN_sInfo, d_LGN_sInfo, nLGN*sizeof(Float), cudaMemcpyDeviceToHost, LGN_stream);
             #endif
 		    cudaEventRecord(LGN_ready, LGN_stream);
             #ifdef SYNC
@@ -3306,7 +3375,13 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
                 checkCudaErrors(cudaDeviceSynchronize());
             #endif
             cudaEventSynchronize(LGN_ready);
-			fLearnData_FF.write((char*) outputB4V1, preFFsize); // LGN_sInfo and lVarFFpre
+			fLearnData_FF.write((char*) outputB4V1, preFFsize); // d_LGN_sInfo and lVarFFpre
+            if (getLGN_sp) {
+                memcpy(LGN_sInfo, outputB4V1, nLGN*sizeof(Float));
+            }
+        }
+        if (getLGN_sp) {
+            fLGN_sp.write((char*) LGN_sInfo, nLGN*sizeof(Float));
         }
 
         if (matConcurrency < nChunk) { // intial transfer the first matConcurrency chunks
@@ -3588,7 +3663,9 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
             fLearnData_FF.close();
             f_sLGN.close();
         }
-
+        if (getLGN_sp) {
+            fLGN_sp.close();
+        }
 		delete []galleryOutput;
 		delete []d_gE;
 		delete []d_gI;
@@ -3635,6 +3712,9 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 			checkCudaErrors(cudaStreamDestroy(ostream[i]));
 		}
 
+        if (getLGN_sp) {
+		    checkCudaErrors(cudaFreeHost(LGN_sInfo));
+        }
 		checkCudaErrors(cudaFreeHost(pinnedMem));
 		checkCudaErrors(cudaFreeHost(p_conDelayMat));
         if (saveOutputB4V1 || saveLGN_fr || learnData_FF) {
@@ -3663,7 +3743,7 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		    checkCudaErrors(cudaFreeHost(LGN_V1_s));
 		    checkCudaErrors(cudaFreeHost(lVarFFpost));
 		    checkCudaErrors(cudaFree(lVarFFpre));
-		    checkCudaErrors(cudaFree(LGN_sInfo));
+		    checkCudaErrors(cudaFree(d_LGN_sInfo));
         }
         if (framePhyV1output) {
 		    if (framePhyV1output) checkCudaErrors(cudaFree(d_V1_phyFrame));
