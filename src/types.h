@@ -13,7 +13,7 @@ typedef unsigned int SmallSize;
 typedef unsigned int PosInt;
 typedef long unsigned int PosIntL;
 typedef std::default_random_engine RandomEngine;
-typedef Float (*pFeature) (Float, Float);
+typedef Float (*pFeature) (Float, Float, Float);
 
 #define M_PI 3.14159265358979323846  /* pi */
 

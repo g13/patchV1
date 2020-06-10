@@ -7,6 +7,7 @@
 //#define SYNC
 
 #ifdef DOUBLE_PRECISION
+    #define roundingb round 
     #define flooringb floor 
     #define ceilingb ceil
     #define modb fmod
@@ -30,6 +31,7 @@
     #define normalb curand_normal_double
     #define log_normalb curand_log_normal_double
 #else
+    #define roundingb roundf 
     #define flooringb floorf 
     #define ceilingb ceilf
     #define modb fmodf
@@ -55,6 +57,7 @@
 #endif
 
 #ifdef SINGLE_PRECISION
+    #define rounding roundf
     #define flooring floorf
     #define ceiling ceilf
     #define mod fmodf
@@ -78,6 +81,7 @@
     #define normal curand_normal
     #define log_normal curand_log_normal
 #else
+    #define rounding round 
     #define flooring floor
     #define ceiling ceil
     #define mod fmod

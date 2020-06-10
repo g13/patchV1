@@ -51,6 +51,7 @@ for iq = 1:ns
     sid = fopen(LGN_V1_id_fn, 'r');
     LGN_V1_ID = zeros(max_LGNperV1, nV1);
     nLGN_V1 = zeros(nV1,1);
+    fread(sid, 1, 'uint'); % nV1
     for i = 1:nV1
         nLGN_V1(i) = fread(sid, 1, 'uint');
         assert(nLGN_V1(i) <= max_LGNperV1);

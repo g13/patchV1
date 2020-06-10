@@ -47,6 +47,7 @@ nI = int32(nLGNperV1/4);
 nE = int32(nLGNperV1);
 
 fid = fopen(fLGN_V1_ID, 'w'); % format follows read_listOfList in util/util.h
+fwrite(fid, nV1, 'uint');
 id = zeros(nLGNperV1,nV1);
 for i = 1:nV1
     fwrite(fid, nLGNperV1, 'uint');

@@ -1380,7 +1380,7 @@ void LGN_nonlinear(
 		InputType_t* __restrict__ LGN_type,
         InputActivation typeStatus,
         Float* __restrict__ lVar,
-        int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning, bool learnData_FF, bool LGN_switch)
+        int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning, bool learnData_FF, bool LGN_switch, bool getLGN_sp)
 {
 	unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     bool engaging = id<nLGN;
@@ -1442,7 +1442,7 @@ void LGN_nonlinear(
         }
         leftTimeRate[id] = lTR;
         state[id] = local_state;
-        if (learnData_FF) LGN_sInfo[id] = sInfo;
+        if (learnData_FF || getLGN_sp) LGN_sInfo[id] = sInfo;
         // write to surface memory 
         surf2DLayeredwrite(sInfo, LGNspikeSurface, 4*x, y, 0);
         if (learning < 4) {

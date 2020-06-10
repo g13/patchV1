@@ -9,24 +9,35 @@ from mpl_toolkits.mplot3d import axes3d
 from matplotlib import cm
 
 import sys
-if len(sys.argv) == 1:
-    suffix = ""
+if len(sys.argv) > 1:
+    output_suffix = sys.argv[1]
+    if len(sys.argv) > 2:
+        input_suffix = sys.argv[2]
+    else:
+        input_suffix = ""
 else:
-    suffix = sys.argv[1]
+    input_suffix = ""
+    output_suffix = ""
 
-print(suffix)
-if suffix:
-    suffix = "_" + suffix 
+print(output_suffix)
+print(input_suffix)
+if output_suffix:
+    output_suffix = "_" + output_suffix 
+if input_suffix:
+    input_suffix = "_" + input_suffix 
 
+plotResponseSample = True 
+plotContrastDist = False
+plotStat = True
 nLGN_1D = 16
-nt_ = 2400
-nstep = 1200
+nt_ = 4000
+nstep = 1000
 #iLGN = np.array([0,137,255])
 #iLGN = np.array([6*16+3,7*16+3,8*16+3, 6*16+10,7*16+10,8*16+10])
 #iLGN = np.arange(185133)
 ns = 10
 
-output = "LGN_gallery" + suffix + ".bin"
+output = "LGN_gallery" + output_suffix + ".bin"
 with open(output, 'rb') as f:
     nParvo = np.fromfile(f, 'u4', 1)[0]
     nType = np.fromfile(f, 'u4', 1)[0]
@@ -45,7 +56,7 @@ with open(output, 'rb') as f:
     nLGN = nParvo + nMagno
     max_convol = np.fromfile(f, 'f4', nLGN)
 
-output = "LGN" + suffix + ".bin"
+output = "LGN" + output_suffix + ".bin"
 precision = 'f4'
 with open(output, 'rb') as f:
     nLGN = np.fromfile(f, 'u4', 1)[0]
@@ -73,7 +84,7 @@ print(iLGN)
 ns = iLGN.size
 print(ns)
 
-output_fn = "outputB4V1" + suffix + ".bin"
+output_fn = "outputB4V1" + output_suffix + ".bin"
 with open(output_fn, 'rb') as f:
     nt = np.fromfile(f, 'u4', count = 1)[0]
     dt = np.fromfile(f, 'f4', count = 1)[0]
@@ -89,6 +100,7 @@ with open(output_fn, 'rb') as f:
     LGNfr  = np.zeros((nstep,ns), dtype=float)
     frStat = np.zeros(nLGN, dtype = float)
     convol  = np.zeros((nstep,ns), dtype=float)
+    convol_total = np.zeros((nstep,nLGN), dtype=float)
     luminance  = np.zeros((nstep, ns), dtype=float)
     contrast  = np.zeros((nstep, 2, nLGN), dtype=float)
     for it in range(nstep):
@@ -98,49 +110,61 @@ with open(output_fn, 'rb') as f:
         frStat = frStat + data
         LGNfr[it,:] = data[iLGN]
         data = np.fromfile(f, 'f4', count = nLGN)
+        convol_total[it,:] = data
         convol[it,:] = data[iLGN]
         data = np.fromfile(f, 'f4', count = nLGN)
         luminance[it,:] = data[iLGN]
         contrast[it,:,:] = np.fromfile(f, 'f4', count = 2*nLGN).reshape(2,nLGN)
 
 t = tt + dt
-fig = plt.figure('LGN', dpi = 600)
-grid = gs.GridSpec(ns, 1, figure = fig, hspace = 0.2)
-for i in range(ns):
-    j = iLGN[i]
-    ax = fig.add_subplot(grid[i,:])
-    ax.plot(t, convol[:,i].T/max_convol[j], 'g', lw = 0.1)
-    max_convol_irl = np.max(convol[:,i])
-    print([max_convol_irl, max_convol[j], max_convol_irl/max_convol[j]])
-    ax.plot(t, contrast[:,0,j], ':r', lw = 0.1)
-    ax.plot(t, contrast[:,1,j], ':b', lw = 0.1)
-    ax.plot(t, luminance[:,i], ':m', lw = 0.1)
-    ax.set_ylim([-1.0,1.0])
-    ax2 = ax.twinx()
-    ax2.plot(t, LGNfr[:,i], 'k', lw = 0.1)
-    ax2.set_ylim(bottom = 0)
-    if LGN_k[0,j] > 0:
-        on_off = 'on'
-    else:
-        on_off = 'off'
-    ix = np.mod(j, nLGN_1D)
-    iy = np.int(np.floor(j/nLGN_1D))
-    ax2.set_title(f'LGN #{j} {(ix,iy)}, ' + on_off + f' average fr: {np.mean(LGNfr[:,i])}Hz')
-fig.savefig('lgn-response' + suffix + '.png')
+if plotResponseSample:
+    fig = plt.figure('LGN', dpi = 600)
+    grid = gs.GridSpec(ns, 1, figure = fig, hspace = 0.2)
+    for i in range(ns):
+        j = iLGN[i]
+        ax = fig.add_subplot(grid[i,:])
+        ax.plot(t, convol[:,i].T/max_convol[j], 'g', lw = 0.1)
+        max_convol_irl = np.max(convol[:,i])
+        print([max_convol_irl, max_convol[j], max_convol_irl/max_convol[j]])
+        ax.plot(t, contrast[:,0,j], ':r', lw = 0.1)
+        ax.plot(t, contrast[:,1,j], ':b', lw = 0.1)
+        ax.plot(t, luminance[:,i], ':m', lw = 0.1)
+        ax.set_ylim([-1.0,1.0])
+        ax2 = ax.twinx()
+        ax2.plot(t, LGNfr[:,i], 'k', lw = 0.1)
+        ax2.set_ylim(bottom = 0)
+        if LGN_k[0,j] > 0:
+            on_off = 'on'
+        else:
+            on_off = 'off'
+        ix = np.mod(j, nLGN_1D)
+        iy = np.int(np.floor(j/nLGN_1D))
+        ax2.set_title(f'LGN #{j} {(ix,iy)}, ' + on_off + f' average fr: {np.mean(LGNfr[:,i])}Hz')
+    fig.savefig('lgn-response' + output_suffix + '.png')
 
-fig = plt.figure('contrast', dpi = 300)
-pick0 = LGN_k[0,:] > 0
-pick1 = LGN_k[0,:] < 0 
-ax = fig.add_subplot(221)
-ind0 = np.argmax(np.abs(contrast[:,0,pick0]), axis = 0)
-ind1 = np.argmax(np.abs(contrast[:,0,pick1]), axis = 0)
-ax.hist(contrast[ind0,0,pick0], color = 'r', bins = 10, alpha = 0.5)
-ax.hist(contrast[ind1,0,pick1], color = 'b', bins = 10, alpha = 0.5)
-ax = fig.add_subplot(222)
-ind0 = np.argmax(np.abs(contrast[:,1,pick0]), axis = 0)
-ind1 = np.argmax(np.abs(contrast[:,1,pick1]), axis = 0)
-ax.hist(contrast[ind0,1,pick0], color = 'm', bins = 10, alpha = 0.5)
-ax.hist(contrast[ind1,1,pick1], color = 'c', bins = 10, alpha = 0.5)
-ax = fig.add_subplot(212)
-ax.hist(frStat/nstep)
-fig.savefig('lgn-contrast' + suffix + '.png')
+if plotContrastDist:
+    fig = plt.figure('contrast', dpi = 300)
+    pick0 = LGN_k[0,:] > 0
+    pick1 = LGN_k[0,:] < 0 
+    ax = fig.add_subplot(221)
+    ind0 = np.argmax(np.abs(contrast[:,0,pick0]), axis = 0)
+    ind1 = np.argmax(np.abs(contrast[:,0,pick1]), axis = 0)
+    ax.hist(contrast[ind0,0,pick0], color = 'r', bins = 10, alpha = 0.5)
+    ax.hist(contrast[ind1,0,pick1], color = 'b', bins = 10, alpha = 0.5)
+    ax = fig.add_subplot(222)
+    ind0 = np.argmax(np.abs(contrast[:,1,pick0]), axis = 0)
+    ind1 = np.argmax(np.abs(contrast[:,1,pick1]), axis = 0)
+    ax.hist(contrast[ind0,1,pick0], color = 'm', bins = 10, alpha = 0.5)
+    ax.hist(contrast[ind1,1,pick1], color = 'c', bins = 10, alpha = 0.5)
+    ax = fig.add_subplot(212)
+    ax.hist(frStat/nstep)
+    fig.savefig('lgn-contrast' + output_suffix + '.png')
+
+if plotStat:
+    fig = plt.figure('LGN_activity', dpi = 600)
+    ax = fig.add_subplot(221)
+    max_convol_irl = np.array([np.max(convol_total[:,i]) for i in range(nLGN)])
+    active_ratio = max_convol_irl/max_convol
+    ax.hist(active_ratio, bins=10)
+    ax = fig.add_subplot(222)
+    fig.savefig('LGN_activity'+output_suffix+'.png')

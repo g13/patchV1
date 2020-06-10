@@ -8,30 +8,40 @@ module load boost/gcc_4.9.3/openmpi_1.10.2/avx2/1.57.0
 sm=sm_70
 
 rm -f patch.o 
-nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c patch.cu -o patch.o
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -std=c++11 -O2 -c patch.cu -o patch.o
 
 rm -f discrete_convol.o
-nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c discrete_input_convol.cu
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -std=c++11 -O2 -c discrete_input_convol.cu
 
 rm -f cuda_util.o
-nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c util/cuda_util.cu -o cuda_util.o
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -std=c++11 -O2 -c util/cuda_util.cu -o cuda_util.o
 
 rm -f stats.o
-nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c stats.cu
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -std=c++11 -O2 -c stats.cu
 
 rm -f coredynamics.o
-nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c coredynamics.cu
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -std=c++11 -O2 -c coredynamics.cu
 
 rm -f condShape.o
-nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c condShape.cu
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -std=c++11 -O2 -c condShape.cu
 
 nvcc -arch=$sm -lcudadevrt -lcudart -lboost_program_options condShape.o patch.o cuda_util.o stats.o discrete_input_convol.o coredynamics.o -O2 -o patch #-lcurand
-# === RAND === nvcc -arch=compute_70 -lcudadevrt -lcudart coredynamics.o patch.o -o patch
 
-#nvcc -arch=compute_70 -Xcompiler -Wall,-pedantic -std=c++11 -O0 -c coredynamics.cu 
-#nvcc -arch=compute_70 -Xcompiler -Wall,-pedantic -std=c++11 -O0 -c test.cu 
-#nvcc -arch=compute_70 -Xcompiler -Wall,-pedantic test.o coredynamics.o -lcudadevrt -lcudart -o test
+#rm -f patch.o 
+#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c patch.cu -o patch.o
 
-#nvcc -arch=compute_61 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c test.cu -o main.o -lcudadevrt
-#nvcc -arch=compute_61 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 -c coredynamics.cu -o coredynamics.o -lcudadevrt
-#nvcc -arch=compute_61 main.o coredynamics.o -o test
+#rm -f discrete_convol.o
+#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c discrete_input_convol.cu
+#
+#rm -f cuda_util.o
+#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c util/cuda_util.cu -o cuda_util.o
+#
+#rm -f stats.o
+#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c stats.cu
+#
+#rm -f coredynamics.o
+#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c coredynamics.cu
+
+#rm -f condShape.o
+#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c condShape.cu
+#

@@ -13,16 +13,19 @@ else:
 
 if suffix:
     suffix = '_' + suffix
-rawData_fn = 'rawData'+suffix + '.bin'
-stimulus_fn = 'stimulus' + suffix + '.bin'
-framedOutput_fn = 'outputFrame' + suffix + '.bin'
-outputB4V1_fn = 'outputB4V1' + suffix + '.bin'
-LGN_fr_fn = 'LGN_fr' + suffix + '.bin'
-seed = 8746251
+suffix = suffix + '.bin'
 
-plotSampleTrace = False
+rawData_fn = 'rawData'+suffix
+stimulus_fn = 'stimulus' + suffix
+framedOutput_fn = 'outputFrame' + suffix
+outputB4V1_fn = 'outputB4V1' + suffix
+LGN_fr_fn = 'LGN_fr' + suffix
+seed = 8746251
+nsample = 4
+
+plotSampleTrace = True
 #plotSampleTrace = True 
-plot_gFFtsp = False
+plot_gFFtsp = True 
 plotFrame = True 
 #plotFrame = False 
 if plotFrame:
@@ -206,13 +209,9 @@ if plotSampleTrace:
     fig.savefig('histogram.png')
     
     fig = plt.figure('vgtsp', dpi = 1024)
-    nsample = 4
     np.random.seed(seed)
-    pick = np.random.randint(nV1, size = nsample)
-    pick[0] = 0
-    pick[1] = 1
-    pick[2] = 768
-    pick[3] = 2
+    if 'pick' not in locals():
+        pick = np.random.randint(nV1, size = nsample)
     grid = gs.GridSpec(nsample, 1, hspace = 0.2)
     t = (np.arange(nt)+1)*dt
     for i in range(nsample):

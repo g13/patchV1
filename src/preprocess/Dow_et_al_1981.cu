@@ -4,7 +4,7 @@ using namespace std;
 // Dow et al., 1981
 
 vector<Float> generate_sfreq(Size n, RandomEngine &rGen) {
-	// width to bar ratio ~ spatial frequency doubled
+	// width to bar ratio ~ spatial frequency doubled, normalized to RF size
 	vector<Float> sfreq;
 	sfreq.reserve(n);
 	const Float ratio = 0.12; // ratio between two distributions
@@ -23,8 +23,7 @@ vector<Float> generate_sfreq(Size n, RandomEngine &rGen) {
 		Float v = normal(rGen);
 		if (v < 1) {
 			sfreq.push_back(1.0/2.0);
-		}
-		else {
+		} else {
 			sfreq.push_back(v/2.0);
 		}
 	}
@@ -37,6 +36,7 @@ vector<Float> generate_sfreq(Size n, RandomEngine &rGen) {
 	}
 	// mix the two distribution
 	shuffle(sfreq.begin(), sfreq.end(), rGen);
+    //return sfreq;
 	return vector<Float>(n, 1.0);
 }
 
@@ -59,8 +59,7 @@ vector<Float> generate_baRatio(Size n, RandomEngine &rGen) {
 		Float v = normal(rGen);
 		if (v <= 0) {
 			baRatio.push_back(1);
-		}
-		else {
+		} else {
 			baRatio.push_back(v);
 		}
 	}
@@ -71,14 +70,14 @@ vector<Float> generate_baRatio(Size n, RandomEngine &rGen) {
 		Float v = lognormal(rGen) + 1;
 		if (v < 1) {
 			baRatio.push_back(1);
-		}
-		else {
+		} else {
 			baRatio.push_back(v);
 		}
 	}
 	// mix the two distribution
 	shuffle(baRatio.begin(), baRatio.end(), rGen);
-	return baRatio;
+	//return baRatio;
+	return vector<Float>(n, 1.75);
 }
 
 // map ecc to radius
@@ -89,7 +88,7 @@ Float mapping_rule(Float ecc, Float normalRand, RandomEngine &rGen, Float LGN_V1
 	const Float a = 13.32f; //13.32f;
 	const Float b = 0.037f;
 	const Float mean = a + b * ecc;
-	const Float std = 3.0; // it is NOT the scatter in the paper, which means the VF center's scatter around an electrode
+	const Float std = 0.01;//3.0; // it is NOT the scatter in the paper, which means the VF center's scatter around an electrode
 	const Float lower_bound = 3.0; // TODO: look for the min(LGN RF size, V1 neuron RF size)
 	Float R = std  * normalRand + mean;
 	
