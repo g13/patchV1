@@ -525,6 +525,8 @@ for ENcounter = whichones
 
 	fID = fopen([prefix,'ORcolor-',frame,'.bin'],'w');
 	fwrite(fID, mu(:,id.OR), 'double');
+    disp('OR range:')
+    disp([min(mu(:,id.OR)), max(mu(:,id.OR))]);
     assert(sum(isnan(mu(:,id.OR))) == sum(Pi==0));
 	fclose(fID);
 
