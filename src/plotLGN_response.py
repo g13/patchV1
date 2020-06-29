@@ -26,7 +26,7 @@ if output_suffix:
 if input_suffix:
     input_suffix = "_" + input_suffix 
 
-plotResponseSample = True 
+plotResponseSample = False 
 plotContrastDist = False
 plotStat = True
 nLGN_1D = 16
@@ -167,4 +167,7 @@ if plotStat:
     active_ratio = max_convol_irl/max_convol
     ax.hist(active_ratio, bins=10)
     ax = fig.add_subplot(222)
+    ax.hist(max_convol, bins=10)
+    ax = fig.add_subplot(223)
+    ax.hist(max_convol*spont, bins=10)
     fig.savefig('LGN_activity'+output_suffix+'.png')

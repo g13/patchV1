@@ -11,7 +11,7 @@
 // TODO: ngTypeRatio
 // TODO: different learning types not implemented
 struct ConductanceShape {
-    Float riseTime[max_ngType], decayTime[max_ngType], dod[max_ngType], coef2[max_ngType];
+    Float riseTime[max_ngType], decayTime[max_ngType], dod[max_ngType];
 
     __host__ __device__ 
     __forceinline__ ConductanceShape() {};
@@ -21,8 +21,7 @@ struct ConductanceShape {
         for (PosInt i = 0; i < ng; i++) {
             riseTime[i] = rt[i];
             decayTime[i] = dt[i];
-            dod[i] = dt[i]/ (dt[i] - rt[i]);
-            coef2[i] = (rt[i] + dt[i])/(rt[i]*dt[i]*2.0);
+            dod[i] = rt[i]/(dt[i] - rt[i]);
         }
     }
     __host__ __device__ 

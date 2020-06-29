@@ -4,7 +4,7 @@
 
 //#define DEBUG 
 //#define CHECK
-//#define SYNC
+#define SYNC
 
 #ifdef DOUBLE_PRECISION
     #define roundingb round 

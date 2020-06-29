@@ -16,7 +16,6 @@ struct hInitialize_package {
 	Size* nTypeHierarchy; // [nArchtype]
     Size* typeAccCount; //[nType];
     Size* iArchType; // [nArchtype]
-    Float* targetFR; // [nType]
     Float* sumType; // [nArchtype, nType]
 	Float* daxn; //[nType];
 	Float* dden; //[nType];
@@ -30,7 +29,6 @@ struct hInitialize_package {
     hInitialize_package(Size nArchtype, Size nType, Size nFeature,
 						std::vector<Size>  &_nTypeHierarchy,
 						std::vector<Size>  &_typeAccCount,
-						std::vector<Float>  &_targetFR,
 						std::vector<Float> &_raxn,
 						std::vector<Float> &_rden,
 						std::vector<Float> &_daxn,
@@ -39,14 +37,13 @@ struct hInitialize_package {
 						std::vector<Float> &_sTypeMat,
 						std::vector<Size> &_nTypeMat)
 	{
-		size_t memSize = (4*nType + (1+nFeature)*nType*nType + nType*nArchtype + nType)*sizeof(Float) + (2*nArchtype + nType + nType*nType) * sizeof(Size);
+		size_t memSize = (4*nType + (1+nFeature)*nType*nType + nType*nArchtype)*sizeof(Float) + (2*nArchtype + nType + nType*nType) * sizeof(Size);
 		mem_block = new Size[memSize];
 		nTypeHierarchy = mem_block;
 		typeAccCount = nTypeHierarchy + nArchtype;
         iArchType = typeAccCount + nType;
-        targetFR = (Float *) (iArchType + nArchtype); 
-        sumType = targetFR + nType; 
-		daxn = sumType + nArchtype*nArchtype;
+        sumType = (Float *) (iArchType + nArchtype); 
+		daxn = sumType + nArchtype*nType;
 		dden = daxn + nType;
 		raxn = dden + nType;
 		rden = raxn + nType;
@@ -59,7 +56,6 @@ struct hInitialize_package {
             dden[i] = _dden[i];
             raxn[i] = _raxn[i];
             rden[i] = _rden[i];
-            targetFR[i] = _targetFR[i];
         }
         for (PosInt i=0; i<nType; i++) {
 			for (PosInt j=0; j<nType; j++) {
@@ -106,7 +102,6 @@ struct initialize_package {
 	Size* nTypeHierarchy; // [nArchtype]
     Size* typeAccCount; //[nType];
     Size* iArchType; // [nArchtype]
-    Float* targetFR; // [nType]
     Float* sumType; // [nArchtype, nType]
 	Float* daxn; //[nType];
 	Float* dden; //[nType];
@@ -118,14 +113,13 @@ struct initialize_package {
 
     initialize_package() {};
     initialize_package(Size nArchtype, Size nType, Size nFeature, hInitialize_package &host) {
-		size_t memSize = (4*nType + (1+nFeature)*nType*nType + nType*nArchtype + nType)*sizeof(Float) + (2*nArchtype + nType + nType*nType) * sizeof(Size);
+		size_t memSize = (4*nType + (1+nFeature)*nType*nType + nType*nArchtype)*sizeof(Float) + (2*nArchtype + nType + nType*nType) * sizeof(Size);
         checkCudaErrors(cudaMalloc((void**)&mem_block, memSize));
 		nTypeHierarchy = (Size*) mem_block;
 		typeAccCount = nTypeHierarchy + nArchtype;
         iArchType = typeAccCount + nType;
-        targetFR = (Float *) (iArchType + nArchtype); 
-        sumType = targetFR + nType; 
-		daxn = sumType + nArchtype*nArchtype;
+        sumType = (Float *) (iArchType + nArchtype); 
+		daxn = sumType + nArchtype*nType;
 		dden = daxn + nType;
 		raxn = dden + nType;
 		rden = raxn + nType;
@@ -151,8 +145,9 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
                            Float* __restrict__ preF_type,
                            Float* __restrict__ preS_type,
                            Size* __restrict__ preN_type,
-                           Float* __restrict__ d_LGN_V1_sSum,
-                           Float LGN_targetFR, Float LGN_V1_sSumMean, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN);
+                           Float* __restrict__ LGN_sSum,
+                           Float* __restrict__ LGN_sSumMax,
+                           Float min_FB_ratio, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN);
 
 __global__ 
 __launch_bounds__(blockSize, 1)

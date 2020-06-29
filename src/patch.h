@@ -23,7 +23,7 @@
 #include "global.h"
 #include "MACRO.h"
 
-inline void read_LGN(std::string filename, Float* &array, Size &maxList, Float s_ratio, bool pinMem, bool print) {
+inline void read_LGN(std::string filename, Float* &array, Size &maxList, Float s_ratio[], Size typeAcc[], Size nType, bool pinMem, bool print) {
 	std::ifstream input_file;
 	input_file.open(filename, std::fstream::in | std::fstream::binary);
 	if (!input_file) {
@@ -43,10 +43,15 @@ inline void read_LGN(std::string filename, Float* &array, Size &maxList, Float s
         Size listSize;
         input_file.read(reinterpret_cast<char*>(&listSize), sizeof(Size));
 		input_file.read(reinterpret_cast<char*>(&array[i*maxList]), listSize * sizeof(Float));
-		if (s_ratio != 1) {
-			for (PosInt j=0; j<listSize; j++) {
-				array[i*maxList + j] *= s_ratio;
-			}
+        PosInt type;
+        for (PosInt j=0; j<nType; j++) {
+            if (i%blockSize < typeAcc[j]) {
+                type = j;
+                break;
+            }
+        }
+		for (PosInt j=0; j<listSize; j++) {
+			array[i*maxList + j] *= s_ratio[type];
 		}
         if (print) {
             std::cout << i << ": ";

@@ -6,9 +6,11 @@
 #define vT 1.0f
 #define vL 0.0f
 #define gL_E 0.05f
-#define gL_I 0.05f
+#define gL_I 0.07f
 #define tRef_E 2.0f
 #define tRef_I 1.0f
+
+#define MAX_NTYPE 2
 
 #define MAX_NLEARNTYPE_FF_I 1 // ff to inhibitory only
 #define MAX_NLEARNTYPE_FF_E 1 // ff to excitatory only
@@ -27,6 +29,8 @@
 #define MAX_NGTYPE 2 // max
 #define EPS 1e-14
 #define SQRT2 1.4142135623730951
+
+const int max_nType = MAX_NTYPE;
 
 const int max_nLearnTypeFF_I = MAX_NLEARNTYPE_FF_I;
 const int max_nLearnTypeFF_E = MAX_NLEARNTYPE_FF_E;

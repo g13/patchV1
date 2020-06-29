@@ -59,27 +59,47 @@ void initializePreferenceFunctions(Size nFeature) {
     checkCudaErrors(cudaMemcpyToSymbol(pref, h_pref, nFunc*sizeof(pFeature), 0, cudaMemcpyHostToDevice));
 }
 
-inline void read_LGN_sSum(std::string filename, Float sSum[], Float &sSumMean, bool print) {
-	std::ifstream input_file;
-	input_file.open(filename, std::fstream::in | std::fstream::binary);
-	if (!input_file) {
-		std::string errMsg{ "Cannot open or find " + filename + "\n" };
-		throw errMsg;
-	}
+void read_LGN_sSum(std::string filename, Float sSum[], Float sSumMax[], Size typeAcc[], Size nType, Size nblock, bool print) {
+    std::ifstream input_file;
+    input_file.open(filename, std::fstream::in | std::fstream::binary);
+    if (!input_file) {
+        std::string errMsg{ "Cannot open or find " + filename + "\n" };
+        throw errMsg;
+    }
     Size nList, maxList;
     input_file.read(reinterpret_cast<char*>(&nList), sizeof(Size));
     input_file.read(reinterpret_cast<char*>(&maxList), sizeof(Size));
 
     Float *array = new Float[nList*maxList];
-    sSumMean = 0.0;
+    Size *nTypeCount = new Size[nType];
+    for (PosInt i=0; i<nType; i++) {
+        //sSumMean[i] = 0.0;
+        sSumMax[i] = 0.0;
+        if (i == 0) {
+            nTypeCount[i] = typeAcc[i];
+        } else {
+            nTypeCount[i] = typeAcc[i] - typeAcc[i-1];
+        }
+        nTypeCount[i] *= nblock;
+    }
     for (PosInt i=0; i<nList; i++) {
         Size listSize;
         input_file.read(reinterpret_cast<char*>(&listSize), sizeof(Size));
-		input_file.read(reinterpret_cast<char*>(&array[i*maxList]), listSize * sizeof(Float));
-		for (PosInt j=0; j<listSize; j++) {
-		    sSum[i] += array[i*maxList+j];
-		}
-        sSumMean += sSum[i];
+        input_file.read(reinterpret_cast<char*>(&array[i*maxList]), listSize * sizeof(Float));
+        for (PosInt j=0; j<listSize; j++) {
+            sSum[i] += array[i*maxList+j];
+        }
+        PosInt k = i%blockSize;
+        for (PosInt j = 0; j<nType; j++) {
+            if (k<typeAcc[j]) {
+                k = j;
+                break;
+            }
+        }
+        //sSumMean[k] += sSum[i];
+        if (sSum[i] > sSumMax[k]) {
+            sSumMax[k] = sSum[i];
+        }
         if (print) {
             std::cout << i << ": ";
             for (PosInt j=0; j<listSize; j++) {
@@ -89,6 +109,10 @@ inline void read_LGN_sSum(std::string filename, Float sSum[], Float &sSumMean, b
             }
         }
     }
-	input_file.close();
-    sSumMean /= nList;
+    //for (PosInt i=0; i<nType; i++) {
+    //    sSumMean[i] /= nTypeCount[i];
+    //}
+    delete []array;
+    delete []nTypeCount;
+    input_file.close();
 }

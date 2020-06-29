@@ -42,6 +42,8 @@ vector<vector<Float>> retinotopic_connection(
         vector<vector<Size>> &poolList,
         RandomEngine &rGen,
         Float p_n_LGNeff,
+        Float max_LGNeff,
+        Float envelopeSig,
         const Size n,
 		const pair<vector<Float>, vector<Float>> &cart, // V1 VF position (tentative)
         const pair<vector<Float>,vector<Float>> &cart0, // LGN VF position
@@ -120,10 +122,10 @@ vector<vector<Float>> retinotopic_connection(
             }
             if (SimpleComplex == 0) {
 			    RF->setup_param(m, sfreq[i], phase[i], modAmp_nCon[i], theta[i], a[i], baRatio[i], RefType[i], envelopeSig);
-			    m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen, p_n_LGNeff*1.0, percentOrNumber);
+			    m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen, p_n_LGNeff*1.0, percentOrNumber, max_LGNeff);
             } else {
 			    RF->setup_param(m, sfreq[i], phase[i], 1.0, theta[i], a[i], baRatio[i], RefType[i], envelopeSig);
-			    m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen, p_n_LGNeff*modAmp_nCon[i], percentOrNumber);
+			    m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen, p_n_LGNeff*modAmp_nCon[i], percentOrNumber, max_LGNeff);
             }
 			srList.push_back(strengthList);
 			if (m > 0) { 
@@ -438,6 +440,7 @@ int main(int argc, char *argv[]) {
 	namespace po = boost::program_options;
     bool readFromFile, useCuda;
 	Float p_n_LGNeff;
+	Float max_LGNeff;
 	Size maxLGNperV1pool;
     Int SimpleComplex;
     Float sc_ratio;
@@ -458,6 +461,7 @@ int main(int argc, char *argv[]) {
 	po::options_description input_opt("input options");
 	input_opt.add_options()
 		("p_n_LGNeff", po::value<Float>(&p_n_LGNeff)->default_value(10), "LGN conneciton probability [-1,0], or number of connections [0,n]")
+		("max_LGNeff", po::value<Float>(&max_LGNeff)->default_value(10), "max realized LGN conneciton probability [-1,0], or number of connections [0,n]")
 		("LGN_V1_RFratio,r", po::value<Float>(&LGN_V1_RFratio)->default_value(1.0), "LGN's contribution to the total RF size")
 		("maxLGNperV1pool,m", po::value<Size>(&maxLGNperV1pool)->default_value(100), "maximum pooling of LGN neurons per V1 neuron")
 		("envelopeSig", po::value<Float>(&envelopeSig)->default_value(1.177), "LGN's pools connection probability envelope sigma on distance")
@@ -809,7 +813,7 @@ int main(int argc, char *argv[]) {
 
 	vector<Float> cx(n);
 	vector<Float> cy(n);
-    vector<vector<Float>> srList = retinotopic_connection(poolList, rGen, p_n_LGNeff, n, cart, cart0, V1Type, theta, phase, sfreq, modAmp_nCon, baRatio, a, RefType, LGNtype, cx, cy, SimpleComplex);
+    vector<vector<Float>> srList = retinotopic_connection(poolList, rGen, p_n_LGNeff, max_LGNeff, envelopeSig, n, cart, cart0, V1Type, theta, phase, sfreq, modAmp_nCon, baRatio, a, RefType, LGNtype, cx, cy, SimpleComplex);
 
 	ofstream fV1(V1_filename + suffix, fstream::out | fstream::binary);
 	if (!fV1) {

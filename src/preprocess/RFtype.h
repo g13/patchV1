@@ -200,7 +200,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 		prob.clear();
 	}
  
-    virtual Size construct_connection(std::vector<Float> &x, std::vector<Float> &y, std::vector<InputType> &iType, std::vector<Size> &idList, std::vector<Float> &strengthList, RandomEngine &rGen, Float fnLGNeff, bool p_n) {
+    virtual Size construct_connection(std::vector<Float> &x, std::vector<Float> &y, std::vector<InputType> &iType, std::vector<Size> &idList, std::vector<Float> &strengthList, RandomEngine &rGen, Float fnLGNeff, bool p_n, Float max_nCon) {
         Size nConnected;
         if (n > 0) {
             if (fnLGNeff > 0) {
@@ -232,7 +232,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                 }
                 normalize(fnLGNeff, p_n);
                 // make connection and update ID and strength list
-                nConnected = connect(idList, strengthList, rGen);
+                nConnected = connect(idList, strengthList, rGen, max_nCon);
             } else {
                 idList = std::vector<Size>();
                 idList.shrink_to_fit();
@@ -286,13 +286,13 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
     //std::cout << fnLGNeff*prob.size() << " ~ " << sum << "\n";
     }
     // make connections
-    virtual Size connect(std::vector<Size> &idList, std::vector<Float> &strengthList, RandomEngine &rGen) {
+    virtual Size connect(std::vector<Size> &idList, std::vector<Float> &strengthList, RandomEngine &rGen, Float max_nCon) {
 		// make connections and normalized strength i.e., if prob > 1 then s = 1 else s = prob
         std::uniform_real_distribution<Float> uniform(0,1);
 		strengthList.reserve(n);
 		std::vector<Size> newList;
 		newList.reserve(n);
-		for (Size i = 0; i < n; i++) {
+		for (PosInt i = 0; i < n; i++) {
 			if (uniform(rGen) < prob[i]) {
 				newList.push_back(idList[i]);
 				if (prob[i] > 1) {
@@ -302,6 +302,14 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 				}
 			}
 		}
+        Float con_irl = std::accumulate(strengthList.begin(), strengthList.end(), 0.0);
+        Float ratio = 1;
+        if (con_irl > max_nCon) {
+            ratio = max_nCon/con_irl;
+        }
+        for (PosInt i=0; i<strengthList.size(); i++) {
+            strengthList[i] *= ratio; 
+        }
 		idList = newList;
 		idList.shrink_to_fit();
         return static_cast<Size>(idList.size());

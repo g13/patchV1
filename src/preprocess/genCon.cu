@@ -22,8 +22,10 @@ int main(int argc, char *argv[])
 	string V1_vec_filename;
 	string block_pos_filename, neighborBlock_filename, stats_filename;
     Float dScale, blockROI;
-    vector<Float> targetFR;
-    Float LGN_targetFR;
+    //vector<Float> targetFR;
+    ///Float FF_FB_ratio;
+    Float min_FB_ratio;
+    //Float LGN_targetFR;
 	bool gaussian_profile;
     bool strictStrength;
     bool CmoreN;
@@ -52,8 +54,10 @@ int main(int argc, char *argv[])
         ("dDend", po::value<vector<Float>>(&dDend), "vector of dendrites' densities, size of nType")
         ("dAxon", po::value<vector<Float>>(&dAxon), "vector of axons' densities, size of nType")
 		("nTypeHierarchy", po::value<vector<Size>>(&nTypeHierarchy), "a vector of hierarchical types differs in non-functional properties: reversal potentials, characteristic lengths of dendrite and axons, e.g. in size of nArchtype, {Exc-Pyramidal, Exc-stellate; Inh-PV, Inh-SOM, Inh-LTS} then the vector would be {3, 2}, with Exc and Inh being arch type")
-		("LGN_targetFR", po::value<Float>(&LGN_targetFR), "target firing rate of a LGN cell")
-		("targetFR", po::value<vector<Float>>(&targetFR), "a vector of target firing rate of different neuronal types")
+		//("LGN_targetFR", po::value<Float>(&LGN_targetFR), "target firing rate of a LGN cell")
+		//("targetFR", po::value<vector<Float>>(&targetFR), "a vector of target firing rate of different neuronal types")
+		//("FF_FB_ratio", po::value<Float>(&FF_FB_ratio), "excitation ratio of FF over total excitation")
+		("min_FB_ratio", po::value<Float>(&min_FB_ratio), "minimum cortical excitation ratio of predefined mean value")
         ("sTypeMat", po::value<vector<Float>>(&sTypeMat), "connection strength matrix between neuronal types, size of [nType, nType], nType = sum(nTypeHierarchy), row_id -> postsynaptic, column_id -> presynaptic")
         ("nTypeMat", po::value<vector<Size>>(&nTypeMat), "#connection matrix between neuronal types, size of [nType, nType], nType = sum(nTypeHierarchy), row_id -> postsynaptic, column_id -> presynaptic")
         ("typeFeatureMat", po::value<vector<Float>>(&typeFeatureMat), "feature parameter of neuronal types, size of [nFeature, nType, nType], nType = sum(nTypeHierarchy), row_id -> postsynaptic, column_id -> presynaptic")
@@ -129,7 +133,6 @@ int main(int argc, char *argv[])
 		cout << "sTypeMat has size of " << sTypeMat.size() << ", should be " << nType*nType << "\n";
 		return EXIT_FAILURE;
 	}
-
 	// TODO: std.
 	{// dendrites and axons
     	if (dAxon.size() != nType) {
@@ -166,10 +169,13 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    if (targetFR.size() != nType) {
-        cout << "target firing rates of different neuronal types <targetFR> has size of " << targetFR.size() << ", should be " << nType << ",  <nType>\n";
-        return EXIT_FAILURE;
-    }
+    //if (FF_FB_ratio == 0) {
+    //    cout << "FF_FB_ratio cannot be zero\n";
+    //}
+    //if (targetFR.size() != nType) {
+    //    cout << "target firing rates of different neuronal types <targetFR> has size of " << targetFR.size() << ", should be " << nType << ",  <nType>\n";
+    //    return EXIT_FAILURE;
+    //}
 
     fV1_pos.open(V1_pos_filename, ios::in|ios::binary);
 	if (!fV1_pos) {
@@ -228,9 +234,9 @@ int main(int argc, char *argv[])
 
     initializePreferenceFunctions(nFeature);
 
-    hInitialize_package hInit_pack(nArchtype, nType, nFeature, nTypeHierarchy, typeAccCount, targetFR, rAxon, rDend, dAxon, dDend, typeFeatureMat, sTypeMat, nTypeMat);
+    //hInitialize_package hInit_pack(nArchtype, nType, nFeature, nTypeHierarchy, typeAccCount, targetFR, rAxon, rDend, dAxon, dDend, typeFeatureMat, sTypeMat, nTypeMat);
+    hInitialize_package hInit_pack(nArchtype, nType, nFeature, nTypeHierarchy, typeAccCount, rAxon, rDend, dAxon, dDend, typeFeatureMat, sTypeMat, nTypeMat);
 	initialize_package init_pack(nArchtype, nType, nFeature, hInit_pack);
-	hInit_pack.freeMem();
     //Float speedOfThought = 1.0f; specify instead in patch.cu through patchV1.cfg
 
     // TODO: types that shares a smaller portion than 1/neuronPerBlock
@@ -402,9 +408,9 @@ int main(int argc, char *argv[])
     cudaDeviceSetLimit(cudaLimitMallocHeapSize, localHeapSize);
     printf("heap size preserved %f Mb\n", localHeapSize*1.5/1024/1024);
 
-    Float *LGN_V1_sSum = new Float[networkSize];
-    Float *d_LGN_V1_sSum;
-    Float LGN_V1_sSumMean;
+    Float* LGN_V1_sSumMax = new Float[nType];
+    Float* LGN_V1_sSum = new Float[networkSize];
+    Float* d_LGN_V1_sSum;
     checkCudaErrors(cudaMalloc((void**)&d_LGN_V1_sSum, networkSize*sizeof(Float)));
 
     if (!conLGN_suffix.empty()) {
@@ -412,9 +418,13 @@ int main(int argc, char *argv[])
     }
     conLGN_suffix = conLGN_suffix + ".bin";
 
-    read_LGN_sSum(LGN_V1_s_filename + conLGN_suffix, LGN_V1_sSum, LGN_V1_sSumMean, false);
+    read_LGN_sSum(LGN_V1_s_filename + conLGN_suffix, LGN_V1_sSum, LGN_V1_sSumMax, &(typeAccCount[0]), nType, nblock, false);
     checkCudaErrors(cudaMemcpy(d_LGN_V1_sSum, LGN_V1_sSum, networkSize*sizeof(Float), cudaMemcpyHostToDevice));
-    delete []LGN_V1_sSum;
+
+    Float* d_LGN_V1_sSumMax;
+    checkCudaErrors(cudaMalloc((void**)&d_LGN_V1_sSumMax, nType*sizeof(Float)));
+    checkCudaErrors(cudaMemcpy(d_LGN_V1_sSumMax, LGN_V1_sSumMax, nType*sizeof(Float), cudaMemcpyHostToDevice));
+    delete []LGN_V1_sSumMax;
 
     //cudaStream_t s0, s1, s2;
     //cudaEvent_t i0, i1, i2;
@@ -430,11 +440,10 @@ int main(int argc, char *argv[])
         state,
 	    d_preType,
 		rden, raxn, dden, daxn,
-		preF_type, preS_type, preN_type, d_LGN_V1_sSum, LGN_targetFR, LGN_V1_sSumMean,
-		init_pack, seed, networkSize, nType, nArchtype, nFeature,  CmoreN);
+		preF_type, preS_type, preN_type, d_LGN_V1_sSum, d_LGN_V1_sSumMax, min_FB_ratio,
+		init_pack, seed, networkSize, nType, nArchtype, nFeature, CmoreN);
 	getLastCudaError("initialize failed");
 	checkCudaErrors(cudaDeviceSynchronize());
-    init_pack.freeMem();
     printf("initialzied\n");
     //Size shared_mem;
     cal_blockPos<<<nblock, neuronPerBlock>>>(
@@ -444,35 +453,24 @@ int main(int argc, char *argv[])
 	getLastCudaError("cal_blockPos failed");
     printf("block centers calculated\n");
 	//shared_mem = sizeof(Size);
+    // blocks -> blocks, threads -> cal neighbor blocks
     get_neighbor_blockId<<<nblock, neuronPerBlock, maxNeighborBlock*(sizeof(PosInt)+sizeof(Float))>>>(
         d_block_x, d_block_y, 
 		d_neighborBlockId, d_nNeighborBlock, 
 		nblock, blockROI, maxNeighborBlock);
 	getLastCudaError("get_neighbor_blockId failed");
     printf("neighbor blocks acquired\n");
-
+    
 	checkCudaErrors(cudaMemcpy(block_x, d_block_x, neighborSize, cudaMemcpyDeviceToHost)); 	
-    fBlock_pos.write((char*)block_x, nblock*sizeof(Float));
-    fBlock_pos.write((char*)block_y, nblock*sizeof(Float));
-    fBlock_pos.close();
-
-    fNeighborBlock.write((char*)nNeighborBlock, nblock*sizeof(Size));
-    //cout << "number of neighbors: ";
-    for (Size i=0; i<nblock; i++) {
-        //cout << nNeighborBlock[i] <<  ", ";
-        Size nn = (nNeighborBlock[i] > nearNeighborBlock)? nearNeighborBlock: nNeighborBlock[i]; // sorted, only choose the nearest nearNeighborBlock blocks
-        fNeighborBlock.write((char*)&neighborBlockId[i*maxNeighborBlock], nn*sizeof(PosInt));
-    }
-    //cout << "\n";
-    fNeighborBlock.close();
-
     //TODO: generate conMat concurrently
     //shared_mem = neuronPerBlock*sizeof(Float) + neuronPerBlock*sizeof(Float) + neuronPerBlock*sizeof(Size);
     Size current_nblock;
     PosInt offset = 0; // memory offset
+
     for (PosInt iChunk = 0; iChunk < nChunk+1; iChunk++) {
         if (iChunk < nChunk) current_nblock = maxChunkSize;
         else current_nblock = remainChunkSize;
+        cout << iChunk << ": current_nblock = " << current_nblock << "\n";
         size_t current_matSize = static_cast<size_t>(current_nblock)*nearNeighborBlock*neuronPerBlock*neuronPerBlock*sizeof(Float);
 	    checkCudaErrors(cudaMemset(d_conMat, 0, current_matSize)); // initialize for each chunk
 		cout << "generate_connections<<<" << current_nblock << ", " << neuronPerBlock << ">>>\n";
@@ -500,12 +498,93 @@ int main(int argc, char *argv[])
     }
     fV1_conMat.close();
     fV1_delayMat.close();
+    init_pack.freeMem();
+
+	checkCudaErrors(cudaMemcpy(conVec, d_conVec, vecSize+statSize, cudaMemcpyDeviceToHost)); 	
+
+    /*
+    Size nV1 = nblock*blockSize;
+    cout << "iArchType[0] = " << hInit_pack.iArchType[0] << "\n";
+    vector<Float> ExcSum(nV1,0);
+    for (PosInt iblock=0; iblock<nblock; iblock++) {
+        for (PosInt ib=0; ib<nNeighborBlock[iblock]; ib++) {
+            for (PosInt i=0; i<blockSize; i++) {
+                if (i < hInit_pack.typeAccCount[hInit_pack.iArchType[0]-1]) {
+                    PosIntL mid = iblock*nearNeighborBlock*static_cast<PosIntL>(blockSize*blockSize) + ib*static_cast<PosIntL>(blockSize*blockSize) + i*blockSize;
+                    for (PosInt j=0; j<blockSize; j++) {
+                        ExcSum[iblock*blockSize + j] += conMat[mid + j];
+                    }
+                }
+            }
+        }
+    }
+    for (PosInt i=0; i<nV1; i++) {
+        ExcSum[i] *= targetFR[0];
+        ExcSum[i] += LGN_V1_sSum[i]*LGN_targetFR/FF_FB_ratio;
+    }
+    for (PosInt i=0; i<nV1; i++) {
+        PosInt type;
+        for (PosInt j=0; j<nType; j++) {
+            if (i%blockSize < typeAccCount[j]) {
+                type = j;
+                break;
+            }
+        }
+        if (abs(ExcConst[type] - ExcSum[i])/ExcSum[i] > 1e-4) {
+            cout << i/blockSize << "-" << i%blockSize << ": " << ExcConst[type] << ", " << ExcSum[i] << "\n";
+        }
+        ExcSum[i] = 0;
+    }
+
+    for (PosInt i=0; i<nV1; i++) {
+        PosInt type;
+        for (PosInt j=0; j<nType; j++) {
+            if (i%blockSize < typeAccCount[j]) {
+                type = j;
+                break;
+            }
+        }
+        ExcSum[i] = preTypeStrSum[i]*targetFR[0] + LGN_V1_sSum[i]*LGN_targetFR/FF_FB_ratio;
+        if (abs(ExcConst[type] - ExcSum[i])/ExcSum[i] > 1e-4) {
+            cout << i/blockSize << "-" << i%blockSize << ":: " << ExcConst[type] << ", " << ExcSum[i] << "\n";
+        }
+    }
+    */
+
+	hInit_pack.freeMem();
+    delete []LGN_V1_sSum;
+
     printf("connectivity constructed\n");
 	//checkCudaErrors(cudaStreamDestroy(s0));
     //checkCudaErrors(cudaStreamDestroy(s1));
     //checkCudaErrors(cudaStreamDestroy(s2));
-	checkCudaErrors(cudaMemcpy(conVec, d_conVec, vecSize+statSize, cudaMemcpyDeviceToHost)); 	
-    
+
+    fBlock_pos.write((char*)block_x, nblock*sizeof(Float));
+    fBlock_pos.write((char*)block_y, nblock*sizeof(Float));
+    fBlock_pos.close();
+
+    cout << "number of neighbors (self-included): ";
+    for (Size i=0; i<nblock; i++) {
+        cout << nNeighborBlock[i]; 
+        if (nNeighborBlock[i] > nearNeighborBlock) { // sorted according to distance, only choose the nearest nearNeighborBlock blocks
+            nNeighborBlock[i] = nearNeighborBlock;
+            cout << " (" << nearNeighborBlock << ")";
+        }
+        cout << ", ";
+    }
+    cout << "\n";
+    fNeighborBlock.write((char*)nNeighborBlock, nblock*sizeof(Size));
+    cout << "neighbors blockId: ";
+    for (Size i=0; i<nblock; i++) {
+        fNeighborBlock.write((char*)&neighborBlockId[i*maxNeighborBlock], nNeighborBlock[i]*sizeof(PosInt));
+        cout << i << ": ";
+        for (PosInt j=0; j<nNeighborBlock[i]; j++) {
+            cout << neighborBlockId[i*maxNeighborBlock + j] << ",";
+        }
+        cout << "\n";
+    }
+    fNeighborBlock.close();
+
     fV1_vec.write((char*)nVec, networkSize*sizeof(Size));
     for (Size i=0; i<networkSize; i++) {
         fV1_vec.write((char*)&(vecID[i*maxDistantNeighbor]), nVec[i]*sizeof(Size));
@@ -575,6 +654,7 @@ int main(int argc, char *argv[])
             }
         }
     }
+
     
     delete [] preConn;
     delete [] preAvail;

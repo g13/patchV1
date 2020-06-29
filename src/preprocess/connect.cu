@@ -14,7 +14,8 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
                 Float* __restrict__ preS_type,
                 Size*  __restrict__ preN_type,
                 Float* __restrict__ LGN_V1_sSum,
-                Float LGN_targetFR, Float LGN_V1_sSumMean, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN) 
+                Float* __restrict__ LGN_V1_sSumMax,
+                Float min_FB_ratio, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN) 
 {
     //__shared__ reduced[warpSize];
     Size id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -35,8 +36,9 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
 	}
 
     Float LGN_sSum = LGN_V1_sSum[id];
-    Float V1_sSum = init_pack.sumType[type]; // sumType[0*nArchtype + type]
-    Float ratio = (LGN_V1_sSumMean*LGN_targetFR + V1_sSum*init_pack.targetFR[type] - LGN_sSum*LGN_targetFR)/(V1_sSum*init_pack.targetFR[type]);
+    Float ratio = 1-LGN_sSum/LGN_V1_sSumMax[type];
+    assert(ratio>=0 && ratio<=1);
+    if (ratio < min_FB_ratio) ratio = min_FB_ratio;
 	for (PosInt i=0; i<nType; i++) {
 		PosInt tid = i*networkSize+id;
 		PosInt ttid = i*nType + type;
@@ -45,14 +47,14 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
             if (i < init_pack.iArchType[0]) {
                 preN_type[tid] = static_cast<Size>(rounding(ratio*init_pack.nTypeMat[ttid]));
             } else {
-    	        preN_type[tid] = init_pack.nTypeMat[ttid];
+    	        preN_type[tid] = static_cast<Size>(rounding((ratio + LGN_sSum/init_pack.sumType[i*nType+0])*init_pack.nTypeMat[ttid]));
             }
         } else {
     	    preN_type[tid] = init_pack.nTypeMat[ttid];
             if (i < init_pack.iArchType[0]) {
                 preS_type[tid] = ratio*init_pack.sTypeMat[ttid];
             } else {
-    	        preS_type[tid] = init_pack.sTypeMat[ttid];
+    	        preS_type[tid] = (ratio+ LGN_sSum/init_pack.sumType[i*nType+0])*init_pack.sTypeMat[ttid];
             }
         }
         for (PosInt j=0; j<nFeature; j++) {
@@ -179,6 +181,7 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
                 bid[tid] = blockId;
             }
         }
+        __syncthreads();
         if (tid == 0) { // rearrange
             PosInt current_id = id[0];
             for (PosInt i=0; i<blockDim.x; i++) {
@@ -232,6 +235,7 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
             __syncthreads();
         */
     }
+    //TODO: if nb > blockSize
     if (tid < nb) {
         neighborBlockId[maxNeighborBlock*blockIdx.x + tid] = local_bid;
     }
@@ -353,11 +357,15 @@ void generate_connections(double* __restrict__ pos,
                     assert(mid < matSize);
                 }
                 //
-                sumType[ip] += 1;
+                sumType[ip] ++;
 	    		// update weight with density of axon dendrites and preference over type
                 p *= daxn[ipre] * dd;// * preP_type[ip*networkSize + id];
                 for (Size iFeature = 0; iFeature < nFeature; iFeature++) {
                     p *= pref[iFeature](fV[iFeature], feature[iFeature*networkSize + ipre], pF[iFeature*nType +ip]);
+                }
+                if (p < 0) {
+                    printf("%u-%u: p = %f, %f, %f, %f\n", blockIdx.x, threadIdx.x, connect(distance, ra, rd, gaussian_profile), daxn[ipre] * dd, pref[0](fV[0], feature[ipre], pF[ip]), pref[1](fV[1], feature[networkSize + ipre], pF[nType +ip]));
+                    assert(p >= 0);
                 }
                 sumP[ip] += p;
                 conMat[mid] = p;
@@ -387,11 +395,12 @@ void generate_connections(double* __restrict__ pos,
                 Size tid = (nn-in)*blockDim.x + i; // only ofr tempNeighbor, which is local, no need to coalease memory
                 if (p > 0) {
                     Size ip = preType[ipre];
-                    sumType[ip] += 1;
-                    p *= daxn[ipre] * dden[id]; //* preP_type[ip*networkSize+id];
+                    sumType[ip] ++;
+                    p *= daxn[ipre] * dd; //* preP_type[ip*networkSize+id];
                     for (Size iFeature = 0; iFeature < nFeature; iFeature ++) {
                         p *= pref[iFeature](fV[iFeature], feature[iFeature*networkSize + ipre], pF[iFeature*nType + ip]);
                     }
+                    assert(p>=0);
                     sumP[ip] += p;
                     tempNeighbor[tid] = p;
                 } else {
@@ -426,20 +435,23 @@ void generate_connections(double* __restrict__ pos,
         #pragma unroll
         for (Size i=0; i<blockDim.x; i++) {
             PosIntL mid = (static_cast<PosIntL>(blockIdx.x*nearNeighborBlock + in)*blockDim.x + i)*blockDim.x + threadIdx.x;
-            Size ipre = bid + i;
-            Size ip = preType[ipre];
-            Float p = conMat[mid]/sumP[ip]*pN[ip];
-            Float xrand = uniform(&localState);
-            Float str = pS[ip];
-            if (xrand < p) {
-                if (p > 1) {
-                    str = str*p;
+            Float p = conMat[mid];
+            if (p > 0) {
+                Size ipre = bid + i;
+                Size ip = preType[ipre];
+                p *= pN[ip]/sumP[ip];
+                Float xrand = uniform(&localState);
+                if (xrand < p) {
+                    Float str = pS[ip];
+                    if (p > 1) {
+                        str = str*p;
+                    }
+                    p = str;
+                    sumConType[ip] ++;
+                    sumStrType[ip] += str;
+                } else {
+                    p = 0;
                 }
-                p = str;
-                sumConType[ip] += 1;
-                sumStrType[ip] += str;
-            } else {
-                p = 0;
             }
             __syncwarp();
             conMat[mid] = p;
@@ -454,52 +466,54 @@ void generate_connections(double* __restrict__ pos,
             __syncthreads();
             #pragma unroll
             for (Size i=0; i<blockDim.x; i++) {
-                Size ipre = bid + i;
-                Size ip = preType[ipre];
                 Size tid = (nn-in)*blockDim.x + i;
-                Float p = tempNeighbor[tid]/sumP[ip]*pN[ip];
-                Float xrand = uniform(&localState);
-                if (xrand < p) {
-                    Float str = pS[ip];
-                    if (p > 1) {
-                        str = str*p;
-                    }
-                    sumConType[ip] += 1;
-                    sumStrType[ip] += str;
-                    vecID[maxDistantNeighbor*id + nid] = ipre;
-                    conVec[maxDistantNeighbor*id + nid] = str;
-                    Float x = static_cast<Float>(x1[threadIdx.x] - x0);
-                    Float y = static_cast<Float>(y1[threadIdx.x] - y0);
-	    			Float distance = square_root(x*x + y*y);
-                    delayVec[maxDistantNeighbor*id + nid] = distance;
-                    nid += 1;
-                    if (nid > maxDistantNeighbor) {
-                        printf("set bigger maxDistantNeighbor, currently %u\n", maxDistantNeighbor);
-                        assert(nid <= maxDistantNeighbor);
+                Float p = tempNeighbor[tid];
+                if (p > 0) {
+                    Size ipre = bid + i;
+                    Size ip = preType[ipre];
+                    p *= pN[ip]/sumP[ip];
+                    Float xrand = uniform(&localState);
+                    if (xrand < p) {
+                        Float str = pS[ip];
+                        if (p > 1) {
+                            str = str*p;
+                        }
+                        sumConType[ip] ++;
+                        sumStrType[ip] += str;
+                        vecID[maxDistantNeighbor*id + nid] = ipre;
+                        conVec[maxDistantNeighbor*id + nid] = str;
+                        Float x = static_cast<Float>(x1[threadIdx.x] - x0);
+                        Float y = static_cast<Float>(y1[threadIdx.x] - y0);
+	    		    	Float distance = square_root(x*x + y*y);
+                        delayVec[maxDistantNeighbor*id + nid] = distance;
+                        nid += 1;
+                        if (nid > maxDistantNeighbor) {
+                            printf("set bigger maxDistantNeighbor, currently %u\n", maxDistantNeighbor);
+                            assert(nid <= maxDistantNeighbor);
+                        }
                     }
                 }
             }
         }
     }
+    delete []sumP;
+    nVec[id] = nid;
     
     Float *ratio = new Float[nType];
     if (strictStrength) {
         for (Size i=0; i<nType; i++) {
-            ratio[i] = pS[i]*pN[i]/sumStrType[i];
+            if (sumStrType[i] > 0) {
+                ratio[i] = pS[i]*pN[i]/sumStrType[i];
+            } else {
+                ratio[i] = 0;
+            }
         }
     }
-    delete []sumP;
-    nVec[id] = nid;
     #pragma unroll
     for (Size i=0; i<nType; i++) {
         preTypeConnected[i*networkSize + id] = sumConType[i];
-        if (strictStrength) {
-            preTypeStrSum[i*networkSize + id] = pS[i]*pN[i];
-        } else {
-            preTypeStrSum[i*networkSize + id] = sumStrType[i];
-        }
+        sumStrType[i] = 0;
     }
-    delete []sumStrType;
     delete []sumConType;
     delete []pN;
     delete []pS;
@@ -513,6 +527,7 @@ void generate_connections(double* __restrict__ pos,
                 PosIntL mid = (static_cast<PosIntL>(blockIdx.x*nearNeighborBlock + in)*blockDim.x + i)*blockDim.x + threadIdx.x;
                 Size ip = preType[bid + i];
                 conMat[mid] *= ratio[ip];
+                sumStrType[ip] += conMat[mid];
             }
         }
         Size nid = 0;
@@ -524,12 +539,18 @@ void generate_connections(double* __restrict__ pos,
                     Size ip = preType[bid + i];
                     conVec[maxDistantNeighbor*id + nid] *= ratio[ip];
                     nid += 1;
+                    sumStrType[ip] += conVec[maxDistantNeighbor*id + nid];
                 }
             }
         }
     }
 
     delete []ratio;
+    #pragma unroll
+    for (Size i=0; i<nType; i++) {
+        preTypeStrSum[i*networkSize + id] = sumStrType[i];
+    }
+    delete []sumStrType;
     if (nb > 0) {
         delete []tempNeighbor;
     }

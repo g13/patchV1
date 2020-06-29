@@ -14,31 +14,37 @@ if len(sys.argv) > 1:
         conLGN_suffix = sys.argv[2]
         print(conLGN_suffix)
         if len(sys.argv) > 3:
-            readNewSpike = True 
-            print('read new spikes')
-        else:
-            readNewSpike = False
-            print('read stored spikes')
+            conV1_suffix = sys.argv[3]
+            print(conV1_suffix)
+            if len(sys.argv) > 4:
+                readNewSpike = True 
+                print('read new spikes')
+            else:
+                readNewSpike = False
+                print('read stored spikes')
     else:
         conLGN_suffix = ""
         readNewSpike = False
 else:
     output_suffix = ""
     conLGN_suffix = ""
+    conV1_suffix = ""
     readNewSpike = False
 
 if output_suffix:
     output_suffix = "_" + output_suffix
 if conLGN_suffix:
     conLGN_suffix = "_" + conLGN_suffix
+if conV1_suffix:
+    conV1_suffix = "_" + conV1_suffix
 
 #sample = np.array([0,1,2,768])
 ns = 12
-np.random.seed(7329443)
-nt_ = 10000
-nstep = 5000
+np.random.seed(7329444)
+nt_ = 2000
+nstep = 2000
 step0 = 0
-TF = 4
+TF = 10
 TFbins = 64
 FRbins = 25
 tbinSize = 1
@@ -46,19 +52,21 @@ nsmooth = 5
 lw = 0.1
 
 plotSample = True
-plotRpStat = True 
+plotLGNsCorr = True
+#plotRpStat = True 
 plotRpCorr = True 
-plotTempMod = True 
+#plotTempMod = True 
 plotScatterFF = True
-plotFF_sLGN = True
+#plotExc_sLGN = True
 plotLR_rp = True
 
 #plotSample = False
-#plotRpStat = False 
+#plotLGNsCorr = False 
+plotRpStat = False 
 #plotRpCorr = False 
-#plotTempMod = False 
+plotTempMod = False 
 #plotScatterFF = False
-#plotFF_sLGN = False
+plotExc_sLGN = False
 #plotLR_rp = False 
 
 pSample = True
@@ -76,6 +84,9 @@ pCond = False
 pH = False
 pFeature = False
 pLR = False
+pSingleLGN = False
+pSC = True
+#pSC = False
 
 mE = 768
 mI = 256
@@ -88,7 +99,7 @@ if plotRpStat or plotLR_rp or plotRpCorr:
 if plotRpCorr:
     plotTempMod = True
 
-if plotFF_sLGN:
+if plotExc_sLGN:
     pCond = True
 
 if plotTempMod or plotScatterFF:
@@ -99,8 +110,12 @@ if plotLR_rp:
     pFeature = True
 
 if plotSample:
-    pSpike = True
     pVoltage = True
+    pSpike = True
+    pCond = True
+
+if plotLGNsCorr:
+    pSpike = True
     pCond = True
 
 # const
@@ -111,12 +126,13 @@ LGN_spFn = "LGN_sp" + output_suffix
 LGN_V1_sFn = "LGN_V1_sList" + conLGN_suffix + ".bin"
 LGN_V1_idFn = "LGN_V1_idList" + conLGN_suffix + ".bin"
 
+conStats_Fn = "conStats" + conV1_suffix + ".bin"
 featureFn = "V1_feature.bin"
 LGN_vposFn = "LGN_vpos.bin"
 
 spDataFn = "V1_spikes" + output_suffix
 
-if plotFF_sLGN or plotSample or plotTempMod:
+if plotExc_sLGN or plotSample or plotTempMod or (plotScatterFF and pSC):
     LGN_V1_s = readLGN_V1_s0(LGN_V1_sFn)
     LGN_V1_ID, nLGN_V1 = readLGN_V1_ID(LGN_V1_idFn)
     nLGN_I, nLGN_C, nLGN, max_ecc, vCoordSpan, LGN_vpos, LGN_type = readLGN_vpos(LGN_vposFn)
@@ -137,6 +153,8 @@ with open(rawDataFn, 'rb') as f:
     nt = np.fromfile(f, 'u4', 1)[0] 
     if step0 + nt_ >= nt:
         nt_ = nt - step0
+    if nstep > nt_:
+        nstep = nt_
     tstep = (nt_ + nstep - 1)//nstep
     nstep = nt_//tstep
     interval = tstep - 1
@@ -154,31 +172,15 @@ ipick = np.hstack([np.arange(256) + iblock*blockSize + 768 for iblock in range(n
 print(f'nV1 = {nV1}; haveH = {haveH}')
 print(f'ngFF: {ngFF}; ngE: {ngE}; ngI: {ngI}')
 
+if plotSample or plotLGNsCorr:
+    nType, preN, preNS, _ = read_conStats(conStats_Fn)
+
 # readFeature
-if pFeature or pLR or plotSample:
+if pFeature or pLR or plotSample or pSample or plotRpCorr:
     featureType = np.array([0,1])
     feature, rangeFeature, minFeature, maxFeature = readFeature(featureFn, nV1, featureType)
     LR = feature[0,:]
-
-if 'sample' not in locals():
-    sample = np.random.randint(nV1, size = ns)
-    dOP = np.abs((feature[1,:]-1/2)*np.pi - np.pi*1/4)
-    dOP[dOP > np.pi/2] = np.pi - dOP[dOP > np.pi/2]
-    pick = epick[nLGN_V1[epick] > 0]
-    sample[0] = pick[np.argmin(dOP[pick])]
-    sample[1] = pick[np.argmax(dOP[pick])]
-    pick = epick[nLGN_V1[epick] == 0]
-    sample[2] = pick[np.argmin(dOP[pick])]
-    sample[3] = pick[np.argmax(dOP[pick])]
-    pick = ipick[nLGN_V1[ipick] > 0]
-    sample[4] = pick[np.argmin(dOP[pick])]
-    sample[5] = pick[np.argmax(dOP[pick])]
-    pick = ipick[nLGN_V1[ipick] == 0]
-    sample[6] = pick[np.argmin(dOP[pick])]
-    sample[7] = pick[np.argmax(dOP[pick])]
-else:
-    ns = sample.size
-print(f'sampling {sample}')
+    OP = (feature[1,:]-1/2)*np.pi
 
 # read spikes
 if pSpike:
@@ -214,7 +216,7 @@ if pSpike:
         np.save(spDataFn, spScatter)
 
 # read voltage and conductances
-if pVoltage or pCond:
+if pVoltage or pCond or plotLGNsCorr or plotSample:
     with open(rawDataFn, 'rb') as f:
         f.seek(4*7, 1)
         if pVoltage:
@@ -232,7 +234,7 @@ if pVoltage or pCond:
         for i in range(nstep):
             if pVoltage:
                 f.seek(nV1*4, 1)
-                v[:,i] = np.fromfile(f, 'f4', ngFF*nV1).reshape(ngFF,nV1)
+                v[:,i] = np.fromfile(f, 'f4', nV1)
             else:
                 f.seek(2*nV1*4, 1)
 
@@ -257,6 +259,54 @@ if pVoltage or pCond:
     
             f.seek((2+(ngE + ngI + ngFF)*(1+haveH))*nV1*4*interval, 1)
     print("rawData read")
+
+tpick = step0 + np.arange(nstep)*tstep 
+t = tpick*dt
+assert(np.sum(epick) + np.sum(ipick) == np.sum(np.arange(nV1)))
+t_in_ms = nt_*dt
+t_in_sec = t_in_ms/1000
+if plotRpStat or plotLR_rp or plotRpCorr or plotLGNsCorr or plotSample:
+    fr = np.array([np.asarray(x)[np.logical_and(x>=step0*dt, x<(nt_+step0)*dt)].size for x in spScatter])/t_in_sec
+
+if 'sample' not in locals():
+    sample = np.random.randint(nV1, size = ns)
+    if False:
+        dOP = np.abs((feature[1,:]-1/2)*np.pi - np.pi*1/4)
+        dOP[dOP > np.pi/2] = np.pi - dOP[dOP > np.pi/2]
+        pick = epick[nLGN_V1[epick] == 0]
+        sample[0] = pick[np.argmin(dOP[pick])]
+        sample[1] = pick[np.argmax(dOP[pick])]
+        pick = epick[nLGN_V1[epick] > np.mean(nLGN_V1[epick])]
+        sample[2] = pick[np.argmin(dOP[pick])]
+        sample[3] = pick[np.argmax(dOP[pick])]
+        pick = ipick[nLGN_V1[ipick] == 0]
+        sample[4] = pick[np.argmin(dOP[pick])]
+        sample[5] = pick[np.argmax(dOP[pick])]
+        pick = ipick[nLGN_V1[ipick] > np.mean(nLGN_V1[ipick])]
+        sample[6] = pick[np.argmin(dOP[pick])]
+        sample[7] = pick[np.argmax(dOP[pick])]
+
+    if True:
+        pick = epick[nLGN_V1[epick] == 0]
+        sample[0] = pick[np.argmin(fr[pick])]
+        sample[1] = pick[np.argmax(fr[pick])]
+
+        pick = epick[nLGN_V1[epick] > np.mean(nLGN_V1[epick])]
+        sample[2] = pick[np.argmin(fr[pick])]
+        sample[3] = pick[np.argmax(fr[pick])]
+
+        pick = ipick[nLGN_V1[ipick] == 0]
+        sample[4] = pick[np.argmin(fr[pick])]
+        sample[5] = pick[np.argmax(fr[pick])]
+
+        pick = ipick[nLGN_V1[ipick] > np.mean(nLGN_V1[ipick])]
+        sample[6] = pick[np.argmin(fr[pick])]
+        sample[7] = pick[np.argmax(fr[pick])]
+else:
+    ns = sample.size
+print(f'sampling {[(s//blockSize, np.mod(s,blockSize)) for s in sample]}') 
+
+
 
 # temporal modulation
 if plotTempMod:
@@ -486,19 +536,17 @@ if plotTempMod:
         fig.savefig('gFF-TFstat' + output_suffix + '.png')
         plt.close(fig)
 
-tpick = step0 + np.arange(nstep)*tstep 
-t = tpick*dt
-assert(np.sum(epick) + np.sum(ipick) == np.sum(np.arange(nV1)))
-trange = nt_*dt/1000
-if plotRpStat or plotLR_rp or plotRpCorr:
-    fr = np.array([np.asarray(x)[np.logical_and(x>=step0*dt, x<(nt_+step0)*dt)].size for x in spScatter])/trange
-
 # sample
+
 if plotSample:
     for i in range(ns):
         iV1 = sample[i]
-        fig = plt.figure(f'V1-sample-{iV1}', dpi = 1200, figsize = [3,nLGN_V1[iV1]+2])
-        grid = gs.GridSpec(nLGN_V1[iV1]+2, 2, figure = fig, hspace = 0.2)
+        if not pSingleLGN:
+            fig = plt.figure(f'V1-sample-{iV1}', dpi = 1200, figsize = [5.0, 2])
+            grid = gs.GridSpec(2, 2, figure = fig, hspace = 0.2, wspace = 0.3)
+        else:
+            fig = plt.figure(f'V1-sample-{iV1}', dpi = 1200, figsize = [5.0,nLGN_V1[iV1]+2])
+            grid = gs.GridSpec(nLGN_V1[iV1]+2, 2, figure = fig, hspace = 0.2, wspace = 0.3)
         iblock = iV1//blockSize
         ithread = np.mod(iV1, blockSize)
         ax = fig.add_subplot(grid[0,:])
@@ -510,12 +558,12 @@ if plotSample:
             ax.plot(t, v[iV1,:], '-k', lw = lw)
         if pCond:
             ax2 = ax.twinx()
+            for ig in range(ngFF):
+                ax2.plot(t, gFF[0,ig,iV1,:], '-g', lw = (ig+1)/ngFF * lw)
             for ig in range(ngE):
                 ax2.plot(t, gE[0,ig,iV1,:], '-r', lw = (ig+1)/ngE * lw)
             for ig in range(ngI):
                 ax2.plot(t, gI[0,ig,iV1,:], '-b', lw = (ig+1)/ngI * lw)
-            for ig in range(ngFF):
-                ax2.plot(t, gFF[0,ig,iV1,:], '-g', lw = (ig+1)/ngFF * lw)
             if pH:
                 for ig in range(ngFF):
                     ax2.plot(t, gFF[1,ig,iV1,:], ':g', lw = (ig+1)/ngFF * lw)
@@ -523,7 +571,9 @@ if plotSample:
                     ax2.plot(t, gE[1,ig,iV1,:], ':r', lw = (ig+1)/ngE * lw)
                 for ig in range(ngI):
                     ax2.plot(t, gI[1,ig,iV1,:], ':b', lw = (ig+1)/ngI * lw)
-        ax.set_title(f'ID: {(iblock, ithread)}')
+        ax.set_title(f'ID: {(iblock, ithread)}:({LR[iV1]:.0f},{OP[iV1]*180/np.pi:.0f})- LGN:{nLGN_V1[iV1]}, E{preN[0,iV1]}({preNS[0,iV1]:.3f}), I{preN[1,iV1]}({preNS[1,iV1]:.3f})')
+        ax.set_ylim(bottom = min(0,np.min(v[iV1,:])))
+        ax2.set_ylim(bottom = 0)
 
         if nLGN_V1[iV1] > 0:
             ax = fig.add_subplot(grid[1,0])
@@ -531,7 +581,7 @@ if plotSample:
             LGN_fr_sSum = np.sum(frTmp[tpick,:] * LGN_V1_s[iV1], axis=-1)
             ax.plot(t, LGN_fr_sSum, '-g', lw = 2*lw)
 
-            nbins = int(FRbins*nt_*dt/1000*TF)
+            nbins = int(FRbins*t_in_sec*TF)
             sp_range = np.linspace(step0, step0+nt_, nbins+1)*dt
             spTmp = np.hstack(LGN_spScatter[LGN_V1_ID[iV1]])
             LGN_sp_total = spTmp[np.logical_and(spTmp>=step0*dt, spTmp<(nt_+step0)*dt)]
@@ -551,30 +601,31 @@ if plotSample:
                 pick = iLGN_type == j
                 ax.plot(iLGN_vpos[0,pick], iLGN_vpos[1,pick], markers[j], ms = 1.0)
             ax.set_aspect('equal')
-
-        for j in range(nLGN_V1[iV1]):
-            ax = fig.add_subplot(grid[2+j,0])
-            iLGN_fr = LGN_fr[tpick, LGN_V1_ID[iV1][j]]
-            ax.plot(t, iLGN_fr, '-g', lw = 2*lw)
-            spTmp = np.array(LGN_spScatter[LGN_V1_ID[iV1][j]])
-            iLGN_sp = spTmp[np.logical_and(spTmp>=step0*dt, spTmp<(nt_+step0)*dt)]
-            counts, _ = np.histogram(iLGN_sp, bins = sp_range)
-            ax.hist((sp_range[:-1] + sp_range[1:])/2, bins = sp_range, color = 'b', weights = counts/(1/TF/FRbins), alpha = 0.5)
-            ax.plot(iLGN_sp, np.zeros(iLGN_sp.size)+np.max(iLGN_fr)/2, '*g', ms = 1.0)
-            ax = fig.add_subplot(grid[2+j,1])
-            for k in range(6):
-                pick = iLGN_type == k
-                ax.plot(iLGN_vpos[0,pick], iLGN_vpos[1,pick], markers[k], ms = 1.0)
-            ax.plot(iLGN_vpos[0,j], iLGN_vpos[1,j], '*k')
-            ax.set_aspect('equal')
-        fig.savefig(f'V1-sample-{iV1}' + output_suffix + '.png')
+        if pSingleLGN:
+            for j in range(nLGN_V1[iV1]):
+                ax = fig.add_subplot(grid[2+j,0])
+                iLGN_fr = LGN_fr[tpick, LGN_V1_ID[iV1][j]]
+                ax.plot(t, iLGN_fr, '-g', lw = 2*lw)
+                spTmp = np.array(LGN_spScatter[LGN_V1_ID[iV1][j]])
+                iLGN_sp = spTmp[np.logical_and(spTmp>=step0*dt, spTmp<(nt_+step0)*dt)]
+                counts, _ = np.histogram(iLGN_sp, bins = sp_range)
+                ax.hist((sp_range[:-1] + sp_range[1:])/2, bins = sp_range, color = 'b', weights = counts/(1/TF/FRbins), alpha = 0.5)
+                ax.plot(iLGN_sp, np.zeros(iLGN_sp.size)+np.max(iLGN_fr)/2, '*g', ms = 1.0)
+                ax = fig.add_subplot(grid[2+j,1])
+                for k in range(6):
+                    pick = iLGN_type == k
+                    ax.plot(iLGN_vpos[0,pick], iLGN_vpos[1,pick], markers[k], ms = 1.0)
+                ax.plot(iLGN_vpos[0,j], iLGN_vpos[1,j], '*k')
+                ax.set_aspect('equal')
+        fig.savefig(f'V1-sample-{iblock}-{ithread}' + output_suffix + '.png')
         plt.close(fig)
 
 # statistics
 if plotRpStat:
     fig = plt.figure(f'rpStat', figsize = (8,4), dpi = 600)
     ax = fig.add_subplot(221)
-    ax.hist(fr[epick], color = 'r', alpha = 0.5, label = 'Exc')
+    #ax.hist(fr[epick], color = 'r', alpha = 0.5, label = 'Exc')
+    ax.hist(fr[epick], color = 'r', log = True, alpha = 0.5, label = 'Exc')
     ax.plot(0, sum(fr[epick] == 0), '*r')
     ax.hist(fr[ipick], color = 'b', alpha = 0.5, label = 'Inh')
     ax.plot(0, sum(fr[ipick] == 0), '*b')
@@ -582,14 +633,14 @@ if plotRpStat:
     ax.set_xlabel('Hz')
     ax.legend()
     
-    target = np.sum(gFF[0,:,:,:], axis = -1)/trange
+    target = np.sum(gFF[0,:,:,:], axis = -1)/t_in_ms
     ax = fig.add_subplot(222)
     target = np.sum(target, axis = 0)
     ax.hist(target[epick], color = 'r', alpha = 0.5)
     ax.hist(target[ipick], color = 'b', alpha = 0.5)
     ax.set_title('gFF')
     
-    target = np.sum(gE[0,:,:,:], axis = -1)/trange
+    target = np.sum(gE[0,:,:,:], axis = -1)/t_in_ms
     ax = fig.add_subplot(223)
     target = np.sum(target, axis = 0)
     ax.hist(target[epick], color = 'r', alpha = 0.5)
@@ -598,7 +649,7 @@ if plotRpStat:
     #ax.plot(0, sum(target[ipick] == 0), '*r')
     ax.set_title('gE')
     
-    target = np.sum(gI[0,:,:,:], axis = -1)/trange
+    target = np.sum(gI[0,:,:,:], axis = -1)/t_in_ms
     ax = fig.add_subplot(224)
     target = np.sum(target, axis = 0)
     ax.hist(target[epick], color = 'r', alpha = 0.5)
@@ -637,7 +688,7 @@ if plotRpCorr:
     ax = fig.add_subplot(grid[0,3])
     pick = ipick[np.logical_and(nLGN_V1[ipick]>0, F0_0[ipick])]
     image = HeatMap(target[pick], fr[pick], 25, 25, ax, 'Blues', vmin = 0, log_scale = True)
-    ax.set_xlabel('F1F0)')
+    ax.set_xlabel('F1F0')
     ax.set_ylabel('Inh. FR Hz')
 
     igFF = 0
@@ -658,7 +709,7 @@ if plotRpCorr:
     ax.set_ylabel('Inh FR')
     ax.set_title(f'active simple {active*100:.3f}%')
 
-    target = np.mean(np.sum(gE[0,:,:,:], axis = 0), axis = -1)/trange
+    target = np.sum(np.sum(gE[0,:,:,:], axis = 0), axis = -1)/t_in_ms
     ax = fig.add_subplot(grid[1,2])
     pick = epick[nLGN_V1[epick]==0]
     active = pick.size/epick.size
@@ -744,21 +795,21 @@ if plotLR_rp:
     ax.set_xlabel('Hz')
     ax.legend()
 
-    target = np.sum(gFF[0,:,:,:], axis = -1)/trange
+    target = np.sum(gFF[0,:,:,:], axis = -1)/t_in_ms
     ax = fig.add_subplot(222)
     target = np.sum(target, axis = 0)
     ax.hist(target[LR>0], color = 'r', alpha = 0.5)
     ax.hist(target[LR<0], color = 'b', alpha = 0.5)
     ax.set_title('gFF')
     
-    target = np.sum(gE[0,:,:,:], axis = -1)/trange
+    target = np.sum(gE[0,:,:,:], axis = -1)/t_in_ms
     ax = fig.add_subplot(223)
     target = np.sum(target, axis = 0)
     ax.hist(target[LR>0], color = 'r', alpha = 0.5)
     ax.hist(target[LR<0], color = 'b', alpha = 0.5)
     ax.set_title('gE')
     
-    target = np.sum(gI[0,:,:,:], axis = -1)/trange
+    target = np.sum(gI[0,:,:,:], axis = -1)/t_in_ms
     ax = fig.add_subplot(224)
     target = np.sum(target, axis = 0)
     ax.hist(target[LR>0], color = 'r', alpha = 0.5)
@@ -767,16 +818,52 @@ if plotLR_rp:
     fig.savefig('V1-LRrpStats' + output_suffix + '.png')
     plt.close(fig)
 
-if plotFF_sLGN:
-    gTarget = np.sum(gFF[0,:,:,:], axis = -1)/trange
-    s_irl = np.sum(gTarget, axis = 0)
+if plotExc_sLGN:
+    gTarget = np.sum(gFF[0,:,:,:], axis = -1)/t_in_ms
+    FF_irl = np.sum(gTarget, axis = 0)
     FF_sSum = np.array([np.sum(s) for s in LGN_V1_s])
     fig = plt.figure(f'FF_sLGN', dpi = 600)
-    ax = fig.add_subplot(111)
-    ax.plot(FF_sSum , s_irl, '*k', ms = 0.1)
-    ax.set_xlabel('LGN_V1_sSum')
-    ax.set_ylabel('gFF_sum')
-    fig.savefig('FF_sLGN' + output_suffix + '.png')
+    ax = fig.add_subplot(221)
+    ax.plot(FF_sSum[epick], FF_irl[epick], '*r', ms = 0.1)
+    ax.plot(FF_sSum[ipick], FF_irl[ipick], '*b', ms = 0.1)
+    ax.set_xlabel('FF_sSum')
+    ax.set_ylabel('gFF')
+    ax.set_xlim(left = 0)
+    ax.set_ylim(bottom = 0)
+
+    gTarget = np.sum(gE[0,:,:,:], axis = -1)/t_in_ms
+    cortical = np.sum(gTarget, axis = 0)
+    ax = fig.add_subplot(222)
+    ax.plot(FF_sSum[epick], cortical[epick], '*r', ms = 0.1)
+    ax.plot(FF_sSum[ipick], cortical[ipick], '*b', ms = 0.1)
+    ax.set_xlabel('FF_sSum')
+    ax.set_ylabel('gE')
+    ax.set_xlim(left = 0)
+    ax.set_ylim(bottom = 0)
+
+    ax = fig.add_subplot(223)
+    ax.plot(FF_irl[epick], cortical[epick]+FF_irl[epick], '*r', ms = 0.1)
+    ax.plot(FF_irl[ipick], cortical[ipick]+FF_irl[ipick], '*b', ms = 0.1)
+    ax2 = ax.twinx()
+    ax2.plot(FF_irl[epick], fr[epick], 'sr', ms = 0.1)
+    ax2.plot(FF_irl[ipick], fr[ipick], 'sb', ms = 0.1)
+    ax.set_xlabel('gFF')
+    ax.set_ylabel('gE+gFF')
+    ax2.set_ylabel('fr')
+    ax.set_xlim(left = 0)
+    ax.set_ylim(bottom = 0)
+
+    gTarget = np.sum(gI[0,:,:,:], axis = -1)/t_in_ms
+    corticalI = np.sum(gTarget, axis = 0)
+    ax = fig.add_subplot(224)
+    ax.plot(FF_sSum[epick], (cortical[epick]+FF_irl[epick])/corticalI[epick], '*r', ms = 0.1)
+    ax.plot(FF_sSum[ipick], (cortical[ipick]+FF_irl[ipick])/corticalI[ipick], '*b', ms = 0.1)
+    ax.set_xlabel('FF_sSum')
+    ax.set_ylabel('(gE+gFF)/gI')
+    ax.set_xlim(left = 0)
+    ax.set_ylim(bottom = 0)
+
+    fig.savefig('Exc_sLGN' + output_suffix + '.png')
     plt.close(fig)
         
 # scatter
@@ -789,20 +876,32 @@ if plotScatterFF:
     tsp = tsp[tpick]
     isp = isp[tpick].astype(int)
 
-    if pLR:
-        eSpick = np.logical_and(np.mod(isp, blockSize) < mE , LR[isp]>0)
-        iSpick = np.logical_and(np.mod(isp, blockSize) >= mE, LR[isp]>0)
-        ax.plot(tsp[eSpick], isp[eSpick], ',r')
-        ax.plot(tsp[iSpick], isp[iSpick], ',b')
-        eSpick = np.logical_and(np.mod(isp, blockSize) < mE , LR[isp]<0)
-        iSpick = np.logical_and(np.mod(isp, blockSize) >= mE, LR[isp]<0)
-        ax.plot(tsp[eSpick], isp[eSpick], ',m')
-        ax.plot(tsp[iSpick], isp[iSpick], ',g')
+    if pLR or pSC:
+        if pLR:
+            eSpick = np.logical_and(np.mod(isp, blockSize) < mE , LR[isp]>0)
+            iSpick = np.logical_and(np.mod(isp, blockSize) >= mE, LR[isp]>0)
+            ax.plot(tsp[eSpick], isp[eSpick], ',r')
+            ax.plot(tsp[iSpick], isp[iSpick], ',b')
+            eSpick = np.logical_and(np.mod(isp, blockSize) < mE , LR[isp]<0)
+            iSpick = np.logical_and(np.mod(isp, blockSize) >= mE, LR[isp]<0)
+            ax.plot(tsp[eSpick], isp[eSpick], ',m')
+            ax.plot(tsp[iSpick], isp[iSpick], ',g')
+        if pSC:
+            eSpick = np.logical_and(np.mod(isp, blockSize) < mE , nLGN_V1[isp] == 0)
+            iSpick = np.logical_and(np.mod(isp, blockSize) >= mE, nLGN_V1[isp] == 0)
+            ax.plot(tsp[eSpick], isp[eSpick], ',r')
+            ax.plot(tsp[iSpick], isp[iSpick], ',b')
+            eSpick = np.logical_and(np.mod(isp, blockSize) < mE , nLGN_V1[isp] > 0)
+            iSpick = np.logical_and(np.mod(isp, blockSize) >= mE, nLGN_V1[isp] > 0)
+            ax.plot(tsp[eSpick], isp[eSpick], ',m')
+            ax.plot(tsp[iSpick], isp[iSpick], ',g')
     else:
         eSpick = np.mod(isp, blockSize) < mE
         iSpick = np.mod(isp, blockSize) >= mE
         ax.plot(tsp[eSpick], isp[eSpick], ',r')
         ax.plot(tsp[iSpick], isp[iSpick], ',b')
+
+
     ax.set_xlim(step0*dt, nt_*dt)
 
     ax = fig.add_subplot(212)
@@ -811,6 +910,7 @@ if plotScatterFF:
     edges = step0*dt + np.arange(nbins+1) * tbinSize 
     t_tf = (edges[:-1] + edges[1:])/2
     ff = np.arange(nbins//2+1) * 1000/t
+
     ipre = np.argwhere(ff<TF)[-1][0]
     ipost = np.argwhere(ff>=TF)[0][0]
 
@@ -830,5 +930,93 @@ if plotScatterFF:
     ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '<b', ms = 0.5, alpha = 0.5)
     ax2.set_yscale('log')
 
-    fig.savefig('V1-scatterFF' + output_suffix + '.png')
+    if nt == nt_:
+        fig.savefig('V1-scatterFF' + output_suffix + '_full.png')
+    else:
+        fig.savefig('V1-scatterFF' + output_suffix + '.png')
+    plt.close(fig)
+
+if plotLGNsCorr:
+    fig = plt.figure(f'sLGN-corr', figsize = (12,12), dpi = 600)
+    grid = gs.GridSpec(4, 4, figure = fig, hspace = 0.3, wspace = 0.3)
+    
+    gFF_target = np.mean(np.sum(gFF[0,:,:,:], axis = 0), axis=-1)
+    gE_target = np.mean(np.sum(gE[0,:,:,:], axis = 0), axis=-1)
+    gI_target = np.mean(np.sum(gI[0,:,:,:], axis = 0), axis=-1)
+    gE_gI_ratio = np.mean(np.sum(gE[0,:,:,:], axis = 0)/np.sum(gI[0,:,:,:], axis = 0), axis=-1)
+
+    nsE = preNS[0,:]
+    nsI = preNS[1,:]
+    
+    ax = fig.add_subplot(grid[0,0])
+    image = HeatMap(gFF_target[epick], gE_target[epick], 25, 25, ax, 'Reds', vmin = 0, log_scale = True)
+    ax.set_xlabel('exc. gFF')
+    ax.set_ylabel('exc. gE')
+    
+    ax = fig.add_subplot(grid[0,1])
+    image = HeatMap(gFF_target[ipick], gE_target[ipick], 25, 25, ax, 'Blues', vmin = 0, log_scale = True)
+    ax.set_xlabel('inh. gFF')
+    ax.set_ylabel('inh. gE')
+    
+    ax = fig.add_subplot(grid[1,0])
+    image = HeatMap(gFF_target[epick], nsE[epick], 25, 25, ax, 'Reds', vmin = 0, log_scale = True)
+    ax.set_xlabel('exc. gFF')
+    ax.set_ylabel('exc. nsE')
+    
+    ax = fig.add_subplot(grid[1,1])
+    image = HeatMap(gFF_target[ipick], nsE[ipick], 25, 25, ax, 'Blues', vmin = 0, log_scale = True)
+    ax.set_xlabel('inh. gFF')
+    ax.set_ylabel('inh. nsE')
+    
+    ax = fig.add_subplot(grid[2,0])
+    image = HeatMap(gFF_target[epick], gI_target[epick], 25, 25, ax, 'Reds', vmin = 0, log_scale = True)
+    ax.set_xlabel('exc. gFF')
+    ax.set_ylabel('exc. gI')
+    
+    ax = fig.add_subplot(grid[2,1])
+    image = HeatMap(gFF_target[ipick], gI_target[ipick], 25, 25, ax, 'Blues', vmin = 0, log_scale = True)
+    ax.set_xlabel('inh. gFF')
+    ax.set_ylabel('inh. gI')
+    
+    ax = fig.add_subplot(grid[0,2])
+    image = HeatMap(gFF_target[epick], fr[epick], 25, 25, ax, 'Reds', vmin = 0, log_scale = True)
+    ax.set_xlabel('exc. gFF')
+    ax.set_ylabel('exc. FR Hz')
+    
+    ax = fig.add_subplot(grid[0,3])
+    image = HeatMap(gFF_target[ipick], fr[ipick], 25, 25, ax, 'Blues', vmin = 0, log_scale = True)
+    ax.set_xlabel('inh. gFF')
+    ax.set_ylabel('inh. FR Hz')
+    
+    ax = fig.add_subplot(grid[3,0])
+    image = HeatMap(gFF_target[epick], nsI[epick], 25, 25, ax, 'Reds', vmin = 0, log_scale = True)
+    ax.set_xlabel('exc. gFF')
+    ax.set_ylabel('exc. nsI')
+    
+    ax = fig.add_subplot(grid[3,1])
+    image = HeatMap(gFF_target[ipick], nsI[ipick], 25, 25, ax, 'Blues', vmin = 0, log_scale = True)
+    ax.set_xlabel('inh. nsI')
+    ax.set_ylabel('inh. nsI')
+
+    ax = fig.add_subplot(grid[1,2])
+    image = HeatMap(gFF_target[epick], gE_gI_ratio[epick], 25, 25, ax, 'Reds', vmin = 0, log_scale = True)
+    ax.set_xlabel('exc. gFF')
+    ax.set_ylabel('exc. gE/gI')
+    
+    ax = fig.add_subplot(grid[1,3])
+    image = HeatMap(gFF_target[ipick], gE_gI_ratio[ipick], 25, 25, ax, 'Blues', vmin = 0, log_scale = True)
+    ax.set_xlabel('inh. gFF')
+    ax.set_ylabel('inh. gE/gI')
+
+    ax = fig.add_subplot(grid[2,2])
+    image = HeatMap(gFF_target[epick], nsE[epick]/nsI[epick], 25, 25, ax, 'Reds', vmin = 0, log_scale = True)
+    ax.set_xlabel('exc. gFF')
+    ax.set_ylabel('exc. nsE/nsI')
+    
+    ax = fig.add_subplot(grid[2,3])
+    image = HeatMap(gFF_target[ipick], nsE[ipick]/nsI[ipick], 25, 25, ax, 'Blues', vmin = 0, log_scale = True)
+    ax.set_xlabel('inh. gFF')
+    ax.set_ylabel('inh. nsE/nsI')
+
+    fig.savefig('sLGN-corr' + output_suffix + '.png')
     plt.close(fig)
