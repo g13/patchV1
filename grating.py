@@ -82,7 +82,7 @@ def generate_random(amp, cSize, c0, fname, time, frameRate = 120, ecc = 2.5, buf
     cv.destroyAllWindows()
     return LMS
 
-def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel, c1, c2, fname, time, phase, sharpness, frameRate = 120, ecc = 2.5, buffer_ecc = 0.25, gtype = 'drifting', neye = 2, bar = False, center = np.pi/2, wing = np.pi/2):
+def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel, c1, c2, fname, time, phase, sharpness, frameRate = 120, ecc = 2.5, buffer_ecc = 0.25, gtype = 'drifting', neye = 2, bar = False, center = np.pi/2, wing = np.pi/2, genMovie = True):
     """
     spatialFrequency: cycle per degree
     temporalFrequency: Hz
@@ -106,8 +106,9 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
     else:
         a = npixel//2  
     b = npixel  
-    FourCC = cv.VideoWriter_fourcc(*'HFYU')
-    output = cv.VideoWriter(fname+'.avi', FourCC, frameRate, (npixel,npixel), True)
+    if genMovie:
+        FourCC = cv.VideoWriter_fourcc(*'HFYU')
+        output = cv.VideoWriter(fname+'.avi', FourCC, frameRate, (npixel,npixel), True)
 
     if isinstance(time, (list, tuple, np.ndarray)):
         nseq = len(time)
@@ -210,7 +211,8 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
             # bgr->lms
             LMS_seq[it,:,:,:] = data[:,:,::-1].reshape((npixel*npixel,3)).T.reshape((3,npixel,npixel))
 
-            output.write(pixelData)
+            if genMovie:
+                output.write(pixelData)
             #pixelData = np.reshape(np.round(data*255), (b,a,3))
             #cv.imshow('linear', pixelData)
             #cv.waitKey(0)
@@ -219,8 +221,9 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
             #cv.waitKey(0)
         LMS[i] = LMS_seq.copy()
 
-    output.release()
-    cv.destroyAllWindows()
+    if genMovie:
+        output.release()
+        cv.destroyAllWindows()
     return LMS
 
 def adjust_gamma(image, gamma=1.0):
@@ -293,3 +296,37 @@ def generate_from_float(fname, b, a, nt, cs_transform=LMS2sRGB, frameRate=60, su
     
     output.release()
     cv.destroyAllWindows()
+
+if __name__ == "__main__":
+    video_fn = 'color_drifting_2i'
+    stimulus_fn = video_fn + '.bin'
+    crest = [255,0,0]
+    valley = [0,255,0]
+    buffer_deg = 1.0
+    range_deg = 2.5 # eccentricity from the origin
+    SF = 4
+    TF = 8
+    
+    orient = np.array([np.pi*3/4, np.pi*1/4])
+    time = np.array([1.2, 1.2])
+    phase = 8.8*np.pi
+    center = np.pi/2
+    wing = np.pi/2
+    sharpness = 1
+    LMS_series = generate_grating(1.0, SF, TF, orient, 256, crest, valley, video_fn, time, phase, sharpness, frameRate = 120, ecc = range_deg, buffer_ecc = buffer_deg, gtype='drifting', neye = 2, bar = False, center = center, wing = wing)
+    
+    print(LMS_series.shape)
+    nseq = LMS_series.size
+    for i in range(nseq):
+        print([np.min(LMS_series[i]), np.max(LMS_series[i])])
+    
+    with open(stimulus_fn, 'wb') as f:
+        np.array([LMS_series[0].shape[0], LMS_series[0].shape[2], LMS_series[0].shape[3]], dtype='i4').tofile(f)
+        mean_value = np.array([np.mean(LMS_series[0][:,0,:,:]), np.mean(LMS_series[0][:,1,:,:]), np.mean(LMS_series[0][:,2,:,:])])
+        mean_value.astype('f4').tofile(f) # init_luminance
+        np.array([buffer_deg, range_deg], dtype='f4').tofile(f)
+        print([buffer_deg, range_deg])
+        for i in range(nseq):
+            print(i)
+            LMS_series[i].astype('f4').tofile(f)
+    print(mean_value)
