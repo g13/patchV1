@@ -5,16 +5,64 @@ extern surface<void, cudaSurfaceType2DLayered> LGNspikeSurface;
 
 __launch_bounds__(1024,2)
 __global__ 
-void rand_init(Float *array,
-               Float value,
-               curandStateMRG32k3a *rGenCond,
-               PosIntL seed, Size n) 
+void rand_spInit(Float* __restrict__ tBack,
+                 Float* __restrict__ spikeTrain,
+                 Float* __restrict__ v,
+                 Size* __restrict__ nLGNperV1,
+                 Float* __restrict__ sp0,
+                 Size* __restrict__ typeAcc,
+                 curandStateMRG32k3a* __restrict__ rGenCond,
+                 PosIntL seed, Size networkSize, Size nE, Size nType, Size SCsplit, Float value, Size trainDepth, Float dt) 
 {
     PosIntL id = blockIdx.x * blockDim.x + threadIdx.x;
-    if (id < n) {
+    if (id < networkSize) {
         curandStateMRG32k3a localState = rGenCond[id];
-        array[id] = value;
+        Size iLGN = nLGNperV1[id];
+        Float tRef;
+        Size type;
+        if (id < nE) {
+            tRef = tRef_E;
+        } else {
+            tRef = tRef_I;
+        }
+        for (PosInt i=0; i<nType; i++) {
+            if (id < typeAcc[i]) {
+                type = typeAcc[i];
+                break;
+            }
+        }
         curand_init(seed + id, 0, 0, &localState);
+        Float rand = uniform(&localState);
+        Float chance;
+        Float ref = 0.0;
+        if (iLGN > SCsplit) {
+            chance = sp0[type*2 + 0]; 
+        } else {
+            chance = sp0[type*2 + 1]; 
+        }
+        Float tb = value;
+        if (chance > 0) {
+            if (rand < chance) {
+                Float tsp = uniform(&localState);
+                spikeTrain[id + 0*networkSize] = 1.0 + tsp;
+                tb = tRef - (1-tsp)*dt;
+                v[id] = vL;
+                ref = (1-tsp)*dt + tRef - dt;
+            }
+        }
+        __syncwarp();
+        tBack[id] = tb;
+        for (PosInt i=trainDepth-1; i>0; i--) {
+            if (ref < dt) {
+                if (ref < 0) ref = 0;
+                if (uniform(&localState) < chance*(dt-ref)/dt) {
+                    Float tsp = uniform(&localState)*(dt-ref)/dt;
+                    spikeTrain[i*networkSize + id] = 1.0  + tsp;
+                    ref = tRef + (1-tsp)*dt;
+                } 
+            }
+            ref -= dt;
+        }
         rGenCond[id] = localState;
     }
 }
@@ -172,9 +220,9 @@ void LIF::reset_v() {
 void recal_G_vec(
         std::vector<std::vector<std::vector<Float>>> &spikeTrain, std::vector<std::vector<Size>> &trainDepth, std::vector<std::vector<PosInt>> &currentTimeSlot,
         std::vector<Size> &nVec,  std::vector<std::vector<PosInt>> &vecID, std::vector<std::vector<Float>> &conVec, std::vector<std::vector<Float>> &delayVec,
-        Float gE[], Float gI[], Float hE[], Float hI[], Float pE[], Float pI[], Size archTypeAcc[],
+        Float gE[], Float gI[], Float hE[], Float hI[], Float pE[], Float pI[], Size typeAcc[],
         std::default_random_engine *rGenCond, Float noisyCondE[], Float noisyCondI[], Float synFailE[], Float synFailI[],
-        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, Size nArchType, Size nE, Size nV1, Float speedOfThought, Size chunkSize) 
+        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, Size nType, Size nE, Size nV1, Float speedOfThought, Size chunkSize) 
 {
     Float ipE[max_ngTypeE];
     Float ipI[max_ngTypeI];
@@ -189,9 +237,10 @@ void recal_G_vec(
         // initialize
         PosInt itype;
         #pragma unroll max_nType
-        for (PosInt j=0; j<nArchType; j++) {
-            if (i%blockSize < archTypeAcc[j]) {
+        for (PosInt j=0; j<nType; j++) {
+            if (i%blockSize < typeAcc[j]) {
                 itype = j;
+                break;
             }
         }
         if (nVec[i] == 0) continue;
@@ -311,11 +360,11 @@ void compute_V_collect_spike_learnFF(
         Float* __restrict__ vSTDP_QE,  //  E post, [nLearnTypeQ,           nblock, nE        2]
         Float* __restrict__ vSTDP_QI,  //   I pre, [nLearnTypeQ,    depth, nblock, nI,       2]
         Float* __restrict__ pFF,
-        Size* __restrict__ archTypeAcc,
+        Size* __restrict__ typeAcc,
         curandStateMRG32k3a* __restrict__ rGenCond,
         Float* __restrict__ noisyCondFF,
         Float* __restrict__ synFailFF,
-        PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeFF, Size ngTypeE, Size ngTypeI, ConductanceShape condFF, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, int learning, int varSlot, Size nArchType,
+        PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeFF, Size ngTypeE, Size ngTypeI, ConductanceShape condFF, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, int learning, int varSlot, Size nType,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
         LearnVarShapeE learnE, LearnVarShapeQ learnQ)
@@ -355,9 +404,10 @@ void compute_V_collect_spike_learnFF(
     //Size nsp_FFt = 0;
     PosInt itype;
     #pragma unroll max_nType
-    for (PosInt j=0; j<nArchType; j++) {
-        if (threadIdx.x < archTypeAcc[j]) {
+    for (PosInt j=0; j<nType; j++) {
+        if (threadIdx.x < typeAcc[j]) {
             itype = j;
+            break;
         }
     }
     curandStateMRG32k3a localState = rGenCond[tid];
@@ -767,14 +817,14 @@ void recal_G_mat(
         Float* __restrict__ vSTDP_QI,  //   I pre, [nLearnTypeQ,    depth, nblock, nI,       2]
         Float* __restrict__ pE,
         Float* __restrict__ pI,
-        Size* __restrict__ archTypeAcc,
+        Size* __restrict__ typeAcc,
         curandStateMRG32k3a* __restrict__ rGenCond,
         Float* __restrict__ noisyCondE,
         Float* __restrict__ noisyCondI,
         Float* __restrict__ synFailE,
         Float* __restrict__ synFailI,
-        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nE, Size nI, Size nV1, Float speedOfThought, int learning, PosInt block_offset, Size nArchType,
-        LearnVarShapeE lE, LearnVarShapeQ lQ, PosInt it, PosInt iChunk)
+        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nE, Size nI, Size nV1, Float speedOfThought, int learning, PosInt block_offset, Size nType,
+        LearnVarShapeE lE, LearnVarShapeQ lQ, PosInt iChunk)
 {
     // each thread is the post neuron that collects its presynaptic input conductances
     Float ipE[MAX_NGTYPE_E];
@@ -784,9 +834,10 @@ void recal_G_mat(
     Float local_hE[MAX_NGTYPE_E];
     PosInt itype;
     #pragma unroll (max_nType)
-    for (PosInt i=0; i<nArchType; i++) {
-        if (threadIdx.x < archTypeAcc[i]) {
+    for (PosInt i=0; i<nType; i++) {
+        if (threadIdx.x < typeAcc[i]) {
             itype = i;
+            break;
         }
     }
     #pragma unroll (max_ngTypeE)

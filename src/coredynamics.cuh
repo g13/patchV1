@@ -31,7 +31,16 @@ struct LIF {
     __device__ virtual void reset_v();
 };
 
-__global__ void rand_init(Float *array, Float value, curandStateMRG32k3a *rGenCond, PosIntL seed, Size n);
+__global__ 
+void rand_spInit(Float* __restrict__ tBack,
+                 Float* __restrict__ spikeTrain,
+                 Float* __restrict__ v,
+                 Size* __restrict__ nLGNperV1,
+                 Float* __restrict__ sp0,
+                 Size* __restrict__ typeAcc,
+                 curandStateMRG32k3a* __restrict__ rGenCond,
+                 PosIntL seed, Size networkSize, Size nE, Size nType, Size SCsplit, Float value, Size trainDepth, Float dt);
+
 
 __global__ void logRand_init(Float *logRand, Float *lTR, int* LGN_idx, int* LGN_idy, curandStateMRG32k3a *state, PosIntL seed, Size n, Size nFF);
 
@@ -110,7 +119,7 @@ void recal_G_mat( // <<< nblock[partial], blockSize >>>
         Float* __restrict__ synFailE,
         Float* __restrict__ synFailI,
         Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nE, Size nI, Size nV1, Float speedOfThought, int learning, PosInt block_offset, Size nType,
-        LearnVarShapeE lE, LearnVarShapeQ lQ, PosInt it, PosInt iChunk
+        LearnVarShapeE lE, LearnVarShapeQ lQ, PosInt iChunk
 );
 
 //template<int ntimesE, int ntimesI> extern
