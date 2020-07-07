@@ -55,8 +55,10 @@ int main(int argc, char **argv) {
     bool uniform_LGN;
     bool LGN_switch;
     bool getLGN_sp;
+	bool noisyH;
     int rebound;
     int learning;
+    int iModel;
 	Size nChunk;
 	Size matConcurrency;
 	Float phyWidth_scale;
@@ -98,12 +100,22 @@ int main(int argc, char **argv) {
 	vector<Float> gminE;
 	vector<Float> gminQ;
 	vector<Float> v0;
+	vector<Float> w0;
 	vector<Float> gFF0;
 	vector<Float> gE0;
 	vector<Float> gI0;
 	vector<Float> pFF;
 	vector<Float> pE;
 	vector<Float> pI;
+	vector<Float> vR;
+	vector<Float> vThres;
+	vector<Float> gL;
+	vector<Float> tRef;
+	vector<Float> vT;
+	vector<Float> deltaT;
+	vector<Float> tau_w;
+	vector<Float> a;
+	vector<Float> b;
 	vector<Size> typeAccCount;
     vector<PosInt> preList, postList;
     vector<Float> sList;
@@ -156,6 +168,7 @@ int main(int argc, char **argv) {
 		("decayTimeE", po::value<vector<Float>>(&gdE), "array for decay time of the cortical excitatory conductances, size should be consistent with riseTimeE")
 		("decayTimeI", po::value<vector<Float>>(&gdI), "array for decay time of the inhibitory conductances, size should be consistent with riseTimeI")
 		("v0", po::value<vector<Float>>(&v0), "array for initial dist [nType, mean, std]")
+		("w0", po::value<vector<Float>>(&w0), "AdEx model's initial dist of w [nType, mean, std]")
 		("gFF0", po::value<vector<Float>>(&gFF0), "array for initial dist [nType, ngTypeFF, mean, std]")
 		("gE0", po::value<vector<Float>>(&gE0), "array for initial dist [nType, ngTypeE, mean, std]")
 		("gI0", po::value<vector<Float>>(&gI0), "array for initial dist [nType, ngTypeI, mean, std]")
@@ -164,6 +177,7 @@ int main(int argc, char **argv) {
 		("pI", po::value<vector<Float>>(&pI), "array for proportions of [nType, ngTypeI]")
         ("learning", po::value<int>(&learning)->default_value(1), "trip rule learning, from Jennifer, 0 no learning, 1 default learning")
 		("rebound", po::value<int>(&rebound)->default_value(0), "after connection strength hits min or max can they retract") // TODO: replace "continue;" in compute_V 
+		("iModel", po::value<int>(&iModel)->default_value(0), "0: LIF, 1: AdEx")
         ("A_LGN", po::value<vector<Float>>(&A_LGN), "array of learning rate for feedforward connections")
         ("A_V1", po::value<vector<Float>>(&A_V1), "array of learning rate for coritcal connections")
         ("A_Q", po::value<vector<Float>>(&A_Q), "array of learning rate ofr inhibitory connecitons")
@@ -183,17 +197,27 @@ int main(int argc, char **argv) {
 		("gminLGN", po::value<vector<Float>>(&gminLGN), "minimum connection strength for LGN->V1, size of nLearnTypeFF")
 		("gminE", po::value<vector<Float>>(&gminE), "minimum connection strength for E->E, size of nLearnTypeE")
 		("gminQ", po::value<vector<Float>>(&gminQ), "minimum connection strength for I->E, size of nLearnTypeQ")
+		("vR",po::value<vector<Float>>(&vR), "single neuron model's reseting voltage of size nType")
+		("vThres",po::value<vector<Float>>(&vThres), "single neuron model's reset threshold of size nType")
+		("gL",po::value<vector<Float>>(&gL), "single neuron model's leaky conductance of size nType")
+		("tRef",po::value<vector<Float>>(&tRef), "single neuron model's refactory period of size nType")
+		("vT",po::value<vector<Float>>(&vT), "AdEx model's spiking threshold (parameter) of size nType")
+		("deltaT",po::value<vector<Float>>(&deltaT), "AdEx model's deltaT of size nType")
+		("tau_w",po::value<vector<Float>>(&tau_w), "AdEx model's time scale of adaptive variable w of size nType")
+		("a",po::value<vector<Float>>(&a), "AdEx model's parameter a of size nType")
+		("b",po::value<vector<Float>>(&b), "AdEx model's parameter b of size nType")
 		("typeAccCount",po::value<vector<Size>>(&typeAccCount), "neuronal types' discrete accumulative distribution size of nType")
         ("nTypeHierarchy",  po::value<vector<Size>>(&nTypeHierarchy), "types of excitatory neurons and inhibtory neurons")
         ("spE0",  po::value<vector<Float>>(&spE0), "Exc. initial spike dist. mean. of size [nTypeHierarchy[0], 2] (s->c) ")
         ("spI0",  po::value<vector<Float>>(&spI0), "Inh. initial spike dist. mean. of size [nTypeHierarchy[1], 2] (s->c) ")
         ("SCsplit",  po::value<Size>(&SCsplit), "simple complex split at nLGN > SCsplit (simple)")
+		("noisyH", po::value<bool>(&noisyH)->default_value(true), "make h or g noisy")
         ("noisyCondFF",  po::value<vector<Float>>(&noisyCondFF), "FF conductances being noisy [std] of size ngTypeFF")
         ("noisyCondE",  po::value<vector<Float>>(&noisyCondE), "E conductances being noisy [std] of size ngTypeE")
         ("noisyCondI",  po::value<vector<Float>>(&noisyCondI), "I conductances being noisy [std] of size ngTypeI")
-        ("synFailFF",  po::value<vector<Float>>(&synFailFF), "FF synpase failure rate of size ngTypeFF")
-        ("synFailE",  po::value<vector<Float>>(&synFailE), "E synpase failure rate of size ngTypeE")
-        ("synFailI",  po::value<vector<Float>>(&synFailI), "I synpase failure rate of size ngTypeI")
+        ("synFailFF",  po::value<vector<Float>>(&synFailFF), "FF synpase failure rate of size nType")
+        ("synFailE",  po::value<vector<Float>>(&synFailE), "E synpase failure rate of size nType")
+        ("synFailI",  po::value<vector<Float>>(&synFailI), "I synpase failure rate of size nType")
         ("manual", po::value<bool>(&manual)->default_value(false), "manually connect neurons, modify on top of conMat")
         ("preList", po::value<vector<PosInt>>(&preList), "the presynaptic neurons of the manual connections")
         ("postList", po::value<vector<PosInt>>(&postList), "the postynaptic neurons of the manual connections")
@@ -458,32 +482,22 @@ int main(int argc, char **argv) {
         cout << "\n";
     }
 
-	if (synFailFF.size() != ngTypeFF) {
-		cout << "the size of synFailFF has size of " << synFailFF.size() << " != " << ngTypeFF << "\n";
+	if (synFailE.size() != nType) {
+		cout << "the size of synFailE has size of " << synFailE.size() << " != " << nType << "\n";
 		return EXIT_FAILURE;
 	} else {
-        for (PosInt i=0; i<ngTypeFF; i++) {
-            if (synFailFF[i] >= 1.0) cout << "feedforward synapse type " << i << " has been set to always fail\n";
-            if (synFailFF[i] < 0.0) synFailFF[i] = 0.0;
-        }
-    }
-
-	if (synFailE.size() != ngTypeE) {
-		cout << "the size of synFailE has size of " << synFailE.size() << " != " << ngTypeE << "\n";
-		return EXIT_FAILURE;
-	} else {
-        for (PosInt i=0; i<ngTypeE; i++) {
-            if (synFailE[i] >= 1.0) cout << "excitatory synapse type " << i << " has been set to always fail\n";
+        for (PosInt i=0; i<nType; i++) {
+            if (synFailE[i] >= 1.0) cout << "excitatory synapse on neuronal type " << i << " has been set to always fail\n";
             if (synFailE[i] < 0.0) synFailE[i] = 0.0;
         }
     }
 
-	if (synFailI.size() != ngTypeI) {
-		cout << "the size of synFailI has size of " << synFailI.size() << " != " << ngTypeI << "\n";
+	if (synFailI.size() != nType) {
+		cout << "the size of synFailI has size of " << synFailI.size() << " != " << nType << "\n";
 		return EXIT_FAILURE;
 	} else {
-        for (PosInt i=0; i<ngTypeI; i++) {
-            if (synFailI[i] >= 1.0) cout << "inhibitory synapse type " << i << " has been set to always fail\n";
+        for (PosInt i=0; i<nType; i++) {
+            if (synFailI[i] >= 1.0) cout << "inhibitory synapse on neuronal type " << i << " has been set to always fail\n";
             if (synFailI[i] < 0.0) synFailI[i] = 0.0;
         }
     }
@@ -491,6 +505,137 @@ int main(int argc, char **argv) {
     ConductanceShape condFF(&(grFF[0]), &(gdFF[0]), ngTypeFF);
 	ConductanceShape condE(&(grE[0]), &(gdE[0]), ngTypeE);
 	ConductanceShape condI(&(grI[0]), &(gdI[0]), ngTypeI);
+
+    if (vR.size() == 1) {
+        for (PosInt i=1; i<nType; i++) {
+            vR.push_back(vR[0]);
+        }
+    } else {
+        if (vR.size() != nType) {
+            cout << "vR need to has size of " << nType << "\n";
+			return EXIT_FAILURE;
+        }
+    }
+
+    if (iModel == 0) {
+        cout << "using LIF model vT(ignored) is equivalent with vThres(will be used).\n";
+    }
+
+    if (vT.size() == 1) {
+        for (PosInt i=1; i<nType; i++) {
+            vT.push_back(vT[0]);
+        }
+    } else {
+        if (vT.size() != nType) {
+            cout << "vT need to has size of " << nType << "\n";
+			return EXIT_FAILURE;
+        }
+    }
+
+    if (vThres.size() == 1) {
+        for (PosInt i=1; i<nType; i++) {
+            vThres.push_back(vThres[0]);
+        }
+    } else {
+        if (vThres.size() != nType) {
+            cout << "vThres need to has size of " << nType << "\n";
+			return EXIT_FAILURE;
+        }
+    }
+
+    if (gL.size() == 1) {
+        for (PosInt i=1; i<nType; i++) {
+            gL.push_back(gL[0]);
+        }
+    } else {
+        if (gL.size() != nType) {
+            cout << "gL need to has size of " << nType << "\n";
+			return EXIT_FAILURE;
+        }
+    }
+
+    if (tRef.size() == 1) {
+        for (PosInt i=1; i<nType; i++) {
+            tRef.push_back(tRef[0]);
+        }
+    } else {
+        if (tRef.size() != nType) {
+            cout << "tRef need to has size of " << nType << "\n";
+			return EXIT_FAILURE;
+        }
+    }
+
+    if (deltaT.size() == 1) {
+        for (PosInt i=1; i<nType; i++) {
+            deltaT.push_back(deltaT[0]);
+        }
+    } else {
+        if (deltaT.size() != nType) {
+            cout << "deltaT need to has size of " << nType << "\n";
+			return EXIT_FAILURE;
+        }
+    }
+
+    if (tau_w.size() == 1) {
+        for (PosInt i=1; i<nType; i++) {
+            tau_w.push_back(tau_w[0]);
+        }
+    } else {
+        if (tau_w.size() != nType) {
+            cout << "tau_w (parameter) need to has size of " << nType << "\n";
+			return EXIT_FAILURE;
+        }
+    }
+
+    if (a.size() == 1) {
+        for (PosInt i=1; i<nType; i++) {
+            a.push_back(a[0]);
+        }
+    } else {
+        if (a.size() != nType) {
+            cout << "a (parameter) need to has size of " << nType << "\n";
+			return EXIT_FAILURE;
+        }
+    }
+    
+    if (b.size() == 1) {
+        for (PosInt i=1; i<nType; i++) {
+            b.push_back(b[0]);
+        }
+    } else {
+        if (b.size() != nType) {
+            cout << "b (parameter) need to has size of " << nType << "\n";
+			return EXIT_FAILURE;
+        }
+    }
+
+    Float *d_vR;
+    Float *d_vThres;
+    Float *d_gL;
+    Float *d_tRef;
+    Float *d_vT;
+    Float *d_deltaT;
+    Float *d_tau_w;
+    Float *d_a;
+    Float *d_b;
+	checkCudaErrors(cudaMalloc((void **) &d_vR, nType*sizeof(float)));
+	checkCudaErrors(cudaMalloc((void **) &d_vThres, nType*sizeof(float)));
+	checkCudaErrors(cudaMalloc((void **) &d_gL, nType*sizeof(float)));
+	checkCudaErrors(cudaMalloc((void **) &d_tRef, nType*sizeof(float)));
+	checkCudaErrors(cudaMalloc((void **) &d_vT, nType*sizeof(float)));
+	checkCudaErrors(cudaMalloc((void **) &d_deltaT, nType*sizeof(float)));
+	checkCudaErrors(cudaMalloc((void **) &d_tau_w, nType*sizeof(float)));
+	checkCudaErrors(cudaMalloc((void **) &d_a, nType*sizeof(float)));
+	checkCudaErrors(cudaMalloc((void **) &d_b, nType*sizeof(float)));
+	checkCudaErrors(cudaMemcpy(d_vR, &(vR[0]), nType*sizeof(float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_vThres, &(vThres[0]), nType*sizeof(float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_gL, &(gL[0]), nType*sizeof(float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_tRef, &(tRef[0]), nType*sizeof(float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_vT, &(vT[0]), nType*sizeof(float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_deltaT, &(deltaT[0]), nType*sizeof(float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_tau_w, &(tau_w[0]), nType*sizeof(float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_a, &(a[0]), nType*sizeof(float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_b, &(b[0]), nType*sizeof(float), cudaMemcpyHostToDevice));
 
     // LearnType
     Size nLearnTypeFF;
@@ -2565,11 +2710,27 @@ int main(int argc, char **argv) {
 	size_t trainSize = trainDepth*nV1;
 	size_t ghSize = 2*nV1*(ngTypeE + ngTypeI)*sizeof(Float);
 	size_t vSize = nV1*sizeof(Float);
+	size_t wSize;
     size_t ffSize = 2*nV1*ngTypeFF*sizeof(Float);
-	size_t pinnedSize = trainSize*sizeof(Float) + vSize + ghSize + ffSize;
+	wSize = vSize;
+	size_t pinnedSize;
+	if (iModel == 0) {
+		pinnedSize = trainSize*sizeof(Float) + vSize + ghSize + ffSize;
+	}
+	if (iModel == 1) {
+		pinnedSize = trainSize*sizeof(Float) + wSize + vSize + ghSize + ffSize;
+	}
 	checkCudaErrors(cudaMallocHost((void**) &pinnedMem, pinnedSize));
 	Float *spikeTrain = pinnedMem;
-	Float *v = spikeTrain + trainSize;
+	Float *v;
+	Float *w;
+	if (iModel == 0) {
+		v = spikeTrain + trainSize;
+	}
+	if (iModel == 1) {
+		w = spikeTrain + trainSize;
+		v = w + nV1;
+	}
 	Float *gFF = v + nV1;
 	Float *hFF = gFF +  nV1*ngTypeFF;
 	Float **gE = new Float*[nChunk];
@@ -2624,13 +2785,27 @@ int main(int argc, char **argv) {
 
 	// v, g (D2H), h (D only)
 	Float *d_vgh;
-	size_t vghSize = vSize + ghSize + ffSize;
+	size_t vghSize;
+	if (iModel == 0) {
+		vghSize = vSize + ghSize + ffSize;
+	}
+	if (iModel == 1) {
+		vghSize = wSize + vSize + ghSize + ffSize;
+	}
 	checkCudaErrors(cudaMalloc((void**)&d_vgh, vghSize));
 	//checkCudaErrors(cudaMemset(d_vgh, 0, vghSize));
 	usingGMem += vghSize;
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
-	Float *d_v = d_vgh;
+	Float *d_w;
+	Float *d_v;
+	if (iModel == 1) {
+		d_w = d_vgh;
+		d_v = d_w + nV1;
+	} 
+	if (iModel == 0) {
+		d_v = d_vgh;
+	}
 	Float *d_gFF = d_v + nV1;
 	Float *d_hFF = d_gFF + nV1*ngTypeFF;
 	Float **d_gE = new Float*[nChunk];
@@ -2683,9 +2858,9 @@ int main(int argc, char **argv) {
     checkCudaErrors(cudaMalloc((void**)&d_noisyCondFF, ngTypeFF*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void**)&d_noisyCondE, ngTypeE*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void**)&d_noisyCondI, ngTypeI*sizeof(Float)));
-    checkCudaErrors(cudaMalloc((void**)&d_synFailFF, ngTypeFF*sizeof(Float)));
-    checkCudaErrors(cudaMalloc((void**)&d_synFailE, ngTypeE*sizeof(Float)));
-    checkCudaErrors(cudaMalloc((void**)&d_synFailI, ngTypeI*sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void**)&d_synFailFF, nType*sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void**)&d_synFailE, nType*sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void**)&d_synFailI, nType*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void**)&typeAcc, nType*sizeof(Size)));
     checkCudaErrors(cudaMalloc((void**)&d_pFF, nType*ngTypeFF*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void**)&d_pE,  nType*ngTypeE*sizeof(Float)));
@@ -2693,14 +2868,14 @@ int main(int argc, char **argv) {
 	checkCudaErrors(cudaMemcpy(d_noisyCondFF, &(noisyCondFF[0]), ngTypeFF*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_noisyCondE, &(noisyCondE[0]), ngTypeE*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_noisyCondI, &(noisyCondI[0]), ngTypeI*sizeof(Float), cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_synFailFF, &(synFailFF[0]), ngTypeFF*sizeof(Float), cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_synFailE,  &(synFailE[0]), ngTypeE*sizeof(Float), cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_synFailI,  &(synFailI[0]), ngTypeI*sizeof(Float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_synFailFF,  &(synFailFF[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_synFailE,  &(synFailE[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_synFailI,  &(synFailI[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(typeAcc, &(typeAccCount[0]), nType*sizeof(Size), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_pFF, &(pFF[0]), nType*ngTypeFF*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_pE,  &(pE[0]),  nType*ngTypeE*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_pI,  &(pI[0]),  nType*ngTypeI*sizeof(Float), cudaMemcpyHostToDevice));
-	usingGMem += nV1*sizeof(curandStateMRG32k3a) + (ngTypeFF + ngTypeE + ngTypeI)*(1+nType)*sizeof(Float) + nType * sizeof(Size);
+	usingGMem += nV1*sizeof(curandStateMRG32k3a) + (ngTypeFF + ngTypeE + ngTypeI)*(1+nType)*sizeof(Float) + 4*nType * sizeof(Size);
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
     default_random_engine *h_rGenCond = new default_random_engine[nV1];
@@ -2714,6 +2889,7 @@ int main(int argc, char **argv) {
 	checkCudaErrors(cudaMalloc((void**)&d_spikeTrain, (trainSize + nV1)*sizeof(Float)));
 	Float *tBack = d_spikeTrain + trainSize;
 	usingGMem += (trainSize + nV1)*sizeof(Float);
+    checkCudaErrors(cudaMemset(tBack, 0, nV1*sizeof(Float)));
 
     Float *sp0 = new Float[nType*2];
     for (PosInt i=0; i<spE0.size(); i++) {
@@ -2822,7 +2998,6 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		};
 		return bound;
     };
-    auto vBound = get_excRangeBound(vI, vT);
     auto nonNegativeBound = get_incLowBound(0.0);
 
 	auto get_rand_from_norm = [](default_random_engine &rGen, Float mean, Float std, function<bool(Float)> &outOfBound) {
@@ -2839,16 +3014,34 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		return get_rand;
 	};
 
-    Float *inits = new Float[(1 + ngTypeFF)*nV1*2];
+    Float *inits;
+	if (iModel == 0) {
+		inits = new Float[(1 + ngTypeFF*2)*nV1];
+	}
+	if (iModel == 1) {
+		inits = new Float[(2 + ngTypeFF*2)*nV1];
+	}
     Float *h_v0 = inits;
     Float *h_gFF0 = h_v0 + nV1;
+    Float *h_w0;
+	if (iModel == 1) {
+		h_w0 = h_gFF0 + nV1*ngTypeFF*2;
+	}
 
     for (PosInt i=0; i<nType; i++) {
+        auto vBound = get_excRangeBound(vI, vThres[i]);
         auto get_v0 = get_rand_from_norm(rGen_initV1, v0[i*2+0], v0[i*2+1], vBound);
         for (PosInt iblock = 0; iblock < nblock; iblock++) {
 		    generate(h_v0 + iblock*blockSize + typeAcc0[i], h_v0 + iblock*blockSize + typeAcc0[i+1], get_v0);
             assert(h_v0 + iblock*blockSize + typeAcc0[i+1] <= h_v0 + nV1);
         }
+		if (iModel == 1) {
+        	auto get_w0 = get_rand_from_norm(rGen_initV1, w0[i*2+0], w0[i*2+1], nonNegativeBound);
+        	for (PosInt iblock = 0; iblock < nblock; iblock++) {
+			    generate(h_w0 + iblock*blockSize + typeAcc0[i], h_w0 + iblock*blockSize + typeAcc0[i+1], get_w0);
+        	    assert(h_w0 + iblock*blockSize + typeAcc0[i+1] <= h_w0 + nV1);
+        	}
+		}
     }
     for (PosInt i=0; i<nType; i++) {
         for (PosInt k = 0; k<ngTypeFF; k++) {
@@ -2873,7 +3066,12 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
         }
     }
     checkCudaErrors(cudaMemcpy(d_vgh, inits, nV1*(1+ngTypeFF*2)*sizeof(Float), cudaMemcpyHostToDevice));
-    cout << "v, gFF...\n"; 
+	if (iModel == 0) {
+    	cout << "v, gFF...\n"; 
+	} 
+	if (iModel == 1) {
+    	cout << "v, gFF, w...\n"; 
+	}
     delete []inits;
 
     inits = new Float[(ngTypeE + ngTypeI)*nV1*2];
@@ -2938,7 +3136,7 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
     cout << "gE, gI...\n"; 
     delete []inits;
 
-    rand_spInit<<<nblock, blockSize>>>(tBack, d_spikeTrain, d_v, d_nLGNperV1, d_sp0, typeAcc, rGenCond, seed, nV1, nE, nType, SCsplit, -1.0, trainDepth, dt);
+    rand_spInit<<<nblock, blockSize>>>(tBack, d_spikeTrain, d_v, d_w, d_nLGNperV1, d_sp0, typeAcc, d_vR, d_gL, d_tRef, d_tau_w, d_a, d_b, rGenCond, seed, nV1, nType, SCsplit, trainDepth, dt);
     checkCudaErrors(cudaDeviceSynchronize());
     cout << "spiking... V1 initialized\n"; 
     #ifdef CHECK
@@ -3015,6 +3213,7 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		    	fRawData.write((char*) &dt, sizeof(Float));
 		    	fRawData.write((char*) &nt, sizeof(Size));
 		    	fRawData.write((char*) &nV1, sizeof(Size));
+                fRawData.write((char*) &iModel, sizeof(int));
                 PosInt iHwrite = static_cast<PosInt>(hWrite);
                 fRawData.write((char*) &iHwrite, sizeof(PosInt));
 		    	fRawData.write((char*) &ngTypeFF, sizeof(Size));
@@ -3558,7 +3757,7 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
                     rGenCond, d_noisyCondE, d_noisyCondI, d_synFailE, d_synFailI,
                     dt, condE, condI, ngTypeE, ngTypeI,
                     0, trainDepth,
-                    nearNeighborBlock, nE, nI, nV1, speedOfThought, learning, block_offset, nType, lE, lQ, i);
+                    nearNeighborBlock, nE, nI, nV1, speedOfThought, learning, block_offset, nType, lE, lQ, i, noisyH);
         
             //cudaEventRecord(eTmp[i], stream[i]);
         #ifdef CHECK
@@ -3604,7 +3803,7 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
                         h_rGenCond, &(noisyCondE[0]), &(noisyCondI[0]), &(synFailE[0]), &(synFailI[0]),
                         dt, condE, condI, ngTypeE, ngTypeI,
                         block_offset, nType,
-                        nE, nV1, speedOfThought, chunkSize);
+                        nE, nV1, speedOfThought, chunkSize, noisyH);
                 // g and h
             #ifdef CHECK
                 checkCudaErrors(cudaMemcpyAsync(d_gEt[i], gE[i], ghChunkSize, cudaMemcpyHostToDevice, stream[i])); // size in maxChunk
@@ -3726,7 +3925,12 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
             if (rawData) {
 			    fRawData.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
 			    cudaEventSynchronize(v_gFF_Ready);
-			    fRawData.write((char*) v, nV1*sizeof(Float)*(1+ngTypeFF*(1+hWrite)));
+				if (iModel == 0) {
+			    	fRawData.write((char*) v, nV1*sizeof(Float)*(1+ngTypeFF*(1+hWrite)));
+				}
+				if (iModel == 1) {
+			    	fRawData.write((char*) v, nV1*sizeof(Float)*(2+ngTypeFF*(1+hWrite)));
+				}
             }
             if (learnData_FF) {
                 if (!rawData) {
@@ -3827,19 +4031,19 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		// simulate V1 response
 		//compute_V_collect_spike<max_ngTypeFF, max_ngTypeE, max_ngTypeI> <<<nblock, blockSize, 0, mainStream>>> (
 		compute_V_collect_spike_learnFF<<<nblock, blockSize, 0, mainStream>>> (
-				d_v, d_gFF, d_hFF, dd_gE, dd_gI, dd_hE, dd_hI, // V1 neuron measurements
+				d_v, d_w, d_gFF, d_hFF, dd_gE, dd_gI, dd_hE, dd_hI, // V1 neuron measurements
 				d_nLGNperV1, sLGN, LGN_idx, LGN_idy, // LGN->V1 connections
 				tBack, d_spikeTrain, // neuron spiking
                 vLTD_FF_E, vTrip_FF_E, vLTD_FF_I, vTrip_FF_I, // FF excitatory learning vars
                 vAvgE, vAvgI, // filtered spiking 
                 vLTP_E, vLTD_E, vTripE, // E->E learning vars
                 vSTDP_QE, vSTDP_QI, // I->E learning vars
-                d_pFF, typeAcc, 
+                d_pFF, d_vR, d_vThres, d_gL, d_tRef, d_vT, d_deltaT, d_tau_w, d_a, d_b, typeAcc, 
                 rGenCond, d_noisyCondFF, d_synFailFF,
 				currentTimeSlot, trainDepth, max_LGNperV1,
 				ngTypeFF, ngTypeE, ngTypeI, condFF, condE, condI,
 				dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, nE, nI, nV1, learning, varSlot, nType,
-                lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ); // learning const structs 
+                lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ, iModel, noisyH); // learning const structs 
         #ifdef CHECK
 		    getLastCudaError("compute_V_collect_spike failed");
         #endif
@@ -3983,7 +4187,7 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
                     rGenCond, d_noisyCondE, d_noisyCondI, d_synFailE, d_synFailI,
 					dt, condE, condI, ngTypeE, ngTypeI,
 					currentTimeSlot, trainDepth,
-					nearNeighborBlock, nE, nI, nV1, speedOfThought, learning, block_offset, nType, lE, lQ, i);
+					nearNeighborBlock, nE, nI, nV1, speedOfThought, learning, block_offset, nType, lE, lQ, i, noisyH);
 
 			//cudaEventRecord(eTmp[i], stream[i]);
             #ifdef CHECK
@@ -4000,11 +4204,20 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		for (PosInt i = 0; i < matConcurrency; i++) {
 			cudaEventRecord(gReady1[i], stream[i]);
         }
-        #ifdef CHECK
-        	checkCudaErrors(cudaMemcpyAsync(v, d_v, nV1*sizeof(Float)*(1+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream));
-        #else
-        	cudaMemcpyAsync(v, d_v, nV1*sizeof(Float)*(1+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream);
-        #endif
+		if (iModel == 0) {
+        	#ifdef CHECK
+        		checkCudaErrors(cudaMemcpyAsync(v, d_v, nV1*sizeof(Float)*(1+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream));
+        	#else
+        		cudaMemcpyAsync(v, d_v, nV1*sizeof(Float)*(1+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream);
+        	#endif
+		}
+		if (iModel == 1) {
+        	#ifdef CHECK
+        		checkCudaErrors(cudaMemcpyAsync(v, d_v, nV1*sizeof(Float)*(2+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream));
+        	#else
+        		cudaMemcpyAsync(v, d_v, nV1*sizeof(Float)*(2+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream);
+        	#endif
+		}
 		cudaEventRecord(v_gFF_Ready, mainStream);
         #ifdef SYNC
             checkCudaErrors(cudaDeviceSynchronize());
@@ -4044,7 +4257,7 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
                         h_rGenCond, &(noisyCondE[0]), &(noisyCondI[0]), &(synFailE[0]), &(synFailI[0]),
 		    			dt, condE, condI, ngTypeE, ngTypeI,
 		    			block_offset, nType,
-		    			nE, nV1, speedOfThought, chunkSize);
+		    			nE, nV1, speedOfThought, chunkSize, noisyH);
 		    	// g and h
                 #ifdef CHECK
 		    	    checkCudaErrors(cudaMemcpyAsync(d_gEt[i], gE[i], ghChunkSize, cudaMemcpyHostToDevice, stream[i])); // size in maxChunk
@@ -4166,7 +4379,12 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
     if (rawData) {
 	    fRawData.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
 	    cudaEventSynchronize(v_gFF_Ready);
-	    fRawData.write((char*) v, nV1*sizeof(Float)*(1+ngTypeFF*(1+hWrite)));
+		if (iModel == 0) {
+	    	fRawData.write((char*) v, nV1*sizeof(Float)*(1+ngTypeFF*(1+hWrite)));
+		}
+		if (iModel == 1) {
+	    	fRawData.write((char*) v, nV1*sizeof(Float)*(2+ngTypeFF*(1+hWrite)));
+		}
 	    // write g to fRawData
         if (nFar) { 
             for (PosInt i=0; i<nChunk; i++) {
@@ -4288,6 +4506,10 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
         checkCudaErrors(cudaFree(d_pFF));
         checkCudaErrors(cudaFree(d_pE));
         checkCudaErrors(cudaFree(d_pI));
+        checkCudaErrors(cudaFree(d_vT));
+        checkCudaErrors(cudaFree(d_vR));
+        checkCudaErrors(cudaFree(d_gL));
+        checkCudaErrors(cudaFree(d_tRef));
         checkCudaErrors(cudaFree(learnVar));
         if (learnData_FF) {
 		    checkCudaErrors(cudaFreeHost(LGN_V1_s));

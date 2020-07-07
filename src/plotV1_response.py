@@ -74,6 +74,7 @@ pSample = True
 #pH = True
 #pFeature = True
 #pLR = True
+pW = True
 
 #pSample = False
 pSpike = False
@@ -82,6 +83,8 @@ pCond = False
 pH = False
 pFeature = False
 pLR = False
+pW = False
+
 pSingleLGN = True 
 pSC = True
 #pSC = False
@@ -169,10 +172,13 @@ with open(rawDataFn, 'rb') as f:
     interval = tstep - 1
     print(f'plot {nstep} data points from the {nt_} time steps startingfrom step {step0}')
     nV1 = np.fromfile(f, 'u4', 1)[0] 
+    iModel = np.fromfile(f, 'i4', 1)[0] 
     haveH = np.fromfile(f, 'u4', 1)[0] 
     ngFF = np.fromfile(f, 'u4', 1)[0] 
     ngE = np.fromfile(f, 'u4', 1)[0] 
     ngI = np.fromfile(f, 'u4', 1)[0] 
+
+print(f'using model {iModel}')
 
 nblock = nV1//blockSize
 epick = np.hstack([np.arange(768) + iblock*blockSize for iblock in range(nblock)])
@@ -201,7 +207,7 @@ if pSpike:
         spScatter = np.load(spDataFn + '.npy', allow_pickle=True)
     else:
         with open(rawDataFn, 'rb') as f:
-            f.seek(4*7, 1)
+            f.seek(4*8, 1)
             spScatter = np.empty(nV1, dtype = object)
             for i in range(nV1):
                 spScatter[i] = []
@@ -225,15 +231,21 @@ if pSpike:
                         else:
                             spScatter[j].append((it+tsp)*dt)
                         k = k + 1
-                f.seek((1+(ngE + ngI + ngFF)*(1+haveH))*nV1*4, 1)
+                if iModel == 0:
+                    f.seek((1+(ngE + ngI + ngFF)*(1+haveH))*nV1*4, 1)
+                if iModel == 1:
+                    f.seek((2+(ngE + ngI + ngFF)*(1+haveH))*nV1*4, 1)
         np.save(spDataFn, spScatter)
 
 # read voltage and conductances
 if pVoltage or pCond or plotLGNsCorr or plotSample:
     with open(rawDataFn, 'rb') as f:
-        f.seek(4*7, 1)
+        f.seek(4*8, 1)
         if pVoltage:
             v = np.empty((nV1, nstep), dtype = 'f4')
+        if iModel == 1:
+            if pW:
+                w = np.empty((nV1, nstep), dtype = 'f4')
         if pCond:
             if pH:
                 getH = haveH
@@ -243,13 +255,23 @@ if pVoltage or pCond or plotLGNsCorr or plotSample:
             gI = np.empty((1+getH, ngI, nV1, nstep), dtype = 'f4')
             gFF = np.empty((1+getH, ngFF, nV1, nstep), dtype = 'f4')
 
-        f.seek((2+(ngE + ngI + ngFF)*(1+haveH))*nV1*4*step0, 1)
+        if iModel == 0:
+            f.seek((2+(ngE + ngI + ngFF)*(1+haveH))*nV1*4*step0, 1)
+        if iModel == 1:
+            f.seek((3+(ngE + ngI + ngFF)*(1+haveH))*nV1*4*step0, 1)
+
         for i in range(nstep):
+            f.seek(nV1*4, 1)
+            if iModel == 1:
+                if pW:
+                    w[:,i] = np.fromfile(f, 'f4', nV1)
+                else:
+                    f.seek(nV1*4, 1)
+
             if pVoltage:
-                f.seek(nV1*4, 1)
                 v[:,i] = np.fromfile(f, 'f4', nV1)
             else:
-                f.seek(2*nV1*4, 1)
+                f.seek(nV1*4, 1)
 
             if pCond:
                 gFF[0,:,:,i] = np.fromfile(f, 'f4', ngFF*nV1).reshape(ngFF,nV1)
@@ -270,7 +292,10 @@ if pVoltage or pCond or plotLGNsCorr or plotSample:
             else:
                 f.seek((ngE + ngI + ngFF)*(1+haveH)*nV1*4, 1)
     
-            f.seek((2+(ngE + ngI + ngFF)*(1+haveH))*nV1*4*interval, 1)
+            if iModel == 0:
+                f.seek((2+(ngE + ngI + ngFF)*(1+haveH))*nV1*4*interval, 1)
+            if iModel == 1:
+                f.seek((3+(ngE + ngI + ngFF)*(1+haveH))*nV1*4*step0, 1)
     print("rawData read")
 
 tpick = step0 + np.arange(nstep)*tstep 
@@ -615,6 +640,10 @@ if plotSample:
             ax.plot(t, cI, '-b', lw = (ig+1)/ngI * lw)
             ax.plot(t[-1], np.mean(cI), '*b', ms = (ig+1)/ngI * lw)
             current = current + cI
+
+        if iModel == 1:
+            if pW:
+                ax.plot(t, w[iV1,:], '-m', lw = lw)
 
         ax.plot(t, current, '-k', lw = lw)
         ax.plot(t, np.zeros(t.shape), ':k', lw = lw)

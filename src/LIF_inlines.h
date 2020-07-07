@@ -22,7 +22,7 @@ __forceinline__ __host__ __device__ double recomp_v0(double A, double B, double 
     return ((1+rB)*vL - B)/(A+rB);
 }
 
-__forceinline__ __host__ __device__ double comp_spike_time(double v,double v0, double dt, double t0 = 0.0) {
+__forceinline__ __host__ __device__ double comp_spike_time(double v,double v0, double vT, double dt, double t0 = 0.0) {
     return t0 + (vT-v0)/(v-v0)*dt;
 }
 #endif
