@@ -19,7 +19,7 @@ void rand_spInit(Float* __restrict__ tBack,
                  Float* __restrict__ a,
                  Float* __restrict__ b,
                  curandStateMRG32k3a* __restrict__ rGenCond,
-                 PosIntL seed, Size networkSize, Size nType, Size SCsplit, Size trainDepth, Float dt) 
+                 PosIntL seed, Size networkSize, Size nType, Size SCsplit, Size trainDepth, Float dt, bool iModel) 
 {
     PosIntL id = blockIdx.x * blockDim.x + threadIdx.x;
     if (id < networkSize) {
@@ -48,13 +48,16 @@ void rand_spInit(Float* __restrict__ tBack,
                 spikeTrain[id + 0*networkSize] = 1.0 + tsp;
 				Float tb = tRef - (1-tsp)*dt;
 				if (tb > 0) {
+					printf("%u: tb = %.3f\n", id, tb);
                 	tBack[id] = tb;
 				}
 				Float v0 = vR[type];
                 v[id] = v0;
-				Float A = a[type]*(v0-vL) * tau_w[type];
-				Float w0 = w[id] + b[type];
-				w[id] = (w0 - A) * exponential(-dt*(1-tsp)/tau_w[type]) + A;
+				if (iModel == 1) {
+					Float A = a[type]*(v0-vL) * tau_w[type];
+					Float w0 = w[id] + b[type];
+					w[id] = (w0 - A) * exponential(-dt*(1-tsp)/tau_w[type]) + A;
+				}
 
                 ref = (1-tsp)*dt + tRef - dt;
             }
@@ -324,8 +327,10 @@ void recal_G_vec(
                     if (sInfo > 0) {
                         Float nsp = flooring(sInfo);
                         Float tsp = (sInfo - nsp + k)*dt - time2post;
-                        if (tsp < dt && tsp >= 0 && uniform_dist(rGenCond[i0+i]) > synFail){
-                            cond->compute_single_input_conductance(g0, h0, strength*nsp*ip[ig], dt-tsp, ig);
+                        if (tsp < dt && tsp >= 0) {
+							if (uniform_dist(rGenCond[i0+i]) > synFail){
+                            	cond->compute_single_input_conductance(g0, h0, strength*nsp*ip[ig], dt-tsp, ig);
+							}
                         }
                     }
                 }
@@ -434,9 +439,9 @@ void compute_V_collect_spike_learnFF(
     }
     IF* model;
     if (iModel == 0) {
-        model = new LIF(v[tid], tBack[tid], vR[itype], vThres[itype], tRef[itype], gL[itype]);
+        model = new LIF(v[tid], tBack[tid], vR[itype], vThres[itype], gL[itype], tRef[itype]);
     } else {
-        model = new AdEx(w[tid], a[itype], b[itype], tau_w[itype], v[tid], tBack[tid], vR[itype], vThres[itype], tRef[itype], gL[itype], vT[itype], deltaT[itype]);
+        model = new AdEx(w[tid], tau_w[itype], a[itype], b[itype], v[tid], tBack[tid], vR[itype], vThres[itype], gL[itype], tRef[itype], vT[itype], deltaT[itype]);
 	}
     /* set a0 b0 and a1 b1 */
     // cond FF
@@ -532,7 +537,7 @@ void compute_V_collect_spike_learnFF(
     	    Float sInfo;
     	    surf2DLayeredread(&sInfo, LGNspikeSurface, 4*x, y, 0);
     	    Float nsp = flooring(sInfo); // integer part: #spikes
-    	    Float tsp = sInfo - nsp; // decimal part: normalized mean tsp
+    	    Float tsp = (sInfo - nsp)*dt; // decimal part: normalized mean tsp
 			Float synapse[max_ngTypeFF];
 			if (model->spikeCount == 0) {
     			#pragma unroll (max_ngTypeFF) //(ntimesFF)
@@ -545,31 +550,29 @@ void compute_V_collect_spike_learnFF(
 				if (model->spikeCount == 0) {
 					rand[i] = uniform(&localState);
 				}
-				if (rand[i] > synFail) {
-					Float ddt = tsp*dt;
-					if (ddt >= new_t0) {
+				if (rand[i] > synFail && tsp >= new_t0) {
+					Float ddt;
+					if (backingUpFromRef) {
+						ddt = model->tBack - tsp;
+					}
+    				#pragma unroll (max_ngTypeFF) //(ntimesFF)
+    				for (PosInt ig=0; ig<ngTypeFF; ig++) {
+    		    		Float str = f * pFF[itype*ngTypeFF + ig];
 						if (backingUpFromRef) {
-							ddt = model->tBack - ddt;
+							if (ddt > 0) { // before tBack
+    		    				condFF.compute_single_input_conductance(g0[ig], h0[ig], str*nsp, ddt, ig);
+    		    			}
 						}
-    					#pragma unroll (max_ngTypeFF) //(ntimesFF)
-    					for (PosInt ig=0; ig<ngTypeFF; ig++) {
-    		    			Float str = f * pFF[itype*ngTypeFF + ig];
-							if (backingUpFromRef) {
-								if (ddt > 0) { // before tBack
-    		    					condFF.compute_single_input_conductance(g0[ig], h0[ig], str*nsp, ddt, ig);
-    		    				}
-							}
-							if (model->spikeCount == 0) { // all inputs
-								Float gS = 0;
-								Float hS = 0;
-    		    				condFF.compute_single_input_conductance(gS, hS, str*nsp, dt*(1-tsp), ig);
-								g1[ig] += gS;
-								h1[ig] += hS;
-								if (noisyH) {
-									synapse[ig] = hS;
-								} else {
-									synapse[ig] = gS;
-								}
+						if (model->spikeCount == 0) { // all inputs
+							Float gS = 0;
+							Float hS = 0;
+    		    			condFF.compute_single_input_conductance(gS, hS, str*nsp, dt*(1-tsp), ig);
+							g1[ig] += gS;
+							h1[ig] += hS;
+							if (noisyH) {
+								synapse[ig] = hS;
+							} else {
+								synapse[ig] = gS;
 							}
 						}
 					}
@@ -630,35 +633,40 @@ void compute_V_collect_spike_learnFF(
 		}
 
     	// stepping
-    	model->set_p0(gE_t0, gI_t0);
-		if (model->spikeCount == 0) {
-    		model->set_p1(gE_t1, gI_t1);
-		}
-
-		Float new_dt = dt - model->tBack; 
-		if (backingUpFromRef) { //	stepping other variable before tBack
-			model->rk2_vFixedBefore(dtBack);
-		} 
-		model->rk2(new_dt);
-
-		// check spiking
-        if (model->v > model->vThres) { // forbids firing exactly at the end of the timestep, 
-            // crossed threshold
-			new_t0 = model->tBack;
-            model->compute_spike_time(new_dt, new_t0); 
-            sInfo += model->tsp;
-            model->spikeCount++;
-            model->tBack = model->tsp + model->tRef;
-			backingUpFromRef = model->tBack < dt && model->tBack > 0;
-			if (backingUpFromRef) {
-				model->reset0();
-			} else{
-				model->reset1();
-				model->rk2_vFixedAfter(dt-model->tsp);
+		model->tsp = 0;
+		if (model->tBack < dt) {
+    		model->set_p0(gE_t0, gI_t0);
+			if (model->spikeCount == 0) {
+    			model->set_p1(gE_t1, gI_t1);
 			}
-        } else {
-			if (model->tBack > 0) model->tBack -= dt;
-			backingUpFromRef = false;
+
+			Float new_dt = dt - model->tBack;
+			if (backingUpFromRef) { //	stepping other variable before tBack
+				model->rk2_vFixedBefore(dtBack);
+			} 
+			model->rk2(new_dt);
+
+			// check spiking
+    	    if (model->v > model->vThres) { // forbids firing exactly at the end of the timestep, 
+    	        // crossed threshold
+				new_t0 = model->tBack;
+    	        model->compute_spike_time(new_dt, new_t0); 
+    	        sInfo += model->tsp;
+    	        model->spikeCount++;
+    	        model->tBack = model->tsp + model->tRef;
+				backingUpFromRef = model->tBack < dt && model->tBack > 0;
+				if (backingUpFromRef) {
+					model->reset0();
+				}
+    	    } else {
+				if (model->tBack > 0) model->tBack -= dt;
+				backingUpFromRef = false;
+			}
+		} 
+		if (model->tBack >= dt) { // tRef till end
+			model->reset1();
+			model->rk2_vFixedAfter(dt-model->tsp);
+			model->tBack -= dt;
 		}
     	/* evolve g to t+dt with ff input only */
 	} while (backingUpFromRef);
@@ -685,6 +693,12 @@ void compute_V_collect_spike_learnFF(
     	}
 	*/
 	v[tid] = model->v;
+	if (iModel == 1) {
+		Float** var = new Float*[1];
+		var[0] = w+tid;
+		model->update(var);
+		delete []var;
+	}
     tBack[tid] = model->tBack;
     delete []model;
 
@@ -1130,8 +1144,10 @@ void recal_G_mat(
                                     printf("\n");
 			        	        }
                             */
-                            if (tsp < dt && tsp >= 0 && uniform(&localState) > synFail){
-                                cond->compute_single_input_conductance(g0, h0, strength*nsp*ip[ig], dt-tsp, ig);
+                            if (tsp < dt && tsp >= 0) {
+								if (uniform(&localState) > synFail) {
+                                	cond->compute_single_input_conductance(g0, h0, strength*nsp*ip[ig], dt-tsp, ig);
+								}
                             }
                         }
                         //__syncwarp(); // may not be needed

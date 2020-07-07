@@ -3136,7 +3136,7 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
     cout << "gE, gI...\n"; 
     delete []inits;
 
-    rand_spInit<<<nblock, blockSize>>>(tBack, d_spikeTrain, d_v, d_w, d_nLGNperV1, d_sp0, typeAcc, d_vR, d_gL, d_tRef, d_tau_w, d_a, d_b, rGenCond, seed, nV1, nType, SCsplit, trainDepth, dt);
+    rand_spInit<<<nblock, blockSize>>>(tBack, d_spikeTrain, d_v, d_w, d_nLGNperV1, d_sp0, typeAcc, d_vR, d_gL, d_tRef, d_tau_w, d_a, d_b, rGenCond, seed, nV1, nType, SCsplit, trainDepth, dt, iModel);
     checkCudaErrors(cudaDeviceSynchronize());
     cout << "spiking... V1 initialized\n"; 
     #ifdef CHECK

@@ -21,7 +21,7 @@ struct IF {
     Float vR, vThres;
     Float tRef, tBack, tsp;
     Float gL;
-    __device__ IF(Float _v0, Float _tBack, Float _vR, Float _vThres, Float _tRef, Float _gL): v0(_v0), tBack(_tBack), vR(_vR), vThres(_vThres), tRef(_tRef), gL(_gL) {
+    __device__ IF(Float _v0, Float _tBack, Float _vR, Float _vThres, Float _gL, Float _tRef): v0(_v0), tBack(_tBack), vR(_vR), vThres(_vThres), gL(_gL), tRef(_tRef) {
 		spikeCount = 0;
 	};
     __device__ virtual void rk2(Float dt)=0;
@@ -37,11 +37,12 @@ struct IF {
 
     __device__ virtual void compute_spike_time(Float dt, Float t0 = 0.0f);
     __device__ virtual void reset1();
+    __device__ virtual void update(Float **var) {};
 };
 
 struct LIF: IF {
     Float denorm;
-    __device__ LIF(Float _v0, Float _tBack, Float _vR, Float _vThres, Float _tRef, Float _gL): IF(_v0, _tBack, _vR, _vThres, _tRef, _gL) {};
+    __device__ LIF(Float _v0, Float _tBack, Float _vR, Float _vThres, Float _gL, Float _tRef): IF(_v0, _tBack, _vR, _vThres, _gL, _tRef) {};
     __device__ void rk2(Float dt);
     __device__ void recompute(Float dt, Float t0=0.0f);
     __device__ void recompute_v0(Float dt, Float t0=0.0f);
@@ -55,9 +56,9 @@ struct LIF: IF {
 
 struct AdEx: IF { //Adaptive Exponential IF
 	Float w0, w;
-	Float deltaT, vT;
-	Float a, b, tau_w;
-    __device__ AdEx(Float _w0, Float _a, Float _b, Float _tau_w, Float _v0, Float _tBack, Float _vR, Float _vThres, Float _tRef, Float _gL, Float _vT, Float _deltaT): IF(_v0, _tBack, _vR, _vThres, _tRef, _gL), deltaT(_deltaT), vT(_vT), w0(_w0), a(_a), b(_b), tau_w(_tau_w) {};
+	Float tau_w, a, b;
+	Float vT, deltaT;
+    __device__ AdEx(Float _w0, Float _tau_w, Float _a, Float _b, Float _v0, Float _tBack, Float _vR, Float _vThres, Float _gL, Float _tRef, Float _vT, Float _deltaT): IF(_v0, _tBack, _vR, _vThres, _gL, _tRef), w0(_w0), tau_w(_tau_w), a(_a), b(_b), vT(_vT), deltaT(_deltaT) {};
     __device__ void rk2(Float dt); 
     __device__ 
 	__forceinline__
@@ -83,6 +84,9 @@ struct AdEx: IF { //Adaptive Exponential IF
 		w0 += b;
 		v = vR;
 	}
+    __device__ void update(Float **var) {
+		*var[0] = w;
+	};
     __device__ void recompute(Float dt, Float t0=0.0f) {}
     __device__ void recompute_v0(Float dt, Float t0=0.0f) {}
     __device__ void recompute_v(Float dt, Float t0=0.0f) {}
@@ -125,7 +129,7 @@ void rand_spInit(Float* __restrict__ tBack,
                  Float* __restrict__ d_a,
                  Float* __restrict__ d_b,
                  curandStateMRG32k3a* __restrict__ rGenCond,
-                 PosIntL seed, Size networkSize, Size nType, Size SCsplit, Size trainDepth, Float dt);
+                 PosIntL seed, Size networkSize, Size nType, Size SCsplit, Size trainDepth, Float dt, bool iModel);
 
 
 __global__ void logRand_init(Float *logRand, Float *lTR, int* LGN_idx, int* LGN_idy, curandStateMRG32k3a *state, PosIntL seed, Size n, Size nFF);
