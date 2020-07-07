@@ -28,7 +28,7 @@ void rand_spInit(Float* __restrict__ tBack,
         Size type;
         for (PosInt i=0; i<nType; i++) {
             if (id < typeAcc[i]) {
-                type = typeAcc[i];
+                type = i;
                 break;
             }
         }
@@ -48,7 +48,6 @@ void rand_spInit(Float* __restrict__ tBack,
                 spikeTrain[id + 0*networkSize] = 1.0 + tsp;
 				Float tb = tRef - (1-tsp)*dt;
 				if (tb > 0) {
-					printf("%u: tb = %.3f\n", id, tb);
                 	tBack[id] = tb;
 				}
 				Float v0 = vR[type];

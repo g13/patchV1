@@ -444,6 +444,9 @@ int main(int argc, char **argv) {
         }
         has_sp0 = true;
     }
+	cout << "sp0 = " << has_sp0 << "\n";
+	cout << spE0[0] << ", " << spE0[1] << "\n";
+	cout << spI0[0] << ", " << spI0[1] << "\n";
 
 	if (noisyCondFF.size() != ngTypeFF) {
 		cout << "the size of noisyCondFF has size of " << noisyCondFF.size() << " != " << ngTypeFF << "\n";
@@ -618,24 +621,24 @@ int main(int argc, char **argv) {
     Float *d_tau_w;
     Float *d_a;
     Float *d_b;
-	checkCudaErrors(cudaMalloc((void **) &d_vR, nType*sizeof(float)));
-	checkCudaErrors(cudaMalloc((void **) &d_vThres, nType*sizeof(float)));
-	checkCudaErrors(cudaMalloc((void **) &d_gL, nType*sizeof(float)));
-	checkCudaErrors(cudaMalloc((void **) &d_tRef, nType*sizeof(float)));
-	checkCudaErrors(cudaMalloc((void **) &d_vT, nType*sizeof(float)));
-	checkCudaErrors(cudaMalloc((void **) &d_deltaT, nType*sizeof(float)));
-	checkCudaErrors(cudaMalloc((void **) &d_tau_w, nType*sizeof(float)));
-	checkCudaErrors(cudaMalloc((void **) &d_a, nType*sizeof(float)));
-	checkCudaErrors(cudaMalloc((void **) &d_b, nType*sizeof(float)));
-	checkCudaErrors(cudaMemcpy(d_vR, &(vR[0]), nType*sizeof(float), cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_vThres, &(vThres[0]), nType*sizeof(float), cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_gL, &(gL[0]), nType*sizeof(float), cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_tRef, &(tRef[0]), nType*sizeof(float), cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_vT, &(vT[0]), nType*sizeof(float), cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_deltaT, &(deltaT[0]), nType*sizeof(float), cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_tau_w, &(tau_w[0]), nType*sizeof(float), cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_a, &(a[0]), nType*sizeof(float), cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_b, &(b[0]), nType*sizeof(float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMalloc((void **) &d_vR, nType*sizeof(Float)));
+	checkCudaErrors(cudaMalloc((void **) &d_vThres, nType*sizeof(Float)));
+	checkCudaErrors(cudaMalloc((void **) &d_gL, nType*sizeof(Float)));
+	checkCudaErrors(cudaMalloc((void **) &d_tRef, nType*sizeof(Float)));
+	checkCudaErrors(cudaMalloc((void **) &d_vT, nType*sizeof(Float)));
+	checkCudaErrors(cudaMalloc((void **) &d_deltaT, nType*sizeof(Float)));
+	checkCudaErrors(cudaMalloc((void **) &d_tau_w, nType*sizeof(Float)));
+	checkCudaErrors(cudaMalloc((void **) &d_a, nType*sizeof(Float)));
+	checkCudaErrors(cudaMalloc((void **) &d_b, nType*sizeof(Float)));
+	checkCudaErrors(cudaMemcpy(d_vR, &(vR[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_vThres, &(vThres[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_gL, &(gL[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_tRef, &(tRef[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_vT, &(vT[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_deltaT, &(deltaT[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_tau_w, &(tau_w[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_a, &(a[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_b, &(b[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
 
     // LearnType
     Size nLearnTypeFF;
@@ -3015,12 +3018,14 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 	};
 
     Float *inits;
+	size_t initSize;
 	if (iModel == 0) {
-		inits = new Float[(1 + ngTypeFF*2)*nV1];
+		initSize = (1 + ngTypeFF*2)*nV1;
 	}
 	if (iModel == 1) {
-		inits = new Float[(2 + ngTypeFF*2)*nV1];
+		initSize = (2 + ngTypeFF*2)*nV1;
 	}
+	inits = new Float[initSize];
     Float *h_v0 = inits;
     Float *h_gFF0 = h_v0 + nV1;
     Float *h_w0;
@@ -3065,7 +3070,7 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
             }
         }
     }
-    checkCudaErrors(cudaMemcpy(d_vgh, inits, nV1*(1+ngTypeFF*2)*sizeof(Float), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMemcpy(d_vgh, inits, initSize*sizeof(Float), cudaMemcpyHostToDevice));
 	if (iModel == 0) {
     	cout << "v, gFF...\n"; 
 	} 
@@ -3132,7 +3137,7 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 	        }
         }
     }
-    checkCudaErrors(cudaMemcpy(d_vgh + nV1*(1+ngTypeFF*2), inits, nV1*(ngTypeE+ngTypeI)*2*sizeof(Float), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMemcpy(d_vgh + initSize, inits, nV1*(ngTypeE+ngTypeI)*2*sizeof(Float), cudaMemcpyHostToDevice));
     cout << "gE, gI...\n"; 
     delete []inits;
 

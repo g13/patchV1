@@ -124,10 +124,10 @@ void rand_spInit(Float* __restrict__ tBack,
                  Size* __restrict__ typeAcc,
                  Float* __restrict__ vR,
                  Float* __restrict__ gL,
-                 Float* __restrict__ tRef,
+                 Float* __restrict__ tRef_type,
                  Float* __restrict__ tau_w,
-                 Float* __restrict__ d_a,
-                 Float* __restrict__ d_b,
+                 Float* __restrict__ a,
+                 Float* __restrict__ b,
                  curandStateMRG32k3a* __restrict__ rGenCond,
                  PosIntL seed, Size networkSize, Size nType, Size SCsplit, Size trainDepth, Float dt, bool iModel);
 
