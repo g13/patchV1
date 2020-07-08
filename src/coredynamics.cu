@@ -27,20 +27,24 @@ void rand_spInit(Float* __restrict__ tBack,
         Size iLGN = nLGNperV1[id];
         Size type;
         for (PosInt i=0; i<nType; i++) {
-            if (id < typeAcc[i]) {
+            if (id%blockSize < typeAcc[i]) {
                 type = i;
                 break;
             }
         }
+
         curand_init(seed + id, 0, 0, &localState);
         Float rand = uniform(&localState);
         Float chance;
         Float ref = 0.0;
+
+
         if (iLGN > SCsplit) {
             chance = sp0[type*2 + 0]; 
         } else {
             chance = sp0[type*2 + 1]; 
         }
+
         Float tRef = tRef_type[type];
         if (chance > 0) {
             if (rand < chance) {

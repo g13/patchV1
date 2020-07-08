@@ -567,6 +567,14 @@ int main(int argc, char **argv) {
 			return EXIT_FAILURE;
         }
     }
+	if (print_log) {
+    	cout << "tRef: ";
+        for (PosInt i=0; i<nType; i++) {
+			cout << tRef[i];
+			if (i == nType -1) cout << "\n";
+			else cout << ", ";
+        }
+	}
 
     if (deltaT.size() == 1) {
         for (PosInt i=1; i<nType; i++) {
@@ -2901,6 +2909,15 @@ int main(int argc, char **argv) {
     for (PosInt i=0; i<spI0.size(); i++) {
         sp0[spE0.size() + i] = spI0[i];
     }
+
+	if (print_log) {
+    	cout << "sp0: ";
+        for (PosInt i=0; i<nType*2; i++) {
+			cout << sp0[i];
+			if (i == nType*2 -1) cout << "\n";
+			else cout << ", ";
+        }
+	}
     Float *d_sp0;
 	checkCudaErrors(cudaMalloc((void**)&d_sp0, nType*2*sizeof(Float)));
 	checkCudaErrors(cudaMemcpy(d_sp0, sp0,  nType*2*sizeof(Float), cudaMemcpyHostToDevice));
