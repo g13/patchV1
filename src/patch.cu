@@ -448,13 +448,22 @@ int main(int argc, char **argv) {
 	cout << spE0[0] << ", " << spE0[1] << "\n";
 	cout << spI0[0] << ", " << spI0[1] << "\n";
 
+    if (iModel > 1) {
+        cout << "model " << iModel << " is not implemented\n";
+        return EXIT_FAILURE;
+    }
+
 	if (noisyCondFF.size() != ngTypeFF) {
 		cout << "the size of noisyCondFF has size of " << noisyCondFF.size() << " != " << ngTypeFF << "\n";
 		return EXIT_FAILURE;
 	} else {
         cout << "noisyCondFF: ";
         for (PosInt i=0; i<ngTypeFF; i++) {
-            noisyCondFF[i] = noisyCondFF[i] * square_root(gdFF[i]/2*(1.0-exp(-2*dt/gdFF[i])));
+            if (noisyH) {
+                noisyCondFF[i] = noisyCondFF[i] * square_root(grFF[i]/2*(1.0-exp(-2*dt/grFF[i])));
+            } else {
+                noisyCondFF[i] = noisyCondFF[i] * square_root(gdFF[i]/2*(1.0-exp(-2*dt/gdFF[i])));
+            }
             cout << noisyCondFF[i];
             if (i < ngTypeFF-1) cout << ", ";
         }
@@ -466,7 +475,11 @@ int main(int argc, char **argv) {
 	} else {
         cout << "noisyCondE: ";
         for (PosInt i=0; i<ngTypeE; i++) {
-            noisyCondE[i] = noisyCondE[i] * square_root(gdE[i]/2*(1.0-exp(-2*dt/gdE[i])));
+            if (noisyH) {
+                noisyCondE[i] = noisyCondE[i] * square_root(grE[i]/2*(1.0-exp(-2*dt/grE[i])));
+            } else {
+                noisyCondE[i] = noisyCondE[i] * square_root(gdE[i]/2*(1.0-exp(-2*dt/gdE[i])));
+            }
             cout << noisyCondE[i];
             if (i < ngTypeE-1) cout << ", ";
         }
@@ -478,7 +491,11 @@ int main(int argc, char **argv) {
 	} else {
         cout << "noisyCondI: ";
         for (PosInt i=0; i<ngTypeI; i++) {
-            noisyCondI[i] = noisyCondI[i] * square_root(gdI[i]/2*(1.0-exp(-2*dt/gdI[i])));
+            if (noisyH) {
+                noisyCondI[i] = noisyCondI[i] * square_root(grI[i]/2*(1.0-exp(-2*dt/grI[i])));
+            } else {
+                noisyCondI[i] = noisyCondI[i] * square_root(gdI[i]/2*(1.0-exp(-2*dt/gdI[i])));
+            }
             cout << noisyCondI[i];
             if (i < ngTypeI-1) cout << ", ";
         }
@@ -2900,7 +2917,7 @@ int main(int argc, char **argv) {
 	checkCudaErrors(cudaMalloc((void**)&d_spikeTrain, (trainSize + nV1)*sizeof(Float)));
 	Float *tBack = d_spikeTrain + trainSize;
 	usingGMem += (trainSize + nV1)*sizeof(Float);
-    checkCudaErrors(cudaMemset(tBack, 0, nV1*sizeof(Float)));
+    checkCudaErrors(cudaMemset(d_spikeTrain, 0, (nV1+trainSize)*sizeof(Float)));
 
     Float *sp0 = new Float[nType*2];
     for (PosInt i=0; i<spE0.size(); i++) {
@@ -3043,20 +3060,18 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		initSize = (2 + ngTypeFF*2)*nV1;
 	}
 	inits = new Float[initSize];
-    Float *h_v0 = inits;
-    Float *h_gFF0 = h_v0 + nV1;
     Float *h_w0;
+    Float *h_v0;
 	if (iModel == 1) {
-		h_w0 = h_gFF0 + nV1*ngTypeFF*2;
+		h_w0 = inits;
+        h_v0 = h_w0 + nV1; 
 	}
+	if (iModel == 0) {
+		h_v0 = inits;
+	}
+    Float *h_gFF0 = h_v0 + nV1;
 
     for (PosInt i=0; i<nType; i++) {
-        auto vBound = get_excRangeBound(vI, vThres[i]);
-        auto get_v0 = get_rand_from_norm(rGen_initV1, v0[i*2+0], v0[i*2+1], vBound);
-        for (PosInt iblock = 0; iblock < nblock; iblock++) {
-		    generate(h_v0 + iblock*blockSize + typeAcc0[i], h_v0 + iblock*blockSize + typeAcc0[i+1], get_v0);
-            assert(h_v0 + iblock*blockSize + typeAcc0[i+1] <= h_v0 + nV1);
-        }
 		if (iModel == 1) {
         	auto get_w0 = get_rand_from_norm(rGen_initV1, w0[i*2+0], w0[i*2+1], nonNegativeBound);
         	for (PosInt iblock = 0; iblock < nblock; iblock++) {
@@ -3064,6 +3079,15 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
         	    assert(h_w0 + iblock*blockSize + typeAcc0[i+1] <= h_w0 + nV1);
         	}
 		}
+        auto vBound = get_excRangeBound(vI, vThres[i]);
+        auto get_v0 = get_rand_from_norm(rGen_initV1, v0[i*2+0], v0[i*2+1], vBound);
+        for (PosInt iblock = 0; iblock < nblock; iblock++) {
+		    generate(h_v0 + iblock*blockSize + typeAcc0[i], h_v0 + iblock*blockSize + typeAcc0[i+1], get_v0);
+            assert(h_v0 + iblock*blockSize + typeAcc0[i+1] <= h_v0 + nV1);
+            for (PosInt j=0; j<blockSize; j++) {
+                assert(h_v0[iblock*blockSize + j] < vThres[i]);
+            }
+        }
     }
     for (PosInt i=0; i<nType; i++) {
         for (PosInt k = 0; k<ngTypeFF; k++) {
@@ -3171,10 +3195,19 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
     checkCudaErrors(cudaFree(d_sp0));
     if (has_sp0) {
         #ifdef CHECK
-	    	checkCudaErrors(cudaMemcpy(spikeTrain, d_spikeTrain, nV1*sizeof(Float), cudaMemcpyDeviceToHost)); // to overlap with  recal_G, to be used in recal_Gvec
+	    	checkCudaErrors(cudaMemcpy(spikeTrain, d_spikeTrain, trainSize*sizeof(Float), cudaMemcpyDeviceToHost)); // to overlap with  recal_G, to be used in recal_Gvec
         #else
-	        cudaMemcpy(spikeTrain, d_spikeTrain, nV1*sizeof(Float), cudaMemcpyDeviceToHost); // to overlap with  recal_G, to be used in recal_Gvec
+	        cudaMemcpy(spikeTrain, d_spikeTrain, trainSize*sizeof(Float), cudaMemcpyDeviceToHost); // to overlap with  recal_G, to be used in recal_Gvec
         #endif
+		/* debug
+			for (PosInt i = 0; i<trainDepth; i++) {
+				for (PosInt j=0; j<nV1; j++) {
+					if (spikeTrain[i*nV1 + j] < 1) {
+						assert(spikeTrain[i*nV1 + j] == 0);
+					}
+				}
+			}
+		*/
     }
 
 
@@ -3802,6 +3835,7 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
         for (PosInt i=0; i<nV1; i++) {
             Float sp = spikeTrain[i];
             if (sp > 0) {
+				assert(sp >= 1.0);
                 spiked = true;
                 nsp += static_cast<Size>(flooring(sp));
                 //break;
@@ -3845,7 +3879,7 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
     }
     //***************************
     Float odt = ot*dt/1000.0;// get interval in sec
-	PosInt currentTimeSlot = 1;
+	PosInt currentTimeSlot = 1%trainDepth;
 	cout << "simulation starts: \n";
     int varSlot = 0;
     InputActivation typeStatus;
@@ -3946,12 +3980,24 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		if (it > 0) { // seeking for overlap of data output with LGN input
             if (rawData) {
 			    fRawData.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
+				/* debug
+					for (PosInt i = 0; i<trainDepth; i++) {
+						for (PosInt j=0; j<nV1; j++) {
+							if (spikeTrain[i*nV1 + j] < 1) {
+								assert(spikeTrain[i*nV1 + j] == 0);
+							}
+						}
+					}
+                	if (it == 1) {
+                	    cout << "debug: " << spikeTrain[0] <<  ", " << spikeTrain[768] << ", " << spikeTrain[1037] << ", " << spikeTrain[3765] << "\n";
+                	}
+				*/
 			    cudaEventSynchronize(v_gFF_Ready);
 				if (iModel == 0) {
 			    	fRawData.write((char*) v, nV1*sizeof(Float)*(1+ngTypeFF*(1+hWrite)));
 				}
 				if (iModel == 1) {
-			    	fRawData.write((char*) v, nV1*sizeof(Float)*(2+ngTypeFF*(1+hWrite)));
+			    	fRawData.write((char*) w, nV1*sizeof(Float)*(2+ngTypeFF*(1+hWrite)));
 				}
             }
             if (learnData_FF) {
@@ -4235,9 +4281,9 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 		}
 		if (iModel == 1) {
         	#ifdef CHECK
-        		checkCudaErrors(cudaMemcpyAsync(v, d_v, nV1*sizeof(Float)*(2+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream));
+        		checkCudaErrors(cudaMemcpyAsync(w, d_w, nV1*sizeof(Float)*(2+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream));
         	#else
-        		cudaMemcpyAsync(v, d_v, nV1*sizeof(Float)*(2+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream);
+        		cudaMemcpyAsync(w, d_w, nV1*sizeof(Float)*(2+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream);
         	#endif
 		}
 		cudaEventRecord(v_gFF_Ready, mainStream);
@@ -4405,7 +4451,7 @@ cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << 
 	    	fRawData.write((char*) v, nV1*sizeof(Float)*(1+ngTypeFF*(1+hWrite)));
 		}
 		if (iModel == 1) {
-	    	fRawData.write((char*) v, nV1*sizeof(Float)*(2+ngTypeFF*(1+hWrite)));
+	    	fRawData.write((char*) w, nV1*sizeof(Float)*(2+ngTypeFF*(1+hWrite)));
 		}
 	    // write g to fRawData
         if (nFar) { 
