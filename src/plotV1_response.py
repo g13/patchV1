@@ -50,24 +50,24 @@ nsmooth = 5
 lw = 0.1
 
 plotSample = True
-plotLGNsCorr = True
-plotRpStat = True 
-plotRpCorr = True 
-plotTempMod = True 
-plotScatterFF = True
-plotExc_sLGN = True
-plotLR_rp = True
-plotInitial = True 
+#plotLGNsCorr = True
+#plotRpStat = True 
+#plotRpCorr = True 
+#plotTempMod = True 
+#plotScatterFF = True
+#plotExc_sLGN = True
+#plotLR_rp = True
+#plotInitial = True 
 
 #plotSample = False
-#plotLGNsCorr = False 
-#plotRpStat = False 
-#plotRpCorr = False 
-#plotTempMod = False 
-#plotScatterFF = False
-#plotExc_sLGN = False
-#plotLR_rp = False 
-#plotInitial = False 
+plotLGNsCorr = False 
+plotRpStat = False 
+plotRpCorr = False 
+plotTempMod = False 
+plotScatterFF = False
+plotExc_sLGN = False
+plotLR_rp = False 
+plotInitial = False 
 
 pSample = True
 #pSpike = True
@@ -342,10 +342,10 @@ if plotSample:
     
         if True:
             pick = epick[nLGN_V1[epick] == 0]
-            sample[0] = 0
-            sample[1] = 1
-            #sample[0] = pick[np.argmin(fr[pick])]
-            #sample[1] = pick[np.argmax(fr[pick])]
+            #sample[0] = 0
+            #sample[1] = 1
+            sample[0] = pick[np.argmin(fr[pick])]
+            sample[1] = pick[np.argmax(fr[pick])]
     
             pick = epick[nLGN_V1[epick] > np.mean(nLGN_V1[epick])]
             sample[2] = pick[np.argmin(fr[pick])]

@@ -58,8 +58,9 @@ struct AdEx: IF { //Adaptive Exponential IF
 	Float w0, w;
 	Float tau_w, a, b;
 	Float vT, deltaT;
-    __device__ AdEx(Float _w0, Float _tau_w, Float _a, Float _b, Float _v0, Float _tBack, Float _vR, Float _vThres, Float _gL, Float _tRef, Float _vT, Float _deltaT): IF(_v0, _tBack, _vR, _vThres, _gL, _tRef), w0(_w0), tau_w(_tau_w), a(_a), b(_b), vT(_vT), deltaT(_deltaT) {};
-    __device__ void rk2(Float dt); 
+    __device__ 
+	__forceinline__
+	AdEx(Float _w0, Float _tau_w, Float _a, Float _b, Float _v0, Float _tBack, Float _vR, Float _vThres, Float _gL, Float _tRef, Float _vT, Float _deltaT): IF(_v0, _tBack, _vR, _vThres, _gL, _tRef), w0(_w0), tau_w(_tau_w), a(_a), b(_b), vT(_vT), deltaT(_deltaT) {};
     __device__ 
 	__forceinline__
 	void rk2_vFixedBefore(Float dt) {
@@ -72,6 +73,20 @@ struct AdEx: IF { //Adaptive Exponential IF
 		Float A = a*(v-vL) * tau_w;
 		w = (w0 - A) * exponential(-dt/tau_w) + A;
 	}
+
+	__device__ 
+	__forceinline__
+	void rk2(Float dt) {
+		Float fk1 = -a0*v0 + b0 + deltaT*gL*exponential((v0-vT)/deltaT) - w0;
+		Float gk1 = a*(v0-vL) - w0/tau_w;
+		Float v1 = v0 + fk1*dt;
+		Float w1 = w0 + gk1*dt;
+		Float fk2 = -a1*v1 + b1 + deltaT*gL*exponential((v1-vT)/deltaT) - w1;
+		Float gk2 = a*(v1-vL) - w1/tau_w;
+		v = v0 + (fk1 + fk2)/2 * dt;
+		w = w0 + (gk1 + gk2)/2 * dt;
+	}
+
     __device__ 
 	__forceinline__
 	void reset0() {
@@ -143,7 +158,6 @@ void recal_G_vec(
 );
 
 //template<int ntimesFF, int ntimesE, int ntimesI> extern
-__launch_bounds__(1024,1)
 __global__ 
 void compute_V_collect_spike_learnFF(
         Float* __restrict__ v,
@@ -192,7 +206,6 @@ void compute_V_collect_spike_learnFF(
 );
 
 //template<int ntimesE, int ntimesI> extern
-__launch_bounds__(1024, 2)
 __global__  
 void recal_G_mat( // <<< nblock[partial], blockSize >>>
         Float* __restrict__ spikeTrain, // [depth, nblock, blockSize]
@@ -223,7 +236,6 @@ void recal_G_mat( // <<< nblock[partial], blockSize >>>
 );
 
 //template<int ntimesE, int ntimesI> extern
-__launch_bounds__(1024, 2)
 __global__
 void sum_G(
         Size* __restrict__ nVec,

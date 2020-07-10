@@ -229,19 +229,6 @@ void LIF::recompute_v0(Float dt, Float t0) {
     v0 = recomp_v0(A, B, rB);
 }
 
-__device__ 
-__forceinline__
-void AdEx::rk2(Float dt) {
-	Float fk1 = -a0*v0 + b0 + deltaT*gL*exponential((v0-vT)/deltaT) - w0;
-	Float gk1 = a*(v0-vL) - w0/tau_w;
-	Float v1 = v0 + fk1*dt;
-	Float w1 = w0 + gk1*dt;
-	Float fk2 = -a1*v1 + b1 + deltaT*gL*exponential((v1-vT)/deltaT) - w1;
-	Float gk2 = a*(v1-vL) - w1/tau_w;
-	v = v0 + (fk1 + fk2)/2 * dt;
-	w = w0 + (gk1 + gk2)/2 * dt;
-}
-
 //TODO: distant connection learning
 void recal_G_vec(
         std::vector<std::vector<std::vector<Float>>> &spikeTrain, std::vector<std::vector<Size>> &trainDepth, std::vector<std::vector<PosInt>> &currentTimeSlot,

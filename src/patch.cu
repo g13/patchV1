@@ -210,7 +210,7 @@ int main(int argc, char **argv) {
         ("nTypeHierarchy",  po::value<vector<Size>>(&nTypeHierarchy), "types of excitatory neurons and inhibtory neurons")
         ("spE0",  po::value<vector<Float>>(&spE0), "Exc. initial spike dist. mean. of size [nTypeHierarchy[0], 2] (s->c) ")
         ("spI0",  po::value<vector<Float>>(&spI0), "Inh. initial spike dist. mean. of size [nTypeHierarchy[1], 2] (s->c) ")
-        ("SCsplit",  po::value<Size>(&SCsplit), "simple complex split at nLGN > SCsplit (simple)")
+        ("SCsplit",  po::value<Size>(&SCsplit)->default_value(0), "simple complex split at nLGN > SCsplit (simple)")
 		("noisyH", po::value<bool>(&noisyH)->default_value(true), "make h or g noisy")
         ("noisyCondFF",  po::value<vector<Float>>(&noisyCondFF), "FF conductances being noisy [std] of size ngTypeFF")
         ("noisyCondE",  po::value<vector<Float>>(&noisyCondE), "E conductances being noisy [std] of size ngTypeE")
