@@ -38,7 +38,7 @@ if conV1_suffix:
 
 #sample = np.array([0,1,2,768])
 ns = 12
-np.random.seed(7329444)
+np.random.seed(7329443)
 nt_ = 2000
 nstep = 2000
 step0 = 0
@@ -50,24 +50,24 @@ nsmooth = 5
 lw = 0.1
 
 plotSample = True
-#plotLGNsCorr = True
-#plotRpStat = True 
-#plotRpCorr = True 
-#plotTempMod = True 
-#plotScatterFF = True
-#plotExc_sLGN = True
-#plotLR_rp = True
-#plotInitial = True 
+plotLGNsCorr = True
+plotRpStat = True 
+plotRpCorr = True 
+plotTempMod = True 
+plotScatterFF = True
+plotExc_sLGN = True
+plotLR_rp = True
+plotInitial = True 
 
 #plotSample = False
-plotLGNsCorr = False 
-plotRpStat = False 
-plotRpCorr = False 
-plotTempMod = False 
-plotScatterFF = False
-plotExc_sLGN = False
-plotLR_rp = False 
-plotInitial = False 
+#plotLGNsCorr = False 
+#plotRpStat = False 
+#plotRpCorr = False 
+#plotTempMod = False 
+#plotScatterFF = False
+#plotExc_sLGN = False
+#plotLR_rp = False 
+#plotInitial = False 
 
 pSample = True
 #pSpike = True
@@ -77,6 +77,7 @@ pSample = True
 #pFeature = True
 #pLR = True
 pW = True
+pDep = True
 
 #pSample = False
 pSpike = False
@@ -86,6 +87,8 @@ pH = False
 pFeature = False
 pLR = False
 #pW = False
+#pDep = False
+
 pSingleLGN = False
 pSC = True
 #pSC = False
@@ -95,8 +98,10 @@ vI = -2/3.0
 vL = 0.0
 gL_E = 0.05
 gL_I = 0.07
-mE = 768
-mI = 256
+#mE = 768
+mE = 896
+#mI = 256
+mI = 128 
 blockSize = 1024
 
 if plotRpStat or plotLR_rp or plotRpCorr:
@@ -244,9 +249,9 @@ if pSpike:
                             spScatter[j].append((it+tsp)*dt)
                         k = k + 1
                 if iModel == 0:
-                    f.seek((1+(ngE + ngI + ngFF)*(1+haveH))*nV1*4, 1)
-                if iModel == 1:
                     f.seek((2+(ngE + ngI + ngFF)*(1+haveH))*nV1*4, 1)
+                if iModel == 1:
+                    f.seek((3+(ngE + ngI + ngFF)*(1+haveH))*nV1*4, 1)
         if negativeSpike:
             #print('negative spikes exist')
             raise Exception('negative spikes exist')
@@ -256,6 +261,9 @@ if pSpike:
 if pVoltage or pCond or plotLGNsCorr or plotSample or plotInitial:
     with open(rawDataFn, 'rb') as f:
         f.seek(4*8, 1)
+        if pDep:
+            depC = np.empty((nV1, nstep), dtype = 'f4')
+
         if iModel == 1:
             if pW:
                 w = np.empty((nV1, nstep), dtype = 'f4')
@@ -271,12 +279,14 @@ if pVoltage or pCond or plotLGNsCorr or plotSample or plotInitial:
             gFF = np.empty((1+getH, ngFF, nV1, nstep), dtype = 'f4')
 
         if iModel == 0:
-            f.seek((2+(ngE + ngI + ngFF)*(1+haveH))*nV1*4*step0, 1)
-        if iModel == 1:
             f.seek((3+(ngE + ngI + ngFF)*(1+haveH))*nV1*4*step0, 1)
+        if iModel == 1:
+            f.seek((4+(ngE + ngI + ngFF)*(1+haveH))*nV1*4*step0, 1)
 
         for i in range(nstep):
             f.seek(nV1*4, 1)
+            depC[:,i] = np.fromfile(f, 'f4', nV1)
+
             if iModel == 1:
                 if pW:
                     w[:,i] = np.fromfile(f, 'f4', nV1)
@@ -308,9 +318,9 @@ if pVoltage or pCond or plotLGNsCorr or plotSample or plotInitial:
                 f.seek((ngE + ngI + ngFF)*(1+haveH)*nV1*4, 1)
     
             if iModel == 0:
-                f.seek((2+(ngE + ngI + ngFF)*(1+haveH))*nV1*4*interval, 1)
+                f.seek((3+(ngE + ngI + ngFF)*(1+haveH))*nV1*4*interval, 1)
             if iModel == 1:
-                f.seek((3+(ngE + ngI + ngFF)*(1+haveH))*nV1*4*step0, 1)
+                f.seek((4+(ngE + ngI + ngFF)*(1+haveH))*nV1*4*step0, 1)
     print("rawData read")
 
 tpick = step0 + np.arange(nstep)*tstep 
@@ -321,7 +331,7 @@ t_in_sec = t_in_ms/1000
 if plotRpStat or plotLR_rp or plotRpCorr or plotLGNsCorr or plotSample:
     fr = np.array([np.asarray(x)[np.logical_and(x>=step0*dt, x<(nt_+step0)*dt)].size for x in spScatter])/t_in_sec
 
-if plotSample:
+if plotSample or pSample:
     if 'sample' not in locals():
         sample = np.random.randint(nV1, size = ns)
         if False:
@@ -342,8 +352,6 @@ if plotSample:
     
         if True:
             pick = epick[nLGN_V1[epick] == 0]
-            #sample[0] = 0
-            #sample[1] = 1
             sample[0] = pick[np.argmin(fr[pick])]
             sample[1] = pick[np.argmax(fr[pick])]
     
@@ -358,11 +366,14 @@ if plotSample:
             pick = ipick[nLGN_V1[ipick] > np.mean(nLGN_V1[ipick])]
             sample[6] = pick[np.argmin(fr[pick])]
             sample[7] = pick[np.argmax(fr[pick])]
+
+            pick = epick[nLGN_V1[epick] == 0]
+            sample[8] = pick[np.argmax(np.sum(np.sum(gE[0,:,pick,:],axis = 0), axis=-1))]
+            pick = epick[nLGN_V1[epick] > np.mean(nLGN_V1[epick])]
+            sample[9] = pick[np.argmax(np.sum(np.sum(gE[0,:,pick,:],axis = 0), axis=-1))]
     else:
         ns = sample.size
     print(f'sampling {[(s//blockSize, np.mod(s,blockSize)) for s in sample]}') 
-
-
 
 # temporal modulation
 if plotTempMod:
@@ -542,8 +553,10 @@ if plotTempMod:
             for ig in range(ngFF):
                 F1[i,ig,:] = get_FreqComp(target[ig,i,:], 1)
         if plotRpCorr:
-            gFF_F1F0 = F1[:,:,0]/F0
             gFF_F0_0 = F0 > 0
+            gFF_F1F0 = np.zeros((nV1, ngFF))
+            tF1 = F1[:,:,0]
+            gFF_F1F0[gFF_F0_0] = tF1[gFF_F0_0]/F0[gFF_F0_0]
 
         sfig = plt.figure('gFF-sample', dpi = 600)
         grid = gs.GridSpec(ns, 2, figure = sfig, hspace = 0.2)
@@ -573,12 +586,17 @@ if plotTempMod:
         sc_range = np.linspace(0,2,21)
         for ig in range(ngFF):
             ax = fig.add_subplot(grid[ig,0])
-            target = F1[epick,ig,0]/F0[epick,ig]
-            target = target[np.isfinite(target)]
-            ax.hist(target, bins = sc_range, color = 'r', alpha = 0.5)
-            target = F1[ipick,ig,0]/F0[ipick,ig]
-            target = target[np.isfinite(target)]
-            ax.hist(target, bins = sc_range, color = 'b', alpha = 0.5)
+
+            tF0 = F0[epick, ig]
+            tF1 = F1[epick, ig, 0]
+            target = tF1[tF0>0]/tF0[tF0>0]
+            ax.hist(target, bins = sc_range, color = 'r', alpha = 0.5, label = f'E: {(tF0>0).size/epick.size*100:.3f}%')
+
+            tF0 = F0[ipick, ig]
+            tF1 = F1[ipick, ig, 0]
+            target = tF1[tF0>0]/tF0[tF0>0]
+            ax.hist(target, bins = sc_range, color = 'b', alpha = 0.5, label = f'I: {(tF0>0).size/ipick.size*100:.3f}%')
+            ax.legend()
 
             ax = fig.add_subplot(grid[ig,1])
             phase_range = np.linspace(-180, 180, 33)
@@ -628,7 +646,7 @@ if plotSample:
             for ig in range(ngI):
                 ax2.plot(t, gI[1,ig,iV1,:], ':b', lw = (ig+1)/ngI * lw)
 
-        ax.set_title(f'ID: {(iblock, ithread)}:({LR[iV1]:.0f},{OP[iV1]*180/np.pi:.0f})- LGN:{nLGN_V1[iV1]}, E{preN[0,iV1]}({preNS[0,iV1]:.3f}), I{preN[1,iV1]}({preNS[1,iV1]:.3f})')
+        ax.set_title(f'ID: {(iblock, ithread)}:({LR[iV1]:.0f},{OP[iV1]*180/np.pi:.0f})- LGN:{nLGN_V1[iV1]}({np.sum(LGN_V1_s[iV1])}), E{preN[0,iV1]}({preNS[0,iV1]:.3f}), I{preN[1,iV1]}({preNS[1,iV1]:.3f})')
         ax.set_ylim(bottom = min(0,np.min(v[iV1,:])))
         ax.set_ylim(top = vThres*1.1)
         ax2.set_ylim(bottom = 0)
@@ -636,10 +654,10 @@ if plotSample:
         ax = fig.add_subplot(grid[1,:])
         current = np.zeros(v[iV1,:].shape)
         if ithread < mE:
-            gL = gL_E
+            igL = gL_E
         else:
-            gL = gL_I
-        cL = -gL*(v[iV1,:]-vL)
+            igL = gL_I
+        cL = -igL*(v[iV1,:]-vL)
         ax.plot(t, cL, '-c', lw = lw)
         ax.plot(t[-1], np.mean(cL), '*c', ms = lw)
         current = current + cL
@@ -659,9 +677,15 @@ if plotSample:
             ax.plot(t[-1], np.mean(cI), '*b', ms = (ig+1)/ngI * lw)
             current = current + cI
 
+
+        ax.plot(t, depC[iV1,:], '-y', lw = lw)
+        ax.plot(t[-1], np.mean(depC[iV1,:]), '*y', ms = lw)
+        current = current + depC[iV1,:]
+
         if iModel == 1:
             if pW:
                 ax.plot(t, -w[iV1,:], '-m', lw = lw)
+                ax.plot(t[-1], -np.mean(w[iV1,:]), '*m', ms = lw)
                 current = current - w[iV1,:]
 
         ax.plot(t, current, '-k', lw = lw)
@@ -760,14 +784,14 @@ if plotInitial:
     ax = fig.add_subplot(131)
     target = gFF[0,:,:,:]
     target = np.sum(target, axis = 0)
-    target = target[:,0]/np.sum(target, axis = -1)
-    ax.hist(target[epick], color = 'r', alpha = 0.5)
-    ax.hist(target[ipick], color = 'b', alpha = 0.5)
+    target = target[:,0]/np.mean(target, axis = -1)
+    ax.hist(target[epick[nLGN[epick]>0]], color = 'r', alpha = 0.5)
+    ax.hist(target[ipick[nLGN[ipick]>0]], color = 'b', alpha = 0.5)
     ax.set_title('gFF0/gFF')
     
     target = gE[0,:,:,:]
     target = np.sum(target, axis = 0)
-    target = target[:,0]/np.sum(target, axis = -1)
+    target = target[:,0]/np.mean(target, axis = -1)
     ax = fig.add_subplot(132)
     ax.hist(target[epick], color = 'r', alpha = 0.5)
     ax.hist(target[ipick], color = 'b', alpha = 0.5)
@@ -775,7 +799,7 @@ if plotInitial:
     
     target = gI[0,:,:,:]
     target = np.sum(target, axis = 0)
-    target = target[:,0]/np.sum(target, axis = -1)
+    target = target[:,0]/np.mean(target, axis = -1)
     ax = fig.add_subplot(133)
     ax.hist(target[epick], color = 'r', alpha = 0.5)
     ax.hist(target[ipick], color = 'b', alpha = 0.5)
@@ -789,7 +813,7 @@ if plotRpCorr:
     grid = gs.GridSpec(4, 4, figure = fig, hspace = 0.3, wspace = 0.3)
     targetE = np.sum(gFF[0,:,:,:], axis = 0) + np.sum(gE[0,:,:,:], axis = 0)
     targetI = np.sum(gI[0,:,:,:], axis = 0)
-    target0 = targetE/(targetE+targetI+gL)
+    target0 = targetE/(targetE+targetI+gL.reshape(gL.size,1))
     target = np.mean(target0, axis = -1)
     ax = fig.add_subplot(grid[0,0])
     image = HeatMap(target[epick], fr[epick], 25, 25, ax, 'Reds', vmin = 0, log_scale = True)
@@ -1124,7 +1148,7 @@ if plotLGNsCorr:
     fig = plt.figure(f'sLGN-corr', figsize = (12,12), dpi = 600)
     grid = gs.GridSpec(4, 4, figure = fig, hspace = 0.3, wspace = 0.3)
     
-    gTot = np.sum(gI[0,:,:,:], axis = 0) + np.sum(gE[0,:,:,:], axis = 0) + np.sum(gFF[0,:,:,:], axis = 0) + gL
+    gTot = np.sum(gI[0,:,:,:], axis = 0) + np.sum(gE[0,:,:,:], axis = 0) + np.sum(gFF[0,:,:,:], axis = 0) + gL.reshape(gL.size,1)
 
     gFF_target = np.mean(np.sum(gFF[0,:,:,:], axis = 0), axis=-1)
     gE_target = np.mean(np.sum(gE[0,:,:,:], axis = 0), axis=-1)

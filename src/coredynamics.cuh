@@ -13,54 +13,82 @@
 #include "MACRO.h"
 #include <vector>
 
-struct IF {
+struct LIF {
     Size spikeCount;
     Float v, v0;
     Float a0, b0;
     Float a1, b1;
     Float vR, vThres;
     Float tRef, tBack, tsp;
-    Float gL;
-    __device__ IF(Float _v0, Float _tBack, Float _vR, Float _vThres, Float _gL, Float _tRef): v0(_v0), tBack(_tBack), vR(_vR), vThres(_vThres), gL(_gL), tRef(_tRef) {
+    Float gL, depC;
+    __device__ LIF(Float _v0, Float _tBack, Float _vR, Float _vThres, Float _gL, Float _tRef, Float dep): v0(_v0), tBack(_tBack), vR(_vR), vThres(_vThres), gL(_gL), tRef(_tRef) {
 		spikeCount = 0;
+		Float targetV = vR + (vThres-vR)*dep;
+		depC = gL*(targetV - vL);
 	};
-    __device__ virtual void rk2(Float dt)=0;
-    __device__ virtual void recompute(Float dt, Float t0=0.0f) = 0;
-    __device__ virtual void recompute_v0(Float dt, Float t0=0.0f) = 0;
-    __device__ virtual void recompute_v(Float dt, Float t0=0.0f) = 0;
+    __device__ virtual void update(Float **var) {};
     __device__ virtual void rk2_vFixedBefore(Float dt) {}
     __device__ virtual void rk2_vFixedAfter(Float dt) {}
-    __device__ virtual void reset0() = 0;
 
-    __device__ virtual void set_p0(Float gE, Float gI);
-    __device__ virtual void set_p1(Float gE, Float gI);
+	__device__
+	__forceinline__
+	virtual void rk2(Float dt, Float noise) {
+		if (noise == 0) {
+	    	v = impl_rk2(dt, a0, b0, a1, b1, v0);
+		} else {
+			noise *= square_root(dt)*depC;
+			Float fk1 = -a0*v0 + b0; 
+			fk1 *= dt;
+			fk1 += noise;
+			Float v1 = v0 + fk1;
+			Float fk2 = -a1*v1 + b1;
+			v = v0 + (fk1 + fk2*dt + noise)/2;
+		}
+	}
 
-    __device__ virtual void compute_spike_time(Float dt, Float t0 = 0.0f);
-    __device__ virtual void reset1();
-    __device__ virtual void update(Float **var) {};
-};
-
-struct LIF: IF {
-    Float denorm;
-    __device__ LIF(Float _v0, Float _tBack, Float _vR, Float _vThres, Float _gL, Float _tRef): IF(_v0, _tBack, _vR, _vThres, _gL, _tRef) {};
-    __device__ void rk2(Float dt);
-    __device__ void recompute(Float dt, Float t0=0.0f);
-    __device__ void recompute_v0(Float dt, Float t0=0.0f);
-    __device__ void recompute_v(Float dt, Float t0=0.0f);
     __device__ 
 	__forceinline__
-	void reset0() {
+	virtual void reset0() {
 		v0 = vR;
-	};
+	}
+
+	__device__ 
+	__forceinline__
+	virtual void reset1() {
+	    v = vR;
+	}
+	
+	__device__
+	__forceinline__
+	virtual void compute_spike_time(Float dt, Float t0) {
+	    tsp = comp_spike_time(v, v0, vThres, dt, t0);
+	}
+	
+	__device__ 
+	__forceinline__
+	virtual void set_p0(Float gE, Float gI) {
+	    a0 = get_a(gE, gI, gL);
+	    b0 = get_b(gE, gI, gL) + depC;
+	}
+	
+	__device__ 
+	__forceinline__
+	virtual void set_p1(Float gE, Float gI) {
+	    a1 = get_a(gE, gI, gL);
+	    b1 = get_b(gE, gI, gL) + depC;
+	}
 };
 
-struct AdEx: IF { //Adaptive Exponential IF
+struct AdEx: LIF { //Adaptive Exponential IF
 	Float w0, w;
 	Float tau_w, a, b;
 	Float vT, deltaT;
     __device__ 
 	__forceinline__
-	AdEx(Float _w0, Float _tau_w, Float _a, Float _b, Float _v0, Float _tBack, Float _vR, Float _vThres, Float _gL, Float _tRef, Float _vT, Float _deltaT): IF(_v0, _tBack, _vR, _vThres, _gL, _tRef), w0(_w0), tau_w(_tau_w), a(_a), b(_b), vT(_vT), deltaT(_deltaT) {};
+	AdEx(Float _w0, Float _tau_w, Float _a, Float _b, Float _v0, Float _tBack, Float _vR, Float _vThres, Float _gL, Float _tRef, Float _vT, Float _deltaT, Float dep): LIF(_v0, _tBack, _vR, _vThres, _gL, _tRef, dep), w0(_w0), tau_w(_tau_w), a(_a), b(_b), vT(_vT), deltaT(_deltaT) {
+		Float targetV = vR + (vT-vR)*dep;
+		depC = gL*(targetV - vL) + tau_w*a*(targetV-vL) - gL*deltaT*exponential((targetV - vT)/deltaT);
+	};
     __device__ 
 	__forceinline__
 	void rk2_vFixedBefore(Float dt) {
@@ -76,15 +104,30 @@ struct AdEx: IF { //Adaptive Exponential IF
 
 	__device__ 
 	__forceinline__
-	void rk2(Float dt) {
-		Float fk1 = -a0*v0 + b0 + deltaT*gL*exponential((v0-vT)/deltaT) - w0;
-		Float gk1 = a*(v0-vL) - w0/tau_w;
-		Float v1 = v0 + fk1*dt;
-		Float w1 = w0 + gk1*dt;
-		Float fk2 = -a1*v1 + b1 + deltaT*gL*exponential((v1-vT)/deltaT) - w1;
-		Float gk2 = a*(v1-vL) - w1/tau_w;
-		v = v0 + (fk1 + fk2)/2 * dt;
-		w = w0 + (gk1 + gk2)/2 * dt;
+	void rk2(Float dt, Float noise) {
+		if (noise == 0) {
+			Float fk1 = -a0*v0 + b0 + deltaT*gL*exponential((v0-vT)/deltaT) - w0;
+			Float gk1 = a*(v0-vL) - w0/tau_w;
+			Float v1 = v0 + fk1*dt;
+			Float w1 = w0 + gk1*dt;
+			Float fk2 = -a1*v1 + b1 + deltaT*gL*exponential((v1-vT)/deltaT) - w1;
+			Float gk2 = a*(v1-vL) - w1/tau_w;
+			v = v0 + (fk1 + fk2)/2 * dt;
+			w = w0 + (gk1 + gk2)/2 * dt;
+		} else {
+			noise *= square_root(dt)*depC;
+			Float fk1 = -a0*v0 + b0 + deltaT*gL*exponential((v0-vT)/deltaT) - w0;
+			Float gk1 = a*(v0-vL) - w0/tau_w;
+			fk1 *= dt;
+			fk1 += noise;
+			Float w1 = w0 + gk1*dt;
+			Float v1 = v0 + fk1*dt;
+
+			Float gk2 = a*(v1-vL) - w1/tau_w;
+			Float fk2 = -a1*v1 + b1 + deltaT*gL*exponential((v1-vT)/deltaT) - w1;
+			w = w0 + (gk1 + gk2)/2 * dt;
+			v = v0 + (fk1 + fk2*dt + noise)/2;
+		}
 	}
 
     __device__ 
@@ -102,32 +145,7 @@ struct AdEx: IF { //Adaptive Exponential IF
     __device__ void update(Float **var) {
 		*var[0] = w;
 	};
-    __device__ void recompute(Float dt, Float t0=0.0f) {}
-    __device__ void recompute_v0(Float dt, Float t0=0.0f) {}
-    __device__ void recompute_v(Float dt, Float t0=0.0f) {}
 };
-
-
-/*
-struct AdEx: LIF {
-    Size spikeCount;
-    Float v;
-    Float vR, vT, deltaT;
-    Float tRef, tBack, tsp;
-    Float gL;
-    Float tau_w, a;
-    __device__ AdEx(Float _vR, Float _vT, Float deltaT, Float _tRef, Float _tBack, Float _gL, Float tau_w, Float _a): v0(_v0), tBack(_tBack), vR(_vR), vT(_vT), tRef(_tRef), gL(_gL) {};
-    __device__ 
-    __forceinline__ {
-
-    }
-    __device__ 
-    __forceinline__
-    void reset_v() {
-        v = vR;
-    }
-};
-*/
 
 __global__ 
 void rand_spInit(Float* __restrict__ tBack,
@@ -144,6 +162,7 @@ void rand_spInit(Float* __restrict__ tBack,
                  Float* __restrict__ a,
                  Float* __restrict__ b,
                  curandStateMRG32k3a* __restrict__ rGenCond,
+                 curandStateMRG32k3a* __restrict__ rNoisy,
                  PosIntL seed, Size networkSize, Size nType, Size SCsplit, Size trainDepth, Float dt, bool iModel);
 
 
@@ -153,14 +172,15 @@ void recal_G_vec(
         std::vector<std::vector<std::vector<Float>>> &spikeTrain, std::vector<std::vector<Size>> &trainDepth, std::vector<std::vector<PosInt>> &currentTimeSlot,
         std::vector<Size> &nVec,  std::vector<std::vector<PosInt>> &vecID, std::vector<std::vector<Float>> &conVec, std::vector<std::vector<Float>> &delayVec,
         Float gE[], Float gI[], Float hE[], Float hI[], Float pE[], Float pI[], Size typeAcc[],
-        std::default_random_engine *h_rGenCond, Float noisyCondE[], Float noisyCondI[], Float synFailE[], Float synFailI[],
-        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, Size nType, Size nE, Size nV1, Float speedOfThought, Size chunkSize, bool noisyH
+        std::default_random_engine *h_rGenCond, Float synFail[],
+        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, Size nType, Size nE, Size nV1, Float speedOfThought, Size chunkSize
 );
 
 //template<int ntimesFF, int ntimesE, int ntimesI> extern
 __global__ 
 void compute_V_collect_spike_learnFF(
         Float* __restrict__ v,
+        Float* __restrict__ dep,
         Float* __restrict__ w, // AdEx
         Float* __restrict__ gFF, // not in chunks
         Float* __restrict__ hFF,
@@ -190,6 +210,7 @@ void compute_V_collect_spike_learnFF(
         Float* __restrict__ vThres,
         Float* __restrict__ gL,
         Float* __restrict__ tRef,
+        Float* __restrict__ tonicDep,
         Float* __restrict__ vT, // AdEx
         Float* __restrict__ deltaT,
         Float* __restrict__ tau_w,
@@ -197,12 +218,13 @@ void compute_V_collect_spike_learnFF(
         Float* __restrict__ b,
         Size* __restrict__ typeAcc,
         curandStateMRG32k3a* __restrict__ rGenCond,
-        Float* __restrict__ noisyCondFF,
         Float* __restrict__ synFailFF,
+        curandStateMRG32k3a* __restrict__ rNoisy,
+        Float* __restrict__ noisyDep,
         PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeFF, Size ngTypeE, Size ngTypeI, ConductanceShape condFF, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, int learning, int varSlot, Size nType,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
-        LearnVarShapeE learnE, LearnVarShapeQ learnQ, int iModel, bool noisyH
+        LearnVarShapeE learnE, LearnVarShapeQ learnQ, int iModel
 );
 
 //template<int ntimesE, int ntimesI> extern
@@ -227,12 +249,9 @@ void recal_G_mat( // <<< nblock[partial], blockSize >>>
         Float* __restrict__ pI,
         Size* __restrict__ typeAcc,
         curandStateMRG32k3a* __restrict__ rGenCond,
-        Float* __restrict__ noisyCondE,
-        Float* __restrict__ noisyCondI,
-        Float* __restrict__ synFailE,
-        Float* __restrict__ synFailI,
+        Float* __restrict__ synFail,
         Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nE, Size nI, Size nV1, Float speedOfThought, int learning, PosInt block_offset, Size nType,
-        LearnVarShapeE lE, LearnVarShapeQ lQ, PosInt iChunk, bool noisyH
+        LearnVarShapeE lE, LearnVarShapeQ lQ, PosInt iChunk
 );
 
 //template<int ntimesE, int ntimesI> extern

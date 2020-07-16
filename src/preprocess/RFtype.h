@@ -171,6 +171,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
     //                        a is the minor-axis
     Float sfreq, phase, amp, theta, a, baRatio, sig;
     OutputType oType;
+	bool strictStrength;
 	/* not needed
     // default constructor
     LinearReceptiveField(Size n, Float sfreq, Float phase, Float amp, Float theta, Float a, Float baRatio, OutputType oType, Float sig = 1.177):
@@ -184,7 +185,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         oType(oType),
         sig(sig)
     {} */
-    virtual void setup_param(Size n, Float sfreq, Float phase, Float amp, Float theta, Float a, Float baRatio, OutputType oType, Float sig = 1.177) {
+    virtual void setup_param(Size n, Float sfreq, Float phase, Float amp, Float theta, Float a, Float baRatio, OutputType oType, bool strictStrength, Float sig = 1.177) {
         this->n = n;
         this->sfreq = sfreq;
         this->phase = phase;
@@ -194,6 +195,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         this->baRatio = baRatio;
         this->oType = oType;
         this->sig = sig;
+		this->strictStrength = strictStrength;
 	}
 
 	virtual void clear() {
@@ -222,7 +224,9 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                     } */
                     // calc. cone and position opponency at coord.
 	                Float opponent = check_opponency(iType[i], modulation);
-                    prob.push_back(get_prob(opponent, modulation, envelope));
+					Float _prob = get_prob(opponent, modulation, envelope);
+					assert(_prob >= 0); 
+                    prob.push_back(_prob);
                     /* TEST with no modulation: if (opponent < 0.0 && RefShift || (opponent < 0.0 && (rfType == RFtype::doubleOppopent_cs || rfType == RFtype::singleOppopent || rfType == RFtype::nonOppopent_cs))) {
                         if (prob.back() > 0.0) {
                             std::cout << envelope << " * (0.5 + " << amp << " * " << opponent << " * " << modulation <<  ") = " << prob.back() << "\n";
@@ -230,9 +234,9 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                         }
                     } */
                 }
-                normalize(fnLGNeff, p_n);
+                Float sSum = normalize(fnLGNeff, p_n);
                 // make connection and update ID and strength list
-                nConnected = connect(idList, strengthList, rGen, max_nCon);
+                nConnected = connect(idList, strengthList, rGen, max_nCon, sSum);
             } else {
                 idList = std::vector<Size>();
                 idList.shrink_to_fit();
@@ -266,50 +270,67 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         return envelope * (1.0 + amp * opponent * modulation);
     }
     // normalize prob.
-    void normalize(Float fnLGNeff, bool p_n) {
+    Float normalize(Float fnLGNeff, bool p_n) {
 	    // average connection probability is controlled at fnLGNeff.
 		Float norm;
+		Float sSum;
         if (p_n) { // if percentage
-            norm = std::accumulate(prob.begin(), prob.end(), 0.0) / (fnLGNeff*prob.size());
+			sSum = fnLGNeff*prob.size();
         } else { // number restriction
-            norm = std::accumulate(prob.begin(), prob.end(), 0.0) / fnLGNeff;
+			sSum = fnLGNeff;
         }
-	    //std::cout << "norm = " << norm << "\n";
-	    //print_list<Float>(prob);
-        //Float sum = 0.0;
-        for (PosInt i=0; i<prob.size(); i++) {
-            if (norm != 0) {
-                prob[i] = prob[i] / norm;
-            }
-            //sum += prob[i];
-        }
-    //std::cout << fnLGNeff*prob.size() << " ~ " << sum << "\n";
+		if (sSum > 0) {
+    		norm = std::accumulate(prob.begin(), prob.end(), 0.0) / sSum;
+	    	//std::cout << "norm = " << norm << "\n";
+	    	//print_list<Float>(prob);
+        	//Float sum = 0.0;
+        	if (norm == 0) {
+				sSum = 0;
+			} else {
+        		for (PosInt i=0; i<prob.size(); i++) {
+        		    prob[i] = prob[i] / norm;
+        		}
+			}
+		}
+    	//std::cout << fnLGNeff*prob.size() << " ~ " << sum << "\n";
+		return sSum;
     }
     // make connections
-    virtual Size connect(std::vector<Size> &idList, std::vector<Float> &strengthList, RandomEngine &rGen, Float max_nCon) {
+    virtual Size connect(std::vector<Size> &idList, std::vector<Float> &strengthList, RandomEngine &rGen, Float max_nCon, Float sSum) {
 		// make connections and normalized strength i.e., if prob > 1 then s = 1 else s = prob
         std::uniform_real_distribution<Float> uniform(0,1);
 		strengthList.reserve(n);
 		std::vector<Size> newList;
 		newList.reserve(n);
-		for (PosInt i = 0; i < n; i++) {
-			if (uniform(rGen) < prob[i]) {
-				newList.push_back(idList[i]);
-				if (prob[i] > 1) {
-					strengthList.push_back(prob[i]);
-				} else {
-					strengthList.push_back(1);
+		if (sSum > 0) {
+			Size count = 0; 
+			do  {
+				newList.clear();
+				strengthList.clear();
+				for (PosInt i = 0; i < n; i++) {
+					if (uniform(rGen) < prob[i]) {
+						newList.push_back(idList[i]);
+						if (prob[i] > 1) {
+							strengthList.push_back(prob[i]);
+						} else {
+							strengthList.push_back(1);
+						}
+					}
 				}
+				count++;
+				if (count > 20) {
+					std::cout << "too many iters, sum over prob #" << prob.size() << " = " << std::accumulate(prob.begin(), prob.end(), 0.0) << "\n";
+					assert(count <= 20);
+				}
+			} while (newList.size() > max_nCon || newList.size() == 0);
+        	Float con_irl = std::accumulate(strengthList.begin(), strengthList.end(), 0.0);
+			if (strictStrength) {
+        		Float ratio = sSum/con_irl;
+        		for (PosInt i=0; i<strengthList.size(); i++) {
+        		    strengthList[i] *= ratio; 
+        		}
 			}
 		}
-        Float con_irl = std::accumulate(strengthList.begin(), strengthList.end(), 0.0);
-        Float ratio = 1;
-        if (con_irl > max_nCon) {
-            ratio = max_nCon/con_irl;
-        }
-        for (PosInt i=0; i<strengthList.size(); i++) {
-            strengthList[i] *= ratio; 
-        }
 		idList = newList;
 		idList.shrink_to_fit();
         return static_cast<Size>(idList.size());
@@ -321,7 +342,7 @@ struct SingleOpponent: LinearReceptiveField {
     SingleOpponent() {
         rfType = RFtype::singleOppopent;
     }
-    void setup_param(Size n, Float sfreq, Float phase, Float amp, Float theta, Float a, Float baRatio, OutputType oType, Float sig = 1.177) {
+    void setup_param(Size n, Float sfreq, Float phase, Float amp, Float theta, Float a, Float baRatio, OutputType oType, bool strictStrength, Float sig = 1.177) override {
         this->n = n;
         this->sfreq = 0.0;
         this->phase = 0.0;
@@ -383,7 +404,7 @@ struct DoubleOpponent_CS: LinearReceptiveField {
     DoubleOpponent_CS() {
         rfType = RFtype::doubleOppopent_cs;
     }
-    void setup_param(Size n, Float sfreq, Float phase, Float amp, Float theta, Float a, Float baRatio, OutputType oType, Float sig = 1.177) override {
+    void setup_param(Size n, Float sfreq, Float phase, Float amp, Float theta, Float a, Float baRatio, OutputType oType, bool strictStrength, Float sig = 1.177) override {
         this->n = n;
         this->sfreq = 0.0;
         this->phase = 0.0;
@@ -413,7 +434,7 @@ struct NonOpponent_Gabor: LinearReceptiveField {
     NonOpponent_Gabor() {
         rfType = RFtype::nonOppopent_gabor;
     }
-    void setup_param(Size n, Float sfreq, Float phase, Float amp, Float theta, Float a, Float baRatio, OutputType oType, Float sig = 1.177) override {
+    void setup_param(Size n, Float sfreq, Float phase, Float amp, Float theta, Float a, Float baRatio, OutputType oType, bool strictStrength, Float sig = 1.177) override {
         this->n = n;
         this->sfreq = sfreq;
         this->phase = sfreq;
@@ -449,7 +470,7 @@ struct NonOpponent_CS: LinearReceptiveField {
     NonOpponent_CS() {
         rfType = RFtype::nonOppopent_cs;
     }
-    void setup_param(Size n, Float sfreq, Float phase, Float amp, Float theta, Float a, Float baRatio, OutputType oType, Float sig = 1.177) override {
+    void setup_param(Size n, Float sfreq, Float phase, Float amp, Float theta, Float a, Float baRatio, OutputType oType, bool strictStrength, Float sig = 1.177) override {
         this->n = n;
         this->sfreq = 0.0;
         this->phase = 0.0;
