@@ -19,11 +19,13 @@ void rand_spInit(Float* __restrict__ tBack,
                  Float* __restrict__ a,
                  Float* __restrict__ b,
                  curandStateMRG32k3a* __restrict__ rGenCond,
+                 curandStateMRG32k3a* __restrict__ rNoisy,
                  PosIntL seed, Size networkSize, Size nType, Size SCsplit, Size trainDepth, Float dt, bool iModel) 
 {
     PosIntL id = blockIdx.x * blockDim.x + threadIdx.x;
     if (id < networkSize) {
         curandStateMRG32k3a localState = rGenCond[id];
+        curandStateMRG32k3a state = rNoisy[id];
         Size iLGN = nLGNperV1[id];
         Size type;
         for (PosInt i=0; i<nType; i++) {
@@ -34,11 +36,10 @@ void rand_spInit(Float* __restrict__ tBack,
         }
 
         curand_init(seed + id, 0, 0, &localState);
+        curand_init(seed + networkSize + id, 0, 0, &state);
         Float rand = uniform(&localState);
         Float chance;
         Float ref = 0.0;
-
-
         if (iLGN > SCsplit) {
             chance = sp0[type*2 + 0]; 
         } else {
@@ -64,6 +65,7 @@ void rand_spInit(Float* __restrict__ tBack,
                 ref = (1-tsp)*dt + tRef - dt;
             }
         }
+        rNoisy[id] = state;
         for (PosInt i=trainDepth-1; i>0; i--) {
             if (ref < dt) {
                 if (ref < 0) ref = 0;
@@ -110,132 +112,14 @@ void logRand_init(Float* __restrict__ logRand,
 	}
 }
 
-__device__
-__forceinline__
-Float step(IF* model, Float dt, PosInt id, Float gE, Float gI) {
-    model->spikeCount = 0;
-    Float sInfo = 0.0;
-    // not in refractory period
-    if (model->tBack < dt) {
-        // return from refractory period
-        if (model->tBack > 0.0f) {
-            model->recompute_v0(dt);
-            #ifdef DEBUG
-                if (id == 0 || id == 768) {
-                    printf("backed\n");
-                }
-            #endif
-        }
-        model->rk2(dt);
-        while (model->v > model->vThres && model->tBack < dt) { // forbids firing exactly at the end of the timestep, 
-            // crossed threshold
-            model->compute_spike_time(dt); 
-            sInfo += model->tsp;
-            model->spikeCount++;
-            model->tBack = model->tsp + model->tRef;
-            #ifdef DEBUG
-                if (id == 0 || id == 768) {
-                    printf("#%u spiked at %f, to come back at %f\n", id, model->tsp, model->tBack);
-                }
-            #endif
-            if (model->tBack < dt) {
-                // refractory period ended during dt
-                model->recompute(dt);
-            }
-        }
-    }
-    if (model->tBack >= dt) {
-        // during refractory period
-        model->reset1();
-    }
-    model->tBack -= dt;
-    #ifdef DEBUG
-        if (model->v < vI) {
-    		printf("#%i implicit rk2 is A-Stable! something is off gE1 = %f, gI1 = %f, v = %f, v0 = %f, a0 = %f, b0 = %f, a1 = %f, b1 = %f\n", id, gE, gI, model->v, model->v0, model->a0, model->b0, model->a1, model->b1);
-        }   
-    #endif
-    if (model->spikeCount > 0) sInfo /= model->spikeCount*dt; //decimal part: tsp (normalize by dt)
-    sInfo += model->spikeCount; // integer part: nsp
-    #ifdef DEBUG
-        if ((sInfo > 0 && sInfo < 1) || model->spikeCount >= 2) {
-            printf("sInfo = %.3f, gE = %.3e, gI = %.3e, spikeCount = %u\n", sInfo, gE, gI, model->spikeCount);
-            assert(sInfo == 0 || (sInfo >= 1 && sInfo < 2 && model->spikeCount < 2));
-        }
-    #endif
-    __syncwarp();
-    return sInfo;
-}
-
-__device__ 
-__forceinline__
-void IF::reset1() {
-    v = vR;
-}
-
-__device__
-__forceinline__
-void IF::compute_spike_time(Float dt, Float t0) {
-    tsp = comp_spike_time(v, v0, vThres, dt, t0);
-}
-
-__device__ 
-__forceinline__
-void IF::set_p0(Float gE, Float gI) {
-    a0 = get_a(gE, gI, gL);
-    b0 = get_b(gE, gI, gL); 
-}
-
-__device__ 
-__forceinline__
-void IF::set_p1(Float gE, Float gI) {
-    a1 = get_a(gE, gI, gL);
-    b1 = get_b(gE, gI, gL); 
-}
-
-__device__
-__forceinline__
-void LIF::rk2(Float dt) {
-    v = impl_rk2(dt, a0, b0, a1, b1, v0);
-}
-
-__device__
-__forceinline__
-void LIF::recompute(Float dt, Float t0) {
-    Float rB = dt/(tBack-t0) - 1; 
-    Float denorm = 2 + a1*dt;
-    Float A = (2 - a0*dt)/denorm;
-    Float B = (b0 + b1)*dt/denorm;
-    v0 = recomp_v0(A, B, rB);
-    v = A*v0 + B;
-}
-
-__device__ 
-__forceinline__
-void LIF::recompute_v(Float dt, Float t0) {
-    Float rB = dt/(tBack-t0) - 1; 
-    Float denorm = 2 + a1*dt;
-    Float A = (2 - a0*dt)/denorm;
-    Float B = (b0 + b1)*dt/denorm;
-    v = recomp_v(A, B, rB);
-}
-
-__device__ 
-__forceinline__
-void LIF::recompute_v0(Float dt, Float t0) {
-    Float rB = dt/(tBack-t0) - 1; 
-    Float denorm = 2 + a1*dt;
-    Float A = (2 - a0*dt)/denorm;
-    Float B = (b0 + b1)*dt/denorm;
-    v0 = recomp_v0(A, B, rB);
-}
 
 //TODO: distant connection learning
 void recal_G_vec(
         std::vector<std::vector<std::vector<Float>>> &spikeTrain, std::vector<std::vector<Size>> &trainDepth, std::vector<std::vector<PosInt>> &currentTimeSlot,
         std::vector<Size> &nVec,  std::vector<std::vector<PosInt>> &vecID, std::vector<std::vector<Float>> &conVec, std::vector<std::vector<Float>> &delayVec,
         Float gE[], Float gI[], Float hE[], Float hI[], Float pE[], Float pI[], Size typeAcc[],
-        std::default_random_engine *rGenCond, Float noisyCondE[], Float noisyCondI[], Float synFailE[], Float synFailI[],
-        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, Size nType, Size nE, Size nV1, Float speedOfThought, Size chunkSize, bool noisyH) 
+        std::default_random_engine *rGenCond, Float synFail[],
+        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, Size nType, Size nE, Size nV1, Float speedOfThought, Size chunkSize) 
 {
     Float ipE[max_ngTypeE];
     Float ipI[max_ngTypeI];
@@ -274,13 +158,19 @@ void recal_G_vec(
             PosInt ipre = vecID[i0+i][j];
             PosInt tid = ipre%blockSize; 
             Float strength = conVec[i0+i][j];
-
             Float time2post = delayVec[i0+i][j]/speedOfThought;
             Float *local_g;
             Float *local_h;
             Float *ip;
-            Float *noisyCond;
-            Float synFail;
+			PosInt jtype;
+    		#pragma unroll (max_nType)
+    		for (PosInt k=0; k<nType; k++) {
+    		    if (tid < typeAcc[k]) {
+    		        jtype = k;
+    		        break;
+    		    }
+    		}
+            Float p = synFail[jtype*nType + itype];
             Size ngType;
             ConductanceShape *cond;
             // TODO direct output to g and h (local memory vs register)
@@ -290,16 +180,12 @@ void recal_G_vec(
                 ngType = ngTypeE;
                 cond = &condE;
                 ip = ipE;
-                noisyCond = noisyCondE;
-                synFail = synFailE[itype];
             } else {
                 local_g = local_gI;
                 local_h = local_hI;
                 ngType = ngTypeI;
                 cond = &condI;
                 ip = ipI;
-                noisyCond = noisyCondI;
-                synFail = synFailI[itype];
             }
             PosInt it2post = static_cast<PosInt>(ceiling(time2post/dt));
             time2post = it2post*dt - time2post;
@@ -307,46 +193,28 @@ void recal_G_vec(
             assert(time2post<dt);
             PosInt k0 = currentTimeSlot[i0+i][j] - it2post + trainDepth[i0+i][j];
             currentTimeSlot[i0+i][j] = (currentTimeSlot[i0+i][j]+1)%trainDepth[i0+i][j];
-			bool success[2];
-			Float dtsp[2];
-			Float nsp[2];
-            #pragma unroll max_ngType
-            for (PosInt ig=0; ig<ngType; ig++) {
-                Float g0 = 0;
-				Float h0 = 0;
-				Float f_ig = strength*ip[ig];
-                #pragma unroll 2
-                for (PosInt k = 0; k < 2; k++) {
-					if (ig == 0) {
-                    	dtsp[k] = spikeTrain[i0+i][j][k0+k];
-						success[j] = false;
-                        nsp[k] = flooring(dtsp[k]);
-                    	if (nsp[k] > 0) {
-                            dtsp[k] = (dtsp[k] - nsp[k] + k)*dt - time2post;
-                        	if (dtsp[k] < dt && dtsp[k] >= 0) {
-								success[k] = uniform_dist(rGenCond[i0+i]) > synFail;
-								if (success[k]){
-									dtsp[k] = dt - dtsp[k];
-                            		cond->compute_single_input_conductance(g0, h0, nsp[k]*f_ig, dtsp[k], ig);
-								}
+            #pragma unroll 2
+            for (PosInt k = 0; k < 2; k++) {
+                Float dtsp = spikeTrain[i0+i][j][k0+k];
+                Size nsp = flooring(dtsp);
+                if (nsp > 0) {
+                    dtsp = (dtsp - nsp + k)*dt - time2post;
+                    if (dtsp < dt && dtsp >= 0) {
+						Float f = strength;
+						if (p> 0) {
+							f *= (1-p);
+							Float rand = normal_dist(rGenCond[i0 + i]);
+							f += square_root(p*f) * rand;
+						}
+						if (f > 0) {
+							dtsp = dt - dtsp;
+            				#pragma unroll max_ngType
+            				for (PosInt ig=0; ig<ngType; ig++) {
+                            	cond->compute_single_input_conductance(local_g[ig], local_h[ig], nsp*f*ip[ig], dtsp, ig);
 							}
                         }
-                    } else if (success[k]) {
-                    	cond->compute_single_input_conductance(g0, h0, nsp[k]*f_ig, dtsp[k], ig);
-					}
+                    } 
                 }
-                if (noisyCond[ig] > 0) {
-                    Float noise = noisyCond[ig]*f_ig*normal_dist(rGenCond[i0+i]);
-					if (noisyH) {
-						h0 += noise;
-                    	if (h0<0) h0 = 0;
-					} else {
-						g0 += noise;
-                    	if (g0<0) g0 = 0;
-					}
-                }
-                local_g[ig] += g0;
-                local_h[ig] += h0;
             }
         }
         // output
@@ -370,6 +238,7 @@ __launch_bounds__(1024,1)
 __global__ 
 void compute_V_collect_spike_learnFF(
         Float* __restrict__ v,
+        Float* __restrict__ dep,
         Float* __restrict__ w,
         Float* __restrict__ gFF, // not in chunks
         Float* __restrict__ hFF,
@@ -399,6 +268,7 @@ void compute_V_collect_spike_learnFF(
         Float* __restrict__ vThres,
         Float* __restrict__ gL,
         Float* __restrict__ tRef,
+        Float* __restrict__ tonicDep,
         Float* __restrict__ vT,
         Float* __restrict__ deltaT,
         Float* __restrict__ tau_w,
@@ -406,12 +276,13 @@ void compute_V_collect_spike_learnFF(
         Float* __restrict__ b,
         Size* __restrict__ typeAcc,
         curandStateMRG32k3a* __restrict__ rGenCond,
-        Float* __restrict__ noisyCondFF,
         Float* __restrict__ synFailFF,
+        curandStateMRG32k3a* __restrict__ rNoisy,
+        Float* __restrict__ noisyDep,
         PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeFF, Size ngTypeE, Size ngTypeI, ConductanceShape condFF, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, int learning, int varSlot, Size nType,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
-        LearnVarShapeE learnE, LearnVarShapeQ learnQ, int iModel, bool noisyH)
+        LearnVarShapeE learnE, LearnVarShapeQ learnQ, int iModel)
 {
 	//assert(blockDim.x == blockSize);
     PosInt tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -438,11 +309,11 @@ void compute_V_collect_spike_learnFF(
             break;
         }
     }
-    IF* model;
+    LIF* model;
     if (iModel == 0) {
-        model = new LIF(v[tid], tBack[tid], vR[itype], vThres[itype], gL[itype], tRef[itype]);
+        model = new LIF(v[tid], tBack[tid], vR[itype], vThres[itype], gL[itype], tRef[itype], tonicDep[itype]);
     } else {
-        model = new AdEx(w[tid], tau_w[itype], a[itype], b[itype], v[tid], tBack[tid], vR[itype], vThres[itype], gL[itype], tRef[itype], vT[itype], deltaT[itype]);
+        model = new AdEx(w[tid], tau_w[itype], a[itype], b[itype], v[tid], tBack[tid], vR[itype], vThres[itype], gL[itype], tRef[itype], vT[itype], deltaT[itype], tonicDep[itype]);
 	}
     /* set a0 b0 and a1 b1 */
     // cond FF
@@ -450,6 +321,7 @@ void compute_V_collect_spike_learnFF(
     Size m = nLGN[tid];
     //Size nsp_FFt = 0;
     curandStateMRG32k3a localState = rGenCond[tid];
+    curandStateMRG32k3a state = rNoisy[tid];
 	
 	Float ge[max_ngTypeE];
 	Float he[max_ngTypeE];
@@ -496,7 +368,6 @@ void compute_V_collect_spike_learnFF(
 	Float h0[max_ngTypeFF];
 	Float g1[max_ngTypeFF];
 	Float h1[max_ngTypeFF];
-	Float noisyCond[max_ngTypeFF];
     #pragma unroll (max_ngTypeFF) //(ntimesFF)
     for (PosInt ig=0; ig<ngTypeFF; ig++) {
         PosInt gid = nV1*ig + tid; // not in chunks
@@ -504,18 +375,19 @@ void compute_V_collect_spike_learnFF(
         h1[ig] = hFF[gid];
         g0[ig] = g1[ig]; // only before tBack
         h0[ig] = h1[ig];
-		noisyCond[ig] = noisyCondFF[ig];
 
 		//	decay
     	condFF.decay_conductance(g1[ig], h1[ig], dt, ig); //  decayed from new_t0 to tBack
 	}
 
-	Float* rand = new Float[m];
-	Float synFail = synFailFF[itype];
+	Float p = synFailFF[itype];
 
 	bool backingUpFromRef = model->tBack < dt && model->tBack > 0;
 	Float new_t0 = 0;
 	Float sInfo = 0;
+	Float *f = new Float[m];
+	Float noise = normal(&state)*noisyDep[itype];
+	dep[tid] = model->depC*(1+noise/square_root(dt));
 	do {
 		Float dtBack;
 		if (backingUpFromRef) {
@@ -533,68 +405,41 @@ void compute_V_collect_spike_learnFF(
     	#pragma unroll (4)
     	for (PosInt i = 0; i<m; i++) {
     	    PosInt lid = tid*max_nLGN + i;
-    	    Float f = sLGN[lid];
+			if (model->spikeCount == 0) {
+				f[i] = sLGN[lid]*(1-p);
+			}
     	    int x = LGN_idx[lid];
     	    int y = LGN_idy[lid];
     	    Float sInfo;
     	    surf2DLayeredread(&sInfo, LGNspikeSurface, 4*x, y, 0);
     	    Float nsp = flooring(sInfo); // integer part: #spikes
     	    Float tsp = (sInfo - nsp)*dt; // decimal part: normalized mean tsp
-			Float synapse[max_ngTypeFF];
-			if (model->spikeCount == 0) {
-    			#pragma unroll (max_ngTypeFF) //(ntimesFF)
-    			for (PosInt ig=0; ig<ngTypeFF; ig++) {
-					synapse[ig] = 0.0;
-				}
-			}
 			
 			if (nsp > 0) {
-				if (model->spikeCount == 0) {
-					rand[i] = uniform(&localState);
-				}
-				if (rand[i] > synFail && tsp >= new_t0) {
-					Float ddt;
-					if (backingUpFromRef) {
-						ddt = model->tBack - tsp;
+				if (tsp >= new_t0) {
+					if (model->spikeCount == 0 && p > 0) {
+						Float rand = normal(&localState);
+						f[i] += square_root(p * f[i])*rand;
 					}
-    				#pragma unroll (max_ngTypeFF) //(ntimesFF)
-    				for (PosInt ig=0; ig<ngTypeFF; ig++) {
-    		    		Float str = f * pFF[itype*ngTypeFF + ig];
+					if (f[i] > 0) {
+						Float ddt;
 						if (backingUpFromRef) {
-							if (ddt > 0) { // before tBack
-    		    				condFF.compute_single_input_conductance(g0[ig], h0[ig], str*nsp, ddt, ig);
-    		    			}
+							ddt = model->tBack - tsp;
 						}
-						if (model->spikeCount == 0) { // all inputs
-							Float gS = 0;
-							Float hS = 0;
-    		    			condFF.compute_single_input_conductance(gS, hS, str*nsp, dt*(1-tsp), ig);
-							g1[ig] += gS;
-							h1[ig] += hS;
-							if (noisyH) {
-								synapse[ig] = hS;
-							} else {
-								synapse[ig] = gS;
+    					#pragma unroll (max_ngTypeFF) //(ntimesFF)
+    					for (PosInt ig=0; ig<ngTypeFF; ig++) {
+    			    		Float str = f[i] * pFF[itype*ngTypeFF + ig];
+							if (backingUpFromRef) {
+								if (ddt > 0) { // before tBack
+    			    				condFF.compute_single_input_conductance(g0[ig], h0[ig], str*nsp, ddt, ig);
+    			    			}
+							}
+							if (model->spikeCount == 0) { // all inputs
+    			    			condFF.compute_single_input_conductance(g1[ig], h1[ig], str*nsp, dt*(1-tsp), ig);
+								printf("im here %u f = %f\n", tid, f[i]);
 							}
 						}
 					}
-				}
-			}
-			// noisyCond
-			if (model->spikeCount == 0) {
-    			#pragma unroll (max_ngTypeFF) //(ntimesFF)
-    			for (PosInt ig=0; ig<ngTypeFF; ig++) {
-    	    		if (noisyCond[ig] > 0) {
-    	    		    Float rand0 = normal(&localState);
-    	    		    Float noise = noisyCond[ig]*f*pFF[itype*ngTypeFF + ig]*rand0;
-						synapse[ig] += noise;
-    	    			if (synapse[ig]<0) synapse[ig] = 0;
-						if (noisyH) {
-							h1[ig] += synapse[ig];
-						} else {
-							g1[ig] += synapse[ig];
-						}
-    	    		}
 				}
 			}
     	}
@@ -645,7 +490,7 @@ void compute_V_collect_spike_learnFF(
 			if (backingUpFromRef) { //	stepping other variable before tBack
 				model->rk2_vFixedBefore(dtBack);
 			} 
-			model->rk2(new_dt);
+			model->rk2(new_dt, noise);
 
 			// check spiking
     	    if (model->v > model->vThres) { // forbids firing exactly at the end of the timestep, 
@@ -675,7 +520,8 @@ void compute_V_collect_spike_learnFF(
 		}
     	/* evolve g to t+dt with ff input only */
 	} while (backingUpFromRef);
-	delete []rand;
+	delete []f;
+	rNoisy[tid] = state;
 	
     if (model->spikeCount > 0) {
 		sInfo /= model->spikeCount*dt; //decimal part: tsp (normalize by dt)
@@ -1019,29 +865,22 @@ void recal_G_mat(
         Float* __restrict__ pI,
         Size* __restrict__ typeAcc,
         curandStateMRG32k3a* __restrict__ rGenCond,
-        Float* __restrict__ noisyCondE,
-        Float* __restrict__ noisyCondI,
-        Float* __restrict__ synFailE,
-        Float* __restrict__ synFailI,
+        Float* __restrict__ synFail,
         Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nE, Size nI, Size nV1, Float speedOfThought, int learning, PosInt block_offset, Size nType,
-        LearnVarShapeE lE, LearnVarShapeQ lQ, PosInt iChunk, bool noisyH)
+        LearnVarShapeE lE, LearnVarShapeQ lQ, PosInt iChunk)
 {
     // each thread is the post neuron that collects its presynaptic input conductances
     // initialize
-    Float iSynFailE, iSynFailI;
     PosInt itype;
     #pragma unroll (max_nType)
     for (PosInt i=0; i<nType; i++) {
         if (threadIdx.x < typeAcc[i]) {
             itype = i;
-			iSynFailE = synFailE[i];
-			iSynFailI = synFailI[i];
             break;
         }
     }
 
     Float ipE[max_ngTypeE];
-    Float noisyE[max_ngTypeE];
     Float local_gE[max_ngTypeE];
     Float local_hE[max_ngTypeE];
     #pragma unroll (max_ngTypeE)
@@ -1049,10 +888,8 @@ void recal_G_mat(
         local_gE[ig] = 0.0f;
         local_hE[ig] = 0.0f;
         ipE[ig] = pE[itype*ngTypeE + ig];
-        noisyE[ig] = noisyCondE[ig];
     }
     Float ipI[max_ngTypeI];
-    Float noisyI[max_ngTypeI];
     Float local_gI[max_ngTypeI];
     Float local_hI[max_ngTypeI];
     //#pragma unroll (ntimesI)
@@ -1061,7 +898,6 @@ void recal_G_mat(
         local_gI[ig] = 0.0f;
         local_hI[ig] = 0.0f;
         ipI[ig] = pI[itype*ngTypeI + ig];
-        noisyI[ig] = noisyCondI[ig];
     }
     // TODO: cortical learning
     //Float trip_post[2*max_nLearnTypeE];
@@ -1093,15 +929,22 @@ void recal_G_mat(
             // conMat: [nblock,nearNeighborBlock,blockDim.x,blockDim.x] last dim is the post-id: second-last pre-id
             PosIntL mid = static_cast<PosIntL>((local_bid*blockSize + i)*blockSize + threadIdx.x);
             Float strength = conMat[mid];
+			PosInt jtype;	
+    		#pragma unroll (max_nType)
+    		for (PosInt j=0; j<nType; j++) {
+    		    if (i < typeAcc[j]) {
+    		        jtype = j;
+    		        break;
+    		    }
+    		}
             if (strength != 0) {
                 //Float LTP_pre[max_nLearnTypeE];
                 //Float Q_pre[max_nLearnTypeQ];
+            	Float p = synFail[jtype*nType + itype];
                 Float time2post = delayMat[mid]/speedOfThought;
                 Float *local_g;
                 Float *local_h;
                 Float *ip;
-                Float *noisy;
-                Float synFail;
                 Size ngType;
                 ConductanceShape *cond;
                 if (i < nE) {
@@ -1110,16 +953,12 @@ void recal_G_mat(
                     ngType = ngTypeE;
                     cond = &condE;
                     ip = ipE;
-                    noisy = noisyE;
-                    synFail = iSynFailE;
                 } else {
                     local_g = local_gI;
                     local_h = local_hI;
                     ngType = ngTypeI;
                     cond = &condI;
                     ip = ipI;
-                    noisy = noisyI;
-                    synFail = iSynFailI;
                 }
                 PosInt it2post = static_cast<PosInt>(ceiling(time2post/dt));
                 time2post = it2post*dt - time2post;
@@ -1138,55 +977,29 @@ void recal_G_mat(
                 // ->|         |<- distance adjusted dt
                 // ->| distance/speedOfThought  |<-
                 //|  |<- time2post
-				bool success[2];
-				Float dtsp[2];
-				Float nsp[2];
-                #pragma unroll (max_ngType)
-                for (PosInt ig=0; ig<ngType; ig++) {
-                    Float g0 = 0.0;
-					Float h0 = 0.0;
-					Float f_ig = strength*ip[ig];
-                    #pragma unroll 2
-                    for (PosInt j=0; j<2; j++) { 
-                        // from older to newer
-						if (ig == 0) {
-                        	PosInt isp = nV1*((j0 + j)%trainDepth) + ipre;
-                        	dtsp[j] = spikeTrain[isp];
-							success[j] = false;
-                            nsp[j] = flooring(dtsp[j]);
-                        	if (nsp[j] > 0) { // could fire at the instant t = t_i
-                            	dtsp[j] = (dtsp[j] - nsp[j] + j)*dt - time2post;
-                            	if (dtsp[j] < dt && dtsp[j] >= 0) {
-									success[j] = uniform(&localState) > synFail;
-									if (success[j]) {
-										dtsp[j] = dt - dtsp[j];
-                            	    	cond->compute_single_input_conductance(g0, h0, nsp[j]*f_ig, dtsp[j], ig);
-									}
-                            	}
+                #pragma unroll 2
+                for (PosInt j=0; j<2; j++) { 
+                	PosInt isp = nV1*((j0 + j)%trainDepth) + ipre;
+                	Float dtsp = spikeTrain[isp];
+                	Size nsp = flooring(dtsp);
+					if (nsp > 0)  {
+                	    dtsp = (dtsp - nsp + j)*dt - time2post;
+                		if (dtsp < dt && dtsp >= 0) {
+							Float f = strength; 
+							if (p > 0) {
+								f *= (1-p);
+								Float rand = normal(&localState);
+								f += square_root(p*f) * rand;
 							}
-						} else if (success[j]) {
-                            cond->compute_single_input_conductance(g0, h0, nsp[j]*f_ig, dtsp[j], ig);
+							if (f > 0) {
+								dtsp = dt - dtsp;
+                				#pragma unroll (max_ngType)
+                				for (PosInt ig=0; ig<ngType; ig++) {
+                				    cond->compute_single_input_conductance(local_g[ig], local_h[ig], nsp*f*ip[ig], dtsp, ig);
+                				}
+							}
 						}
-                    }
-                    if (noisy[ig] > 0) {
-                        Float rand = normal(&localState);
-                        Float noise = noisy[ig]*f_ig*rand;
-						/* debug
-                        	if (abs(noise) > strength) {
-                        	    printf("%u-%u: noise:%e = %e * %e * %f, %e\n", ipost, ipre, noise, noisyCond[ig], strength, ip[ig], rand);
-                        	    assert(abs(noise) < strength);
-                        	}
-						*/
-						if (noisyH) {
-                        	h0 += noise;
-                        	if (h0<0) h0 = 0;
-						} else {
-                        	g0 += noise;
-                        	if (g0<0) g0 = 0;
-						}
-                    }
-                    local_g[ig] += g0;
-					local_h[ig] += h0;
+					}
                 }
             }
             __syncwarp(); // may not be needed
@@ -1734,4 +1547,90 @@ void sum_G(
 //            }
 //        }
 //    }
+//}
+//
+//__device__
+//__forceinline__
+//void LIF::recompute(Float dt, Float t0) {
+//    Float rB = dt/(tBack-t0) - 1; 
+//    Float denorm = 2 + a1*dt;
+//    Float A = (2 - a0*dt)/denorm;
+//    Float B = (b0 + b1)*dt/denorm;
+//    v0 = recomp_v0(A, B, rB);
+//    v = A*v0 + B;
+//}
+//
+//__device__ 
+//__forceinline__
+//void LIF::recompute_v(Float dt, Float t0) {
+//    Float rB = dt/(tBack-t0) - 1; 
+//    Float denorm = 2 + a1*dt;
+//    Float A = (2 - a0*dt)/denorm;
+//    Float B = (b0 + b1)*dt/denorm;
+//    v = recomp_v(A, B, rB);
+//}
+//
+//__device__ 
+//__forceinline__
+//void LIF::recompute_v0(Float dt, Float t0) {
+//    Float rB = dt/(tBack-t0) - 1; 
+//    Float denorm = 2 + a1*dt;
+//    Float A = (2 - a0*dt)/denorm;
+//    Float B = (b0 + b1)*dt/denorm;
+//    v0 = recomp_v0(A, B, rB);
+//}
+//__device__
+//__forceinline__
+//Float step(LIF* model, Float dt, PosInt id, Float gE, Float gI) {
+//    model->spikeCount = 0;
+//    Float sInfo = 0.0;
+//    // not in refractory period
+//    if (model->tBack < dt) {
+//        // return from refractory period
+//        if (model->tBack > 0.0f) {
+//            model->recompute_v0(dt);
+//            #ifdef DEBUG
+//                if (id == 0 || id == 768) {
+//                    printf("backed\n");
+//                }
+//            #endif
+//        }
+//        model->rk2(dt);
+//        while (model->v > model->vThres && model->tBack < dt) { // forbids firing exactly at the end of the timestep, 
+//            // crossed threshold
+//            model->compute_spike_time(dt); 
+//            sInfo += model->tsp;
+//            model->spikeCount++;
+//            model->tBack = model->tsp + model->tRef;
+//            #ifdef DEBUG
+//                if (id == 0 || id == 768) {
+//                    printf("#%u spiked at %f, to come back at %f\n", id, model->tsp, model->tBack);
+//                }
+//            #endif
+//            if (model->tBack < dt) {
+//                // refractory period ended during dt
+//                model->recompute(dt);
+//            }
+//        }
+//    }
+//    if (model->tBack >= dt) {
+//        // during refractory period
+//        model->reset1();
+//    }
+//    model->tBack -= dt;
+//    #ifdef DEBUG
+//        if (model->v < vI) {
+//    		printf("#%i implicit rk2 is A-Stable! something is off gE1 = %f, gI1 = %f, v = %f, v0 = %f, a0 = %f, b0 = %f, a1 = %f, b1 = %f\n", id, gE, gI, model->v, model->v0, model->a0, model->b0, model->a1, model->b1);
+//        }   
+//    #endif
+//    if (model->spikeCount > 0) sInfo /= model->spikeCount*dt; //decimal part: tsp (normalize by dt)
+//    sInfo += model->spikeCount; // integer part: nsp
+//    #ifdef DEBUG
+//        if ((sInfo > 0 && sInfo < 1) || model->spikeCount >= 2) {
+//            printf("sInfo = %.3f, gE = %.3e, gI = %.3e, spikeCount = %u\n", sInfo, gE, gI, model->spikeCount);
+//            assert(sInfo == 0 || (sInfo >= 1 && sInfo < 2 && model->spikeCount < 2));
+//        }
+//    #endif
+//    __syncwarp();
+//    return sInfo;
 //}

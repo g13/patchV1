@@ -17,7 +17,7 @@ int main(int argc, char *argv[])
     Size maxNeighborBlock, nearNeighborBlock;
 	Size maxDistantNeighbor;
 	vector<Size> nTypeHierarchy;
-    string V1_type_filename, V1_feature_filename, V1_pos_filename, LGN_V1_s_filename, suffix, conLGN_suffix;
+    string V1_type_filename, V1_feature_filename, V1_pos_filename, LGN_V1_s_filename, suffix, conLGN_suffix, LGN_V1_cfg_filename, output_cfg_filename;
 	string V1_conMat_filename, V1_delayMat_filename;
 	string V1_vec_filename;
 	string block_pos_filename, neighborBlock_filename, stats_filename;
@@ -30,7 +30,6 @@ int main(int argc, char *argv[])
     bool strictStrength;
     bool CmoreN;
 	Size usingPosDim;
-    vector<Size> typeAccCount;
 	vector<Float> rDend, rAxon;
 	vector<Float> dDend, dAxon;
     vector<Float> sTypeMat;
@@ -50,7 +49,6 @@ int main(int argc, char *argv[])
         ("rDend", po::value<vector<Float>>(&rDend),  "a vector of dendritic extensions' radius, size of nType ")
         ("rAxon", po::value<vector<Float>>(&rAxon),  "a vector of axonic extensions' radius, size of nType")
         ("dScale",po::value<Float>(&dScale)->default_value(1.0),"a scaling ratio of all the neurites' lengths <radius>")
-        ("typeAccCount",po::value<vector<Size>>(&typeAccCount), "neuronal types' discrete accumulative distribution, size of [nType]")
         ("dDend", po::value<vector<Float>>(&dDend), "vector of dendrites' densities, size of nType")
         ("dAxon", po::value<vector<Float>>(&dAxon), "vector of axons' densities, size of nType")
 		("nTypeHierarchy", po::value<vector<Size>>(&nTypeHierarchy), "a vector of hierarchical types differs in non-functional properties: reversal potentials, characteristic lengths of dendrite and axons, e.g. in size of nArchtype, {Exc-Pyramidal, Exc-stellate; Inh-PV, Inh-SOM, Inh-LTS} then the vector would be {3, 2}, with Exc and Inh being arch type")
@@ -69,6 +67,7 @@ int main(int argc, char *argv[])
         ("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file to read spatially predetermined functional features of neurons")
         ("fV1_pos", po::value<string>(&V1_pos_filename)->default_value("V1_allpos.bin"), "the directory to read neuron positions")
         ("conLGN_suffix", po::value<string>(&conLGN_suffix)->default_value(""), "suffix associated with fLGN_V1_s")
+		("fLGN_V1_cfg", po::value<string>(&LGN_V1_cfg_filename)->default_value("LGN_V1_cfg"),"file stores LGN_V1.cfg parameters")
 		("fLGN_V1_s", po::value<string>(&LGN_V1_s_filename)->default_value("LGN_V1_sList"),"file stores LGN to V1 connection strengths, use conLGN_suffix");
 
 	po::options_description output_opt("output options");
@@ -79,6 +78,7 @@ int main(int argc, char *argv[])
         ("fV1_vec", po::value<string>(&V1_vec_filename)->default_value("V1_vec"), "file that stores V1 to V1 connection ID, strength and transmission delay outside the neighboring blocks")
 		("fBlock_pos", po::value<string>(&block_pos_filename)->default_value("block_pos"), "file that stores the center coord of each block")
 		("fNeighborBlock", po::value<string>(&neighborBlock_filename)->default_value("neighborBlock"), "file that stores the neighboring blocks' ID for each block")
+		("fConnectome_cfg", po::value<string>(&output_cfg_filename)->default_value("connectome_cfg"), "file stores parameters in current cfg_file")
 		("fStats", po::value<string>(&stats_filename)->default_value("conStats"), "file that stores the statistics of connections");
 
 	po::options_description cmdline_options;
@@ -115,14 +115,51 @@ int main(int argc, char *argv[])
 	}
     cout << "maxDistantNeighbors = " << maxDistantNeighbor << " outside the blocks per neuron.\n";
     cout << "blockROI = " << blockROI << " mm.\n";
+
+	if (!conLGN_suffix.empty()) {
+        conLGN_suffix = '_' + conLGN_suffix;
+    }
+    conLGN_suffix = conLGN_suffix + ".bin";
+
+	Float p_n_LGNeff;
+	Float max_LGNeff;
 	Size nType;
+	vector<Size> typeAccCount;
+	ifstream fLGN_V1_cfg(LGN_V1_cfg_filename + conLGN_suffix, fstream::in | fstream::binary);
+	if (!fLGN_V1_cfg) {
+		cout << "Cannot open or find " << LGN_V1_cfg_filename + suffix <<"\n";
+		return EXIT_FAILURE;
+	} else {
+    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&p_n_LGNeff), sizeof(Float));
+    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&max_LGNeff), sizeof(Float));
+    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&nType), sizeof(Size));
+		typeAccCount.assign(nType, 0);
+    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&typeAccCount[0]), nType*sizeof(Size));
+	}
+	cout << "type accumulate to 1024:\n";
+	for (PosInt i=0; i<nType; i++) {
+		cout << typeAccCount[i];
+		if (i < nType-1) cout << ",";
+		else cout << "\n";
+	}
+
+	Size nType0;
 	Size nArchtype = nTypeHierarchy.size();
     cout << nArchtype << " archtypes\n";
-	if (nTypeHierarchy.size() < 1) {
+	if (nArchtype < 1) {
 		cout << "at least define one type of neuron with nTypeHierarchy.\n";
 		return EXIT_FAILURE;
 	} else {
-		nType = accumulate(nTypeHierarchy.begin(), nTypeHierarchy.end(), 0);
+		if (nArchtype > 2) {
+        	cout << "nTypeHierarchy has more than 2 elements, only E and I types are implemented\n"; 
+			return EXIT_FAILURE;
+		} else {
+			nType0 = accumulate(nTypeHierarchy.begin(), nTypeHierarchy.end(), 0);
+			if (nType0 != nType) {
+				cout << "nTypeHierarchy inconsistent with LGN_V1 connection built with suffix " << conLGN_suffix << "\n";
+				return EXIT_FAILURE;
+			}
+		}
 	}
 
     if (nTypeMat.size() != nType*nType) {
@@ -409,23 +446,35 @@ int main(int argc, char *argv[])
     printf("heap size preserved %f Mb\n", localHeapSize*1.5/1024/1024);
 
     Float* LGN_V1_sSumMax = new Float[nType];
+    Float* LGN_V1_sSumMean = new Float[nType];
     Float* LGN_V1_sSum = new Float[networkSize];
+
+    
+    read_LGN_sSum(LGN_V1_s_filename + conLGN_suffix, LGN_V1_sSum, LGN_V1_sSumMax, LGN_V1_sSumMean, &(typeAccCount[0]), nType, nblock, false);
+
     Float* d_LGN_V1_sSum;
     checkCudaErrors(cudaMalloc((void**)&d_LGN_V1_sSum, networkSize*sizeof(Float)));
-
-    if (!conLGN_suffix.empty()) {
-        conLGN_suffix = '_' + conLGN_suffix;
-    }
-    conLGN_suffix = conLGN_suffix + ".bin";
-
-    read_LGN_sSum(LGN_V1_s_filename + conLGN_suffix, LGN_V1_sSum, LGN_V1_sSumMax, &(typeAccCount[0]), nType, nblock, false);
     checkCudaErrors(cudaMemcpy(d_LGN_V1_sSum, LGN_V1_sSum, networkSize*sizeof(Float), cudaMemcpyHostToDevice));
 
-    Float* d_LGN_V1_sSumMax;
-    checkCudaErrors(cudaMalloc((void**)&d_LGN_V1_sSumMax, nType*sizeof(Float)));
-    checkCudaErrors(cudaMemcpy(d_LGN_V1_sSumMax, LGN_V1_sSumMax, nType*sizeof(Float), cudaMemcpyHostToDevice));
-    delete []LGN_V1_sSumMax;
+	Float* presetConstExc = new Float[nType];
+	for (PosInt i=0; i<nType; i++) {
+		presetConstExc[i] = p_n_LGNeff + hInit_pack.sumType[i];
+		if (presetConstExc[i] - LGN_V1_sSumMax[i] < hInit_pack.sumType[i]*min_FB_ratio) {
+			cout << "Exc won't be constant for type " << i << " with current parameter set, min_FB_ratio will be utilized, presetConstExc = " << presetConstExc[i] << ", LGN_V1_sSumMax = " << LGN_V1_sSumMax[i] << ", sumType = " << hInit_pack.sumType[i] << "\n";
+		}
+	}
 
+    //Float* d_LGN_V1_sSumMax;
+    //Float* d_LGN_V1_sSumMean;
+    //checkCudaErrors(cudaMalloc((void**)&d_LGN_V1_sSumMax, nType*sizeof(Float)));
+    //checkCudaErrors(cudaMalloc((void**)&d_LGN_V1_sSumMean, nType*sizeof(Float)));
+    //checkCudaErrors(cudaMemcpy(d_LGN_V1_sSumMax, LGN_V1_sSumMax, nType*sizeof(Float), cudaMemcpyHostToDevice));
+    //checkCudaErrors(cudaMemcpy(d_LGN_V1_sSumMean, LGN_V1_sSumMean, nType*sizeof(Float), cudaMemcpyHostToDevice));
+    delete []LGN_V1_sSumMax;
+    delete []LGN_V1_sSumMean;
+	delete []presetConstExc;
+
+	
     //cudaStream_t s0, s1, s2;
     //cudaEvent_t i0, i1, i2;
     //cudaEventCreate(&i0);
@@ -440,8 +489,8 @@ int main(int argc, char *argv[])
         state,
 	    d_preType,
 		rden, raxn, dden, daxn,
-		preF_type, preS_type, preN_type, d_LGN_V1_sSum, d_LGN_V1_sSumMax, min_FB_ratio,
-		init_pack, seed, networkSize, nType, nArchtype, nFeature, CmoreN);
+		preF_type, preS_type, preN_type, d_LGN_V1_sSum, min_FB_ratio,
+		init_pack, seed, networkSize, nType, nArchtype, nFeature, CmoreN, p_n_LGNeff);
 	getLastCudaError("initialize failed");
 	checkCudaErrors(cudaDeviceSynchronize());
     printf("initialzied\n");
@@ -487,6 +536,7 @@ int main(int argc, char *argv[])
 	    	dden, daxn,
 	    	state,
 	    	offset, networkSize, maxDistantNeighbor, nearNeighborBlock, maxNeighborBlock, nType, nFeature, gaussian_profile, strictStrength);
+	    checkCudaErrors(cudaDeviceSynchronize());
 	    getLastCudaError("generate_connections failed");
         //offset += current_nblock*neuronPerBlock;
         offset += current_nblock; // offset is block_offset
@@ -654,6 +704,16 @@ int main(int argc, char *argv[])
             }
         }
     }
+
+	ofstream fConnectome_cfg(output_cfg_filename + suffix, fstream::out | fstream::binary);
+	if (!fConnectome_cfg) {
+		cout << "Cannot open or find " << output_cfg_filename + suffix <<"\n";
+		return EXIT_FAILURE;
+	} else {
+		fConnectome_cfg.write((char*) &nType, sizeof(Size));
+		fConnectome_cfg.write((char*) (&typeAccCount[0]), nType*sizeof(Size));
+		fConnectome_cfg.close();
+	}
 
     
     delete [] preConn;
