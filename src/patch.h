@@ -1,7 +1,9 @@
 #define _USE_MATH_DEFINES
 #include <fstream>
+#include <stdio.h>
 #include <string>
 #include <cmath>
+#include <ctime>
 #include <random>
 #include <algorithm>
 #include <numeric>

@@ -379,6 +379,9 @@ void compute_V_collect_spike_learnFF(
 		//	decay
     	condFF.decay_conductance(g1[ig], h1[ig], dt, ig); //  decayed from new_t0 to tBack
 	}
+	if (tid == 0) {
+		printf("V1: rand0 = %f, rand1 = %f, gFF = %f", uniform(&state), uniform(&localState), g1[0] + g1[1]);
+	}
 
 	Float p = synFailFF[itype];
 
@@ -436,7 +439,6 @@ void compute_V_collect_spike_learnFF(
 							}
 							if (model->spikeCount == 0) { // all inputs
     			    			condFF.compute_single_input_conductance(g1[ig], h1[ig], str*nsp, dt*(1-tsp), ig);
-								printf("im here %u f = %f\n", tid, f[i]);
 							}
 						}
 					}
@@ -545,6 +547,9 @@ void compute_V_collect_spike_learnFF(
     	}
 	*/
 	v[tid] = model->v;
+	if (tid == 0) {
+		printf(", v = %f, gE = %f, gI =%f\n", model->v, gE_t1, gI_t1);
+	}
 	if (iModel == 1) {
 		Float** var = new Float*[1];
 		var[0] = w+tid;

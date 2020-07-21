@@ -42,7 +42,7 @@ np.random.seed(7329443)
 nt_ = 2000
 nstep = 2000
 step0 = 0
-TF = 10
+TF = 200
 TFbins = 64
 FRbins = 25
 tbinSize = 1
@@ -320,7 +320,7 @@ if pVoltage or pCond or plotLGNsCorr or plotSample or plotInitial:
             if iModel == 0:
                 f.seek((3+(ngE + ngI + ngFF)*(1+haveH))*nV1*4*interval, 1)
             if iModel == 1:
-                f.seek((4+(ngE + ngI + ngFF)*(1+haveH))*nV1*4*step0, 1)
+                f.seek((4+(ngE + ngI + ngFF)*(1+haveH))*nV1*4*interval, 1)
     print("rawData read")
 
 tpick = step0 + np.arange(nstep)*tstep 
@@ -425,7 +425,11 @@ if plotTempMod:
                 ax = sfig.add_subplot(grid[j,1])
                 ff = np.arange(TFbins//2+1) * TF
                 ax.plot(ff, amp)
-                ax.set_title(f'F1/F0 = {amp[1]/amp[0]}')
+                if amp[0] > 0:
+                    f1f0 = amp[1]/amp[0]
+                else:
+                    f1f0 = 0
+                ax.set_title(f'F1/F0 = {f1f0}')
                 j = j + 1
     if pSample:
         sfig.savefig(output_suffix + 'V1-sample_TF' + '.png')
@@ -437,10 +441,11 @@ if plotTempMod:
     fig = plt.figure(f'F1F0-stats', dpi = 600)
 
 
-    if plotRpCorr:
-        F1F0 = F1[:,0]/F0
-        F0_0 = F0 > 0
-    target = F1[:,0]/F0
+    F1F0 = np.zeros(F1.shape[0])
+    F0_0 = F0 > 0
+    F1F0[F0_0] = F1[F0_0,0]/F0[F0_0]
+
+    target = F1F0
     ax = fig.add_subplot(221)
     pick = epick[np.logical_and(nLGN_V1[epick]>0,np.isfinite(target[epick]))]
     ax.hist(target[pick], bins = sc_range, color = 'r', alpha = 0.5)
@@ -476,7 +481,8 @@ if plotTempMod:
 
     fig = plt.figure(f'F2F0-stats', dpi = 600)
 
-    target = F2[:,0]/F0
+    target = np.zeros(F2.shape[0])
+    target[F0_0] = F2[F0_0,0]/F0[F0_0]
     ax = fig.add_subplot(221)
     pick = epick[np.logical_and(nLGN_V1[epick]>0,np.isfinite(target[epick]))]
     ax.hist(target[pick], bins = sc_range, color = 'r', alpha = 0.5)
@@ -785,8 +791,8 @@ if plotInitial:
     target = gFF[0,:,:,:]
     target = np.sum(target, axis = 0)
     target = target[:,0]/np.mean(target, axis = -1)
-    ax.hist(target[epick[nLGN[epick]>0]], color = 'r', alpha = 0.5)
-    ax.hist(target[ipick[nLGN[ipick]>0]], color = 'b', alpha = 0.5)
+    ax.hist(target[epick[nLGN_V1[epick]>0]], color = 'r', alpha = 0.5)
+    ax.hist(target[ipick[nLGN_V1[ipick]>0]], color = 'b', alpha = 0.5)
     ax.set_title('gFF0/gFF')
     
     target = gE[0,:,:,:]
@@ -843,7 +849,7 @@ if plotRpCorr:
     target = gFF_F1F0[:,igFF]
     ax = fig.add_subplot(grid[1,0])
     pick = epick[np.logical_and(nLGN_V1[epick]>0,gFF_F0_0[epick,igFF])]
-    active = np.sum(fr[pick]>0)/epick.size
+    active = np.sum(fr[pick]>0)/np.sum(nLGN_V1[epick]>0)
     image = HeatMap(target[pick], fr[pick], 25, 25, ax, 'Reds', vmin = 0, log_scale = True)
     ax.set_title(f'active simple {active*100:.3f}%')
     ax.set_xlabel('gFF_F1/F0')
@@ -851,7 +857,7 @@ if plotRpCorr:
 
     ax = fig.add_subplot(grid[1,1])
     pick = ipick[np.logical_and(nLGN_V1[ipick]>0,gFF_F0_0[ipick,igFF])]
-    active = np.sum(fr[pick]>0)/ipick.size
+    active = np.sum(fr[pick]>0)/np.sum(nLGN_V1[ipick]>0)
     image = HeatMap(target[pick], fr[pick], 25, 25, ax, 'Blues', vmin = 0, log_scale = True)
     ax.set_xlabel('gFF_F1/F0')
     ax.set_ylabel('InhS FR')
@@ -860,7 +866,7 @@ if plotRpCorr:
     target = np.sum(np.sum(gE[0,:,:,:], axis = 0), axis = -1)/t_in_ms
     ax = fig.add_subplot(grid[1,2])
     pick = epick[nLGN_V1[epick]==0]
-    active = np.sum(fr[pick]>0)/epick.size
+    active = np.sum(fr[pick]>0)/np.sum(nLGN_V1[epick]==0)
     image = HeatMap(target[pick], fr[pick], 25, 25, ax, 'Reds', vmin = 0, log_scale = True)
     ax.set_xlabel('gE')
     ax.set_ylabel('ExcC FR')
@@ -868,7 +874,7 @@ if plotRpCorr:
 
     ax = fig.add_subplot(grid[1,3])
     pick = ipick[nLGN_V1[ipick]==0]
-    active = np.sum(fr[pick]>0)/ipick.size
+    active = np.sum(fr[pick]>0)/np.sum(nLGN_V1[ipick]==0)
     image = HeatMap(target[pick], fr[pick], 25, 25, ax, 'Blues', vmin = 0, log_scale = True)
     ax.set_xlabel('gE')
     ax.set_ylabel('InhC FR')
@@ -1020,11 +1026,11 @@ if plotScatterFF:
     tsp = tsp[tpick]
     isp = isp[tpick].astype(int)
 
-    ax.set_xlim(step0*dt, nt_*dt)
+    ax.set_xlim(step0*dt, (step0+nt_)*dt)
 
     ax2 = fig.add_subplot(212)
     ax2_ = ax2.twinx()
-    t = (nt_ - step0)*dt #ms
+    t = nt_ *dt #ms
     nbins = t/tbinSize #every 1ms
     edges = step0*dt + np.arange(nbins+1) * tbinSize 
     t_tf = (edges[:-1] + edges[1:])/2

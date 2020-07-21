@@ -435,6 +435,20 @@ vector<vector<Size>> retinotopic_vf_pool(
         }
         cout << "actual maxLGNperV1pool reaches " << maxLGNperV1pool << "\n";
     }
+	Float ecc_min = *min_element(VFposEcc.begin(), VFposEcc.end());
+	Float ecc_mean = accumulate(VFposEcc.begin(), VFposEcc.end(), 0.0)/VFposEcc.size();
+	Float ecc_max = *max_element(VFposEcc.begin(), VFposEcc.end());
+	Float a_min = *min_element(a.begin(), a.end());
+	Float a_mean = accumulate(a.begin(), a.end(), 0.0)/a.size();
+	Float a_max = *max_element(a.begin(), a.end());
+	Float baR_min = *min_element(baRatio.begin(), baRatio.end());
+	Float baR_mean = accumulate(baRatio.begin(), baRatio.end(), 0.0)/baRatio.size();
+	Float baR_max = *max_element(baRatio.begin(), baRatio.end());
+	cout << "LGN_V1_RFratio = " << LGN_V1_RFratio << "\n";
+	cout << "ecc = [" << ecc_min << ", " << ecc_mean << ", " << ecc_max << "] deg\n";
+	cout << "a = [" << a_min << ", " << a_mean << ", " << a_max << "] deg\n";
+	cout << "baRatio = [" << baR_min << ", " << baR_mean << ", " << baR_max << "] deg\n";
+	cout << "R = [" << sqrt(M_PI*baR_min)*a_min << ", " << sqrt(M_PI*baR_mean)*a_mean << ", " << sqrt(M_PI*baR_max)*a_max << "] deg\n";
     return poolList;
 }
  
@@ -869,16 +883,25 @@ int main(int argc, char *argv[]) {
     maxPool = 0; 
     meanPool = 0; 
     zeroPool = 0;
+	Float minSum = max_LGNeff;
+	Float meanSum = 0;
+	Float maxSum = 0;
     for (PosInt i=0; i<n; i++) {
         Size iSize = poolList[i].size();
         if (iSize > maxPool) maxPool = iSize;
         if (iSize < minPool) minPool = iSize;
         meanPool += iSize;
         if (iSize == 0) zeroPool++;
+		Float strength = accumulate(srList[i].begin(), srList[i].end(), 0.0);
+		if (strength > maxSum) maxSum = strength;
+		if (strength < minSum) minSum = strength;
+		meanSum += strength;
     }
+	meanSum /= n;
     meanPool /= n;
     cout << "# connections: [" << minPool << ", " << meanPool << ", " << maxPool << "]\n";
     cout << "among them " << zeroPool << " would have no connection from LGN\n";
+    cout << "# totalStrength: [" << minSum << ", " << meanSum << ", " << maxSum << "]\n";
 
     // write poolList to disk, to be used in ext_input.cu and genCon.cu
 	write_listOfList<Size>(idList_filename + suffix, poolList, false);
