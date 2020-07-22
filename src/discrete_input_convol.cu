@@ -1433,9 +1433,11 @@ void LGN_nonlinear(
         Size nsp;
         Float tsp = get_spike(nsp, lTR, lNL, dt, fr/1000.0, &local_state);
         Float sInfo = nsp + tsp/dt; // must be float, integer part = #spikes decimals: mean tsp normalized by dt
-		if (id == 0) {
-			printf("LGN: fr = %f, lTR = %f, lNL = %f, rand = %f\n", fr, lTR, lNL, uniform(&local_state));
-		}
+		/* debug for snapshot
+			if (id == 0) {
+				printf("LGN: fr = %f, lTR = %f, lNL = %f, rand = %f\n", fr, lTR, lNL, uniform(&local_state));
+			}
+		 */
         if (sInfo > 0) {
             lastNegLogRand[id] = lNL;
             //if (id == 37054 || id == 37223 || id == 37647) {
