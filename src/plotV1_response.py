@@ -790,7 +790,10 @@ if plotInitial:
     ax = fig.add_subplot(131)
     target = gFF[0,:,:,:]
     target = np.sum(target, axis = 0)
-    target = target[:,0]/np.mean(target, axis = -1)
+    meanTarget = np.mean(target, axis = -1)
+    zeroPick = meanTarget == 0
+    target[zeroPick] = 0
+    target[np.logical_not(zeroPick), 0] = target[np.logical_not(zeroPick), 0]/meanTarget[np.logical_not(zeroPick)]
     ax.hist(target[epick[nLGN_V1[epick]>0]], color = 'r', alpha = 0.5)
     ax.hist(target[ipick[nLGN_V1[ipick]>0]], color = 'b', alpha = 0.5)
     ax.set_title('gFF0/gFF')

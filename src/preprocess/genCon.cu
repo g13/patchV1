@@ -41,6 +41,8 @@ int main(int argc, char *argv[])
         ("seed", po::value<BigSize>(&seed)->default_value(7641807), "seed for RNG")
 		("cfg_file,c", po::value<string>()->default_value("connectome.cfg"), "filename for configuration file")
 		("help,h", "print usage");
+
+	Float minConTol;
 	po::options_description input_opt("output options");
 	input_opt.add_options()
         ("DisGauss", po::value<bool>(&gaussian_profile), "if set true, conn. prob. based on distance will follow a 2D gaussian with a variance. of (raxn*raxn + rden*rden)/2, otherwise will based on the overlap of the area specified by raxn and rden")
@@ -56,6 +58,7 @@ int main(int argc, char *argv[])
 		//("targetFR", po::value<vector<Float>>(&targetFR), "a vector of target firing rate of different neuronal types")
 		//("FF_FB_ratio", po::value<Float>(&FF_FB_ratio), "excitation ratio of FF over total excitation")
 		("min_FB_ratio", po::value<Float>(&min_FB_ratio), "minimum cortical excitation ratio of predefined mean value")
+		("minConTol", po::value<Float>(&minConTol), "minimum cortical connection ratio of the predefined value")
         ("sTypeMat", po::value<vector<Float>>(&sTypeMat), "connection strength matrix between neuronal types, size of [nType, nType], nType = sum(nTypeHierarchy), row_id -> postsynaptic, column_id -> presynaptic")
         ("nTypeMat", po::value<vector<Size>>(&nTypeMat), "#connection matrix between neuronal types, size of [nType, nType], nType = sum(nTypeHierarchy), row_id -> postsynaptic, column_id -> presynaptic")
         ("typeFeatureMat", po::value<vector<Float>>(&typeFeatureMat), "feature parameter of neuronal types, size of [nFeature, nType, nType], nType = sum(nTypeHierarchy), row_id -> postsynaptic, column_id -> presynaptic")
@@ -137,11 +140,16 @@ int main(int argc, char *argv[])
     	fLGN_V1_cfg.read(reinterpret_cast<char*>(&typeAccCount[0]), nType*sizeof(Size));
 	}
 	cout << "type accumulate to 1024:\n";
+	vector<Size> typeAcc0(1,0);
 	for (PosInt i=0; i<nType; i++) {
 		cout << typeAccCount[i];
 		if (i < nType-1) cout << ",";
 		else cout << "\n";
+		typeAcc0.push_back(typeAccCount[i]);
 	}
+	Size* d_typeAcc0;
+    checkCudaErrors(cudaMalloc((void**)&d_typeAcc0, (nType+1)*sizeof(Size)));
+    checkCudaErrors(cudaMemcpy(d_typeAcc0, &(typeAcc0[0]), (nType+1)*sizeof(Size), cudaMemcpyHostToDevice));
 
 	Size nType0;
 	Size nArchtype = nTypeHierarchy.size();
@@ -534,8 +542,9 @@ int main(int argc, char *argv[])
 	    	d_preTypeConnected, d_preTypeAvail, d_preTypeStrSum,
 	    	d_preType, d_feature,
 	    	dden, daxn,
+			d_typeAcc0,
 	    	state,
-	    	offset, networkSize, maxDistantNeighbor, nearNeighborBlock, maxNeighborBlock, nType, nFeature, gaussian_profile, strictStrength);
+	    	offset, networkSize, maxDistantNeighbor, nearNeighborBlock, maxNeighborBlock, nType, nFeature, gaussian_profile, strictStrength, minConTol);
 	    checkCudaErrors(cudaDeviceSynchronize());
 	    getLastCudaError("generate_connections failed");
         //offset += current_nblock*neuronPerBlock;
@@ -722,6 +731,7 @@ int main(int argc, char *argv[])
     delete [] nnType;
 	checkCudaErrors(cudaDeviceSynchronize());
     checkCudaErrors(cudaFree(gpu_chunk));
+    checkCudaErrors(cudaFree(d_typeAcc0));
     checkCudaErrors(cudaFree(d_LGN_V1_sSum));
 	free(cpu_chunk);
     return 0;
