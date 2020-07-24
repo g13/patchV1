@@ -39,10 +39,10 @@ if conV1_suffix:
 #sample = np.array([0,1,2,768])
 ns = 12
 np.random.seed(7329443)
-nt_ = 2000
-nstep = 2000
+nt_ = 20000
+nstep = 20000
 step0 = 0
-TF = 200
+TF = 4
 TFbins = 64
 FRbins = 25
 tbinSize = 1
@@ -50,24 +50,24 @@ nsmooth = 5
 lw = 0.1
 
 plotSample = True
-plotLGNsCorr = True
-plotRpStat = True 
+#plotLGNsCorr = True
+#plotRpStat = True 
 plotRpCorr = True 
-plotTempMod = True 
+#plotTempMod = True 
 plotScatterFF = True
-plotExc_sLGN = True
-plotLR_rp = True
-plotInitial = True 
+#plotExc_sLGN = True
+#plotLR_rp = True
+#plotInitial = True 
 
 #plotSample = False
-#plotLGNsCorr = False 
-#plotRpStat = False 
+plotLGNsCorr = False 
+plotRpStat = False 
 #plotRpCorr = False 
-#plotTempMod = False 
+plotTempMod = False 
 #plotScatterFF = False
-#plotExc_sLGN = False
-#plotLR_rp = False 
-#plotInitial = False 
+plotExc_sLGN = False
+plotLR_rp = False 
+plotInitial = False 
 
 pSample = True
 #pSpike = True
@@ -150,7 +150,7 @@ spDataFn = "V1_spikes" + _output_suffix
 if output_suffix:
     output_suffix = output_suffix + "-"
 
-if plotExc_sLGN or plotSample or plotTempMod or (plotScatterFF and pSC):
+if plotExc_sLGN or plotSample or (plotTempMod and pCond):
     LGN_V1_s = readLGN_V1_s0(LGN_V1_sFn)
     LGN_V1_ID, nLGN_V1 = readLGN_V1_ID(LGN_V1_idFn)
     nLGN_I, nLGN_C, nLGN, max_ecc, vCoordSpan, LGN_vpos, LGN_type = readLGN_vpos(LGN_vposFn)
@@ -162,7 +162,7 @@ if plotExc_sLGN or plotSample or plotTempMod or (plotScatterFF and pSC):
         LGN_spScatter = np.load(LGN_spFn + '.npy', allow_pickle=True)
     print('LGN data read')
 
-if plotRpCorr:
+if plotRpCorr or (plotScatterFF and pSC):
     _, nLGN_V1 = readLGN_V1_ID(LGN_V1_idFn)
 
 
@@ -176,7 +176,7 @@ with open(rawDataFn, 'rb') as f:
     tstep = (nt_ + nstep - 1)//nstep
     nstep = nt_//tstep
     interval = tstep - 1
-    print(f'plot {nstep} data points from the {nt_} time steps startingfrom step {step0}')
+    print(f'plot {nstep} data points from the {nt_} time steps startingfrom step {step0}, total {nt} steps')
     nV1 = np.fromfile(f, 'u4', 1)[0] 
     iModel = np.fromfile(f, 'i4', 1)[0] 
     haveH = np.fromfile(f, 'u4', 1)[0] 
@@ -300,6 +300,9 @@ if pVoltage or pCond or plotLGNsCorr or plotSample or plotInitial:
 
             if pCond:
                 gFF[0,:,:,i] = np.fromfile(f, 'f4', ngFF*nV1).reshape(ngFF,nV1)
+                if i == 0:
+                    target = gFF[0,:,:,i].flatten()
+                    assert((target < 0.5).all())
                 if haveH:
                     if pH:
                         gFF[1,:,:,i] = np.fromfile(f, 'f4', ngFF*nV1).reshape(ngFF,nV1)
@@ -308,6 +311,10 @@ if pVoltage or pCond or plotLGNsCorr or plotSample or plotInitial:
 
                 gE[0,:,:,i] = np.fromfile(f, 'f4', ngE*nV1).reshape(ngE,nV1)
                 gI[0,:,:,i] = np.fromfile(f, 'f4', ngI*nV1).reshape(ngI,nV1)
+                if i == 0:
+                    target = gE[0,:,:,i].flatten()
+                    assert((target < 0.5).all())
+
                 if haveH :
                     if pH:
                         gE[1,:,:,i] = np.fromfile(f, 'f4', ngE*nV1).reshape(ngE,nV1)
@@ -439,7 +446,6 @@ if plotTempMod:
     phase_range = np.linspace(-180, 180, 33)
 
     fig = plt.figure(f'F1F0-stats', dpi = 600)
-
 
     F1F0 = np.zeros(F1.shape[0])
     F0_0 = F0 > 0
@@ -636,6 +642,7 @@ if plotSample:
         ax.plot(tsp, np.zeros(len(tsp))+vThres, '*k', ms = 1.0)
         #if pVoltage:
         ax.plot(t, v[iV1,:], '-k', lw = lw)
+        ax.plot(t, np.ones(t.shape), ':k', lw = lw)
         #if pCond:
         ax2 = ax.twinx()
         for ig in range(ngFF):
@@ -698,7 +705,7 @@ if plotSample:
         ax.plot(t, np.zeros(t.shape), ':k', lw = lw)
         mean_current = np.mean(current)
         ax.plot(t[-1], mean_current, '*k', ms = lw)
-        ax.set_title(f'{fr[iV1]:.3f}, {mean_current*t.size:.3f}')
+        ax.set_title(f'FR:{fr[iV1]:.3f}, F1F0:{F1F0[iV1]:.3f}')
         ax.set_ylabel('current')
 
         if nLGN_V1[iV1] > 0:
@@ -792,10 +799,10 @@ if plotInitial:
     target = np.sum(target, axis = 0)
     meanTarget = np.mean(target, axis = -1)
     zeroPick = meanTarget == 0
-    target[zeroPick] = 0
-    target[np.logical_not(zeroPick), 0] = target[np.logical_not(zeroPick), 0]/meanTarget[np.logical_not(zeroPick)]
-    ax.hist(target[epick[nLGN_V1[epick]>0]], color = 'r', alpha = 0.5)
-    ax.hist(target[ipick[nLGN_V1[ipick]>0]], color = 'b', alpha = 0.5)
+    ratio = np.zeros(nV1)
+    ratio[np.logical_not(zeroPick)] = target[np.logical_not(zeroPick), 0]/meanTarget[np.logical_not(zeroPick)]
+    ax.hist(ratio[epick[nLGN_V1[epick]>0]], color = 'r', alpha = 0.5)
+    ax.hist(ratio[ipick[nLGN_V1[ipick]>0]], color = 'b', alpha = 0.5)
     ax.set_title('gFF0/gFF')
     
     target = gE[0,:,:,:]
@@ -1025,7 +1032,7 @@ if plotScatterFF:
     ax = fig.add_subplot(211)
     tsp = np.hstack([x for x in spScatter])
     isp = np.hstack([ix + np.zeros(len(spScatter[ix])) for ix in np.arange(nV1)])
-    tpick = np.logical_and(tsp>=step0*dt, tsp<nt_*dt)
+    tpick = np.logical_and(tsp>=step0*dt, tsp<(step0+nt_)*dt)
     tsp = tsp[tpick]
     isp = isp[tpick].astype(int)
 
@@ -1050,7 +1057,7 @@ if plotScatterFF:
             ax.plot(tsp[eSpick], isp[eSpick], ',r')
             ax.plot(tsp[iSpick], isp[iSpick], ',b')
 
-            nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(nblock*mE)
+            nsp = np.histogram(tsp[eSpick], bins = edges)[0]/np.sum(eSpick)
             amp = np.abs(np.fft.rfft(nsp))/nbins
             amp[1:] = amp[1:]*2
             ax2.plot(ff, amp, 'r', lw = 0.5, alpha = 0.5)
@@ -1058,7 +1065,7 @@ if plotScatterFF:
             ax2.set_yscale('log')
             ax2.set_xlabel('Hz')
 
-            nsp = np.histogram(tsp[iSpick], bins = edges)[0]/(nblock*mI)
+            nsp = np.histogram(tsp[iSpick], bins = edges)[0]/np.sum(iSpick)
             amp = np.abs(np.fft.rfft(nsp))/nbins
             amp[1:] = amp[1:]*2
             ax2_.plot(ff, amp, 'b', lw = 0.5, alpha = 0.5)
@@ -1070,7 +1077,7 @@ if plotScatterFF:
             ax.plot(tsp[eSpick], isp[eSpick], ',m')
             ax.plot(tsp[iSpick], isp[iSpick], ',g')
 
-            nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(nblock*mE)
+            nsp = np.histogram(tsp[eSpick], bins = edges)[0]/np.sum(eSpick)
             amp = np.abs(np.fft.rfft(nsp))/nbins
             amp[1:] = amp[1:]*2
             ax2.plot(ff, amp, 'm', lw = 0.5, alpha = 0.5)
@@ -1078,7 +1085,7 @@ if plotScatterFF:
             ax2.set_yscale('log')
             ax2.set_xlabel('Hz')
 
-            nsp = np.histogram(tsp[iSpick], bins = edges)[0]/(nblock*mI)
+            nsp = np.histogram(tsp[iSpick], bins = edges)[0]/np.sum(iSpick)
             amp = np.abs(np.fft.rfft(nsp))/nbins
             amp[1:] = amp[1:]*2
             ax2_.plot(ff, amp, 'g', lw = 0.5, alpha = 0.5)
@@ -1091,7 +1098,7 @@ if plotScatterFF:
             ax.plot(tsp[eSpick], isp[eSpick], ',r')
             ax.plot(tsp[iSpick], isp[iSpick], ',b')
 
-            nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(nblock*mE)
+            nsp = np.histogram(tsp[eSpick], bins = edges)[0]/np.sum(eSpick)
             amp = np.abs(np.fft.rfft(nsp))/nbins
             amp[1:] = amp[1:]*2
             ax2.plot(ff, amp, 'r', lw = 0.5, alpha = 0.5)
@@ -1099,7 +1106,7 @@ if plotScatterFF:
             ax2.set_yscale('log')
             ax2.set_xlabel('Hz')
 
-            nsp = np.histogram(tsp[iSpick], bins = edges)[0]/(nblock*mI)
+            nsp = np.histogram(tsp[iSpick], bins = edges)[0]/np.sum(iSpick)
             amp = np.abs(np.fft.rfft(nsp))/nbins
             amp[1:] = amp[1:]*2
             ax2_.plot(ff, amp, 'b', lw = 0.5, alpha = 0.5)
@@ -1111,7 +1118,7 @@ if plotScatterFF:
             ax.plot(tsp[eSpick], isp[eSpick], ',m')
             ax.plot(tsp[iSpick], isp[iSpick], ',g')
 
-            nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(nblock*mE)
+            nsp = np.histogram(tsp[eSpick], bins = edges)[0]/np.sum(eSpick)
             amp = np.abs(np.fft.rfft(nsp))/nbins
             amp[1:] = amp[1:]*2
             ax2.plot(ff, amp, 'm', lw = 0.5, alpha = 0.5)
@@ -1119,7 +1126,7 @@ if plotScatterFF:
             ax2.set_yscale('log')
             ax2.set_xlabel('Hz')
 
-            nsp = np.histogram(tsp[iSpick], bins = edges)[0]/(nblock*mI)
+            nsp = np.histogram(tsp[iSpick], bins = edges)[0]/np.sum(iSpick)
             amp = np.abs(np.fft.rfft(nsp))/nbins
             amp[1:] = amp[1:]*2
             ax2_.plot(ff, amp, 'g', lw = 0.5, alpha = 0.5)

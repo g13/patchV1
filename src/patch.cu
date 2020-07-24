@@ -56,6 +56,7 @@ int main(int argc, char **argv) {
     bool LGN_switch;
     bool getLGN_sp;
 	bool delPrevSnapshot;
+	bool asInit;
     int rebound;
     int learning;
     int iModel;
@@ -242,6 +243,7 @@ int main(int argc, char **argv) {
 		("LGN_switch", po::value<bool>(&LGN_switch)->default_value(false), "control LGN activation during retinal waves, make sure LGN_switch file is ready")
 		("getLGN_sp", po::value<bool>(&getLGN_sp)->default_value(false), "if write LGN spikes to file")
 		("delPrevSnapshot", po::value<bool>(&delPrevSnapshot)->default_value(true), "delete old snapshot")
+		("asInit", po::value<bool>(&asInit)->default_value(true), "use snapshot for initialization not to resume previous simulation")
 		("useNewLGN", po::value<bool>(&useNewLGN)->default_value(true), "regenerate the a new ensemble of LGN parameters according to their distribution");
 
 	// files
@@ -249,6 +251,7 @@ int main(int argc, char **argv) {
     string output_suffix, output_suffix0; // suffix to be added to all output filename
     string conV1_suffix; // suffix of the input filenames, if suffix is not the same, set f*
     string conLGN_suffix; // suffix of the input filenames, if suffix is not the same, set f*
+    string snapshot_suffix; // suffix of the input filenames, if suffix is not the same, set f*
 	string stimulus_filename, LGN_switch_filename;
 	string V1_RF_filename, V1_feature_filename, V1_pos_filename;
 	string neighborBlock_filename;
@@ -262,6 +265,7 @@ int main(int argc, char **argv) {
 		("conV1_suffix", po::value<string>(&conV1_suffix)->default_value(""),"suffix for V1 connectome files")
 		("conLGN_suffix", po::value<string>(&conLGN_suffix)->default_value(""),"suffix for LGN to V1 connectome files")
 		("fConnectome_cfg", po::value<string>(&connectome_cfg_filename)->default_value("connectome_cfg"),"file that stores connectome cfg parameters")
+		("snapshot_suffix", po::value<string>(&snapshot_suffix),"suffix of the snapshot")
 		("fSnapshot", po::value<string>(&restore)->default_value(""),"file that can be used to restore previous simulation status")
 		("fPatchV1_cfg", po::value<string>(&patchV1_cfg_filename)->default_value("patchV1_cfg"),"file that stores patchV1 cfg parameters")
 		("fLGN_switch", po::value<string>(&LGN_switch_filename)->default_value("LGN_switch"),"file that stores which types of LGN to turn on and off over time, ints of size: (nInputType, nStatus)")
@@ -335,6 +339,16 @@ int main(int argc, char **argv) {
 
     cout << "conLGN_suffix: " << conLGN_suffix << "\n";
     cout << "conV1_suffix: " << conV1_suffix << "\n";
+
+	if (!restore.empty()) {
+		restore = restore + "_" + snapshot_suffix + ".bin";
+		if (!asInit) {
+			if (snapshot_suffix != output_suffix0) {
+				cout << "to use snapshot to resume simulation, it needs to have the same suffix as the output_suffix to work\n";
+				return EXIT_FAILURE;
+			}
+		}
+	}
 
 	if (nSpatialSample1D > 32) {
 		cout << "nSpatialSample1D has to be smaller than 32 (1024 threads per block).\n";
@@ -3019,6 +3033,7 @@ int main(int argc, char **argv) {
     usingGMem += learnVarSize*sizeof(Float);
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 	cout << "implementing LGN_surface requires " << surfacePosSize/1024.0/1024.0 << " Mb\n";
+
 	if (restore.empty()) {
     	default_random_engine rGen_initV1(seed);
     	seed++;
@@ -3214,50 +3229,57 @@ int main(int argc, char **argv) {
 	fstream fSnapshot;
 	PosInt it0 = 0;
 	{ // output file tests
-		if (!restore.empty()) {
-
+		if (!restore.empty() && !asInit) {
 			fSnapshot.open(restore, fstream::in | fstream::binary);
 			if (!fSnapshot) {
 				cout << "cannot restore from " << restore << "\n";
 				return EXIT_FAILURE;
 			} else {
 				fSnapshot.read(reinterpret_cast<char*>(&it0), sizeof(PosInt));
+				fSnapshot.close();
 			}
 		}
 		Size nt0 = nt + it0;
 		if (saveLGN_fr) {
-			if (restore.empty()) {
-				fLGN_fr.open(LGN_fr_filename + output_suffix, fstream::out | fstream::binary);
-			} else {
+			if (!restore.empty() && !asInit) {
 				fLGN_fr.open(LGN_fr_filename + output_suffix, fstream::out | fstream::in | fstream::binary | fstream::ate);
+			} else {
+				fLGN_fr.open(LGN_fr_filename + output_suffix, fstream::out | fstream::binary);
 			}
 			if (!fLGN_fr) {
 				cout << "Cannot open or find " << LGN_fr_filename + output_suffix <<" for LGN firing rate output\n";
 				return EXIT_FAILURE;
 			} else {
-				if (restore.empty()) {
-					fLGN_fr.write((char*)&nt, sizeof(Size));
-					fLGN_fr.write((char*)&nLGN, sizeof(Size));
-				} else {
+				if (!restore.empty() && !asInit) {
 					streampos eof = fLGN_fr.tellp();
 					fLGN_fr.seekp(0);
 					fLGN_fr.write((char*)&nt0, sizeof(Size));
 					fLGN_fr.seekp(eof);
+				} else {
+					fLGN_fr.write((char*)&nt, sizeof(Size));
+					fLGN_fr.write((char*)&nLGN, sizeof(Size));
 				}
 			}
 		}
 
         if (rawData) {
-			if (restore.empty()) {
-		    	fRawData.open(rawData_filename + output_suffix, fstream::out | fstream::binary);
-			} else {
+			if (!restore.empty() && !asInit) {
 		    	fRawData.open(rawData_filename + output_suffix, fstream::out | fstream::in | fstream::binary | fstream::ate);
+			} else {
+		    	fRawData.open(rawData_filename + output_suffix, fstream::out | fstream::binary);
 			}
 		    if (!fRawData) {
 		    	cout << "Cannot open or find " << rawData_filename + output_suffix <<" for V1 simulation results.\n";
 		    	return EXIT_FAILURE;
 		    } else {
-				if (restore.empty()) {
+				if (!restore.empty() && !asInit) {
+					cout << "im appending \n";
+					streampos eof = fRawData.tellp();
+					fRawData.seekp(sizeof(Float));
+					fRawData.write((char*)&nt0, sizeof(Size));
+					fRawData.seekp(eof);
+				} else {
+					cout << "im overwriting \n";
 		    		fRawData.write((char*) &dt, sizeof(Float));
 		    		fRawData.write((char*) &nt, sizeof(Size));
 		    		fRawData.write((char*) &nV1, sizeof(Size));
@@ -3267,27 +3289,25 @@ int main(int argc, char **argv) {
 		    		fRawData.write((char*) &ngTypeFF, sizeof(Size));
 		    		fRawData.write((char*) &ngTypeE, sizeof(Size));
 		    		fRawData.write((char*) &ngTypeI, sizeof(Size));
-				} else {
-					cout << "im here\n";
-					streampos eof = fRawData.tellp();
-					cout << " eof = " << static_cast<PosIntL>(eof) << "\n";
-					fRawData.seekp(sizeof(Float));
-					fRawData.write((char*)&nt0, sizeof(Size));
-					fRawData.seekp(eof);
 				}
 		    }
         }
         if (learnData_FF) {
-			if (restore.empty()) {
-		    	fLearnData_FF.open(learnData_FF_filename + output_suffix, fstream::out | fstream::binary);
-			} else {
+			if (!restore.empty() && !asInit) {
 		    	fLearnData_FF.open(learnData_FF_filename + output_suffix, fstream::out | fstream::in | fstream::binary | fstream::ate);
+			} else {
+		    	fLearnData_FF.open(learnData_FF_filename + output_suffix, fstream::out | fstream::binary);
 			}
 		    if (!fLearnData_FF) {
 		    	cout << "Cannot open or find " << learnData_FF_filename + output_suffix <<" for data related to LGN->V1 plasticity.\n";
 		    	return EXIT_FAILURE;
             } else {
-				if (restore.empty()) {
+				if (!restore.empty() && !asInit) {
+					streampos eof = fLearnData_FF.tellp();
+					fLearnData_FF.seekp(sizeof(Float));
+					fLearnData_FF.write((char*)&nt0, sizeof(Size));
+					fLearnData_FF.seekp(eof);
+				} else {
 		    		fLearnData_FF.write((char*) &dt, sizeof(Float));
 		    		fLearnData_FF.write((char*) &nt, sizeof(Size));
 		    		fLearnData_FF.write((char*) &nLGN, sizeof(Size));
@@ -3299,75 +3319,70 @@ int main(int argc, char **argv) {
 		    		fLearnData_FF.write((char*) &max_LGNperV1, sizeof(Size));
 		    		fLearnData_FF.write((char*) &nLearnTypeFF_E, sizeof(Size));
 		    		fLearnData_FF.write((char*) &nLearnTypeFF_I, sizeof(Size));
-				} else {
-					streampos eof = fLearnData_FF.tellp();
-					fLearnData_FF.seekp(sizeof(Float));
-					fLearnData_FF.write((char*)&nt0, sizeof(Size));
-					fLearnData_FF.seekp(eof);
 				}
                 if (rawData) {
                     cout << "find V1 spike and gFF in " << rawData_filename + output_suffix << " for learnData_FF\n";
                 }
                 // loop in LGN spike, V1 spike, LGN->V1 strength
             }
-			if (restore.empty()) {
-            	f_sLGN.open(sLGN_filename + output_suffix, fstream::out | fstream::binary);
-			} else {
+			if (!restore.empty() && !asInit) {
             	f_sLGN.open(sLGN_filename + output_suffix, fstream::out | fstream::in | fstream::binary | fstream::ate);
+			} else {
+            	f_sLGN.open(sLGN_filename + output_suffix, fstream::out | fstream::binary);
 			}
             if (!f_sLGN) {
 		    	cout << "Cannot open or find " << sLGN_filename + output_suffix <<" to store the LGN->V1 connection strength over time.\n";
 		    	return EXIT_FAILURE;
             } else {
-				if (restore.empty()) {
+				if (!restore.empty() && !asInit) {
+					streampos eof = f_sLGN.tellp();
+					f_sLGN.seekp(0);
+					f_sLGN.write((char*)&nt0, sizeof(Size));
+					f_sLGN.seekp(eof);
+				} else {
 		    		f_sLGN.write((char*) &nt, sizeof(Size));
 		    		f_sLGN.write((char*) &nV1, sizeof(Size));
 		    		f_sLGN.write((char*) &max_LGNperV1, sizeof(Size));
 		    		f_sLGN.write((char*) &sRatioLGN[0], sizeof(Float));
 		    		f_sLGN.write((char*) &nLearnTypeFF, sizeof(Size));
 		    		f_sLGN.write((char*) &(gmaxLGN[0]), nLearnTypeFF*sizeof(Float));
-				} else {
-					streampos eof = f_sLGN.tellp();
-					f_sLGN.seekp(0);
-					f_sLGN.write((char*)&nt0, sizeof(Size));
-					f_sLGN.seekp(eof);
 				}
             }
         }
         
         if (getLGN_sp) {
-			if (restore.empty()) {
-            	fLGN_sp.open(LGN_sp_filename + output_suffix, fstream::out | fstream::binary);
-			} else {
+			if (!restore.empty() && !asInit) {
             	fLGN_sp.open(LGN_sp_filename + output_suffix, fstream::out | fstream::in |fstream::binary | fstream::ate);
+			} else {
+            	fLGN_sp.open(LGN_sp_filename + output_suffix, fstream::out | fstream::binary);
 			}
             if (!fLGN_sp) {
 		    	cout << "Cannot open or find " << LGN_sp_filename + output_suffix <<" to store the LGN tsp.\n";
 		    	return EXIT_FAILURE;
             } else {
-				if (restore.empty()) {
-		    		fLGN_sp.write((char*) &dt, sizeof(Float));
-		    		fLGN_sp.write((char*) &nt, sizeof(Size));
-		    		fLGN_sp.write((char*) &nLGN, sizeof(Size));
-				} else {
+				if (!restore.empty() && !asInit) {
 					streampos eof = fLGN_sp.tellp();
 					fLGN_sp.seekp(sizeof(Float));
 					fLGN_sp.write((char*)&nt0, sizeof(Size));
 					fLGN_sp.seekp(eof);
+				} else {
+		    		fLGN_sp.write((char*) &dt, sizeof(Float));
+		    		fLGN_sp.write((char*) &nt, sizeof(Size));
+		    		fLGN_sp.write((char*) &nLGN, sizeof(Size));
 				}
             }
         }
 
-		if (restore.empty()) {
-			fOutputFrame.open(outputFrame_filename + output_suffix, fstream::out | fstream::binary);
+		if (!restore.empty() && !asInit) {
+			fOutputFrame.open(outputFrame_filename + output_suffix, fstream::out | fstream::in | fstream::binary | fstream::ate);
 		} else {
-			fOutputFrame.open(outputFrame_filename + output_suffix, fstream::out | fstream::binary | fstream::app);
+			fOutputFrame.open(outputFrame_filename + output_suffix, fstream::out | fstream::binary);
 		}
 		if (!fOutputFrame) {
 			cout << "Cannot open or find " << outputFrame_filename + output_suffix <<" for output V1 simulation results to frames.\n";
 			return EXIT_FAILURE;
 		} else {
-			if (restore.empty()) {
+			if (!restore.empty() && !asInit) {
 				fOutputFrame.write((char*)&dt, sizeof(Float));
 				fOutputFrame.write((char*)&ot, sizeof(Size));
 				fOutputFrame.write((char*)&iFrameOutput, sizeof(Size));
@@ -3408,24 +3423,24 @@ int main(int argc, char **argv) {
 		}
 
 		if (saveOutputB4V1) {
-			if (restore.empty()) {
-				fOutputB4V1.open(outputB4V1_filename + output_suffix, fstream::out | fstream::binary);
-			} else {
+			if (!restore.empty() && !asInit) {
 				fOutputB4V1.open(outputB4V1_filename + output_suffix, fstream::out | fstream::in | fstream::binary | fstream::ate);
+			} else {
+				fOutputB4V1.open(outputB4V1_filename + output_suffix, fstream::out | fstream::binary);
 			}
 			if (!fOutputB4V1) {
 				cout << "Cannot open or find " << outputB4V1_filename + output_suffix <<" to store ouput before V1.\n";
 				return EXIT_FAILURE;
 			} else {
-				if (restore.empty()) {
-					fOutputB4V1.write((char*)&nt, sizeof(Size));
-					fOutputB4V1.write((char*)&dt, sizeof(Float));
-					fOutputB4V1.write((char*)&nLGN, sizeof(Size));
-				} else {
+				if (!restore.empty() && !asInit) {
 					streampos eof = fOutputB4V1.tellp();
 					fOutputB4V1.seekp(0);
 					fOutputB4V1.write((char*)&nt0, sizeof(Size));
 					fOutputB4V1.seekp(eof);
+				} else {
+					fOutputB4V1.write((char*)&nt, sizeof(Size));
+					fOutputB4V1.write((char*)&dt, sizeof(Float));
+					fOutputB4V1.write((char*)&nLGN, sizeof(Size));
 				}
 			}
 		}
@@ -3794,7 +3809,11 @@ int main(int argc, char **argv) {
     bool farSpiked = false;
 	PosInt currentTimeSlot;
 	Float odt = ot*dt/1000.0;// get interval in sec
-	cout << "simulation starts: \n";
+	if (!restore.empty() && asInit) {
+		cout << "simulation starts: \n";
+	} else {
+		cout << "simulation resumes from t = " << it0*dt << "...\n";
+	}
     int varSlot = 0;
     InputActivation typeStatus;
     PosInt iStatus = 0;
@@ -3824,104 +3843,198 @@ int main(int argc, char **argv) {
 
 	PosInt frameCycle = 0;
 	if (!restore.empty()) {
-		// indices
-		fSnapshot.read(reinterpret_cast<char*>(&frameCycle), sizeof(PosInt));
-		fSnapshot.read(reinterpret_cast<char*>(&iFrameHead), sizeof(PosInt));
-		fSnapshot.read(reinterpret_cast<char*>(&oldFrameHead), sizeof(PosInt));
-		fSnapshot.read(reinterpret_cast<char*>(&currentFrame), sizeof(PosInt));
-		fSnapshot.read(reinterpret_cast<char*>(&iFramePhaseHead), sizeof(PosInt));
-		fSnapshot.read(reinterpret_cast<char*>(&iFramePhaseTail), sizeof(PosInt));
-		fSnapshot.read(reinterpret_cast<char*>(&mFramePhaseHead), sizeof(PosInt));
-		fSnapshot.read(reinterpret_cast<char*>(&mFramePhaseTail), sizeof(PosInt));
-		fSnapshot.read(reinterpret_cast<char*>(&currentTimeSlot), sizeof(PosInt));
-		fSnapshot.read(reinterpret_cast<char*>(&iStatus), sizeof(PosInt));
-		//cout << "it0 = " << it0 << "\n";
-		//cout << "frameCycle = " << frameCycle << "\n";
-		//cout << "iFrameHead = " << iFrameHead << "\n";
-		//cout << "oldFrameHead = " << oldFrameHead << "\n";
-		//cout << "currentFrame = " << currentFrame << "\n";
-		//cout << "iFramePhaseHead = " << iFramePhaseHead << "\n";
-		//cout << "iFramePhaseTail = " << iFramePhaseTail << "\n";
-		//cout << "mFramePhaseHead = " << mFramePhaseHead << "\n";
-		//cout << "mFramePhaseTail = " << mFramePhaseTail << "\n";
-		//cout << "currentTimeSlot = " << currentTimeSlot << "\n";
-		//cout << "iStatus = " << iStatus << "\n";
-
-		// const sizes
-		int r_iModel, r_learning;
-		fSnapshot.read(reinterpret_cast<char*>(&r_iModel), sizeof(int));
-		fSnapshot.read(reinterpret_cast<char*>(&r_learning), sizeof(int));
-		Size r_nV1, r_nLGN, r_ngTypeFF, r_ngTypeE, r_ngTypeI, r_nType;
-		fSnapshot.read(reinterpret_cast<char*>(&r_nV1), sizeof(Size));
-		fSnapshot.read(reinterpret_cast<char*>(&r_nLGN), sizeof(Size));
-		fSnapshot.read(reinterpret_cast<char*>(&r_ngTypeFF), sizeof(Size));
-		fSnapshot.read(reinterpret_cast<char*>(&r_ngTypeE), sizeof(Size));
-		fSnapshot.read(reinterpret_cast<char*>(&r_ngTypeI), sizeof(Size));
-		fSnapshot.read(reinterpret_cast<char*>(&r_nType), sizeof(Size));
-		if (r_learning != learning || r_iModel != iModel || r_nV1 != nV1 || r_nLGN != nLGN || r_ngTypeFF != ngTypeFF || r_ngTypeE != ngTypeE || r_ngTypeI != ngTypeI ) {
-			cout << "patchV1 config is incompatible with the restore file config\n";
+		fSnapshot.open(restore, fstream::in | fstream::binary);
+		if (!fSnapshot) {
+			cout << "cannot restore from " << restore << "\n";
 			return EXIT_FAILURE;
-		}
-		
-		char* _restore = new char[deviceMemorySize];
-
-		// read into host vars
-		// 	LGN
-		Float* r_leftTimeRate = (Float*) _restore; 
-		Float* r_lastNegLogRand = r_leftTimeRate + nLGN;
-		curandStateMRG32k3a* r_randState = (curandStateMRG32k3a*) (r_lastNegLogRand + nLGN);
-		fSnapshot.read(reinterpret_cast<char*>(r_leftTimeRate), LGN_convolSize);
-		checkCudaErrors(cudaMemcpy(leftTimeRate, r_leftTimeRate, LGN_convolSize, cudaMemcpyHostToDevice));
-		Float* r_lVarFFpre;
-		if (learning) {
-			if (!learnData_FF) {
-				LGN_V1_s = (Float*) (r_randState + nLGN); 
-				lVarFFpost = LGN_V1_s + sLGN_size/sizeof(Float);
-				r_lVarFFpre = lVarFFpost + learnVarFFsize;
+		} else {
+			PosInt discard; 
+			fSnapshot.read(reinterpret_cast<char*>(&discard), sizeof(PosInt));
+			// indices
+			if (asInit) {
+				for (PosInt i=0; i<9; i++) {
+					fSnapshot.read(reinterpret_cast<char*>(&discard), sizeof(PosInt));
+				}
 			} else {
-				r_lVarFFpre = (Float*) (r_randState + nLGN);
+				fSnapshot.read(reinterpret_cast<char*>(&frameCycle), sizeof(PosInt));
+				fSnapshot.read(reinterpret_cast<char*>(&iFrameHead), sizeof(PosInt));
+				fSnapshot.read(reinterpret_cast<char*>(&oldFrameHead), sizeof(PosInt));
+				fSnapshot.read(reinterpret_cast<char*>(&currentFrame), sizeof(PosInt));
+				fSnapshot.read(reinterpret_cast<char*>(&iFramePhaseHead), sizeof(PosInt));
+				fSnapshot.read(reinterpret_cast<char*>(&iFramePhaseTail), sizeof(PosInt));
+				fSnapshot.read(reinterpret_cast<char*>(&mFramePhaseHead), sizeof(PosInt));
+				fSnapshot.read(reinterpret_cast<char*>(&mFramePhaseTail), sizeof(PosInt));
+				fSnapshot.read(reinterpret_cast<char*>(&iStatus), sizeof(PosInt));
+				cout << "it0 = " << it0 << "\n";
+				cout << "frameCycle = " << frameCycle << "\n";
+				cout << "iFrameHead = " << iFrameHead << "\n";
+				cout << "oldFrameHead = " << oldFrameHead << "\n";
+				cout << "currentFrame = " << currentFrame << "\n";
+				cout << "iFramePhaseHead = " << iFramePhaseHead << "\n";
+				cout << "iFramePhaseTail = " << iFramePhaseTail << "\n";
+				cout << "mFramePhaseHead = " << mFramePhaseHead << "\n";
+				cout << "mFramePhaseTail = " << mFramePhaseTail << "\n";
+				cout << "iStatus = " << iStatus << "\n";
+			}
+			fSnapshot.read(reinterpret_cast<char*>(&currentTimeSlot), sizeof(PosInt));
+			cout << "move currentTimeSlot to " << currentTimeSlot << "\n";
+			
+			// const sizes
+			int r_iModel, r_learning;
+			fSnapshot.read(reinterpret_cast<char*>(&r_iModel), sizeof(int));
+			fSnapshot.read(reinterpret_cast<char*>(&r_learning), sizeof(int));
+			Size r_nV1, r_nLGN, r_ngTypeFF, r_ngTypeE, r_ngTypeI, r_nType;
+			fSnapshot.read(reinterpret_cast<char*>(&r_nV1), sizeof(Size));
+			fSnapshot.read(reinterpret_cast<char*>(&r_nLGN), sizeof(Size));
+			fSnapshot.read(reinterpret_cast<char*>(&r_ngTypeFF), sizeof(Size));
+			fSnapshot.read(reinterpret_cast<char*>(&r_ngTypeE), sizeof(Size));
+			fSnapshot.read(reinterpret_cast<char*>(&r_ngTypeI), sizeof(Size));
+			fSnapshot.read(reinterpret_cast<char*>(&r_nType), sizeof(Size));
+			Size r_trainDepth;
+			fSnapshot.read(reinterpret_cast<char*>(&r_trainDepth), sizeof(Size));
+			if (r_learning != learning || r_iModel != iModel || r_nV1 != nV1 || r_nLGN != nLGN || r_ngTypeFF != ngTypeFF || r_ngTypeE != ngTypeE || r_ngTypeI != ngTypeI) {
+				cout << "patchV1 config is incompatible with the restore file config\n";
+				return EXIT_FAILURE;
+			}
+			if (trainDepth != r_trainDepth) {
+				cout << "trainDepth is inconsistent, due to change(s) in delayMat, maxDistance\n";
+			}
+			
+			char* _restore = new char[deviceMemorySize];
+
+			// read into host vars
+			// 	LGN
+			Float* r_leftTimeRate = (Float*) _restore; 
+			Float* r_lastNegLogRand = r_leftTimeRate + nLGN;
+			curandStateMRG32k3a* r_randState = (curandStateMRG32k3a*) (r_lastNegLogRand + nLGN);
+			fSnapshot.read(reinterpret_cast<char*>(r_leftTimeRate), LGN_convolSize);
+			checkCudaErrors(cudaMemcpy(leftTimeRate, r_leftTimeRate, LGN_convolSize, cudaMemcpyHostToDevice));
+			Float* r_lVarFFpre;
+			if (learning) {
+				if (!learnData_FF) {
+					LGN_V1_s = (Float*) (r_randState + nLGN); 
+					lVarFFpost = LGN_V1_s + sLGN_size/sizeof(Float);
+					r_lVarFFpre = lVarFFpost + learnVarFFsize;
+				} else {
+					r_lVarFFpre = (Float*) (r_randState + nLGN);
+				}
+
+				fSnapshot.read(reinterpret_cast<char*>(LGN_V1_s), sLGN_size);
+				checkCudaErrors(cudaMemcpy(sLGN, LGN_V1_s, sLGN_size, cudaMemcpyHostToDevice));
+				fSnapshot.read(reinterpret_cast<char*>(lVarFFpost), LGN_learnPostSize);
+				checkCudaErrors(cudaMemcpy(learnVar, lVarFFpost, LGN_learnPostSize, cudaMemcpyHostToDevice));
+
+				fSnapshot.read(reinterpret_cast<char*>(r_lVarFFpre), LGN_learnPreSize);
+				checkCudaErrors(cudaMemcpy(lVarFFpre, r_lVarFFpre, LGN_learnPreSize, cudaMemcpyHostToDevice));
 			}
 
-			fSnapshot.read(reinterpret_cast<char*>(LGN_V1_s), sLGN_size);
-			checkCudaErrors(cudaMemcpy(sLGN, LGN_V1_s, sLGN_size, cudaMemcpyHostToDevice));
-			fSnapshot.read(reinterpret_cast<char*>(lVarFFpost), LGN_learnPostSize);
-			checkCudaErrors(cudaMemcpy(learnVar, lVarFFpost, LGN_learnPostSize, cudaMemcpyHostToDevice));
+			// 	V1
+			curandStateMRG32k3a* r_rGenCond;
+			if (learning) {
+				r_rGenCond = (curandStateMRG32k3a *) (r_lVarFFpre + LGN_learnPreSize/sizeof(Float));
+			} else {
+				r_rGenCond = r_randState + nLGN;
+			}
+			fSnapshot.read(reinterpret_cast<char*>(r_rGenCond), nV1*sizeof(curandStateMRG32k3a));
+			checkCudaErrors(cudaMemcpy(rGenCond, r_rGenCond, nV1*sizeof(curandStateMRG32k3a), cudaMemcpyHostToDevice));
 
-			fSnapshot.read(reinterpret_cast<char*>(r_lVarFFpre), LGN_learnPreSize);
-			checkCudaErrors(cudaMemcpy(lVarFFpre, r_lVarFFpre, LGN_learnPreSize, cudaMemcpyHostToDevice));
+			curandStateMRG32k3a* r_rNoisy =  r_rGenCond + nV1;
+			fSnapshot.read(reinterpret_cast<char*>(r_rNoisy), nV1*sizeof(curandStateMRG32k3a));
+			checkCudaErrors(cudaMemcpy(rNoisy, r_rNoisy, nV1*sizeof(curandStateMRG32k3a), cudaMemcpyHostToDevice));
+
+			Float* r_tBack = (Float*) (r_rNoisy + nV1);
+			fSnapshot.read(reinterpret_cast<char*>(r_tBack), nV1*sizeof(Float));
+			checkCudaErrors(cudaMemcpy(tBack, r_tBack, nV1*sizeof(Float), cudaMemcpyHostToDevice));
+			delete []_restore;
+			// already pinned on host
+			if (r_trainDepth == trainDepth) {
+				fSnapshot.read(reinterpret_cast<char*>(spikeTrain), trainSize*sizeof(Float));
+				checkCudaErrors(cudaMemcpy(d_spikeTrain, spikeTrain, trainSize*sizeof(Float), cudaMemcpyHostToDevice));
+			}
+			if (r_trainDepth < trainDepth) {
+				cout << "the spikeTrain from snapshot will be padded with zeros to fill the new size \n";
+				// r_trainDepth  = L + R
+				//     L    c                    R
+				// |--------|----------------|--------|
+				Size L_trainSize = currentTimeSlot*nV1;
+				if (L_trainSize > 0) {
+					fSnapshot.read(reinterpret_cast<char*>(spikeTrain), L_trainSize*sizeof(Float));
+				}
+
+				Size s_trainSize = (trainDepth - r_trainDepth)*nV1;
+				memset((char*)(spikeTrain+L_trainSize), 0.0, s_trainSize*sizeof(Float));
+
+				Size R_trainSize = trainSize - s_trainSize-L_trainSize;
+				if (R_trainSize > 0) {
+					fSnapshot.read(reinterpret_cast<char*>(spikeTrain+L_trainSize+s_trainSize), R_trainSize*sizeof(Float));
+				}
+
+				checkCudaErrors(cudaMemcpy(d_spikeTrain, spikeTrain, trainSize*sizeof(Float), cudaMemcpyHostToDevice));
+				assert(L_trainSize + s_trainSize + R_trainSize == trainDepth*nV1);
+				assert(L_trainSize + R_trainSize == r_trainDepth*nV1);
+			}
+			if (r_trainDepth > trainDepth) {
+				cout << "old spikeTrain will be cut off at currentTimeSlot-trainDepth to fit into the new size\n";
+				if (currentTimeSlot >= trainDepth) {
+					// L + trainDepth + R = r_trainDepth
+					//  discard                          discard
+					//   L            trainDepth       c   R
+					// |--------|----------------------|--------|
+					Float* discard;
+					Size L_trainDepth = currentTimeSlot-trainDepth;
+					size_t L_trainSize = L_trainDepth*nV1*sizeof(Float);
+					if (L_trainSize > 0) {
+						discard = new Float[L_trainSize];
+						fSnapshot.read(reinterpret_cast<char*>(discard), L_trainSize);
+						delete []discard;
+					}
+
+					fSnapshot.read(reinterpret_cast<char*>(spikeTrain), trainSize*sizeof(Float));
+					checkCudaErrors(cudaMemcpy(d_spikeTrain, spikeTrain, trainSize*sizeof(Float), cudaMemcpyHostToDevice));
+
+					Size R_trainSize = (r_trainDepth-L_trainDepth)*nV1-trainSize;
+					if (R_trainSize > 0) {
+						discard = new Float[R_trainSize];
+						fSnapshot.read(reinterpret_cast<char*>(discard), R_trainSize*sizeof(Float));
+						delete [] discard;
+					}
+					currentTimeSlot = trainDepth - 1;
+				} else {
+					// L + s_trainDepth + R = r_trainDepth
+					// L + R = trainDepth
+					//                  disccard
+					//   L      c    s_trainDepth           R
+					// |--------|----------------------|--------|
+
+					Size L_trainDepth = currentTimeSlot;
+					size_t L_trainSize = L_trainDepth*nV1*sizeof(Float);
+					if (L_trainDepth > 0) {
+						fSnapshot.read(reinterpret_cast<char*>(spikeTrain), L_trainSize);
+					}
+
+					Size s_trainSize = (r_trainDepth - trainDepth)*nV1;
+					Float* discard = new Float[s_trainSize];
+					fSnapshot.read(reinterpret_cast<char*>(discard), s_trainSize*sizeof(Float));
+					delete []discard;
+
+					size_t R_trainSize = ((r_trainDepth - L_trainDepth)*nV1 - s_trainSize)*sizeof(Float);
+					fSnapshot.read(reinterpret_cast<char*>(spikeTrain+L_trainDepth*nV1), R_trainSize);
+
+					assert(trainSize*sizeof(Float) == L_trainSize + R_trainSize);
+					checkCudaErrors(cudaMemcpy(d_spikeTrain, spikeTrain, trainSize*sizeof(Float), cudaMemcpyHostToDevice));
+				}
+			}
+			if (iModel == 0) {
+				fSnapshot.read(reinterpret_cast<char*>(v), r_vghSize);
+				checkCudaErrors(cudaMemcpy(d_v, v, r_vghSize, cudaMemcpyHostToDevice));
+			} 
+			if (iModel == 1) {
+				fSnapshot.read(reinterpret_cast<char*>(w), r_vghSize);
+				checkCudaErrors(cudaMemcpy(d_w, w, r_vghSize, cudaMemcpyHostToDevice));
+			}
+			fSnapshot.close();
+			cout << "succesfully restored simulation snapshot from " << restore << "\n";
 		}
-
-		// 	V1
-		curandStateMRG32k3a* r_rGenCond;
-		if (learning) {
-			r_rGenCond = (curandStateMRG32k3a *) (r_lVarFFpre + LGN_learnPreSize/sizeof(Float));
-		} else {
-			r_rGenCond = r_randState + nLGN;
-		}
-		fSnapshot.read(reinterpret_cast<char*>(r_rGenCond), nV1*sizeof(curandStateMRG32k3a));
-		checkCudaErrors(cudaMemcpy(rGenCond, r_rGenCond, nV1*sizeof(curandStateMRG32k3a), cudaMemcpyHostToDevice));
-
-		curandStateMRG32k3a* r_rNoisy =  r_rGenCond + nV1;
-		fSnapshot.read(reinterpret_cast<char*>(r_rNoisy), nV1*sizeof(curandStateMRG32k3a));
-		checkCudaErrors(cudaMemcpy(rNoisy, r_rNoisy, nV1*sizeof(curandStateMRG32k3a), cudaMemcpyHostToDevice));
-
-		Float* r_tBack = (Float*) (r_rNoisy + nV1);
-		fSnapshot.read(reinterpret_cast<char*>(r_tBack), nV1*sizeof(Float));
-		checkCudaErrors(cudaMemcpy(tBack, r_tBack, nV1*sizeof(Float), cudaMemcpyHostToDevice));
-		delete []_restore;
-		// already pinned on host
-		fSnapshot.read(reinterpret_cast<char*>(spikeTrain), trainSize*sizeof(Float));
-		checkCudaErrors(cudaMemcpy(d_spikeTrain, spikeTrain, trainSize*sizeof(Float), cudaMemcpyHostToDevice));
-		if (iModel == 0) {
-			fSnapshot.read(reinterpret_cast<char*>(v), r_vghSize);
-			checkCudaErrors(cudaMemcpy(d_v, v, r_vghSize, cudaMemcpyHostToDevice));
-		} 
-		if (iModel == 1) {
-			fSnapshot.read(reinterpret_cast<char*>(w), r_vghSize);
-			checkCudaErrors(cudaMemcpy(d_w, w, r_vghSize, cudaMemcpyHostToDevice));
-		}
-		fSnapshot.close();
-		cout << "succesfully restored simulation snapshot from " << restore << "\n";
 	} else {
     	if (has_sp0) {
     		cout << "presend spikes:\n";
@@ -4068,6 +4181,7 @@ int main(int argc, char **argv) {
 		}
 	}
 	if (iFrameHead > 0) { // if restore from file, forward to iFrameHead
+		PosInt iSample = 0;
 		for (PosInt i=0; i<iFrameHead + frameCycle*maxFrame; i++) {
 			if (fStimulus) {
 				fStimulus.read(reinterpret_cast<char*>(LMS), nChannel*nPixelPerFrame*sizeof(float));
@@ -4083,8 +4197,10 @@ int main(int argc, char **argv) {
 				return EXIT_FAILURE;
 			}
 			//cp to texture mem in device
-			prep_sample(i, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, cudaMemcpyHostToDevice);
+			prep_sample(iSample, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, cudaMemcpyHostToDevice);
+			iSample = (iSample+1) % maxFrame;
 		}
+		cout << "pushed input frame to last snapshot\n";
 	}
     //***************************
 	for (unsigned int it = 0; it < nt; it++) {
@@ -4188,18 +4304,21 @@ int main(int argc, char **argv) {
 		if (it > 0) { // seeking for overlap of data output with LGN input
             if (rawData) {
 			    fRawData.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
-				/* debug
+				/// debug
 					for (PosInt i = 0; i<trainDepth; i++) {
 						for (PosInt j=0; j<nV1; j++) {
 							if (spikeTrain[i*nV1 + j] < 1) {
-								assert(spikeTrain[i*nV1 + j] == 0);
+								if (it > 1) {
+									assert(spikeTrain[i*nV1 + j] == 0);
+								} else {
+									if (spikeTrain[i*nV1 + j] != 0) {
+										cout << i << "-" << j << ": " << spikeTrain[i*nV1 + j] << "\n";
+									}
+								}
 							}
 						}
 					}
-                	if (it == 1) {
-                	    cout << "debug: " << spikeTrain[0] <<  ", " << spikeTrain[768] << ", " << spikeTrain[1037] << ", " << spikeTrain[3765] << "\n";
-                	}
-				*/
+				//
 				if (it%snapshotInterval != 0) { // else already synchronized
 			    	cudaEventSynchronize(v_gFF_Ready);
 				}
@@ -4281,6 +4400,22 @@ int main(int argc, char **argv) {
             if (rawData) {
 		    	// write g to fRawData
 		    	reshape_chunk_and_write(gE[0], fRawData, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, ngTypeE, ngTypeI, nV1, hWrite);
+				//debug
+				if (it == 1) {
+					size_t eSize = maxChunkSize*blockSize*ngTypeE;
+					for (PosInt j = 0; j<nV1; j++) {
+						assert(gFF[j] < 0.5);
+					}
+					for (PosInt j = 0; j<nChunk; j++) {
+						if (j >= iSizeSplit) {
+							eSize = remainChunkSize*blockSize*ngTypeE;
+						}
+						for (PosInt k = 0; k<eSize; k++) {
+							assert(gE[j][k] < 0.5);
+						}
+					}
+				}
+				//
 		    }
         }
 		if (saveLGN_fr || learnData_FF) {
@@ -4680,9 +4815,9 @@ int main(int argc, char **argv) {
 				fSnapshot.write((char*)&iFramePhaseTail, sizeof(PosInt));
 				fSnapshot.write((char*)&mFramePhaseHead, sizeof(PosInt));
 				fSnapshot.write((char*)&mFramePhaseTail, sizeof(PosInt));
-				PosInt _currentTimeSlot = currentTimeSlot + 1;
-				fSnapshot.write((char*)& _currentTimeSlot, sizeof(PosInt));
 				fSnapshot.write((char*)&iStatus, sizeof(PosInt));
+				PosInt _currentTimeSlot = (currentTimeSlot + 1)%trainDepth;
+				fSnapshot.write((char*)& _currentTimeSlot, sizeof(PosInt));
 				//cout << "it0 = " << qt << "\n";
 				//cout << "frameCycle = " << frameCycle << "\n";
 				//cout << "iFrameHead = " << iFrameHead << "\n";
@@ -4704,6 +4839,7 @@ int main(int argc, char **argv) {
 				fSnapshot.write((char*)&ngTypeE, sizeof(Size));
 				fSnapshot.write((char*)&ngTypeI, sizeof(Size));
 				fSnapshot.write((char*)&nType, sizeof(Size));
+				fSnapshot.write((char*)&trainDepth, sizeof(Size));
 
 				// write vars
 				char* _sav = new char[deviceMemorySize];

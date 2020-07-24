@@ -10,8 +10,8 @@ sm=sm_70
 rm -f patch.o 
 nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -std=c++11 -O3 -c patch.cu
 
-#rm -f coredynamics.o
-#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -std=c++11 -O3 -c coredynamics.cu
+rm -f coredynamics.o
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -std=c++11 -O3 -c coredynamics.cu
 
 #rm -f discrete_convol.o
 #nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -std=c++11 -O2 -c discrete_input_convol.cu
