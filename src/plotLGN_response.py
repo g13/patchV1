@@ -26,8 +26,8 @@ if output_suffix:
 if input_suffix:
     input_suffix = "_" + input_suffix 
 
-plotResponseSample = False 
-plotContrastDist = False
+plotResponseSample = True
+plotContrastDist = True
 plotStat = True
 nLGN_1D = 16
 nt_ = 4000
@@ -139,7 +139,7 @@ if plotResponseSample:
             on_off = 'off'
         ix = np.mod(j, nLGN_1D)
         iy = np.int(np.floor(j/nLGN_1D))
-        ax2.set_title(f'LGN #{j} {(ix,iy)}, ' + on_off + f' average fr: {np.mean(LGNfr[:,i])}Hz')
+        ax2.set_title(f'LGN #{j} {(ix,iy)}, ' + on_off + f' fr: {np.mean(LGNfr[:,i]):.3f}/{np.max(LGNfr[:,i]):.3f}Hz')
     fig.savefig('lgn-response' + output_suffix + '.png')
 
 if plotContrastDist:
@@ -165,9 +165,17 @@ if plotStat:
     ax = fig.add_subplot(221)
     max_convol_irl = np.array([np.max(convol_total[:,i]) for i in range(nLGN)])
     active_ratio = max_convol_irl/max_convol
+    ax.set_xlabel('convol/max_convol')
     ax.hist(active_ratio, bins=10)
     ax = fig.add_subplot(222)
-    ax.hist(max_convol, bins=10)
+    ax.hist(max_convol, bins=10, alpha = 0.5, label='predef')
+    ax.hist(np.max(LGNfr, axis = 1), bins = 10, alpha = 0.5, label = 'irl' )
+    ax.legend()
+    ax.set_xlabel('max fr')
     ax = fig.add_subplot(223)
     ax.hist(max_convol*spont, bins=10)
+    ax.set_xlabel('spont fr')
+    ax = fig.add_subplot(224)
+    ax.hist(np.mean(LGNfr, axis = 0), bins=10)
+    ax.set_xlabel('mean fr')
     fig.savefig('LGN_activity'+output_suffix+'.png')

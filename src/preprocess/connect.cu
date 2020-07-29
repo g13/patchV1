@@ -14,8 +14,8 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
                 Float* __restrict__ preS_type,
                 Size*  __restrict__ preN_type,
                 Float* __restrict__ LGN_V1_sSum,
-                //Float* __restrict__ LGN_V1_sSumMax,
-                Float min_FB_ratio, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, Float p_n_LGNeff) 
+                Float* __restrict__ ExcRatio,
+                Float extExcRatio, Float min_FB_ratio, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, Float p_n_LGNeff) 
 {
     //__shared__ reduced[warpSize];
     Size id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -38,9 +38,10 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
 	}
 
 	Float LGN_sSum = LGN_V1_sSum[id];
-	Float presetConstExc = p_n_LGNeff + init_pack.sumType[type];
-    Float ratio = (presetConstExc - LGN_sSum)/init_pack.sumType[type];
+	Float presetConstExc = p_n_LGNeff + init_pack.sumType[type]*(1+extExcRatio);
+    Float ratio = (presetConstExc - LGN_sSum)/(init_pack.sumType[type]*(1+extExcRatio));
     if (ratio < min_FB_ratio) ratio = min_FB_ratio;
+	ExcRatio[id] = ratio;
 	for (PosInt i=0; i<nType; i++) {
 		PosInt tid = i*networkSize+id;
 		PosInt ttid = i*nType + type;

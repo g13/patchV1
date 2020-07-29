@@ -252,6 +252,7 @@ int main(int argc, char **argv) {
     string conV1_suffix; // suffix of the input filenames, if suffix is not the same, set f*
     string conLGN_suffix; // suffix of the input filenames, if suffix is not the same, set f*
     string snapshot_suffix; // suffix of the input filenames, if suffix is not the same, set f*
+	string conStats_filename;
 	string stimulus_filename, LGN_switch_filename;
 	string V1_RF_filename, V1_feature_filename, V1_pos_filename;
 	string neighborBlock_filename;
@@ -278,6 +279,7 @@ int main(int argc, char **argv) {
 		("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file to read spatially predetermined functional features of neurons")
 		("fV1_conMat", po::value<string>(&V1_conMat_filename)->default_value("V1_conMat"), "file that stores V1 to V1 connection within the neighboring blocks")
 		("fV1_delayMat", po::value<string>(&V1_delayMat_filename)->default_value("V1_delayMat"), "file that stores V1 to V1 transmission delay within the neighboring blocks")
+		("fConStats", po::value<string>(&conStats_filename)->default_value("conStats"),"file that stores connection stats")
 		("fV1_vec", po::value<string>(&V1_vec_filename)->default_value("V1_vec"), "file that stores V1 to V1 connection ID, strength and transmission delay far the neighboring blocks")
 		("fNeighborBlock", po::value<string>(&neighborBlock_filename)->default_value("neighborBlock"), "file that stores V1 to V1 connection ID, strength and transmission delay far the neighboring blocks")
 		("fV1_RF", po::value<string>(&V1_RF_filename)->default_value("V1_RF"), "file that stores V1 RF properties, (orientation info is in fV1_feature)")
@@ -304,14 +306,21 @@ int main(int argc, char **argv) {
 		return EXIT_SUCCESS;
 	}
 	string cfg_filename = vm["cfg_file"].as<string>();
-	ifstream cfg_file{cfg_filename.c_str()};
-	if (cfg_file) {
-		po::store(po::parse_config_file(cfg_file, config_file_options), vm);
-		cout << "Using configuration file: " << cfg_filename << "\n";
+	ifstream cfg_file;
+	if (!cfg_filename.empty()) {
+		cfg_file.open(cfg_filename.c_str(), fstream::in);
+		if (cfg_file) {
+			po::store(po::parse_config_file(cfg_file, config_file_options), vm);
+			cout << "Using configuration file: " << cfg_filename << "\n";
+			po::notify(vm);
+			cfg_file.close();
+		} else {
+			cout << "cannot find specified config file " << cfg_filename << "\n";
+			return EXIT_FAILURE;
+		}
 	} else {
 		cout << "No configuration file is given, default values are used for non-specified parameters\n";
 	}
-	po::notify(vm);
 
 	printf("simulating for %u steps, t = %f ms\n", nt, nt*dt);
 
@@ -1257,6 +1266,7 @@ int main(int argc, char **argv) {
 			Float std = stride/6.0;
 			return make_pair(mean, std);
 		};
+		//     sigma*sqrt(2)
 		Float acuityC[2] = {0.03f*deg2rad, 0.01f*deg2rad/1.349f}; // interquartile/1.349 = std 
 		Float acuityS[2] = {0.18f*deg2rad, 0.07f*deg2rad/1.349f};
 		Float acuityC_M[2] = {0.06f*deg2rad, 0.02f*deg2rad/1.349f}; // interquartile/1.349 = std 
@@ -2001,6 +2011,7 @@ int main(int argc, char **argv) {
 	// V1 related memory
 	ifstream fV1_pos;
 	ifstream fV1_conMat, fV1_delayMat, fV1_vec, fNeighborBlock; 
+	ifstream fConStats;
 
 	Size nV1, nblock, neuronPerBlock, posDim;
 	double *cpu_chunk_V1pos;
@@ -2884,17 +2895,19 @@ int main(int argc, char **argv) {
     curandStateMRG32k3a *rGenCond;
     curandStateMRG32k3a *rNoisy;
     Float *d_noisyDep;
-    Float *d_tonicDep;
     Float *d_synFailFF;
     Float *d_synFail;
     Size *typeAcc;
     Float *d_pFF;
     Float *d_pE;
     Float *d_pI;
+
+    Float *d_tonicDep;
+    checkCudaErrors(cudaMalloc((void**)&d_tonicDep, nV1*sizeof(Float)));
+
     checkCudaErrors(cudaMalloc((void**)&rGenCond, nV1*sizeof(curandStateMRG32k3a)));
     checkCudaErrors(cudaMalloc((void**)&rNoisy, nV1*sizeof(curandStateMRG32k3a)));
     checkCudaErrors(cudaMalloc((void**)&d_noisyDep, nType*sizeof(Float)));
-    checkCudaErrors(cudaMalloc((void**)&d_tonicDep, nType*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void**)&d_synFailFF, nType*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void**)&d_synFail, nType*nType*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void**)&typeAcc, nType*sizeof(Size)));
@@ -2902,15 +2915,42 @@ int main(int argc, char **argv) {
     checkCudaErrors(cudaMalloc((void**)&d_pE,  nType*ngTypeE*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void**)&d_pI,  nType*ngTypeI*sizeof(Float)));
 	checkCudaErrors(cudaMemcpy(d_noisyDep,  &(noisyDep[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_tonicDep,  &(tonicDep[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_synFailFF,  &(synFailFF[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_synFail,  &(synFail[0]), nType*nType*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(typeAcc, &(typeAccCount[0]), nType*sizeof(Size), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_pFF, &(pFF[0]), nType*ngTypeFF*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_pE,  &(pE[0]),  nType*ngTypeE*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_pI,  &(pI[0]),  nType*ngTypeI*sizeof(Float), cudaMemcpyHostToDevice));
-	usingGMem += 2*nV1*sizeof(curandStateMRG32k3a) + (ngTypeFF + ngTypeE + ngTypeI)*nType*sizeof(Float) + (3+nType)*nType * sizeof(Float) + nType*sizeof(Size);
+	usingGMem += 2*nV1*sizeof(curandStateMRG32k3a) + (ngTypeFF + ngTypeE + ngTypeI)*nType*sizeof(Float) + (2+nType)*nType * sizeof(Float) + nType*sizeof(Size) + nV1*sizeof(Float);
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
+
+	fConStats.open(conStats_filename + conV1_suffix, fstream::in | fstream::binary);
+	if (!fConStats) {
+		cout << "Cannot open or find " << conStats_filename <<" to read V1 ExcRatios.\n";
+		return EXIT_FAILURE;
+	} else {
+		Size discard;
+		vector<Float> ExcRatio(nV1, 0);
+		vector<Float> iTonicDep(nV1, 0);
+
+		fConStats.read(reinterpret_cast<char*>(&discard),sizeof(Size));
+		assert(discard == nType);
+    	fConStats.read(reinterpret_cast<char*>(&discard),sizeof(Size));
+		assert(discard == nV1);
+    	fConStats.read(reinterpret_cast<char*>(&ExcRatio[0]), nV1*sizeof(Float));
+		fConStats.close();
+		for (PosInt i=0; i<nblock; i++) {
+			PosInt iType = 0;
+			for (PosInt j=0; j<blockSize; j++) {
+				PosInt id = i*blockSize + j;
+				if (j == typeAccCount[iType]) {
+					iType++;
+				}
+				iTonicDep[id] = tonicDep[iType]*ExcRatio[id];
+			}
+		}
+		checkCudaErrors(cudaMemcpy(d_tonicDep,  &(iTonicDep[0]), nV1*sizeof(Float), cudaMemcpyHostToDevice));
+	}
 
     default_random_engine *h_rGenCond = new default_random_engine[nV1];
     for (PosInt i=0; i<nV1; i++) {
@@ -3160,6 +3200,28 @@ int main(int argc, char **argv) {
 
     	rand_spInit<<<nblock, blockSize>>>(tBack, d_spikeTrain, d_v, d_w, d_nLGNperV1, d_sp0, typeAcc, d_vR, d_gL, d_tRef, d_tau_w, d_a, d_b, rGenCond, rNoisy, seed, nV1, nType, SCsplit, trainDepth, dt, iModel);
     	checkCudaErrors(cudaDeviceSynchronize());
+
+		/*debug
+    		checkCudaErrors(cudaMemcpy(spikeTrain, d_spikeTrain, trainSize*sizeof(Float), cudaMemcpyDeviceToHost));
+			for (PosInt i = 0; i<trainDepth; i++) {
+				for (PosInt j=0; j<nV1; j++) {
+					assert(!std::isnan(spikeTrain[i*nV1 + j]));
+					if (spikeTrain[i*nV1 + j] < 1) {
+						assert(spikeTrain[i*nV1 + j] == 0);
+					}
+				}
+			}
+			if (iModel == 0) {
+				for (PosInt j=0; j<(ffSize + ghSize + vSize)/sizeof(Float); j++) {
+					assert(!std::isnan(v[j]));
+				}
+			}
+			if (iModel == 1) {
+				for (PosInt j=0; j<(ffSize + ghSize + vSize + wSize)/sizeof(Float); j++) {
+					assert(!std::isnan(w[j]));
+				}
+			}
+		*/
     	cout << "spiking... V1 initialized\n"; 
     	#ifdef CHECK
     	    getLastCudaError("spiking initialized");
@@ -3273,13 +3335,11 @@ int main(int argc, char **argv) {
 		    	return EXIT_FAILURE;
 		    } else {
 				if (!restore.empty() && !asInit) {
-					cout << "im appending \n";
 					streampos eof = fRawData.tellp();
 					fRawData.seekp(sizeof(Float));
 					fRawData.write((char*)&nt0, sizeof(Size));
 					fRawData.seekp(eof);
 				} else {
-					cout << "im overwriting \n";
 		    		fRawData.write((char*) &dt, sizeof(Float));
 		    		fRawData.write((char*) &nt, sizeof(Size));
 		    		fRawData.write((char*) &nV1, sizeof(Size));
@@ -3809,10 +3869,10 @@ int main(int argc, char **argv) {
     bool farSpiked = false;
 	PosInt currentTimeSlot;
 	Float odt = ot*dt/1000.0;// get interval in sec
-	if (!restore.empty() && asInit) {
-		cout << "simulation starts: \n";
-	} else {
+	if (!restore.empty() && !asInit) {
 		cout << "simulation resumes from t = " << it0*dt << "...\n";
+	} else {
+		cout << "simulation starts: \n";
 	}
     int varSlot = 0;
     InputActivation typeStatus;
@@ -4024,13 +4084,27 @@ int main(int argc, char **argv) {
 					checkCudaErrors(cudaMemcpy(d_spikeTrain, spikeTrain, trainSize*sizeof(Float), cudaMemcpyHostToDevice));
 				}
 			}
+			for (PosInt i = 0; i<trainDepth; i++) {
+				for (PosInt j=0; j<nV1; j++) {
+					assert(!std::isnan(spikeTrain[i*nV1 + j]));
+					if (spikeTrain[i*nV1 + j] < 1) {
+						assert(spikeTrain[i*nV1 + j] == 0);
+					}
+				}
+			}
 			if (iModel == 0) {
 				fSnapshot.read(reinterpret_cast<char*>(v), r_vghSize);
 				checkCudaErrors(cudaMemcpy(d_v, v, r_vghSize, cudaMemcpyHostToDevice));
+				for (PosInt j=0; j<r_vghSize/sizeof(Float); j++) {
+					assert(!std::isnan(v[j]));
+				}
 			} 
 			if (iModel == 1) {
 				fSnapshot.read(reinterpret_cast<char*>(w), r_vghSize);
 				checkCudaErrors(cudaMemcpy(d_w, w, r_vghSize, cudaMemcpyHostToDevice));
+				for (PosInt j=0; j<r_vghSize/sizeof(Float); j++) {
+					assert(!std::isnan(w[j]));
+				}
 			}
 			fSnapshot.close();
 			cout << "succesfully restored simulation snapshot from " << restore << "\n";
@@ -4304,7 +4378,7 @@ int main(int argc, char **argv) {
 		if (it > 0) { // seeking for overlap of data output with LGN input
             if (rawData) {
 			    fRawData.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
-				/// debug
+				/* debug
 					for (PosInt i = 0; i<trainDepth; i++) {
 						for (PosInt j=0; j<nV1; j++) {
 							if (spikeTrain[i*nV1 + j] < 1) {
@@ -4318,7 +4392,7 @@ int main(int argc, char **argv) {
 							}
 						}
 					}
-				//
+				*/
 				if (it%snapshotInterval != 0) { // else already synchronized
 			    	cudaEventSynchronize(v_gFF_Ready);
 				}
@@ -4400,22 +4474,22 @@ int main(int argc, char **argv) {
             if (rawData) {
 		    	// write g to fRawData
 		    	reshape_chunk_and_write(gE[0], fRawData, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, ngTypeE, ngTypeI, nV1, hWrite);
-				//debug
-				if (it == 1) {
-					size_t eSize = maxChunkSize*blockSize*ngTypeE;
-					for (PosInt j = 0; j<nV1; j++) {
-						assert(gFF[j] < 0.5);
-					}
-					for (PosInt j = 0; j<nChunk; j++) {
-						if (j >= iSizeSplit) {
-							eSize = remainChunkSize*blockSize*ngTypeE;
+				/*debug
+					if (it == 1) {
+						size_t eSize = maxChunkSize*blockSize*ngTypeE;
+						for (PosInt j = 0; j<nV1; j++) {
+							assert(gFF[j] < 0.5);
 						}
-						for (PosInt k = 0; k<eSize; k++) {
-							assert(gE[j][k] < 0.5);
+						for (PosInt j = 0; j<nChunk; j++) {
+							if (j >= iSizeSplit) {
+								eSize = remainChunkSize*blockSize*ngTypeE;
+							}
+							for (PosInt k = 0; k<eSize; k++) {
+								assert(gE[j][k] < 0.5);
+							}
 						}
 					}
-				}
-				//
+				*/
 		    }
         }
 		if (saveLGN_fr || learnData_FF) {
@@ -4902,13 +4976,27 @@ int main(int argc, char **argv) {
 	        	    cudaEventSynchronize(gReady2[0]);
             	}
 
+				for (PosInt i = 0; i<trainDepth; i++) {
+					for (PosInt j=0; j<nV1; j++) {
+						assert(!std::isnan(spikeTrain[i*nV1 + j]));
+						if (spikeTrain[i*nV1 + j] < 1) {
+							assert(spikeTrain[i*nV1 + j] == 0);
+						}
+					}
+				}
 				if (iModel == 0) {
 					checkCudaErrors(cudaMemcpy(v, d_v, r_vghSize, cudaMemcpyDeviceToHost));
 					fSnapshot.write((char*)v, r_vghSize);
+					for (PosInt j=0; j<r_vghSize/sizeof(Float); j++) {
+						assert(!std::isnan(v[j]));
+					}
 				} 
 				if (iModel == 1) {
 					checkCudaErrors(cudaMemcpy(w, d_w, r_vghSize, cudaMemcpyDeviceToHost));
 					fSnapshot.write((char*)w, r_vghSize);
+					for (PosInt j=0; j<r_vghSize/sizeof(Float); j++) {
+						assert(!std::isnan(w[j]));
+					}
 				}
 				fSnapshot.close();
 				// remove old snapshotInterval

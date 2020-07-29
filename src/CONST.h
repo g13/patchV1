@@ -20,7 +20,7 @@
 
 #define MAX_NGTYPE_FF 2 // excitatory feedforward conductance types
 #define MAX_NGTYPE_E 2 // excitatory coritcal
-#define MAX_NGTYPE_I 1 // inhibitory
+#define MAX_NGTYPE_I 2 // inhibitory
 #define MAX_NGTYPE 2 // max
 #define EPS 1e-14
 #define SQRT2 1.4142135623730951

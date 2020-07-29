@@ -27,7 +27,7 @@ struct ConductanceShape {
     __host__ __device__ 
     __forceinline__ void compute_single_input_conductance(Float &g, Float &h, Float f, Float dt, PosInt ig) {
         Float etr = exponential(-dt / riseTime[ig]);
-        f /= riseTime[ig];
+        //f /= riseTime[ig];
         g += f * dod[ig] * (exponential(-dt / decayTime[ig]) - etr);
         h += f * etr;
     }

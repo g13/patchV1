@@ -311,10 +311,11 @@ void compute_V_collect_spike_learnFF(
     }
     LIF* model;
     if (iModel == 0) {
-        model = new LIF(v[tid], tBack[tid], vR[itype], vThres[itype], gL[itype], tRef[itype], tonicDep[itype]);
+        model = new LIF(v[tid], tBack[tid], vR[itype], vThres[itype], gL[itype], tRef[itype], tonicDep[tid]);
     } else {
-        model = new AdEx(w[tid], tau_w[itype], a[itype], b[itype], v[tid], tBack[tid], vR[itype], vThres[itype], gL[itype], tRef[itype], vT[itype], deltaT[itype], tonicDep[itype]);
+        model = new AdEx(w[tid], tau_w[itype], a[itype], b[itype], v[tid], tBack[tid], vR[itype], vThres[itype], gL[itype], tRef[itype], vT[itype], deltaT[itype], tonicDep[tid]);
 	}
+
     /* set a0 b0 and a1 b1 */
     // cond FF
     //#pragma unroll (MAX_NGTYPE_FF)
@@ -509,12 +510,12 @@ void compute_V_collect_spike_learnFF(
     	        sInfo += model->tsp;
     	        model->spikeCount++;
     	        model->tBack = model->tsp + model->tRef;
-				backingUpFromRef = model->tBack < dt && model->tBack > 0;
+				backingUpFromRef = model->tBack < dt;
 				if (backingUpFromRef) {
 					model->reset0();
 				}
     	    } else {
-				if (model->tBack > 0) model->tBack -= dt;
+				if (model->tBack > 0) model->tBack = 0;
 				backingUpFromRef = false;
 			}
 		} 
@@ -524,15 +525,23 @@ void compute_V_collect_spike_learnFF(
 			model->tBack -= dt;
 		}
     	/* evolve g to t+dt with ff input only */
+
+		// debug
+		if (isnan(model->v)) {
+			printf("v[%u] = nan, v0 = %f, tBack = %f\n", tid, model->v0, model->tBack);
+			assert(!isnan(model->v0));
+		}
+	
 	} while (backingUpFromRef);
 	delete []f;
 	rNoisy[tid] = state;
-	
+
     if (model->spikeCount > 0) {
 		sInfo /= model->spikeCount*dt; //decimal part: tsp (normalize by dt)
-		model->tBack -= dt;
+		//model->tBack -= dt;
 	}
-	if (model->tBack < 0) model->tBack = 0;
+    assert(model->tBack >= 0);
+	//if (model->tBack < 0) model->tBack = 0;
     sInfo += model->spikeCount; // integer part: nsp
     spikeTrain[nV1*currentTimeSlot + tid] = sInfo;
     assert(sInfo >= 0);

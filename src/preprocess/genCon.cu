@@ -22,6 +22,7 @@ int main(int argc, char *argv[])
 	string V1_vec_filename;
 	string block_pos_filename, neighborBlock_filename, stats_filename;
     Float dScale, blockROI;
+	Float extExcRatio;
     //vector<Float> targetFR;
     ///Float FF_FB_ratio;
     Float min_FB_ratio;
@@ -57,6 +58,7 @@ int main(int argc, char *argv[])
 		//("LGN_targetFR", po::value<Float>(&LGN_targetFR), "target firing rate of a LGN cell")
 		//("targetFR", po::value<vector<Float>>(&targetFR), "a vector of target firing rate of different neuronal types")
 		//("FF_FB_ratio", po::value<Float>(&FF_FB_ratio), "excitation ratio of FF over total excitation")
+		("extExcRatio", po::value<Float>(&extExcRatio), "minimum cortical excitation ratio of predefined mean value")
 		("min_FB_ratio", po::value<Float>(&min_FB_ratio), "minimum cortical excitation ratio of predefined mean value")
 		("minConTol", po::value<Float>(&minConTol), "minimum cortical connection ratio of the predefined value")
         ("sTypeMat", po::value<vector<Float>>(&sTypeMat), "connection strength matrix between neuronal types, size of [nType, nType], nType = sum(nTypeHierarchy), row_id -> postsynaptic, column_id -> presynaptic")
@@ -466,8 +468,8 @@ int main(int argc, char *argv[])
 
 	Float* presetConstExc = new Float[nType];
 	for (PosInt i=0; i<nType; i++) {
-		presetConstExc[i] = p_n_LGNeff + hInit_pack.sumType[i];
-		if (presetConstExc[i] - LGN_V1_sSumMax[i] < hInit_pack.sumType[i]*min_FB_ratio) {
+		presetConstExc[i] = p_n_LGNeff + hInit_pack.sumType[i]*(1+extExcRatio);
+		if (presetConstExc[i] - LGN_V1_sSumMax[i] < hInit_pack.sumType[i]*(1+extExcRatio)*min_FB_ratio) {
 			cout << "Exc won't be constant for type " << i << " with current parameter set, min_FB_ratio will be utilized, presetConstExc = " << presetConstExc[i] << ", LGN_V1_sSumMax = " << LGN_V1_sSumMax[i] << ", sumType = " << hInit_pack.sumType[i] << "\n";
 		}
 	}
@@ -493,15 +495,20 @@ int main(int argc, char *argv[])
     //checkCudaErrors(cudaStreamCreate(&s2));
     checkCudaErrors(cudaMemcpy(d_feature, &featureValue[0], nFeature*networkSize*sizeof(Float), cudaMemcpyHostToDevice));
     checkCudaErrors(cudaMemcpy(d_pos, &pos[0], usingPosDim*networkSize*sizeof(double), cudaMemcpyHostToDevice));
+	Float* ExcRatio = new Float[networkSize];
+	Float* d_ExcRatio;
+    checkCudaErrors(cudaMalloc((void**)&d_ExcRatio, networkSize*sizeof(Float)));
+
     initialize<<<nblock, neuronPerBlock>>>(
         state,
 	    d_preType,
 		rden, raxn, dden, daxn,
-		preF_type, preS_type, preN_type, d_LGN_V1_sSum, min_FB_ratio,
+		preF_type, preS_type, preN_type, d_LGN_V1_sSum, d_ExcRatio, extExcRatio, min_FB_ratio,
 		init_pack, seed, networkSize, nType, nArchtype, nFeature, CmoreN, p_n_LGNeff);
 	getLastCudaError("initialize failed");
 	checkCudaErrors(cudaDeviceSynchronize());
     printf("initialzied\n");
+    checkCudaErrors(cudaMemcpy(ExcRatio, d_ExcRatio, networkSize*sizeof(Float), cudaMemcpyDeviceToHost));
     //Size shared_mem;
     cal_blockPos<<<nblock, neuronPerBlock>>>(
         d_pos, 
@@ -654,6 +661,7 @@ int main(int argc, char *argv[])
 
     fStats.write((char*)&nType,sizeof(Size));
     fStats.write((char*)&networkSize,sizeof(Size));
+    fStats.write((char*)ExcRatio, networkSize*sizeof(Float));
     fStats.write((char*)preTypeConnected, nType*networkSize*sizeof(Size));
     fStats.write((char*)preTypeAvail, nType*networkSize*sizeof(Size));
     fStats.write((char*)preTypeStrSum, nType*networkSize*sizeof(Float));
@@ -721,6 +729,12 @@ int main(int argc, char *argv[])
 	} else {
 		fConnectome_cfg.write((char*) &nType, sizeof(Size));
 		fConnectome_cfg.write((char*) (&typeAccCount[0]), nType*sizeof(Size));
+		fConnectome_cfg.write((char*) (&nTypeMat[0]), nType*nType*sizeof(Size));
+		fConnectome_cfg.write((char*) (&sTypeMat[0]), nType*nType*sizeof(Float));
+		fConnectome_cfg.write((char*) (&rDend[0]), nType*sizeof(Float));
+		fConnectome_cfg.write((char*) (&rAxon[0]), nType*sizeof(Float));
+		fConnectome_cfg.write((char*) (&dDend[0]), nType*sizeof(Float));
+		fConnectome_cfg.write((char*) (&dAxon[0]), nType*sizeof(Float));
 		fConnectome_cfg.close();
 	}
 
@@ -733,6 +747,7 @@ int main(int argc, char *argv[])
     checkCudaErrors(cudaFree(gpu_chunk));
     checkCudaErrors(cudaFree(d_typeAcc0));
     checkCudaErrors(cudaFree(d_LGN_V1_sSum));
+    checkCudaErrors(cudaFree(d_ExcRatio));
 	free(cpu_chunk);
     return 0;
 }

@@ -146,7 +146,8 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
                            Float* __restrict__ preS_type,
                            Size* __restrict__ preN_type,
                            Float* __restrict__ LGN_sSum,
-                           Float min_FB_ratio, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, Float p_n_LGNeff);
+                           Float* __restrict__ ExcRatio,
+                           Float extExcRatio, Float min_FB_ratio, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, Float p_n_LGNeff);
 
 __global__ 
 __launch_bounds__(blockSize, 1)
