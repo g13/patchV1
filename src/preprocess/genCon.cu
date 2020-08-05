@@ -31,6 +31,8 @@ int main(int argc, char *argv[])
     bool strictStrength;
     bool CmoreN;
 	Size usingPosDim;
+	Float longRangeROI;
+	Float longRangeCorr;
 	vector<Float> rDend, rAxon;
 	vector<Float> dDend, dAxon;
     vector<Float> sTypeMat;
@@ -52,6 +54,8 @@ int main(int argc, char *argv[])
         ("rDend", po::value<vector<Float>>(&rDend),  "a vector of dendritic extensions' radius, size of nType ")
         ("rAxon", po::value<vector<Float>>(&rAxon),  "a vector of axonic extensions' radius, size of nType")
         ("dScale",po::value<Float>(&dScale)->default_value(1.0),"a scaling ratio of all the neurites' lengths <radius>")
+        ("longRangeROI", po::value<Float>(&longRangeROI), "ROI of long-range cortical input")
+        ("longRangeCorr", po::value<Float>(&longRangeCorr), "correlation between long-range cortical inputs that cortical cells receives")
         ("dDend", po::value<vector<Float>>(&dDend), "vector of dendrites' densities, size of nType")
         ("dAxon", po::value<vector<Float>>(&dAxon), "vector of axons' densities, size of nType")
 		("nTypeHierarchy", po::value<vector<Size>>(&nTypeHierarchy), "a vector of hierarchical types differs in non-functional properties: reversal potentials, characteristic lengths of dendrite and axons, e.g. in size of nArchtype, {Exc-Pyramidal, Exc-stellate; Inh-PV, Inh-SOM, Inh-LTS} then the vector would be {3, 2}, with Exc and Inh being arch type")

@@ -82,7 +82,7 @@ void rand_spInit(Float* __restrict__ tBack,
     }
 }
 
-__launch_bounds__(1024,2)
+__launch_bounds__(1024,1)
 __global__
 void logRand_init(Float* __restrict__ logRand,
                   Float* __restrict__ lTR,
@@ -96,12 +96,12 @@ void logRand_init(Float* __restrict__ logRand,
 		curandStateMRG32k3a localState = state[id];
 		curand_init(seed + id, 0, 0, &localState);
 		Float rand = uniform(&localState);
-		logRand[id] = -log(uniform(&localState));
+		logRand[id] = -logrithm(uniform(&localState));
 		state[id] = localState;
-		lTR[id] = 0;
+		lTR[id] = 0.0;
         int x = LGN_idx[id];
         int y = LGN_idy[id];
-        Float value = 0; // this is needed, otherwise surf2DLayeredwrite will raise runtime error
+        float value = 0; // this is needed, otherwise surf2DLayeredwrite will raise runtime error
         surf2DLayeredwrite(value, LGNspikeSurface, 4*x, y, 0);
         #pragma unroll sum_nLearnTypeFF
         for (int i=0; i<nFF; i++) {
@@ -331,39 +331,37 @@ void compute_V_collect_spike_learnFF(
 
 	Float gE_t1 = 0.0;
 	Float gI_t1 = 0.0;
-	if (model->spikeCount == 0) {
-		//	cond E, decay only
-		//		g1, initialize g0	
-    	#pragma unroll (max_ngTypeE) 
-    	for (PosInt ig=0; ig<ngTypeE; ig++) {
-    	    PosInt gid = chunkSize*ig + cid;
-    	    Float g = gE[iChunk][gid];
-    	    Float h = hE[iChunk][gid];
-			ge[ig] = g;
-			he[ig] = h;
 
-    	    condE.decay_conductance(g, h, dt, ig); 
-    	    gE[iChunk][gid] = g;
-    	    hE[iChunk][gid] = h;
-			gE_t1 += g;
-    	}
-    	//	cond I, decay only
-		//		g1, initialize g0	
-    	#pragma unroll (max_ngTypeI)
-    	for (PosInt ig=0; ig<ngTypeI; ig++) {
-    	    PosInt gid = chunkSize*ig + cid;
-    	    Float g = gI[iChunk][gid];
-    	    Float h = hI[iChunk][gid];
-			gi[ig] = g;
-			hi[ig] = h;
+	//	cond E, decay only
+	//		g1, initialize g0	
+    #pragma unroll (max_ngTypeE) 
+    for (PosInt ig=0; ig<ngTypeE; ig++) {
+        PosInt gid = chunkSize*ig + cid;
+        Float g = gE[iChunk][gid];
+        Float h = hE[iChunk][gid];
+		ge[ig] = g;
+		he[ig] = h;
 
-    	    condI.decay_conductance(g, h, dt, ig); 
-    		gI[iChunk][gid] = g;
-    		hI[iChunk][gid] = h;
-			gI_t1 += g;
-    	}
-	}
+        condE.decay_conductance(g, h, dt, ig); 
+        gE[iChunk][gid] = g;
+        hE[iChunk][gid] = h;
+		gE_t1 += g;
+    }
+    //	cond I, decay only
+	//		g1, initialize g0	
+    #pragma unroll (max_ngTypeI)
+    for (PosInt ig=0; ig<ngTypeI; ig++) {
+        PosInt gid = chunkSize*ig + cid;
+        Float g = gI[iChunk][gid];
+        Float h = hI[iChunk][gid];
+		gi[ig] = g;
+		hi[ig] = h;
 
+        condI.decay_conductance(g, h, dt, ig); 
+    	gI[iChunk][gid] = g;
+    	hI[iChunk][gid] = h;
+		gI_t1 += g;
+    }
 
 	Float g0[max_ngTypeFF];
 	Float h0[max_ngTypeFF];
@@ -393,8 +391,9 @@ void compute_V_collect_spike_learnFF(
 	Float new_t0 = 0;
 	Float sInfo = 0;
 	Float *f = new Float[m];
-	Float noise = normal(&state)*noisyDep[itype];
-	dep[tid] = model->depC*(1+noise/square_root(dt));
+	Float noise = noisyDep[itype];
+	if (noise > 0) noise *= normal(&state);
+	dep[tid] = model->depC*(1+noise*square_root(dt));
 	do {
 		Float dtBack;
 		if (backingUpFromRef) {
@@ -417,13 +416,16 @@ void compute_V_collect_spike_learnFF(
 			}
     	    int x = LGN_idx[lid];
     	    int y = LGN_idy[lid];
-    	    Float sInfo;
-    	    surf2DLayeredread(&sInfo, LGNspikeSurface, 4*x, y, 0);
-    	    Float nsp = flooring(sInfo); // integer part: #spikes
-    	    Float tsp = (sInfo - nsp)*dt; // decimal part: normalized mean tsp
+    	    float sInfo_FF;
+    	    surf2DLayeredread(&sInfo_FF, LGNspikeSurface, 4*x, y, 0);
+    	    Size nsp_FF = static_cast<Size>(flooring(sInfo_FF)); // integer part: #spikes
+    	    Float tsp_FF = (sInfo_FF - nsp_FF)*dt; // decimal part: normalized mean tsp
+			if (sInfo_FF < 1) {
+				assert(sInfo_FF == 0);
+			}
 			
-			if (nsp > 0) {
-				if (tsp >= new_t0) {
+			if (nsp_FF > 0) {
+				if (tsp_FF >= new_t0) {
 					if (model->spikeCount == 0 && p > 0) {
 						Float rand = normal(&localState);
 						f[i] += square_root(p * f[i])*rand;
@@ -431,18 +433,18 @@ void compute_V_collect_spike_learnFF(
 					if (f[i] > 0) {
 						Float ddt;
 						if (backingUpFromRef) {
-							ddt = model->tBack - tsp;
+							ddt = model->tBack - tsp_FF;
 						}
     					#pragma unroll (max_ngTypeFF) //(ntimesFF)
     					for (PosInt ig=0; ig<ngTypeFF; ig++) {
     			    		Float str = f[i] * pFF[itype*ngTypeFF + ig];
 							if (backingUpFromRef) {
 								if (ddt > 0) { // before tBack
-    			    				condFF.compute_single_input_conductance(g0[ig], h0[ig], str*nsp, ddt, ig);
+    			    				condFF.compute_single_input_conductance(g0[ig], h0[ig], str*nsp_FF, ddt, ig);
     			    			}
 							}
 							if (model->spikeCount == 0) { // all inputs
-    			    			condFF.compute_single_input_conductance(g1[ig], h1[ig], str*nsp, dt*(1-tsp), ig);
+    			    			condFF.compute_single_input_conductance(g1[ig], h1[ig], str*nsp_FF, dt*(1-tsp_FF), ig);
 							}
 						}
 					}
@@ -498,13 +500,14 @@ void compute_V_collect_spike_learnFF(
 			} 
 			model->rk2(new_dt, noise);
 
+
 			// check spiking
     	    if (model->v > model->vThres) { // forbids firing exactly at the end of the timestep, 
     	        // crossed threshold
 				new_t0 = model->tBack;
     	        model->compute_spike_time(new_dt, new_t0); 
                 if (model->tsp < 0) {
-                    printf("%u: v:%f -> %f; new_dt = %f, new_t0 = %f\n", tid, model->v0, model->v, new_dt, new_t0);
+                    printf("%u: v:%lf -> %lf; new_dt = %lf, new_t0 = %lf\n", tid, model->v0, model->v, new_dt, new_t0);
                     assert(model->tsp >= 0);
                 }
     	        sInfo += model->tsp;
@@ -528,10 +531,9 @@ void compute_V_collect_spike_learnFF(
 
 		// debug
 		if (isnan(model->v)) {
-			printf("v[%u] = nan, v0 = %f, tBack = %f\n", tid, model->v0, model->tBack);
+			printf("v[%u] = nan, v0 = %lf, tBack = %lf\n", tid, model->v0, model->tBack);
 			assert(!isnan(model->v0));
 		}
-	
 	} while (backingUpFromRef);
 	delete []f;
 	rNoisy[tid] = state;
@@ -708,9 +710,9 @@ void compute_V_collect_spike_learnFF(
                 Float f = sLGN[lid];
                 int x = LGN_idx[lid];
                 int y = LGN_idy[lid];
-                Float sInfo_FF;
+                float sInfo_FF;
                 surf2DLayeredread(&sInfo_FF, LGNspikeSurface, 4*x, y, 0);
-                Float nsp_FF = flooring(sInfo_FF);
+                Size nsp_FF = static_cast<Size>(flooring(sInfo_FF));
                 Float tsp_FF = sInfo_FF > 0? sInfo_FF - nsp_FF: 1;
                 if (nsp_FF > 0) { // LTD, regarless of post spike
                     PosInt cPick;
@@ -763,8 +765,9 @@ void compute_V_collect_spike_learnFF(
                     if (threadIdx.x < nE) {
                         #pragma unroll max_nLearnTypeFF_E
                         for (PosInt j=0; j<learnE_pre.n; j++) {
-                            Float lFF_pre;
-                            surf2DLayeredread(&lFF_pre, LGNspikeSurface, 4*x, y, 1+3*j+fPick);
+                            float lFF_pref;
+                            surf2DLayeredread(&lFF_pref, LGNspikeSurface, 4*x, y, 1+3*j+fPick);
+							Float lFF_pre = static_cast<Float>(lFF_pref);
                             /*debug
                             if (tid == 0 && i == 0) {
                                 printf("%u-%u, LTP, old_f = %e, lFF_pre = %e\n", tid, i, f, lFF_pre);
@@ -778,8 +781,9 @@ void compute_V_collect_spike_learnFF(
                     } else {
                         #pragma unroll max_nLearnTypeFF_I
                         for (PosInt j=0; j<learnI_pre.n; j++) {
-                            Float lFF_pre;
-                            surf2DLayeredread(&lFF_pre, LGNspikeSurface, 4*x, y, 1+3*j+fPick);
+                            float lFF_pref;
+                            surf2DLayeredread(&lFF_pref, LGNspikeSurface, 4*x, y, 1+3*j+fPick);
+							Float lFF_pre = static_cast<Float>(lFF_pref);
                             f += if_decay(lFF_pre, learnI_pre.tauLTP[j], delta_t) * lFF[max_nLearnTypeFF*2 + 2*j+1] * learnI_post.A_LTP[j];
                         }
                     }
@@ -857,12 +861,12 @@ void compute_V_collect_spike_learnFF(
 }
 
 //template<int ntimesE, int ntimesI>
-__launch_bounds__(1024, 2)
+__launch_bounds__(1024, 1)
 __global__  // <<< nblock[partial], blockSize >>>
 void recal_G_mat(
         Float* __restrict__ spikeTrain, // [depth, nblock, blockSize]
-        Float* __restrict__ conMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
-        Float* __restrict__ delayMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
+        float* __restrict__ conMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
+        float* __restrict__ delayMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
         Size* __restrict__ nNeighborBlock,
         PosInt* __restrict__ neighborBlockId,
         Float* __restrict__ gE, // [ngTypeE, nV1]
@@ -942,7 +946,7 @@ void recal_G_mat(
             // access each presynaptic neurons in stride
             // conMat: [nblock,nearNeighborBlock,blockDim.x,blockDim.x] last dim is the post-id: second-last pre-id
             PosIntL mid = static_cast<PosIntL>((local_bid*blockSize + i)*blockSize + threadIdx.x);
-            Float strength = conMat[mid];
+            Float strength = static_cast<Float>(conMat[mid]);
 			PosInt jtype;	
     		#pragma unroll (max_nType)
     		for (PosInt j=0; j<nType; j++) {
@@ -955,7 +959,7 @@ void recal_G_mat(
                 //Float LTP_pre[max_nLearnTypeE];
                 //Float Q_pre[max_nLearnTypeQ];
             	Float p = synFail[jtype*nType + itype];
-                Float time2post = delayMat[mid]/speedOfThought;
+                Float time2post = static_cast<Float>(delayMat[mid])/speedOfThought;
                 Float *local_g;
                 Float *local_h;
                 Float *ip;

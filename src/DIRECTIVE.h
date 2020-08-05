@@ -7,6 +7,7 @@
 #define SYNC
 
 #ifdef DOUBLE_PRECISION
+	#define B_LOG_MAXIMUM 709.7827128933827
     #define roundingb round 
     #define flooringb floor 
     #define ceilingb ceil
@@ -31,6 +32,7 @@
     #define normalb curand_normal_double
     #define log_normalb curand_log_normal_double
 #else
+	#define B_LOG_MAXIMUM 88.72284
     #define roundingb roundf 
     #define flooringb floorf 
     #define ceilingb ceilf
@@ -57,6 +59,7 @@
 #endif
 
 #ifdef SINGLE_PRECISION
+	#define LOG_MAXIMUM 88.72284
     #define rounding roundf
     #define flooring floorf
     #define ceiling ceilf
@@ -81,6 +84,7 @@
     #define normal curand_normal
     #define log_normal curand_log_normal
 #else
+	#define LOG_MAXIMUM 709.7827128933827
     #define rounding round 
     #define flooring floor
     #define ceiling ceil

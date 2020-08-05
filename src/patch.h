@@ -44,7 +44,11 @@ inline void read_LGN(std::string filename, Float* &array, Size &maxList, Float s
     for (PosInt i=0; i<nList; i++) {
         Size listSize;
         input_file.read(reinterpret_cast<char*>(&listSize), sizeof(Size));
-		input_file.read(reinterpret_cast<char*>(&array[i*maxList]), listSize * sizeof(Float));
+		std::vector<float> array0(listSize);
+		input_file.read(reinterpret_cast<char*>(&array0[0]), listSize * sizeof(float));
+		for (PosInt j=0; j<listSize; j++) {
+			array[i*maxList + j] = static_cast<Float>(array0[j]);
+		}
         PosInt type;
         for (PosInt j=0; j<nType; j++) {
             if (i%blockSize < typeAcc[j]) {
@@ -67,12 +71,12 @@ inline void read_LGN(std::string filename, Float* &array, Size &maxList, Float s
 	input_file.close();
 }
 
-inline int checkGMemUsage(size_t usingGMem, size_t GMemAvail) {
+inline bool checkGMemUsage(size_t usingGMem, size_t GMemAvail) {
 	if (usingGMem > GMemAvail) {
 		std::cout << usingGMem / 1024.0 / 1024.0 << " > GMem available on device: " << GMemAvail << "\n";
-		return EXIT_FAILURE;
+		return true;
 	} else {
-		return EXIT_SUCCESS;
+		return false;
 	}
 }
 // the retinal discrete x, y as cone receptors id

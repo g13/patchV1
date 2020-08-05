@@ -9,9 +9,26 @@
 #include <curand_kernel.h>
 #include <cuda.h>
 #include "condShape.h"
-#include "LIF_inlines.h"
 #include "MACRO.h"
 #include <vector>
+
+__forceinline__  
+__device__ 
+Float get_a(Float gE, Float gI, Float gL) {
+    return gE + gI + gL;
+}
+
+__forceinline__ 
+__device__ 
+Float get_b(Float gE, Float gI, Float gL) {
+    return gE * vE + gI * vI + gL * vL;
+}
+
+__forceinline__ 
+__device__ 
+Float impl_rk2(Float dt, Float a0, Float b0, Float a1, Float b1, Float v0) {
+    return (2*v0 + (-a0*v0+b0+b1)*dt)/(2+a1*dt);
+}
 
 struct LIF {
     Size spikeCount;
@@ -37,12 +54,11 @@ struct LIF {
 	    	v = impl_rk2(dt, a0, b0, a1, b1, v0);
 		} else {
 			noise *= square_root(dt)*depC;
-			Float fk1 = -a0*v0 + b0; 
-			fk1 *= dt;
-			fk1 += noise;
+			Float fk1 = (-a0*v0 + b0)*dt;
+			fk1 += noise; 
 			Float v1 = v0 + fk1;
-			Float fk2 = -a1*v1 + b1;
-			v = v0 + (fk1 + fk2*dt + noise)/2;
+			v = v0 + fk1/2;
+			v += ((-a1*v1 + b1)*dt + noise)/2;
 		}
 	}
 
@@ -61,7 +77,7 @@ struct LIF {
 	__device__
 	__forceinline__
 	virtual void compute_spike_time(Float dt, Float t0) {
-	    tsp = comp_spike_time(v, v0, vThres, dt, t0);
+    	tsp = t0 + (vThres-v0)/(v-v0)*dt;
 	}
 	
 	__device__ 
@@ -86,8 +102,9 @@ struct AdEx: LIF { //Adaptive Exponential IF
     __device__ 
 	__forceinline__
 	AdEx(Float _w0, Float _tau_w, Float _a, Float _b, Float _v0, Float _tBack, Float _vR, Float _vThres, Float _gL, Float _tRef, Float _vT, Float _deltaT, Float dep): LIF(_v0, _tBack, _vR, _vThres, _gL, _tRef, dep), w0(_w0), tau_w(_tau_w), a(_a), b(_b), vT(_vT), deltaT(_deltaT) {
+		spikeCount = 0;
 		Float targetV = vR + (vT-vR)*dep;
-		depC = gL*(targetV - vL) + tau_w*a*(targetV-vL) - gL*deltaT*exponential((targetV - vT)/deltaT);
+		depC = gL*(targetV - vL - deltaT*exponential((targetV - vT)/deltaT)) + tau_w*a*(targetV-vL);
 	};
     __device__ 
 	__forceinline__
@@ -105,29 +122,38 @@ struct AdEx: LIF { //Adaptive Exponential IF
 	__device__ 
 	__forceinline__
 	void rk2(Float dt, Float noise) {
-		if (noise == 0) {
-			Float fk1 = -a0*v0 + b0 + deltaT*gL*exponential((v0-vT)/deltaT) - w0;
-			Float gk1 = a*(v0-vL) - w0/tau_w;
-			Float v1 = v0 + fk1*dt;
-			Float w1 = w0 + gk1*dt;
-			Float fk2 = -a1*v1 + b1 + deltaT*gL*exponential((v1-vT)/deltaT) - w1;
-			Float gk2 = a*(v1-vL) - w1/tau_w;
-			v = v0 + (fk1 + fk2)/2 * dt;
-			w = w0 + (gk1 + gk2)/2 * dt;
-		} else {
-			noise *= square_root(dt)*depC;
-			Float fk1 = -a0*v0 + b0 + deltaT*gL*exponential((v0-vT)/deltaT) - w0;
-			Float gk1 = a*(v0-vL) - w0/tau_w;
-			fk1 *= dt;
-			fk1 += noise;
-			Float w1 = w0 + gk1*dt;
-			Float v1 = v0 + fk1*dt;
 
-			Float gk2 = a*(v1-vL) - w1/tau_w;
-			Float fk2 = -a1*v1 + b1 + deltaT*gL*exponential((v1-vT)/deltaT) - w1;
-			w = w0 + (gk1 + gk2)/2 * dt;
-			v = v0 + (fk1 + fk2*dt + noise)/2;
+		Float dTgL = deltaT*gL;
+		Float fk1 = -a0*v0 + b0 + dTgL*exponential((v0-vT)/deltaT) - w0;
+		fk1 *= dt;
+		if (noise != 0) {
+			noise *= square_root(dt)*depC;
+			fk1 += noise;
 		}
+		Float v1 = v0 + fk1;
+		v = v0 + fk1/2;
+
+		Float gk1 = (a*(v0-vL) - w0/tau_w)*dt;
+		Float w1 = w0 + gk1; // split add fk1, fk2 to optimize register usage
+		w = w0 + gk1/2;
+
+		Float fk2 = -a1*v1 + b1 + dTgL*exponential((v1-vT)/deltaT) - w1;
+		Float gk2 = (a*(v1-vL) - w1/tau_w)*dt;
+		w += gk2/2;
+		v += (fk2*dt + noise)/2;
+	}
+
+
+	__device__
+	__forceinline__
+	void compute_spike_time(Float dt, Float t0) {
+		Float denorm;
+		if (!isinf(v)) {
+			denorm = logrithm(v/v0);
+		} else {
+			denorm = LOG_MAXIMUM-logrithm(v0);
+		}
+    	tsp = t0 + logrithm(vThres/v0)/denorm*dt;
 	}
 
     __device__ 
@@ -143,7 +169,7 @@ struct AdEx: LIF { //Adaptive Exponential IF
 		v = vR;
 	}
     __device__ void update(Float **var) {
-		*var[0] = w;
+		*(var[0]) = w;
 	};
 };
 
@@ -231,8 +257,8 @@ void compute_V_collect_spike_learnFF(
 __global__  
 void recal_G_mat( // <<< nblock[partial], blockSize >>>
         Float* __restrict__ spikeTrain, // [depth, nblock, blockSize]
-        Float* __restrict__ conMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
-        Float* __restrict__ delayMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
+        float* __restrict__ conMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
+        float* __restrict__ delayMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
         Size* __restrict__ nNeighborBlock,
         PosInt* __restrict__ neighborBlockId,
         Float* __restrict__ gE, // [ngTypeE, nV1]

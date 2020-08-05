@@ -19,6 +19,7 @@ else:
     input_suffix = ""
     output_suffix = ""
 
+precision = 'f4'
 print(output_suffix)
 print(input_suffix)
 if output_suffix:
@@ -54,10 +55,9 @@ with open(output, 'rb') as f:
     nMagno_C = np.fromfile(f, 'u4', 1)[0]
     print(f'parvo:{(nParvo_I, nParvo_C)}, magno: {(nMagno_I, nMagno_C)}')
     nLGN = nParvo + nMagno
-    max_convol = np.fromfile(f, 'f4', nLGN)
+    max_convol = np.fromfile(f, precision, nLGN)
 
 output = "LGN" + output_suffix + ".bin"
-precision = 'f4'
 with open(output, 'rb') as f:
     nLGN = np.fromfile(f, 'u4', 1)[0]
     LGN_type = np.fromfile(f, 'u4', nLGN)
@@ -87,7 +87,7 @@ print(ns)
 output_fn = "outputB4V1" + output_suffix + ".bin"
 with open(output_fn, 'rb') as f:
     nt = np.fromfile(f, 'u4', count = 1)[0]
-    dt = np.fromfile(f, 'f4', count = 1)[0]
+    dt = np.fromfile(f, precision, count = 1)[0]
     if nt_ > nt:
         nt_ = nt
     print(f'nt_= {nt_}/{nt}')
@@ -97,24 +97,24 @@ with open(output_fn, 'rb') as f:
     interstep = nt_//nstep
     tt = np.arange(nstep)*interstep
     nLGN = np.fromfile(f, 'u4', count = 1)[0]
-    LGNfr  = np.zeros((nstep,ns), dtype=float)
-    frStat = np.zeros(nLGN, dtype = float)
-    convol  = np.zeros((nstep,ns), dtype=float)
-    convol_total = np.zeros((nstep,nLGN), dtype=float)
-    luminance  = np.zeros((nstep, ns), dtype=float)
-    contrast  = np.zeros((nstep, 2, nLGN), dtype=float)
+    LGNfr  = np.zeros((nstep,ns))
+    frStat = np.zeros(nLGN)
+    convol  = np.zeros((nstep,ns))
+    convol_total = np.zeros((nstep,nLGN))
+    luminance  = np.zeros((nstep, ns))
+    contrast  = np.zeros((nstep, 2, nLGN))
     for it in range(nstep):
         if it > 0:
             f.seek(nLGN*5*4*(interstep-1), 1)
-        data = np.fromfile(f, 'f4', count = nLGN)
+        data = np.fromfile(f, precision, count = nLGN)
         frStat = frStat + data
         LGNfr[it,:] = data[iLGN]
-        data = np.fromfile(f, 'f4', count = nLGN)
+        data = np.fromfile(f, precision, count = nLGN)
         convol_total[it,:] = data
         convol[it,:] = data[iLGN]
-        data = np.fromfile(f, 'f4', count = nLGN)
+        data = np.fromfile(f, precision, count = nLGN)
         luminance[it,:] = data[iLGN]
-        contrast[it,:,:] = np.fromfile(f, 'f4', count = 2*nLGN).reshape(2,nLGN)
+        contrast[it,:,:] = np.fromfile(f, precision, count = 2*nLGN).reshape(2,nLGN)
 
 t = tt + dt
 if plotResponseSample:

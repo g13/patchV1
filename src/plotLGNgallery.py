@@ -21,6 +21,7 @@ if suffix:
 #iLGN = np.array([0])
 iLGN = np.array([143, 95, 248, 6, 227])
 #iLGN = np.random.randint(nLGN, size=1)[0]
+precision = 'f8'
 
 output = "LGN_gallery" + suffix + ".bin"
 with open(output, 'rb') as f:
@@ -39,12 +40,12 @@ with open(output, 'rb') as f:
     nMagno_C = np.fromfile(f, 'u4', 1)[0]
     print(f'parvo:{(nParvo_I, nParvo_C)}, magno: {(nMagno_I, nMagno_C)}')
     nLGN = nParvo + nMagno
-    max_convol = np.fromfile(f, 'f4', nLGN)
-    tw = np.fromfile(f, 'f4', nParvo*nType*nKernelSample).reshape((nParvo,nType,nKernelSample))
-    sw = np.fromfile(f, 'f4', nSample*(nParvo>0))
+    max_convol = np.fromfile(f, precision, nLGN)
+    tw = np.fromfile(f, precision, nParvo*nType*nKernelSample).reshape((nParvo,nType,nKernelSample))
+    sw = np.fromfile(f, precision, nSample*(nParvo>0))
     sc = np.fromfile(f, 'f4', 2*nParvo*nType*nSample).reshape((2,nParvo,nType,nSample))
-    tw_m = np.fromfile(f, 'f4', nMagno*mKernelSample).reshape((nMagno,mKernelSample))
-    sw_m = np.fromfile(f, 'f4', nMagno*mSample).reshape((nMagno,mSample))
+    tw_m = np.fromfile(f, precision, nMagno*mKernelSample).reshape((nMagno,mKernelSample))
+    sw_m = np.fromfile(f, precision, nMagno*mSample).reshape((nMagno,mSample))
     sc_m = np.fromfile(f, 'f4', 2*nMagno*mSample).reshape((2,nMagno,mSample))
 nSample1D = np.sqrt(nSample).astype(int)
 mSample1D = np.sqrt(mSample).astype(int)
@@ -52,7 +53,6 @@ print(f'nParvo = {nParvo}, nType = {nType}, nKernelSample = {nKernelSample}, nSa
 print(f'nMagno = {nMagno}, mType = {mType}, mKernelSample = {mKernelSample}, mSample = {mSample}, mSample1D = {mSample1D}')
 
 output = "LGN" + suffix + ".bin"
-precision = 'f4'
 with open(output, 'rb') as f:
     nLGN = np.fromfile(f, 'u4', 1)[0]
     LGN_type = np.fromfile(f, 'u4', nLGN)

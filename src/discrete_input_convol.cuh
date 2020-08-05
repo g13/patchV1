@@ -23,8 +23,23 @@
 __global__ 
 void testTexture(Float L, Float M, Float S);
     
+
+template<typename T>
 __global__
-void cudaMemsetNonzero(Float* array, Size n, Float value);
+void cudaMemsetNonzero(
+        T* array,
+        Size n,
+        T value) 
+{
+    Size id =  blockDim.x * blockDim.y * (gridDim.x*blockIdx.y + blockIdx.x) + blockDim.x*threadIdx.y + threadIdx.x;
+	/*
+    if (id == 0) {
+        printf("array initialized to %f\n", value);
+    }*/
+    if (id < n) {
+        array[id] = value;
+    }
+}
 
 __device__
 __forceinline__

@@ -5,22 +5,6 @@ extern texture<float, cudaTextureType2DLayered> M_retinaInput;
 extern texture<float, cudaTextureType2DLayered> S_retinaInput;
 extern surface<void, cudaSurfaceType2DLayered> LGNspikeSurface;
 
-__global__
-void cudaMemsetNonzero(
-        Float* array,
-        Size n,
-        Float value) 
-{
-    Size id =  blockDim.x * blockDim.y * (gridDim.x*blockIdx.y + blockIdx.x) + blockDim.x*threadIdx.y + threadIdx.x;
-	/*
-    if (id == 0) {
-        printf("array initialized to %f\n", value);
-    }*/
-    if (id < n) {
-        array[id] = value;
-    }
-}
-
 __device__ 
 __forceinline__ 
 Float spatialKernel(Float x, Float y, Float rx, Float ry) {
@@ -1362,7 +1346,7 @@ Float get_spike(Size &nsp,
 }
 
 //template<int ntimes>
-__launch_bounds__(1024, 2)
+//__launch_bounds__(1024, 2)
 __global__ 
 void LGN_nonlinear(
         Size nLGN,
@@ -1426,7 +1410,9 @@ void LGN_nonlinear(
         if (learning < 4) {
             #pragma unroll (sum_nLearnTypeFF)
             for (int i=0; i<nFF; i++) {
-                surf2DLayeredread(&(var[i]), LGNspikeSurface, 4*x, y, 1+(3*i+varSlot)); // varSlot already 'mod'ed
+				float varf;
+                surf2DLayeredread(&varf, LGNspikeSurface, 4*x, y, 1+(3*i+varSlot)); // varSlot already 'mod'ed, learnVar at the start of this tstep
+				var[i] = static_cast<Float>(varf);
             }
         }
 
@@ -1446,10 +1432,12 @@ void LGN_nonlinear(
             //printf("LGN fired, ");
         }
         leftTimeRate[id] = lTR;
+		//printf("%u: ltr = %lf, lnl = %lf, sInfo = %lf\n", id, lTR, lNL, sInfo);
         state[id] = local_state;
         if (learnData_FF || getLGN_sp) LGN_sInfo[id] = sInfo;
         // write to surface memory 
-        surf2DLayeredwrite(sInfo, LGNspikeSurface, 4*x, y, 0);
+		float sInfof = static_cast<float>(sInfo);
+        surf2DLayeredwrite(sInfof, LGNspikeSurface, 4*x, y, 0);
         if (learning < 4) {
             Float delta_t; // from last_tsp (or start of the time step) to tsp (or end of time step)
             if (sInfo > 0) {
@@ -1467,7 +1455,8 @@ void LGN_nonlinear(
                 }
                 #pragma unroll (sum_nLearnTypeFF)
                 for (int i=0; i<nFF; i++) {
-                    surf2DLayeredwrite(var[i], LGNspikeSurface, 4*x, y, 1+(3*i+2)); // update at the third slot
+					float varf = static_cast<float>(var[i]);
+                    surf2DLayeredwrite(varf, LGNspikeSurface, 4*x, y, 1+(3*i+2)); // store learnVar right before the LGN spike in the current time step, always update at the third slot, 
                 }
                 delta_t = dt - delta_t; // remaining time to end of the timestep
             } else delta_t = dt;
@@ -1484,7 +1473,8 @@ void LGN_nonlinear(
             // write to the next slot in surface
             #pragma unroll (sum_nLearnTypeFF)
             for (int i=0; i<nFF; i++) {
-                surf2DLayeredwrite(var[i], LGNspikeSurface, 4*x, y, 1+(3*i+(varSlot+1)%2)); // update at next slot
+				float varf = static_cast<float>(var[i]);
+                surf2DLayeredwrite(varf, LGNspikeSurface, 4*x, y, 1+(3*i+(varSlot+1)%2)); // update at next slot, learnVar at the end of the current step
             }
             if (learnData_FF) {
                 #pragma unroll (sum_nLearnTypeFF)
