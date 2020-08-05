@@ -28,11 +28,12 @@ if input_suffix:
     input_suffix = "_" + input_suffix 
 
 plotResponseSample = True
-plotContrastDist = True
-plotStat = True
+plotContrastDist = False
+plotStat = False
 nLGN_1D = 16
 nt_ = 4000
 nstep = 1000
+seed = 1653781
 #iLGN = np.array([0,137,255])
 #iLGN = np.array([6*16+3,7*16+3,8*16+3, 6*16+10,7*16+10,8*16+10])
 #iLGN = np.arange(185133)
@@ -79,6 +80,7 @@ with open(output, 'rb') as f:
     coneType = np.fromfile(f, 'u4', 2*nLGN).reshape(2,nLGN)
 
 if 'iLGN' not in locals():
+    np.random.seed(seed)
     iLGN = np.random.randint(nLGN, size =ns)
 print(iLGN)
 ns = iLGN.size
@@ -126,10 +128,12 @@ if plotResponseSample:
         ax.plot(t, convol[:,i].T/max_convol[j], 'g', lw = 0.1)
         max_convol_irl = np.max(convol[:,i])
         print([max_convol_irl, max_convol[j], max_convol_irl/max_convol[j]])
-        ax.plot(t, contrast[:,0,j], ':r', lw = 0.1)
-        ax.plot(t, contrast[:,1,j], ':b', lw = 0.1)
-        ax.plot(t, luminance[:,i], ':m', lw = 0.1)
+        ax.plot(t, contrast[:,0,j], ':r', lw = 0.1, label = 'C')
+        ax.plot(t, contrast[:,1,j], ':b', lw = 0.1, label = 'S')
+        ax.plot(t, luminance[:,i], ':m', lw = 0.1, label = 'lum')
         ax.set_ylim([-1.0,1.0])
+        if i == 0:
+            ax.legend()
         ax2 = ax.twinx()
         ax2.plot(t, LGNfr[:,i], 'k', lw = 0.1)
         ax2.set_ylim(bottom = 0)

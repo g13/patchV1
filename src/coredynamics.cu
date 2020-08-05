@@ -309,12 +309,7 @@ void compute_V_collect_spike_learnFF(
             break;
         }
     }
-    LIF* model;
-    if (iModel == 0) {
-        model = new LIF(v[tid], tBack[tid], vR[itype], vThres[itype], gL[itype], tRef[itype], tonicDep[tid]);
-    } else {
-        model = new AdEx(w[tid], tau_w[itype], a[itype], b[itype], v[tid], tBack[tid], vR[itype], vThres[itype], gL[itype], tRef[itype], vT[itype], deltaT[itype], tonicDep[tid]);
-	}
+    AdEx model(w[tid], tau_w[itype], a[itype], b[itype], v[tid], tBack[tid], vR[itype], vThres[itype], gL[itype], tRef[itype], vT[itype], deltaT[itype], tonicDep[tid]);
 
     /* set a0 b0 and a1 b1 */
     // cond FF
@@ -380,24 +375,24 @@ void compute_V_collect_spike_learnFF(
 	}
 	/* debug for snapshot
 		if (tid == 0) {
-			printf("V1: rand0 = %f, rand1 = %f, gFF = %f, tBack = %f, v = %f, , gE = %f, gI =%f\n", uniform(&state), uniform(&localState), g1[0] + g1[1], model->tBack, model->v0, gE_t1, gI_t1);
+			printf("V1: rand0 = %f, rand1 = %f, gFF = %f, tBack = %f, v = %f, , gE = %f, gI =%f\n", uniform(&state), uniform(&localState), g1[0] + g1[1], model.tBack, model.v0, gE_t1, gI_t1);
 		}
 		__syncthreads();
 	*/
 
 	Float p = synFailFF[itype];
 
-	bool backingUpFromRef = model->tBack < dt && model->tBack > 0;
+	bool backingUpFromRef = model.tBack < dt && model.tBack > 0;
 	Float new_t0 = 0;
 	Float sInfo = 0;
 	Float *f = new Float[m];
 	Float noise = noisyDep[itype];
 	if (noise > 0) noise *= normal(&state);
-	dep[tid] = model->depC*(1+noise*square_root(dt));
+	dep[tid] = model.depC*(1+noise*square_root(dt));
 	do {
 		Float dtBack;
 		if (backingUpFromRef) {
-			dtBack = model->tBack - new_t0;
+			dtBack = model.tBack - new_t0;
 		}
 		//	condFF
 		//		decay part
@@ -411,7 +406,7 @@ void compute_V_collect_spike_learnFF(
     	#pragma unroll (4)
     	for (PosInt i = 0; i<m; i++) {
     	    PosInt lid = tid*max_nLGN + i;
-			if (model->spikeCount == 0) {
+			if (model.spikeCount == 0) {
 				f[i] = sLGN[lid]*(1-p);
 			}
     	    int x = LGN_idx[lid];
@@ -426,14 +421,14 @@ void compute_V_collect_spike_learnFF(
 			
 			if (nsp_FF > 0) {
 				if (tsp_FF >= new_t0) {
-					if (model->spikeCount == 0 && p > 0) {
+					if (model.spikeCount == 0 && p > 0) {
 						Float rand = normal(&localState);
 						f[i] += square_root(p * f[i])*rand;
 					}
 					if (f[i] > 0) {
 						Float ddt;
 						if (backingUpFromRef) {
-							ddt = model->tBack - tsp_FF;
+							ddt = model.tBack - tsp_FF;
 						}
     					#pragma unroll (max_ngTypeFF) //(ntimesFF)
     					for (PosInt ig=0; ig<ngTypeFF; ig++) {
@@ -443,7 +438,7 @@ void compute_V_collect_spike_learnFF(
     			    				condFF.compute_single_input_conductance(g0[ig], h0[ig], str*nsp_FF, ddt, ig);
     			    			}
 							}
-							if (model->spikeCount == 0) { // all inputs
+							if (model.spikeCount == 0) { // all inputs
     			    			condFF.compute_single_input_conductance(g1[ig], h1[ig], str*nsp_FF, dt*(1-tsp_FF), ig);
 							}
 						}
@@ -451,7 +446,7 @@ void compute_V_collect_spike_learnFF(
 				}
 			}
     	}
-		if (model->spikeCount == 0) {
+		if (model.spikeCount == 0) {
     		rGenCond[tid] = localState;
 		}
 		//	collect
@@ -460,7 +455,7 @@ void compute_V_collect_spike_learnFF(
     	for (PosInt ig=0; ig<ngTypeFF; ig++) {
         	PosInt gid = nV1*ig + tid;
     	    gE_t0 += g0[ig];
-			if (model->spikeCount == 0) {
+			if (model.spikeCount == 0) {
     	    	gE_t1 += g1[ig];
     			gFF[gid] = g1[ig];
     			hFF[gid] = h1[ig];
@@ -487,64 +482,64 @@ void compute_V_collect_spike_learnFF(
 		}
 
     	// stepping
-		model->tsp = 0;
-		if (model->tBack < dt) {
-    		model->set_p0(gE_t0, gI_t0);
-			if (model->spikeCount == 0) {
-    			model->set_p1(gE_t1, gI_t1);
+		model.tsp = 0;
+		if (model.tBack < dt) {
+    		model.set_p0(gE_t0, gI_t0);
+			if (model.spikeCount == 0) {
+    			model.set_p1(gE_t1, gI_t1);
 			}
 
-			Float new_dt = dt - model->tBack;
+			Float new_dt = dt - model.tBack;
 			if (backingUpFromRef) { //	stepping other variable before tBack
-				model->rk2_vFixedBefore(dtBack);
+				model.rk2_vFixedBefore(dtBack);
 			} 
-			model->rk2(new_dt, noise);
+			model.rk2(new_dt, noise);
 
 
 			// check spiking
-    	    if (model->v > model->vThres) { // forbids firing exactly at the end of the timestep, 
+    	    if (model.v > model.vThres) { // forbids firing exactly at the end of the timestep, 
     	        // crossed threshold
-				new_t0 = model->tBack;
-    	        model->compute_spike_time(new_dt, new_t0); 
-                if (model->tsp < 0) {
-                    printf("%u: v:%lf -> %lf; new_dt = %lf, new_t0 = %lf\n", tid, model->v0, model->v, new_dt, new_t0);
-                    assert(model->tsp >= 0);
+				new_t0 = model.tBack;
+    	        model.compute_spike_time(new_dt, new_t0); 
+                if (model.tsp < 0) {
+                    printf("%u: v:%lf -> %lf; new_dt = %lf, new_t0 = %lf\n", tid, model.v0, model.v, new_dt, new_t0);
+                    assert(model.tsp >= 0);
                 }
-    	        sInfo += model->tsp;
-    	        model->spikeCount++;
-    	        model->tBack = model->tsp + model->tRef;
-				backingUpFromRef = model->tBack < dt;
+    	        sInfo += model.tsp;
+    	        model.spikeCount++;
+    	        model.tBack = model.tsp + model.tRef;
+				backingUpFromRef = model.tBack < dt;
 				if (backingUpFromRef) {
-					model->reset0();
+					model.reset0();
 				}
     	    } else {
-				if (model->tBack > 0) model->tBack = 0;
+				if (model.tBack > 0) model.tBack = 0;
 				backingUpFromRef = false;
 			}
 		} 
-		if (model->tBack >= dt) { // tRef till end
-			model->reset1();
-			model->rk2_vFixedAfter(dt-model->tsp);
-			model->tBack -= dt;
+		if (model.tBack >= dt) { // tRef till end
+			model.reset1();
+			model.rk2_vFixedAfter(dt-model.tsp);
+			model.tBack -= dt;
 		}
     	/* evolve g to t+dt with ff input only */
 
 		// debug
-		if (isnan(model->v)) {
-			printf("v[%u] = nan, v0 = %lf, tBack = %lf\n", tid, model->v0, model->tBack);
-			assert(!isnan(model->v0));
+		if (isnan(model.v)) {
+			printf("v[%u] = nan, v0 = %lf, tBack = %lf\n", tid, model.v0, model.tBack);
+			assert(!isnan(model.v0));
 		}
 	} while (backingUpFromRef);
 	delete []f;
 	rNoisy[tid] = state;
 
-    if (model->spikeCount > 0) {
-		sInfo /= model->spikeCount*dt; //decimal part: tsp (normalize by dt)
-		//model->tBack -= dt;
+    if (model.spikeCount > 0) {
+		sInfo /= model.spikeCount*dt; //decimal part: tsp (normalize by dt)
+		//model.tBack -= dt;
 	}
-    assert(model->tBack >= 0);
-	//if (model->tBack < 0) model->tBack = 0;
-    sInfo += model->spikeCount; // integer part: nsp
+    assert(model.tBack >= 0);
+	//if (model.tBack < 0) model.tBack = 0;
+    sInfo += model.spikeCount; // integer part: nsp
     spikeTrain[nV1*currentTimeSlot + tid] = sInfo;
     assert(sInfo >= 0);
 
@@ -560,15 +555,14 @@ void compute_V_collect_spike_learnFF(
     	    printf("%u(%u): spiked at sInfo: %u + %f, gF = %e(%u), gE = %e, gI = %e\n", tid, cid, nsp, sInfo - nsp, gFF[tid], m, gE[iChunk][cid], gI_t0);
     	}
 	*/
-	v[tid] = model->v;
+	v[tid] = model.v;
 	if (iModel == 1) {
 		Float** var = new Float*[1];
 		var[0] = w+tid;
-		model->update(var);
+		model.update(var);
 		delete []var;
 	}
-    tBack[tid] = model->tBack;
-    delete []model;
+    tBack[tid] = model.tBack;
 
     if (learning) {
         Float nsp = flooring(sInfo);
@@ -1600,53 +1594,53 @@ void sum_G(
 //__device__
 //__forceinline__
 //Float step(LIF* model, Float dt, PosInt id, Float gE, Float gI) {
-//    model->spikeCount = 0;
+//    model.spikeCount = 0;
 //    Float sInfo = 0.0;
 //    // not in refractory period
-//    if (model->tBack < dt) {
+//    if (model.tBack < dt) {
 //        // return from refractory period
-//        if (model->tBack > 0.0f) {
-//            model->recompute_v0(dt);
+//        if (model.tBack > 0.0f) {
+//            model.recompute_v0(dt);
 //            #ifdef DEBUG
 //                if (id == 0 || id == 768) {
 //                    printf("backed\n");
 //                }
 //            #endif
 //        }
-//        model->rk2(dt);
-//        while (model->v > model->vThres && model->tBack < dt) { // forbids firing exactly at the end of the timestep, 
+//        model.rk2(dt);
+//        while (model.v > model.vThres && model.tBack < dt) { // forbids firing exactly at the end of the timestep, 
 //            // crossed threshold
-//            model->compute_spike_time(dt); 
-//            sInfo += model->tsp;
-//            model->spikeCount++;
-//            model->tBack = model->tsp + model->tRef;
+//            model.compute_spike_time(dt); 
+//            sInfo += model.tsp;
+//            model.spikeCount++;
+//            model.tBack = model.tsp + model.tRef;
 //            #ifdef DEBUG
 //                if (id == 0 || id == 768) {
-//                    printf("#%u spiked at %f, to come back at %f\n", id, model->tsp, model->tBack);
+//                    printf("#%u spiked at %f, to come back at %f\n", id, model.tsp, model.tBack);
 //                }
 //            #endif
-//            if (model->tBack < dt) {
+//            if (model.tBack < dt) {
 //                // refractory period ended during dt
-//                model->recompute(dt);
+//                model.recompute(dt);
 //            }
 //        }
 //    }
-//    if (model->tBack >= dt) {
+//    if (model.tBack >= dt) {
 //        // during refractory period
-//        model->reset1();
+//        model.reset1();
 //    }
-//    model->tBack -= dt;
+//    model.tBack -= dt;
 //    #ifdef DEBUG
-//        if (model->v < vI) {
-//    		printf("#%i implicit rk2 is A-Stable! something is off gE1 = %f, gI1 = %f, v = %f, v0 = %f, a0 = %f, b0 = %f, a1 = %f, b1 = %f\n", id, gE, gI, model->v, model->v0, model->a0, model->b0, model->a1, model->b1);
+//        if (model.v < vI) {
+//    		printf("#%i implicit rk2 is A-Stable! something is off gE1 = %f, gI1 = %f, v = %f, v0 = %f, a0 = %f, b0 = %f, a1 = %f, b1 = %f\n", id, gE, gI, model.v, model.v0, model.a0, model.b0, model.a1, model.b1);
 //        }   
 //    #endif
-//    if (model->spikeCount > 0) sInfo /= model->spikeCount*dt; //decimal part: tsp (normalize by dt)
-//    sInfo += model->spikeCount; // integer part: nsp
+//    if (model.spikeCount > 0) sInfo /= model.spikeCount*dt; //decimal part: tsp (normalize by dt)
+//    sInfo += model.spikeCount; // integer part: nsp
 //    #ifdef DEBUG
-//        if ((sInfo > 0 && sInfo < 1) || model->spikeCount >= 2) {
-//            printf("sInfo = %.3f, gE = %.3e, gI = %.3e, spikeCount = %u\n", sInfo, gE, gI, model->spikeCount);
-//            assert(sInfo == 0 || (sInfo >= 1 && sInfo < 2 && model->spikeCount < 2));
+//        if ((sInfo > 0 && sInfo < 1) || model.spikeCount >= 2) {
+//            printf("sInfo = %.3f, gE = %.3e, gI = %.3e, spikeCount = %u\n", sInfo, gE, gI, model.spikeCount);
+//            assert(sInfo == 0 || (sInfo >= 1 && sInfo < 2 && model.spikeCount < 2));
 //        }
 //    #endif
 //    __syncwarp();

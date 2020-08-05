@@ -9,7 +9,7 @@ from readPatchOutput import *
 np.seterr(invalid = 'raise')
 
 
-prec = 'f4'
+prec = 'f8'
 #@profile
 def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
     if conLGN_suffix:
@@ -32,19 +32,19 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
     nsmooth = 0
     lw = 0.1
     
-    #plotRpStat = True 
-    #plotRpCorr = True 
+    plotRpStat = True 
+    plotRpCorr = True 
     plotScatterFF = True
-    #plotSample = True
+    plotSample = True
     #plotLGNsCorr = True
     #plotTempMod = True 
     #plotExc_sLGN = True
     #plotLR_rp = True
     
-    plotRpStat = False 
-    plotRpCorr = False 
+    #plotRpStat = False 
+    #plotRpCorr = False 
     #plotScatterFF = False
-    plotSample = False
+    #plotSample = False
     plotLGNsCorr = False 
     plotTempMod = False 
     plotExc_sLGN = False
@@ -127,7 +127,7 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
     
     rawDataFn = "rawData" + _output_suffix + ".bin"
     LGN_frFn = "LGN_fr" + _output_suffix + ".bin"
-    LGN_spFn = "LGN_sp" + _output_suffix 
+    LGN_spFn = "LGN_sp" + _output_suffix + ".bin"
     
     LGN_V1_sFn = "LGN_V1_sList" + conLGN_suffix + ".bin"
     LGN_V1_idFn = "LGN_V1_idList" + conLGN_suffix + ".bin"
@@ -150,9 +150,9 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
             print('     vpos...')
             nLGN_I, nLGN_C, nLGN, max_ecc, vCoordSpan, LGN_vpos, LGN_type = readLGN_vpos(LGN_vposFn)
             print('     fr...')
-            LGN_fr = readLGN_fr(LGN_frFn)
+            LGN_fr = readLGN_fr(LGN_frFn, prec = prec)
             print('     spikes...')
-            LGN_spScatter = readLGN_sp(LGN_spFn + '.bin')
+            LGN_spScatter = readLGN_sp(LGN_spFn, prec = prec)
             np.savez(LGN_spFn + '.npz', LGN_spScatter = LGN_spScatter, LGN_V1_s = LGN_V1_s, LGN_V1_ID = LGN_V1_ID, nLGN_V1 = nLGN_V1, LGN_vpos = LGN_vpos, LGN_type = LGN_type, LGN_fr = LGN_fr)
         else:
             print('loading LGN data...')

@@ -24,84 +24,20 @@ Float get_b(Float gE, Float gI, Float gL) {
     return gE * vE + gI * vI + gL * vL;
 }
 
-__forceinline__ 
-__device__ 
-Float impl_rk2(Float dt, Float a0, Float b0, Float a1, Float b1, Float v0) {
-    return (2*v0 + (-a0*v0+b0+b1)*dt)/(2+a1*dt);
-}
-
-struct LIF {
-    Size spikeCount;
+struct AdEx { //Adaptive Exponential IF
+	Size spikeCount;
     Float v, v0;
     Float a0, b0;
     Float a1, b1;
     Float vR, vThres;
     Float tRef, tBack, tsp;
     Float gL, depC;
-    __device__ LIF(Float _v0, Float _tBack, Float _vR, Float _vThres, Float _gL, Float _tRef, Float dep): v0(_v0), tBack(_tBack), vR(_vR), vThres(_vThres), gL(_gL), tRef(_tRef) {
-		spikeCount = 0;
-		Float targetV = vR + (vThres-vR)*dep;
-		depC = gL*(targetV - vL);
-	};
-    __device__ virtual void update(Float **var) {};
-    __device__ virtual void rk2_vFixedBefore(Float dt) {}
-    __device__ virtual void rk2_vFixedAfter(Float dt) {}
-
-	__device__
-	__forceinline__
-	virtual void rk2(Float dt, Float noise) {
-		if (noise == 0) {
-	    	v = impl_rk2(dt, a0, b0, a1, b1, v0);
-		} else {
-			noise *= square_root(dt)*depC;
-			Float fk1 = (-a0*v0 + b0)*dt;
-			fk1 += noise; 
-			Float v1 = v0 + fk1;
-			v = v0 + fk1/2;
-			v += ((-a1*v1 + b1)*dt + noise)/2;
-		}
-	}
-
-    __device__ 
-	__forceinline__
-	virtual void reset0() {
-		v0 = vR;
-	}
-
-	__device__ 
-	__forceinline__
-	virtual void reset1() {
-	    v = vR;
-	}
-	
-	__device__
-	__forceinline__
-	virtual void compute_spike_time(Float dt, Float t0) {
-    	tsp = t0 + (vThres-v0)/(v-v0)*dt;
-	}
-	
-	__device__ 
-	__forceinline__
-	virtual void set_p0(Float gE, Float gI) {
-	    a0 = get_a(gE, gI, gL);
-	    b0 = get_b(gE, gI, gL) + depC;
-	}
-	
-	__device__ 
-	__forceinline__
-	virtual void set_p1(Float gE, Float gI) {
-	    a1 = get_a(gE, gI, gL);
-	    b1 = get_b(gE, gI, gL) + depC;
-	}
-};
-
-struct AdEx: LIF { //Adaptive Exponential IF
 	Float w0, w;
 	Float tau_w, a, b;
 	Float vT, deltaT;
     __device__ 
 	__forceinline__
-	AdEx(Float _w0, Float _tau_w, Float _a, Float _b, Float _v0, Float _tBack, Float _vR, Float _vThres, Float _gL, Float _tRef, Float _vT, Float _deltaT, Float dep): LIF(_v0, _tBack, _vR, _vThres, _gL, _tRef, dep), w0(_w0), tau_w(_tau_w), a(_a), b(_b), vT(_vT), deltaT(_deltaT) {
+	AdEx(Float _w0, Float _tau_w, Float _a, Float _b, Float _v0, Float _tBack, Float _vR, Float _vThres, Float _gL, Float _tRef, Float _vT, Float _deltaT, Float dep): v0(_v0), tBack(_tBack), vR(_vR), vThres(_vThres), gL(_gL), tRef(_tRef), w0(_w0), tau_w(_tau_w), a(_a), b(_b), vT(_vT), deltaT(_deltaT) {
 		spikeCount = 0;
 		Float targetV = vR + (vT-vR)*dep;
 		depC = gL*(targetV - vL - deltaT*exponential((targetV - vT)/deltaT)) + tau_w*a*(targetV-vL);
@@ -122,7 +58,6 @@ struct AdEx: LIF { //Adaptive Exponential IF
 	__device__ 
 	__forceinline__
 	void rk2(Float dt, Float noise) {
-
 		Float dTgL = deltaT*gL;
 		Float fk1 = -a0*v0 + b0 + dTgL*exponential((v0-vT)/deltaT) - w0;
 		fk1 *= dt;
@@ -143,7 +78,6 @@ struct AdEx: LIF { //Adaptive Exponential IF
 		v += (fk2*dt + noise)/2;
 	}
 
-
 	__device__
 	__forceinline__
 	void compute_spike_time(Float dt, Float t0) {
@@ -156,6 +90,19 @@ struct AdEx: LIF { //Adaptive Exponential IF
     	tsp = t0 + logrithm(vThres/v0)/denorm*dt;
 	}
 
+	__device__ 
+	__forceinline__
+	void set_p0(Float gE, Float gI) {
+	    a0 = get_a(gE, gI, gL);
+	    b0 = get_b(gE, gI, gL) + depC;
+	}
+	
+	__device__ 
+	__forceinline__
+	void set_p1(Float gE, Float gI) {
+	    a1 = get_a(gE, gI, gL);
+	    b1 = get_b(gE, gI, gL) + depC;
+	}
     __device__ 
 	__forceinline__
 	void reset0() {
