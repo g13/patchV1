@@ -118,7 +118,7 @@ with open(output_fn, 'rb') as f:
         luminance[it,:] = data[iLGN]
         contrast[it,:,:] = np.fromfile(f, precision, count = 2*nLGN).reshape(2,nLGN)
 
-t = tt + dt
+t = tt * dt
 if plotResponseSample:
     fig = plt.figure('LGN', dpi = 600)
     grid = gs.GridSpec(ns, 1, figure = fig, hspace = 0.2)

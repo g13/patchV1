@@ -941,15 +941,15 @@ void LGN_convol_parvo(
                     luminance[id] = mean_I;
                 }
 				/*DEBUG
-                if (iPatch == nPatch && iFrame == nFrame-1) {
-					if (blockIdx.x == 3) {
-                        if (tid == 0) {
-					    	printf("typeS:%u, contrastS = %e, mean_I = %e:\n", typeS, reducedS[0], mean_I);
-                        }
-                        __syncthreads();
-						printf("local_I = %i-%1.2e*%1.2e, coord = (%1.6e, %1.6e)\n", tid, local_I, spatialWeight, x0S, y0S);
-					}
-                }
+                	if (iPatch == nPatch && iFrame == nFrame-1) {
+						if (blockIdx.x == 3) {
+                	        if (tid == 0) {
+						    	printf("typeS:%u, contrastS = %e, mean_I = %e:\n", typeS, reducedS[0], mean_I);
+                	        }
+                	        __syncthreads();
+							printf("local_I = %i-%1.2e*%1.2e, coord = (%1.6e, %1.6e)\n", tid, local_I, spatialWeight, x0S, y0S);
+						}
+                	}
                 */
 
                 // center
@@ -963,14 +963,15 @@ void LGN_convol_parvo(
                     local_contrast = copyms(1.0, local_contrast); // copyms is copysign(value, sign);
                 }
                 /* DEBUG
-                if (iPatch == 0) {
-					if (blockIdx.x == 0 && tid == 0) {
-                        Float L = get_intensity(0, x0C, y0C, frameNow % maxFrame);
-                        Float M = get_intensity(1, x0C, y0C, frameNow % maxFrame);
-						printf("p(%e,%e), mean_I:%e, contrast: %e, Int: %e,%e,%e\n", x0C, y0C, nSampleShared[iFrame], local_contrast, L, M, local_I);
+                	if (iPatch == 0) {
+						if (blockIdx.x == 0 && tid == 0) {
+                	        Float L = get_intensity(0, x0C, y0C, frameNow % maxFrame);
+                	        Float M = get_intensity(1, x0C, y0C, frameNow % maxFrame);
+							printf("p(%e,%e), mean_I:%e, contrast: %e, Int: %e,%e,%e\n", x0C, y0C, nSampleShared[iFrame], local_contrast, L, M, local_I);
 
-					}
-                }*/
+						}
+                	}
+				*/
 
                 Float filteredC = spatialWeight*local_contrast;
                 block_reduce<Float>(reducedC, filteredC);

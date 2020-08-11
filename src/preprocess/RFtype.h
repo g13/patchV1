@@ -202,7 +202,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 		prob.clear();
 	}
  
-    virtual Size construct_connection(std::vector<Float> &x, std::vector<Float> &y, std::vector<InputType> &iType, std::vector<Size> &idList, std::vector<Float> &strengthList, RandomEngine &rGen, Float fnLGNeff, bool p_n, Float max_nCon) {
+    virtual Size construct_connection(std::vector<Float> &x, std::vector<Float> &y, std::vector<InputType> &iType, std::vector<Size> &idList, std::vector<Float> &strengthList, RandomEngine &rGen, Float fnLGNeff, bool p_n, Float max_nCon, bool top_pick) {
         Size nConnected;
         if (n > 0) {
             if (fnLGNeff > 0) {
@@ -236,7 +236,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                 }
                 Float sSum = normalize(fnLGNeff, p_n);
                 // make connection and update ID and strength list
-                nConnected = connect(idList, strengthList, rGen, max_nCon, sSum);
+                nConnected = connect(idList, strengthList, rGen, max_nCon, sSum, top_pick);
             } else {
                 idList = std::vector<Size>();
                 idList.shrink_to_fit();
@@ -248,11 +248,15 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         return nConnected;
     }
     // Probability envelope based on distance
-    virtual Float get_envelope(Float x, Float y, Float amp, Float baRatio, Float sig = 1.1775) {
+    virtual Float get_envelope(Float x, Float y, Float amp, Float baRatio, bool top_pick, Float sig = 1.1775) {
         Float v = exp(-0.5*(pow(x/sig,2)+pow(y/(sig*baRatio),2)));
-        if (v < 0.5) {
-            v = 0;
-        }
+		if (v < 0.5) {
+			v = 0;
+		} else {
+			if (top_pick) {
+				v = 1;
+			}
+		}
         return v;
         //return 1.0;
         // baRatio comes from Dow et al., 1981
@@ -296,33 +300,65 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 		return sSum;
     }
     // make connections
-    virtual Size connect(std::vector<Size> &idList, std::vector<Float> &strengthList, RandomEngine &rGen, Float max_nCon, Float sSum) {
+    virtual Size connect(std::vector<Size> &idList, std::vector<Float> &strengthList, RandomEngine &rGen, Float max_nCon, Float sSum, bool top_pick) {
 		// make connections and normalized strength i.e., if prob > 1 then s = 1 else s = prob
         std::uniform_real_distribution<Float> uniform(0,1);
+        std::normal_distribution<Float> normal(0,0.05);
 		strengthList.reserve(n);
 		std::vector<Size> newList;
 		newList.reserve(n);
 		if (sSum > 0) {
 			Size count = 0; 
-			do  {
-				newList.clear();
-				strengthList.clear();
-				for (PosInt i = 0; i < n; i++) {
-					if (uniform(rGen) < prob[i]) {
-						newList.push_back(idList[i]);
-						if (prob[i] > 1) {
-							strengthList.push_back(prob[i]);
-						} else {
-							strengthList.push_back(1);
+			if (!top_pick) {
+				do  {
+					newList.clear();
+					strengthList.clear();
+					for (PosInt i = 0; i < n; i++) {
+						if (uniform(rGen) < prob[i]) {
+							newList.push_back(idList[i]);
+							if (prob[i] > 1) {
+								strengthList.push_back(prob[i]);
+							} else {
+								strengthList.push_back(1);
+							}
 						}
 					}
-				}
-				count++;
-				if (count > 20) {
-					std::cout << "too many iters, sum over prob #" << prob.size() << " = " << std::accumulate(prob.begin(), prob.end(), 0.0) << "\n";
-					assert(count <= 20);
-				}
-			} while (newList.size() > max_nCon || newList.size() == 0);
+					count++;
+					if (count > 20) {
+						std::cout << "too many iters, sum over prob #" << prob.size() << " = " << std::accumulate(prob.begin(), prob.end(), 0.0) << "\n";
+						assert(count <= 20);
+					}
+				} while (newList.size() > max_nCon || newList.size() == 0);
+			} else {
+				Size n_to_connect;
+				// decide number to connect first
+				do  {
+					n_to_connect = 0;
+					for (PosInt i = 0; i < n; i++) {
+						if (uniform(rGen) < prob[i]) {
+							n_to_connect++;
+						}
+						prob[i] *= 1+normal(rGen);
+					}
+					count++;
+					if (count > 20) {
+						std::cout << "too many iters, sum over prob #" << prob.size() << " = " << std::accumulate(prob.begin(), prob.end(), 0.0) << "\n";
+						assert(count <= 20);
+					}
+				} while (n_to_connect > max_nCon || n_to_connect == 0);
+				// pick the tops
+				do  {
+					PosInt i = std::distance(prob.begin(), std::max_element(prob.begin(), prob.end()));
+					newList.push_back(idList[i]);
+					prob[i] = -prob[i];
+					if (prob[i] > 1) {
+						strengthList.push_back(prob[i]);
+					} else {
+						strengthList.push_back(1);
+					}
+				} while (newList.size() < n_to_connect);
+			}
+
         	Float con_irl = std::accumulate(strengthList.begin(), strengthList.end(), 0.0);
 			if (strictStrength) {
         		Float ratio = sSum/con_irl;

@@ -27,6 +27,9 @@ plotSampleTrace = False
 #plotSampleTrace = True 
 plot_gFFtsp = False 
 plotFrame = True 
+plotPhyV1 = False
+plotVisV1 = False
+plotVisLGN = True
 #plotFrame = False 
 if plotFrame:
     phyV1 = False
@@ -77,27 +80,28 @@ if plotFrame:
     
     framedOutput = framedOutput.reshape(ont,nPixel)
     ot = odt*dt
-    if phyV1:
+    if phyV1 and plotPhyV1:
         phyV1frame = np.zeros((ont, phyHeight, phyWidth), dtype = 'f4')
-    if visV1:
+    if visV1 and plotVisV1:
         visV1frame = np.zeros((ont, 2, visV1Height, visV1Width), dtype = 'f4')
-    if visLGN:
+    if visLGN and plotVisLGN:
         visLGNframe = np.zeros((ont, 2, visLGNheight, visLGNwidth), dtype = 'f4')
     for i in range(ont):
-        if phyV1:
+        if phyV1 and plotPhyV1:
             phyV1frame[i,:,:] = framedOutput[i,:nPixel_phyV1].reshape(phyHeight,phyWidth)/ot
-        if visV1:
+        if visV1 and plotVisV1:
             visV1frame[i,:,:,:] = framedOutput[i,nPixel_phyV1:(nPixel_phyV1+nPixel_visV1)].reshape(2, visV1Height, visV1Width)/ot
-        if visLGN:
+        if visLGN and plotVisLGN:
             visLGNframe[i,:,:,:] = framedOutput[i,(nPixel_phyV1+nPixel_visV1):nPixel].reshape(2, visLGNheight, visLGNwidth)/ot
-    
+     
+
     def meshgrid(x,y):
         X = np.tile(x,(len(y),1))
         Y = np.tile(y,(len(x),1)).T
         return X, Y
     
     for i in range(ont):
-        if phyV1:
+        if phyV1 and plotPhyV1:
             fig = plt.figure(f'phyV1-{i}', dpi = 1024)
             ax = fig.add_subplot(111)
             #plt.Normalize, norm =
@@ -106,7 +110,7 @@ if plotFrame:
             fig.savefig(f'phyV1-{i}-' + suffix0 + '.png')
             plt.close(fig)
         
-        if visV1:
+        if visV1 and plotVisV1:
             fig = plt.figure(f'visV1-{i}', dpi = 1024)
             ax = fig.add_subplot(111)
             image = ax.imshow(np.hstack((visV1frame[i,0,::-1,:], visV1frame[i,1,::-1,:])), aspect = 'equal', origin = 'lower')
@@ -114,7 +118,7 @@ if plotFrame:
             fig.savefig(f'visV1-{i}-' + suffix0 + '.png')
             plt.close(fig)
         
-        if visLGN:
+        if visLGN and plotVisLGN:
             fig = plt.figure(f'visLGN-{i}', dpi = 1024)
             ax = fig.add_subplot(111)
             image = ax.imshow(np.hstack((visLGNframe[i,0,::-1,:], visLGNframe[i,1,::-1,:])), aspect = 'equal', origin = 'lower')

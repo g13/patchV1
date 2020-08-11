@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.ticker import (MultipleLocator, FormatStrFormatter,
+                               AutoMinorLocator)
 import matplotlib.gridspec as gs
 from matplotlib import cm
 import sys
@@ -9,7 +11,6 @@ from readPatchOutput import *
 np.seterr(invalid = 'raise')
 
 
-prec = 'f8'
 #@profile
 def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
     if conLGN_suffix:
@@ -20,14 +21,14 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
     SCsplit = 0
     ns = 20
     np.random.seed(7329443)
-    nt_ = 2000
+    nt_ = 20000
     nstep = 20000
     step0 = 0
     TF = 4 
-    stiOri = np.pi/4;
+    stiOri = np.pi*1/2;
     nOri = 8
-    TFbins = 5
-    FRbins = 5
+    TFbins = 25
+    FRbins = 25
     tbinSize = 1
     nsmooth = 0
     lw = 0.1
@@ -59,7 +60,7 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
     #pLR = True
     pW = True
     pDep = True
-    pLog = True 
+    pLog = True
     
     #pSample = False
     pSpike = False
@@ -76,25 +77,7 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
     pSC = True
     #pSC = False
     
-    vE = 14/3.0
-    vI = -2/3.0
-    vL = 0.0
-    gL_E = 0.05
-    gL_I = 0.07
-    #mE = 768
-    mE = 896
-    #mI = 256
-    mI = 128 
-    blockSize = 1024
     
-    if prec == 'f8':
-        sizeofPrec = 8
-    else:
-        if prec == 'f4':
-            sizeofPrec =4
-        else:
-            print('not implemented')
-
     if plotRpStat or plotLR_rp or plotRpCorr:
         pSpike = True
         pCond = True
@@ -127,7 +110,7 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
     
     rawDataFn = "rawData" + _output_suffix + ".bin"
     LGN_frFn = "LGN_fr" + _output_suffix + ".bin"
-    LGN_spFn = "LGN_sp" + _output_suffix + ".bin"
+    LGN_spFn = "LGN_sp" + _output_suffix
     
     LGN_V1_sFn = "LGN_V1_sList" + conLGN_suffix + ".bin"
     LGN_V1_idFn = "LGN_V1_idList" + conLGN_suffix + ".bin"
@@ -137,24 +120,30 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
     LGN_vposFn = "LGN_vpos.bin"
     
     spDataFn = "V1_spikes" + _output_suffix
+    parameterFn = "patchV1_cfg" +_output_suffix + ".bin"
+    
+    prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1 = read_cfg(parameterFn)
+    blockSize = typeAcc[-1]
+    print(f'blockSize = {blockSize}')
     
     if output_suffix:
         output_suffix = output_suffix + "-"
     
-    if plotExc_sLGN or plotSample or (plotTempMod and pCond):
-        if readNewSpike:
-            print('reading LGN connections...')
-            LGN_V1_s = readLGN_V1_s0(LGN_V1_sFn)
-            print('     ID...')
-            LGN_V1_ID, nLGN_V1 = readLGN_V1_ID(LGN_V1_idFn)
-            print('     vpos...')
-            nLGN_I, nLGN_C, nLGN, max_ecc, vCoordSpan, LGN_vpos, LGN_type = readLGN_vpos(LGN_vposFn)
-            print('     fr...')
-            LGN_fr = readLGN_fr(LGN_frFn, prec = prec)
-            print('     spikes...')
-            LGN_spScatter = readLGN_sp(LGN_spFn, prec = prec)
-            np.savez(LGN_spFn + '.npz', LGN_spScatter = LGN_spScatter, LGN_V1_s = LGN_V1_s, LGN_V1_ID = LGN_V1_ID, nLGN_V1 = nLGN_V1, LGN_vpos = LGN_vpos, LGN_type = LGN_type, LGN_fr = LGN_fr)
-        else:
+    if readNewSpike:
+        print('reading LGN connections...')
+        LGN_V1_s = readLGN_V1_s0(LGN_V1_sFn)
+        print('     ID...')
+        LGN_V1_ID, nLGN_V1 = readLGN_V1_ID(LGN_V1_idFn)
+        print('     vpos...')
+        nLGN_I, nLGN_C, nLGN, max_ecc, vCoordSpan, LGN_vpos, LGN_type = readLGN_vpos(LGN_vposFn)
+        print('     fr...')
+        LGN_fr = readLGN_fr(LGN_frFn, prec = prec)
+        print('     spikes...')
+        LGN_spScatter = readLGN_sp(LGN_spFn + ".bin", prec = prec)
+        np.savez(LGN_spFn + '.npz', LGN_spScatter = LGN_spScatter, LGN_V1_s = LGN_V1_s, LGN_V1_ID = LGN_V1_ID, nLGN_V1 = nLGN_V1, LGN_vpos = LGN_vpos, LGN_type = LGN_type, LGN_fr = LGN_fr)
+        print('complete.')
+    else:
+        if plotExc_sLGN or plotSample or (plotTempMod and pCond):
             print('loading LGN data...')
             with np.load(LGN_spFn + '.npz', allow_pickle=True) as data:
                 nLGN_V1 = data['nLGN_V1']
@@ -166,7 +155,7 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
                     LGN_spScatter = data['LGN_spScatter']
                     LGN_vpos = data['LGN_vpos']
                     LGN_type = data['LGN_type']
-        print('complete.')
+            print('complete.')
     
     if plotRpCorr or (plotScatterFF and pSC) or plotRpStat:
         _, nLGN_V1 = readLGN_V1_ID(LGN_V1_idFn)
@@ -195,18 +184,13 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
     
     print(f'using model {iModel}')
     
-    if iModel == 0:
-        vThres = 1.0
-    if iModel == 1:
-        vThres = 2.0
-    
     nblock = nV1//blockSize
     epick = np.hstack([np.arange(mE) + iblock*blockSize for iblock in range(nblock)])
     ipick = np.hstack([np.arange(mI) + iblock*blockSize + mE for iblock in range(nblock)])
     
     gL = np.zeros(nV1)
-    gL[epick] = gL_E
-    gL[ipick] = gL_I
+    gL[epick] = gL[0]
+    gL[ipick] = gL[1]
     
     print(f'nV1 = {nV1}; haveH = {haveH}')
     print(f'ngFF: {ngFF}; ngE: {ngE}; ngI: {ngI}')
@@ -288,6 +272,7 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
     if plotSample or pSample:
         if 'sample' not in locals():
             sample = np.random.randint(nV1, size = ns)
+            sample[0] = 401
             if False:
                 pick = epick[nLGN_V1[epick] > np.mean(nLGN_V1[epick])]
                 sample[2] = pick[np.argmin(dOP[pick])]
@@ -879,7 +864,10 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
             #if pSpike:
             tsp0 = np.array(spScatter[iV1])
             tsp = tsp0[np.logical_and(tsp0>=step0*dt, tsp0<(nt_+step0)*dt)]
-            ax.plot(tsp, np.zeros(len(tsp))+vThres, '*k', ms = 1.0)
+            itype = np.nonzero(np.mod(iV1, blockSize) < typeAcc)[0][0]
+            subrange = vT[itype] - vR[itype]
+            _vThres = min(vR[itype] + subrange*2, np.max(_v[i,:])) 
+            ax.plot(tsp, np.zeros(len(tsp))+_vThres, '*k', ms = 1.0)
             #if pVoltage:
             ax.plot(t, _v[i,:], '-k', lw = lw)
             ax.plot(t, np.ones(t.shape), ':k', lw = lw)
@@ -900,17 +888,22 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
                     ax2.plot(t, _gI[1,ig,i,:], ':b', lw = (ig+1)/ngI * lw)
     
             ax.set_title(f'ID: {(iblock, ithread)}:({LR[iV1]:.0f},{OP[iV1]*180/np.pi:.0f})- LGN:{nLGN_V1[iV1]}({np.sum(LGN_V1_s[iV1]):.1f}), E{preN[0,iV1]}({preNS[0,iV1]:.1f}), I{preN[1,iV1]}({preNS[1,iV1]:.1f})')
-            ax.set_ylim(bottom = min(0,np.min(_v[i,:])))
-            ax.set_ylim(top = vThres*1.1)
-            ax.set_yticks(np.linspace(0,1,11))
+            _vBot = min(vR[itype], np.min(_v[i,:]))
+            ax.set_ylim(bottom = _vBot)
+            ax.set_ylim(top = _vBot + (_vThres - _vBot) * 1.1)
             ax2.set_ylim(bottom = 0)
+            ax.yaxis.grid(True, which='minor', linestyle=':', linewidth = 0.1)
+            ax.yaxis.grid(True, which='major', linestyle='-', linewidth = 0.1)
+            ax.tick_params(which='minor', width=0.2)
+            ax.yaxis.set_major_locator(MultipleLocator(5))
+            ax.yaxis.set_minor_locator(MultipleLocator(1.0))
     
             ax = fig.add_subplot(grid[1,:])
             current = np.zeros(_v[i,:].shape)
             if ithread < mE:
-                igL = gL_E
+                igL = gL[0]
             else:
-                igL = gL_I
+                igL = gL[1]
             cL = -igL*(_v[i,:]-vL)
             ax.plot(t, cL, '-c', lw = lw)
             ax.plot(t[-1], np.mean(cL), '*c', ms = lw)
@@ -971,6 +964,7 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
                     ax2.plot(t, _gFF[0,ig,i,:], ':g', lw = (ig+1)/ngFF * lw)
     
                 ax = fig.add_subplot(grid[2,1])
+                        #   L-on L-off M-on  M-off  On   Off
                 markers = ('^r', 'vg', '*g', 'dr', '^k', 'vb')
                 iLGN_vpos = LGN_vpos[:, LGN_V1_ID[iV1]]
                 iLGN_type = LGN_type[LGN_V1_ID[iV1]]
@@ -1128,8 +1122,8 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
         plt.close(fig)
     
     if plotRpCorr:
-        fig = plt.figure(f'rpCorr', figsize = (12,12), dpi = 600)
-        grid = gs.GridSpec(4, 4, figure = fig, hspace = 0.3, wspace = 0.3)
+        fig = plt.figure(f'rpCorr', figsize = (18,12), dpi = 600)
+        grid = gs.GridSpec(4, 6, figure = fig, hspace = 0.3, wspace = 0.3)
         target = np.sum(gE_gTot_ratio[:,:,0], axis = 0)
     
         ax = fig.add_subplot(grid[0,0])
@@ -1189,6 +1183,19 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
         ax.set_xlabel('gE')
         ax.set_ylabel('InhC FR')
         ax.set_title(f'active complex {active*100:.3f}%')
+    
+        target = np.sum(gFF[:,:,0], axis = 0)
+        ax = fig.add_subplot(grid[1,4])
+        image = HeatMap(target[epick], fr[epick], 25, 25, ax, 'Reds', vmin = 0, log_scale = pLog)
+        ax.set_xlabel('gFF')
+        ax.set_ylabel('Exc FR')
+        ax.set_title(f'active {np.sum(fr[epick]>0)/epick.size*100:.3f}%')
+    
+        ax = fig.add_subplot(grid[1,5])
+        image = HeatMap(target[ipick], fr[ipick], 25, 25, ax, 'Blues', vmin = 0, log_scale = pLog)
+        ax.set_xlabel('gFF')
+        ax.set_ylabel('Inh FR')
+        ax.set_title(f'active {np.sum(fr[ipick]>0)/epick.size*100:.3f}%')
     
         target = OP*180/np.pi
         ax = fig.add_subplot(grid[2,0])
@@ -1357,6 +1364,8 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
                     amp[1:] = amp[1:]*2
                     ax2.plot(ff, amp, 'r', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '>r', ms = 0.5, alpha = 0.5, label = 'exc R')
+                ax2.set_yscale('log')
+                ax2.set_xlabel('Hz')
     
                 if np.sum(iSpick) > 0:
                     nsp = np.histogram(tsp[iSpick], bins = edges)[0]/np.sum(iSpick)
@@ -1364,8 +1373,7 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
                     amp[1:] = amp[1:]*2
                     ax2_.plot(ff, amp, 'b', lw = 0.5, alpha = 0.5)
                     ax2_.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '<b', ms = 0.5, alpha = 0.5, label = 'inh R')
-                ax2.set_yscale('log')
-                ax2.set_xlabel('Hz')
+                ax2_.set_yscale('log')
     
                 eSpick = np.logical_and(np.mod(isp, blockSize) < mE , LR[isp]<0)
                 iSpick = np.logical_and(np.mod(isp, blockSize) >= mE, LR[isp]<0)
@@ -1378,6 +1386,8 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
                     amp[1:] = amp[1:]*2
                     ax2.plot(ff, amp, 'm', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '>m', ms = 0.5, alpha = 0.5, label = 'exc L')
+                ax2.set_yscale('log')
+                ax2.set_xlabel('Hz')
     
                 if np.sum(iSpick) > 0:
                     nsp = np.histogram(tsp[iSpick], bins = edges)[0]/np.sum(iSpick)
@@ -1385,8 +1395,7 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
                     amp[1:] = amp[1:]*2
                     ax2_.plot(ff, amp, 'g', lw = 0.5, alpha = 0.5)
                     ax2_.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '<g', ms = 0.5, alpha = 0.5, label = 'inh L')
-                ax2.set_yscale('log')
-                ax2.set_xlabel('Hz')
+                ax2_.set_yscale('log')
     
             if pSC:
                 eSpick = np.logical_and(np.mod(isp, blockSize) < mE , nLGN_V1[isp] == 0)
@@ -1400,6 +1409,8 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
                     amp[1:] = amp[1:]*2
                     ax2.plot(ff, amp, 'r', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '>r', ms = 0.5, alpha = 0.5, label = 'exc C')
+                ax2.set_yscale('log')
+                ax2.set_xlabel('Hz')
     
                 if np.sum(iSpick) > 0:
                     nsp = np.histogram(tsp[iSpick], bins = edges)[0]/np.sum(iSpick)
@@ -1409,7 +1420,6 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
                     ax2_.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '<b', ms = 0.5, alpha = 0.5, label = 'inh C')
 
                 ax2_.set_yscale('log')
-                ax2.set_xlabel('Hz')
     
                 eSpick = np.logical_and(np.mod(isp, blockSize) < mE , nLGN_V1[isp] > 0)
                 iSpick = np.logical_and(np.mod(isp, blockSize) >= mE, nLGN_V1[isp] > 0)
@@ -1422,6 +1432,8 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
                     amp[1:] = amp[1:]*2
                     ax2.plot(ff, amp, 'm', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '>m', ms = 0.5, alpha = 0.5, label = 'exc S')
+                ax2.set_yscale('log')
+                ax2.set_xlabel('Hz')
     
                 if np.sum(iSpick) > 0:
                     nsp = np.histogram(tsp[iSpick], bins = edges)[0]/np.sum(iSpick)
@@ -1431,7 +1443,6 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, readNewSpike):
                     ax2_.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '<g', ms = 0.5, alpha = 0.5, label = 'inh S')
 
                 ax2_.set_yscale('log')
-                ax2.set_xlabel('Hz')
     
         else:
             eSpick = np.mod(isp, blockSize) < mE

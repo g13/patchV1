@@ -39,7 +39,12 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
 
 	Float LGN_sSum = LGN_V1_sSum[id];
 	Float presetConstExc = p_n_LGNeff + init_pack.sumType[type]*(1+extExcRatio);
-    Float ratio = (presetConstExc - LGN_sSum)/(init_pack.sumType[type]*(1+extExcRatio));
+    Float ratio;
+	if (init_pack.sumType[type] == 0) {
+		ratio = 1.0;
+	} else {
+		ratio = (presetConstExc - LGN_sSum)/(init_pack.sumType[type]*(1+extExcRatio));
+	}
     if (ratio < min_FB_ratio) ratio = min_FB_ratio;
 	ExcRatio[id] = ratio;
 	for (PosInt i=0; i<nType; i++) {

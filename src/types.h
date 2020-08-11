@@ -4,9 +4,9 @@
 #include <random>
 typedef int Int;
 
-//typedef float Float;
-typedef double Float;
-//#define SINGLE_PRECISION
+typedef float Float;
+//typedef double Float;
+#define SINGLE_PRECISION
 typedef double Double;
 #define DOUBLE_PRECISION
 

@@ -72,6 +72,7 @@ with open(output, 'rb') as f:
     c50 = np.fromfile(f, precision, nLGN)
     sharpness = np.fromfile(f, precision, nLGN)
     coneType = np.fromfile(f, 'u4', 2*nLGN).reshape(2,nLGN)
+    covariant = np.fromfile(f, precision, nLGN)
 
 print(f'LGN_type:{np.min(LGN_type)},{np.max(LGN_type)}')
 
@@ -119,6 +120,17 @@ if nMagno > 0:
 ax.set_aspect('equal')
 fig.savefig('check_coord'+suffix + '.png')
 
+def getSF(rC, rS, kC, kS, cov = -1):
+    # rC, rS in rad
+    kRatio = np.abs(kC/(kS*cov))
+    if (kRatio < 1).any():
+        raise Exception('some kC < kS*cov')
+    rSub = np.power(rS,2) - np.power(rC,2)
+    if (rSub <= 0).any():
+        raise Exception('some rS < rC')
+    SF = rS*rC*np.sqrt(np.log(kRatio)/rSub)
+    return 1/(4*SF*180/np.pi) # cycles per degree
+
 for j in iLGN:
     print(f'#{j}')
     if j < nParvo_I or (j >= nMagno_I + nParvo_I and j < nMagno_I + nParvo_I + nParvo_C):
@@ -129,14 +141,15 @@ for j in iLGN:
         assert(i>=0 and i<nParvo)
         fig = plt.figure(f'check_{j}-p{i}', dpi = 600)
         ax = fig.add_subplot(221)
-        print(f'k: {LGN_k[0, i]}, {LGN_k[1, i]}')
-        print(f'rw: {LGN_rw[0, i]}, {LGN_rw[1, i]}')
+        print(f'k: {LGN_k[0, j]}, {LGN_k[1, j]}')
+        print(f'rw: {LGN_rw[0, j]}, {LGN_rw[1, j]}')
         ax.plot(sc[0,i,0,:], sc[1,i,0,:], 'ob', ms = 0.001)
         ax.plot(sc[0,i,1,:], sc[1,i,1,:], '>r', ms = 0.001)
         ax.set_aspect('equal')
         dwdhC = np.linalg.norm([sc[0,i,0,1] - sc[0,i,0,0], sc[1,i,0,1] - sc[1,i,0,0]]) * np.linalg.norm([sc[0,i,0,nSample1D] - sc[0,i,0,0], sc[1,i,0,nSample1D] - sc[1,i,0,0]])
         dwdhS = np.linalg.norm([sc[0,i,1,1] - sc[0,i,1,0], sc[1,i,1,1] - sc[1,i,1,0]]) * np.linalg.norm([sc[0,i,1,nSample1D] - sc[0,i,1,0], sc[1,i,1,nSample1D] - sc[1,i,1,0]])
         print(f'dwdh: {[dwdhC, dwdhS]}')
+        ax.set_title(f'SF = {getSF(np.mean([LGN_rw[0,j], LGN_rh[0,j]]), np.mean([LGN_rw[1,j], LGN_rh[1,j]]), LGN_k[0,j], LGN_k[1,j], covariant[j])}')
         
         nSample1D = int(np.sqrt(nSample));
         ax = fig.add_subplot(222, projection = '3d')
@@ -167,6 +180,7 @@ for j in iLGN:
         ax.set_aspect('equal')
         dwdh = np.linalg.norm([sc_m[0,i,1] - sc_m[0,i,0], sc_m[1,i,1] - sc_m[1,i,0]]) * np.linalg.norm([sc_m[0,i,mSample1D] - sc_m[0,i,0], sc_m[1,i,mSample1D] - sc_m[1,i,0]])
         print(f'dwdh: {dwdh}')
+        ax.set_title(f'SF = {getSF(np.mean([LGN_rw[0,j], LGN_rh[0,j]]), np.mean([LGN_rw[1,j], LGN_rh[1,j]]), LGN_k[0,j], LGN_k[1,j], covariant[j])}')
         
         mSample1D = int(np.sqrt(mSample));
         ax = fig.add_subplot(222, projection = '3d')

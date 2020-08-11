@@ -31,27 +31,27 @@ struct AdEx { //Adaptive Exponential IF
     Float a1, b1;
     Float vR, vThres;
     Float tRef, tBack, tsp;
-    Float gL, depC;
+    Float C, gL, depC;
 	Float w0, w;
 	Float tau_w, a, b;
 	Float vT, deltaT;
     __device__ 
 	__forceinline__
-	AdEx(Float _w0, Float _tau_w, Float _a, Float _b, Float _v0, Float _tBack, Float _vR, Float _vThres, Float _gL, Float _tRef, Float _vT, Float _deltaT, Float dep): v0(_v0), tBack(_tBack), vR(_vR), vThres(_vThres), gL(_gL), tRef(_tRef), w0(_w0), tau_w(_tau_w), a(_a), b(_b), vT(_vT), deltaT(_deltaT) {
+	AdEx(Float _w0, Float _tau_w, Float _a, Float _b, Float _v0, Float _tBack, Float _vR, Float _vThres, Float _gL, Float _C, Float _tRef, Float _vT, Float _deltaT, Float dep): v0(_v0), tBack(_tBack), vR(_vR), vThres(_vThres), gL(_gL), C(_C), tRef(_tRef), w0(_w0), tau_w(_tau_w), a(_a), b(_b), vT(_vT), deltaT(_deltaT) {
 		spikeCount = 0;
 		Float targetV = vR + (vT-vR)*dep;
-		depC = gL*(targetV - vL - deltaT*exponential((targetV - vT)/deltaT)) + tau_w*a*(targetV-vL);
+		depC = (gL+a)*(targetV - vL) - gL*deltaT*exponential((targetV - vT)/deltaT);
 	};
     __device__ 
 	__forceinline__
 	void rk2_vFixedBefore(Float dt) {
-		Float A = a*(v0-vL) * tau_w;
+		Float A = a*(v0-vL);
 		w0 = (w0 - A) * exponential(-dt/tau_w) + A;
 	}
     __device__ 
 	__forceinline__
 	void rk2_vFixedAfter(Float dt) {
-		Float A = a*(v-vL) * tau_w;
+		Float A = a*(v-vL);
 		w = (w0 - A) * exponential(-dt/tau_w) + A;
 	}
 
@@ -65,29 +65,28 @@ struct AdEx { //Adaptive Exponential IF
 			noise *= square_root(dt)*depC;
 			fk1 += noise;
 		}
+		fk1 /= C;
 		Float v1 = v0 + fk1;
 		v = v0 + fk1/2;
 
-		Float gk1 = (a*(v0-vL) - w0/tau_w)*dt;
+		Float gk1 = a*(v0-vL) - w0;
+		gk1 *= dt/tau_w;
 		Float w1 = w0 + gk1; // split add fk1, fk2 to optimize register usage
 		w = w0 + gk1/2;
 
 		Float fk2 = -a1*v1 + b1 + dTgL*exponential((v1-vT)/deltaT) - w1;
-		Float gk2 = (a*(v1-vL) - w1/tau_w)*dt;
-		w += gk2/2;
-		v += (fk2*dt + noise)/2;
+		Float gk2 = (a*(v1-vL) - w1)*dt/tau_w;
+		w += (gk2*dt/tau_w)/2;
+		v += (fk2*dt/C + noise)/2;
 	}
 
 	__device__
 	__forceinline__
 	void compute_spike_time(Float dt, Float t0) {
-		Float denorm;
-		if (!isinf(v)) {
-			denorm = logrithm(v/v0);
-		} else {
-			denorm = LOG_MAXIMUM-logrithm(v0);
-		}
-    	tsp = t0 + logrithm(vThres/v0)/denorm*dt;
+		if (v > vPeak) v = vPeak;
+		Float dv0 = v0-vR;
+		Float denorm = logrithm((v-vR)/dv0);
+    	tsp = t0 + logrithm((vThres-vR)/dv0)/denorm*dt;
 	}
 
 	__device__ 
@@ -129,7 +128,6 @@ void rand_spInit(Float* __restrict__ tBack,
                  Float* __restrict__ sp0,
                  Size* __restrict__ typeAcc,
                  Float* __restrict__ vR,
-                 Float* __restrict__ gL,
                  Float* __restrict__ tRef_type,
                  Float* __restrict__ tau_w,
                  Float* __restrict__ a,
@@ -145,7 +143,7 @@ void recal_G_vec(
         std::vector<std::vector<std::vector<Float>>> &spikeTrain, std::vector<std::vector<Size>> &trainDepth, std::vector<std::vector<PosInt>> &currentTimeSlot,
         std::vector<Size> &nVec,  std::vector<std::vector<PosInt>> &vecID, std::vector<std::vector<Float>> &conVec, std::vector<std::vector<Float>> &delayVec,
         Float gE[], Float gI[], Float hE[], Float hI[], Float pE[], Float pI[], Size typeAcc[],
-        std::default_random_engine *h_rGenCond, Float synFail[],
+        std::default_random_engine *h_rGenCond, Float synFail[], Size synPerCon[],
         Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, Size nType, Size nE, Size nV1, Float speedOfThought, Size chunkSize
 );
 
@@ -182,6 +180,7 @@ void compute_V_collect_spike_learnFF(
         Float* __restrict__ vR,
         Float* __restrict__ vThres,
         Float* __restrict__ gL,
+        Float* __restrict__ C,
         Float* __restrict__ tRef,
         Float* __restrict__ tonicDep,
         Float* __restrict__ vT, // AdEx
@@ -192,6 +191,7 @@ void compute_V_collect_spike_learnFF(
         Size* __restrict__ typeAcc,
         curandStateMRG32k3a* __restrict__ rGenCond,
         Float* __restrict__ synFailFF,
+        Size* __restrict__ synPerConFF,
         curandStateMRG32k3a* __restrict__ rNoisy,
         Float* __restrict__ noisyDep,
         PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeFF, Size ngTypeE, Size ngTypeI, ConductanceShape condFF, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, int learning, int varSlot, Size nType,
@@ -223,6 +223,7 @@ void recal_G_mat( // <<< nblock[partial], blockSize >>>
         Size* __restrict__ typeAcc,
         curandStateMRG32k3a* __restrict__ rGenCond,
         Float* __restrict__ synFail,
+        Size* __restrict__ synPerCon,
         Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nE, Size nI, Size nV1, Float speedOfThought, int learning, PosInt block_offset, Size nType,
         LearnVarShapeE lE, LearnVarShapeQ lQ, PosInt iChunk
 );

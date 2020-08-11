@@ -77,7 +77,7 @@ vector<Float> generate_baRatio(Size n, RandomEngine &rGen) {
 	// mix the two distribution
 	shuffle(baRatio.begin(), baRatio.end(), rGen);
 	//return baRatio;
-	return vector<Float>(n, 1.75);
+	return vector<Float>(n, 1.2);
 }
 
 // map ecc to radius

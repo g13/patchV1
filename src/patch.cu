@@ -77,6 +77,8 @@ int main(int argc, char **argv) {
     vector<Float> tonicDep;
     vector<Float> synFailFF;
     vector<Float> synFail;
+    vector<Size> synPerConFF;
+    vector<Size> synPerCon;
     // TODO: specify proportion of different types of conductances
 	vector<Float> grFF;
 	vector<Float> grE;
@@ -110,6 +112,7 @@ int main(int argc, char **argv) {
 	vector<Float> vR;
 	vector<Float> vThres;
 	vector<Float> gL;
+	vector<Float> C;
 	vector<Float> tRef;
 	vector<Float> vT;
 	vector<Float> deltaT;
@@ -207,6 +210,7 @@ int main(int argc, char **argv) {
 		("vR",po::value<vector<Float>>(&vR), "single neuron model's reseting voltage of size nType")
 		("vThres",po::value<vector<Float>>(&vThres), "single neuron model's reset threshold of size nType")
 		("gL",po::value<vector<Float>>(&gL), "single neuron model's leaky conductance of size nType")
+		("C",po::value<vector<Float>>(&C), "single neuron model's capacitance of size nType")
 		("tRef",po::value<vector<Float>>(&tRef), "single neuron model's refactory period of size nType")
 		("vT",po::value<vector<Float>>(&vT), "AdEx model's spiking threshold (parameter) of size nType")
 		("deltaT",po::value<vector<Float>>(&deltaT), "AdEx model's deltaT of size nType")
@@ -221,6 +225,8 @@ int main(int argc, char **argv) {
 		("tonicDep", po::value<vector<Float>>(&tonicDep), "tonic depolarization borrow from NMC model")
         ("synFailFF",  po::value<vector<Float>>(&synFailFF), "FF synpase failure rate of size nType")
         ("synFail",  po::value<vector<Float>>(&synFail), "synpase failure rate of size [nType, nType]")
+        ("synPerConFF",  po::value<vector<Size>>(&synPerConFF), "synpases per feedforward connection, size of nType")
+        ("synPerCon",  po::value<vector<Size>>(&synPerCon), "synpases per cortical connection size of [nType, nType]")
         ("manual", po::value<bool>(&manual)->default_value(false), "manually connect neurons, modify on top of conMat")
         ("preList", po::value<vector<PosInt>>(&preList), "the presynaptic neurons of the manual connections")
         ("postList", po::value<vector<PosInt>>(&postList), "the postynaptic neurons of the manual connections")
@@ -531,6 +537,17 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	if (synFailFF.size() != nType && synFailFF.size() != 1) {
+		cout << "the size of synFailFF has size of " << synFailFF.size() << " != " << nType << " or 1.\n";
+		return EXIT_FAILURE;
+	} else {
+		if (synFailFF.size() != nType) {
+        	for (PosInt i=1; i<nType; i++) {
+				synFailFF.push_back(synFailFF[0]);
+			}
+		}
+	}
+
 	if (synFail.size() != nType*nType) {
 		cout << "the size of synFail has size of " << synFail.size() << " != " << nType << " x " << nType << "\n";
 		return EXIT_FAILURE;
@@ -542,6 +559,22 @@ int main(int argc, char **argv) {
 			}
         }
     }
+
+	if (synPerCon.size() != nType*nType) {
+		cout << "the size of synPerCon has size of " << synPerCon.size() << " != " << nType << " x " << nType << "\n";
+		return EXIT_FAILURE;
+	} 
+
+	if (synPerConFF.size() != nType && synPerConFF.size() != 1) {
+		cout << "the size of synPerConFF has size of " << synPerConFF.size() << " != " << nType << " or 1.\n";
+		return EXIT_FAILURE;
+	} else {
+		if (synPerConFF.size() != nType) {
+        	for (PosInt i=1; i<nType; i++) {
+				synPerConFF.push_back(synPerConFF[0]);
+			}
+		}
+	}
 
     ConductanceShape condFF(&(grFF[0]), &(gdFF[0]), ngTypeFF);
 	ConductanceShape condE(&(grE[0]), &(gdE[0]), ngTypeE);
@@ -556,10 +589,6 @@ int main(int argc, char **argv) {
             cout << "vR need to has size of " << nType << "\n";
 			return EXIT_FAILURE;
         }
-    }
-
-    if (iModel == 0) {
-        cout << "using LIF model vT(ignored) is equivalent with vThres(will be used).\n";
     }
 
     if (vT.size() == 1) {
@@ -580,6 +609,25 @@ int main(int argc, char **argv) {
     } else {
         if (vThres.size() != nType) {
             cout << "vThres need to has size of " << nType << "\n";
+			return EXIT_FAILURE;
+        }
+    }
+
+    if (iModel == 0) {
+        cout << "using LIF model vT(ignored) is equivalent with vThres.\n";
+		vT.clear();
+        for (PosInt i=0; i<nType; i++) {
+            vT.push_back(vThres[i]);
+        }
+    }
+
+    if (C.size() == 1) {
+        for (PosInt i=1; i<nType; i++) {
+            C.push_back(C[0]);
+        }
+    } else {
+        if (C.size() != nType) {
+            cout << "C need to has size of " << nType << "\n";
 			return EXIT_FAILURE;
         }
     }
@@ -661,6 +709,7 @@ int main(int argc, char **argv) {
     Float *d_vR;
     Float *d_vThres;
     Float *d_gL;
+    Float *d_C;
     Float *d_tRef;
     Float *d_vT;
     Float *d_deltaT;
@@ -670,6 +719,7 @@ int main(int argc, char **argv) {
 	checkCudaErrors(cudaMalloc((void **) &d_vR, nType*sizeof(Float)));
 	checkCudaErrors(cudaMalloc((void **) &d_vThres, nType*sizeof(Float)));
 	checkCudaErrors(cudaMalloc((void **) &d_gL, nType*sizeof(Float)));
+	checkCudaErrors(cudaMalloc((void **) &d_C, nType*sizeof(Float)));
 	checkCudaErrors(cudaMalloc((void **) &d_tRef, nType*sizeof(Float)));
 	checkCudaErrors(cudaMalloc((void **) &d_vT, nType*sizeof(Float)));
 	checkCudaErrors(cudaMalloc((void **) &d_deltaT, nType*sizeof(Float)));
@@ -679,6 +729,7 @@ int main(int argc, char **argv) {
 	checkCudaErrors(cudaMemcpy(d_vR, &(vR[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_vThres, &(vThres[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_gL, &(gL[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_C, &(C[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_tRef, &(tRef[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_vT, &(vT[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_deltaT, &(deltaT[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
@@ -686,7 +737,7 @@ int main(int argc, char **argv) {
 	checkCudaErrors(cudaMemcpy(d_a, &(a[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_b, &(b[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
 
-	size_t usingGMem = nType*9*sizeof(Float);
+	size_t usingGMem = nType*10*sizeof(Float);
 
     // LearnType
     Size nLearnTypeFF;
@@ -2950,6 +3001,8 @@ int main(int argc, char **argv) {
     Float *d_noisyDep;
     Float *d_synFailFF;
     Float *d_synFail;
+    Size *d_synPerConFF;
+    Size *d_synPerCon;
     Size *typeAcc;
     Float *d_pFF;
     Float *d_pE;
@@ -2963,6 +3016,8 @@ int main(int argc, char **argv) {
     checkCudaErrors(cudaMalloc((void**)&d_noisyDep, nType*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void**)&d_synFailFF, nType*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void**)&d_synFail, nType*nType*sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void**)&d_synPerConFF, nType*sizeof(Size)));
+    checkCudaErrors(cudaMalloc((void**)&d_synPerCon, nType*nType*sizeof(Size)));
     checkCudaErrors(cudaMalloc((void**)&typeAcc, nType*sizeof(Size)));
     checkCudaErrors(cudaMalloc((void**)&d_pFF, nType*ngTypeFF*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void**)&d_pE,  nType*ngTypeE*sizeof(Float)));
@@ -2970,11 +3025,13 @@ int main(int argc, char **argv) {
 	checkCudaErrors(cudaMemcpy(d_noisyDep,  &(noisyDep[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_synFailFF,  &(synFailFF[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_synFail,  &(synFail[0]), nType*nType*sizeof(Float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_synPerConFF, &(synPerConFF[0]), nType*sizeof(Size), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_synPerCon, &(synPerCon[0]), nType*nType*sizeof(Size), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(typeAcc, &(typeAccCount[0]), nType*sizeof(Size), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_pFF, &(pFF[0]), nType*ngTypeFF*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_pE,  &(pE[0]),  nType*ngTypeE*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_pI,  &(pI[0]),  nType*ngTypeI*sizeof(Float), cudaMemcpyHostToDevice));
-	usingGMem += 2*nV1*sizeof(curandStateMRG32k3a) + (ngTypeFF + ngTypeE + ngTypeI)*nType*sizeof(Float) + (2+nType)*nType * sizeof(Float) + nType*sizeof(Size) + nV1*sizeof(Float);
+	usingGMem += 2*nV1*sizeof(curandStateMRG32k3a) + (ngTypeFF + ngTypeE + ngTypeI)*nType*sizeof(Float) + (2+nType)*nType * sizeof(Float) + (2+nType)*nType*sizeof(Size) + nV1*sizeof(Float);
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 	cout << "synFail, receptor ratio set\n";
 
@@ -2993,6 +3050,7 @@ int main(int argc, char **argv) {
 		assert(discard == nV1);
     	fConStats.read(reinterpret_cast<char*>(&ExcRatio[0]), nV1*sizeof(float));
 		fConStats.close();
+		Float maxExcRatio = *max_element(ExcRatio.begin(), ExcRatio.end());
 		for (PosInt i=0; i<nblock; i++) {
 			PosInt iType = 0;
 			for (PosInt j=0; j<blockSize; j++) {
@@ -3000,7 +3058,11 @@ int main(int argc, char **argv) {
 				if (j == typeAccCount[iType]) {
 					iType++;
 				}
-				iTonicDep[id] = tonicDep[iType]*ExcRatio[id];
+				iTonicDep[id] = tonicDep[iType]*ExcRatio[id]/maxExcRatio;
+				assert(!std::isnan(ExcRatio[id]));
+				assert(!std::isnan(iTonicDep[id]));
+				assert(iTonicDep[id] >= 0);
+				assert(iTonicDep[id] <= 1);
 			}
 		}
 		checkCudaErrors(cudaMemcpy(d_tonicDep,  &(iTonicDep[0]), nV1*sizeof(Float), cudaMemcpyHostToDevice));
@@ -3171,20 +3233,24 @@ int main(int argc, char **argv) {
     	    	    assert(h_w0 + iblock*blockSize + typeAcc0[i+1] <= h_w0 + nV1);
     	    	}
 			}
-    	    auto vBound = get_excRangeBound(vI, vThres[i]);
+    	    auto vBound = get_excRangeBound(vI, vT[i]);
     	    auto get_v0 = get_rand_from_norm(rGen_initV1, v0[i*2+0], v0[i*2+1], vBound);
     	    for (PosInt iblock = 0; iblock < nblock; iblock++) {
 			    generate(h_v0 + iblock*blockSize + typeAcc0[i], h_v0 + iblock*blockSize + typeAcc0[i+1], get_v0);
     	        assert(h_v0 + iblock*blockSize + typeAcc0[i+1] <= h_v0 + nV1);
-    	        for (PosInt j=0; j<blockSize; j++) {
-    	            assert(h_v0[iblock*blockSize + j] < vThres[i]);
-    	        }
     	    }
     	}
 		Float v0Mean = accumulate(h_v0, h_v0 + nV1, 0.0)/nV1;
 		Float v0Min = *min_element(h_v0, h_v0 + nV1);
 		Float v0Max = *max_element(h_v0, h_v0 + nV1);
 		cout << "v0 = ["  << v0Min << ", " << v0Mean << ", " << v0Max << "]\n";
+    	for (PosInt i=0; i<nType; i++) {
+    	    for (PosInt iblock = 0; iblock < nblock; iblock++) {
+    	        for (PosInt j=0; j<blockSize; j++) {
+    	            assert(h_v0[iblock*blockSize + j] < vThres[i]);
+    	        }
+			}
+		}
 
 		if (iModel == 1) {
 			Float w0Mean = accumulate(h_w0, h_w0 + nV1, 0.0)/nV1;
@@ -3273,7 +3339,7 @@ int main(int argc, char **argv) {
 		cout << "mean(gE0) =  " << gEMean/nV1/ngTypeE << "\n";
 		cout << "mean(gI0) =  " << gIMean/nV1/ngTypeI << "\n";
 
-    	rand_spInit<<<nblock, blockSize>>>(tBack, d_spikeTrain, d_v, d_w, d_nLGNperV1, d_sp0, typeAcc, d_vR, d_gL, d_tRef, d_tau_w, d_a, d_b, rGenCond, rNoisy, seed, nV1, nType, SCsplit, trainDepth, dt, iModel);
+    	rand_spInit<<<nblock, blockSize>>>(tBack, d_spikeTrain, d_v, d_w, d_nLGNperV1, d_sp0, typeAcc, d_vR, d_tRef, d_tau_w, d_a, d_b, rGenCond, rNoisy, seed, nV1, nType, SCsplit, trainDepth, dt, iModel);
     	checkCudaErrors(cudaDeviceSynchronize());
 
 		//debug
@@ -3969,7 +4035,7 @@ int main(int argc, char **argv) {
     PosInt iStatus = 0;
 	PosIntL oldTimeStamp = 0;
 	PosInt oldFrameHead;
-    //***************************
+	//***************************
 	// var sizes
 	// 	LGN
 	size_t LGN_convolSize = 2*nLGN*sizeof(Float) + nLGN*sizeof(curandStateMRG32k3a);
@@ -4269,7 +4335,7 @@ int main(int argc, char **argv) {
     	                d_nNeighborBlock+block_offset, d_neighborBlockId + block_offset*nearNeighborBlock,
     	                d_gE[i], d_gI[i], d_hE[i], d_hI[i],
     	                vAvgE, vLTP_E, vLTD_E, vTripE, vSTDP_QE, vSTDP_QI, d_pE, d_pI, typeAcc,
-    	                rGenCond, d_synFail,
+    	                rGenCond, d_synFail, d_synPerCon,
     	                dt, condE, condI, ngTypeE, ngTypeI,
     	                0, trainDepth,
     	                nearNeighborBlock, nE, nI, nV1, speedOfThought, learning, block_offset, nType, lE, lQ, i);
@@ -4317,7 +4383,7 @@ int main(int argc, char **argv) {
     	        	            fSpikeTrain, fTrainDepth, fCurrenSlot,
     	        	            nVec, vecID, conVec, delayVec,
     	        	            gE[i], gI[i], hE[i], hI[i], &(pE[0]), &(pI[0]), &(typeAccCount[0]),
-    	        	            h_rGenCond, &(synFail[0]),
+    	        	            h_rGenCond, &(synFail[0]), &(synPerCon[0]),
     	        	            dt, condE, condI, ngTypeE, ngTypeI,
     	        	            block_offset, nType,
     	        	            nE, nV1, speedOfThought, chunkSize);
@@ -4573,22 +4639,6 @@ int main(int argc, char **argv) {
             if (rawData) {
 		    	// write g to fRawData
 		    	reshape_chunk_and_write(gE[0], fRawData, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, ngTypeE, ngTypeI, nV1, hWrite);
-				//debug
-					if (it == 1) {
-						size_t eSize = maxChunkSize*blockSize*ngTypeE;
-						for (PosInt j = 0; j<nV1; j++) {
-							assert(gFF[j] < 0.5);
-						}
-						for (PosInt j = 0; j<nChunk; j++) {
-							if (j >= iSizeSplit) {
-								eSize = remainChunkSize*blockSize*ngTypeE;
-							}
-							for (PosInt k = 0; k<eSize; k++) {
-								assert(gE[j][k] < 0.5);
-							}
-						}
-					}
-				//
 		    }
         }
 		if (saveLGN_fr || learnData_FF) {
@@ -4635,8 +4685,8 @@ int main(int argc, char **argv) {
                 vAvgE, vAvgI, // filtered spiking 
                 vLTP_E, vLTD_E, vTripE, // E->E learning vars
                 vSTDP_QE, vSTDP_QI, // I->E learning vars
-                d_pFF, d_vR, d_vThres, d_gL, d_tRef, d_tonicDep, d_vT, d_deltaT, d_tau_w, d_a, d_b, typeAcc, 
-                rGenCond, d_synFailFF, rNoisy, d_noisyDep,
+                d_pFF, d_vR, d_vThres, d_gL, d_C, d_tRef, d_tonicDep, d_vT, d_deltaT, d_tau_w, d_a, d_b, typeAcc, 
+                rGenCond, d_synFailFF, d_synPerConFF, rNoisy, d_noisyDep,
 				currentTimeSlot, trainDepth, max_LGNperV1,
 				ngTypeFF, ngTypeE, ngTypeI, condFF, condE, condI,
 				dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, nE, nI, nV1, learning, varSlot, nType,
@@ -4780,7 +4830,7 @@ int main(int argc, char **argv) {
 					d_nNeighborBlock+block_offset, d_neighborBlockId + block_offset*nearNeighborBlock,
 					d_gE[i], d_gI[i], d_hE[i], d_hI[i],
                     vAvgE, vLTP_E, vLTD_E, vTripE, vSTDP_QE, vSTDP_QI, d_pE, d_pI, typeAcc,
-                    rGenCond, d_synFail,
+                    rGenCond, d_synFail, d_synPerCon,
 					dt, condE, condI, ngTypeE, ngTypeI,
 					currentTimeSlot, trainDepth,
 					nearNeighborBlock, nE, nI, nV1, speedOfThought, learning, block_offset, nType, lE, lQ, i);
@@ -4851,7 +4901,7 @@ int main(int argc, char **argv) {
 		    				fSpikeTrain, fTrainDepth, fCurrenSlot,
 		    				nVec, vecID, conVec, delayVec,
 		    				gE[i], gI[i], hE[i], hI[i], &(pE[0]), &(pI[0]), &(typeAccCount[0]),
-            	            h_rGenCond, &(synFail[0]),
+            	            h_rGenCond, &(synFail[0]), &(synPerCon[0]),
 		    				dt, condE, condI, ngTypeE, ngTypeI,
 		    				block_offset, nType,
 		    				nE, nV1, speedOfThought, chunkSize);
@@ -5152,6 +5202,25 @@ int main(int argc, char **argv) {
 		cout << "Cannot open or find " << connectome_cfg_filename + conV1_suffix <<"\n";
 		return EXIT_FAILURE;
 	} else {
+
+		unsigned int precision = sizeof(Float);
+		fPatchV1_cfg.write((char*)&precision, sizeof(unsigned int));
+		Float _vL = vL;	
+		Float _vE = vE;	
+		Float _vI = vI;	
+		fPatchV1_cfg.write((char*) &_vL, sizeof(Float));
+		fPatchV1_cfg.write((char*) &_vE, sizeof(Float));
+		fPatchV1_cfg.write((char*) &_vI, sizeof(Float));
+		fPatchV1_cfg.write((char*) &nType, sizeof(Size));
+		fPatchV1_cfg.write((char*) &(vR[0]), nType*sizeof(Float));
+		fPatchV1_cfg.write((char*) &(vThres[0]), nType*sizeof(Float));
+		fPatchV1_cfg.write((char*) &(gL[0]), nType*sizeof(Float));
+		fPatchV1_cfg.write((char*) &(vT[0]), nType*sizeof(Float));
+		fPatchV1_cfg.write((char*) &(nTypeHierarchy[0]), 2*sizeof(Size));
+		fPatchV1_cfg.write((char*) &(typeAccCount[0]), nType*sizeof(Size));
+		fPatchV1_cfg.write((char*) &(sRatioLGN[0]), nType*sizeof(Float));
+		fPatchV1_cfg.write((char*) &sRatioV1, sizeof(Float));
+
 		fPatchV1_cfg.write((char*) &seed, sizeof(PosIntL));	
 		fPatchV1_cfg.write((char*) &nLGN, sizeof(Size));	
 		fPatchV1_cfg.write((char*) &nV1, sizeof(Size));	
@@ -5172,15 +5241,8 @@ int main(int argc, char **argv) {
 		fPatchV1_cfg.write((char*) &(pI[0]), ngTypeI*nType*sizeof(Float));	
 		fPatchV1_cfg.write((char*) &frRatioLGN, sizeof(Float));	
 		fPatchV1_cfg.write((char*) &convolRatio, sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(sRatioLGN[0]), nType*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &sRatioV1, sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(nTypeHierarchy[0]), 2*sizeof(Size));	
-		fPatchV1_cfg.write((char*) &(typeAccCount[0]), nType*sizeof(Float));	
+		fPatchV1_cfg.write((char*) &(C[0]), nType*sizeof(Float));
 		fPatchV1_cfg.write((char*) &(tRef[0]), nType*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(vThres[0]), nType*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(vT[0]), nType*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(vR[0]), nType*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(gL[0]), nType*sizeof(Float));	
 		fPatchV1_cfg.write((char*) &(a[0]), nType*sizeof(Float));	
 		fPatchV1_cfg.write((char*) &(b[0]), nType*sizeof(Float));	
 		fPatchV1_cfg.write((char*) &(tau_w[0]), nType*sizeof(Float));	
@@ -5289,6 +5351,8 @@ int main(int argc, char **argv) {
         checkCudaErrors(cudaFree(d_noisyDep));
         checkCudaErrors(cudaFree(d_synFailFF));
         checkCudaErrors(cudaFree(d_synFail));
+        checkCudaErrors(cudaFree(d_synPerConFF));
+        checkCudaErrors(cudaFree(d_synPerCon));
         checkCudaErrors(cudaFree(typeAcc));
         checkCudaErrors(cudaFree(d_pFF));
         checkCudaErrors(cudaFree(d_pE));
@@ -5296,6 +5360,7 @@ int main(int argc, char **argv) {
         checkCudaErrors(cudaFree(d_vT));
         checkCudaErrors(cudaFree(d_vR));
         checkCudaErrors(cudaFree(d_gL));
+        checkCudaErrors(cudaFree(d_C));
         checkCudaErrors(cudaFree(d_tRef));
         checkCudaErrors(cudaFree(d_tonicDep));
         checkCudaErrors(cudaFree(learnVar));
