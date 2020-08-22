@@ -246,6 +246,9 @@ def logistic(sharpness):
                 A = np.power(exp_half,2)/(np.exp(sharpness)-1)
                 C = exp_half/(1-np.exp(sharpness))
                 x = A/(1.0 + np.exp(-sharpness*(x-0.5))) + C
+            else:
+                x[x > 0.5] = 1
+                x[x < 0.5] = 0
             return x
         return static_nolinearity
     return decorator_logistic
