@@ -1,4 +1,4 @@
-% stats = ENV1stats2(stream,G,bc,ENlist,v[,whichones,T,Pi,murange,tens,opt,figlist])
+% stats = myV1stats(stream,G,bc,ENlist,v[,whichones,T,Pi,murange,tens,opt,figlist])
 % Quantitative measurements of a collection of 2D generalised elastic nets
 % for cortical map modelling.
 %
@@ -234,10 +234,9 @@
 % Copyright (c) 2002 by Miguel A. Carreira-Perpinan
 
 function stats = ...
-    myV1stats(stream,G,bc,ENlist,v,whichones,T,T_vec,Pi,murange,id,tens,opt,figlist,statsOnly,right_open,separateData,xx,yy)
-if nargin < 13
-    statsOnly = false;
-end
+    myV1stats(stream,G,aspectRatio,bc,ENlist,v,whichones,T,T_vec,Pi,murange,id,tens,opt,figlist,statsOnly,right_open,separateData,xx,yy,iRange,folderId)
+
+fign = 1000*iRange;
 
 L = length(G);                  % Net dimensionality
 if L == 1 G = [G 1]; end        % So that both L=1 and L=2 work
@@ -329,6 +328,7 @@ figName{2} = 'OD-OR_contour';
 figName{3} = 'OR_angleMap';
 figName{4} = 'OR_polarMap';
 figName{5} = 'VFMap';
+figName{6} = 'OR_circle';
 figName{7} = 'ORpinw_map';
 figName{13} = 'OD-VFx_contour';
 figName{14} = 'OD-VFy_contour';
@@ -342,8 +342,10 @@ figName{41} = 'FFT-OR';
 figName{50} = 'pinw-OD';
 figName{54} = 'dis_pinw2OD';
 figName{60} = 'normDis_pinw2OD';
-figName{100} = 'obj_fitness-tension';
+figName{100} = 'obj_fitness';
 figName{102} = 'tension';
+figName{600} = 'postVF';
+figName = strcat(figName, ['-',folderId]);
 
 % Output argument
 stats = struct('whichones',whichones,'Ks',[],'its',[],'fig',[]);
@@ -361,6 +363,7 @@ if strcmp(bc,'periodic')
 else
     test_boundary = false;
     B_width = 5;
+	assert(mod(B_width,2) == 1);
     [B_ind, I_ind, B1_ind, I1_ind, B2_ind, I2_ind, B1_ang] = set_bc(reshape(logical(Pi),G(1),G(2)), B_width, right_open, test_boundary, prefix, ~right_open);
     
     %     [tmp1,tmp2] = ndgrid(B_width+1:G(1)-B_width,B_width+1:G(2)-B_width);
@@ -372,18 +375,18 @@ else
         tmp = ones(G); 
 		tmp(I_ind) = 0;
 		tmp(B_ind) = 0.5;
-        figure(910); clf; myplot(G,bc,tmp(:),'img',[1 0 1]);
-        print(910,'-loose','-r600', '-dpng',[prefix,'BI_ind.png']);
+        figure(fign+910); clf; myplot(G,aspectRatio,bc,tmp(:),'img',[1 0 1],[],[],[],[],fign+910);
+        print(fign+910,'-loose','-r600', '-dpng',[prefix,'BI_ind.png']);
         tmp = ones(G); 
 		tmp(I1_ind) = 0;
 		tmp(B1_ind) = 0.5;
-        figure(911); clf; myplot(G,bc,tmp(:),'img',[1 0 1]);
-        print(911,'-loose','-r600', '-dpng', [prefix,'B1I1_ind.png']);
+        figure(fign+911); clf; myplot(G,aspectRatio,bc,tmp(:),'img',[1 0 1],[],[],[],[],fign+911);
+        print(fign+911,'-loose','-r600', '-dpng', [prefix,'B1I1_ind.png']);
         tmp = ones(G); 
 		tmp(I2_ind) = 0;
 		tmp(B2_ind) = 0.5;
-        figure(912); clf; myplot(G,bc,tmp(:),'img',[1 0 1]);
-        print(912,'-loose','-r600', '-dpng', [prefix,'B2I2_ind.png']);
+        figure(fign+912); clf; myplot(G,aspectRatio,bc,tmp(:),'img',[1 0 1],[],[],[],[],fign+912);
+        print(fign+912,'-loose','-r600', '-dpng', [prefix,'B2I2_ind.png']);
     end
 end
 
@@ -444,7 +447,6 @@ Figl = floor(min(scw,sch)/4);				% Largest dimension
 % first time in the ENcounter loop.
 firstone = logical(1);
 for ENcounter = whichones
-
     frame = ['f', num2str(ENcounter,'%04d')];
     
     % Extract current net
@@ -471,19 +473,21 @@ for ENcounter = whichones
     % ------------------------------------------------------------------------
     % Compute gradients
     % [gx,gy,gt,gr] = ENgrad(G,mu,v(id.OR,:));
-	figure;
-	subplot(2,1,1)
-	imagesc(rot90(fliplr(reshape(mu(:,1),G))));
-	colormap(viridis);
-	colorbar;
-    daspect([1,1,1]);
-	subplot(2,1,2)
-	imagesc(rot90(fliplr(reshape(mu(:,2),G))));
-	colormap(viridis);
-	colorbar;
-    daspect([1,1,1]);
-    print(gcf,'-loose','-r900',['-d' EXT], [prefix,'postVF-',frame,'.',EXT]);
-	close(gcf);
+	if plotfig(600)
+		figure(fign+600);
+		subplot(1,2,1)
+		imagesc(rot90(fliplr(reshape(mu(:,1),G))));
+    	daspect([1/aspectRatio,1,1]);
+		colormap(viridis);
+		colorbar;
+		subplot(1,2,2)
+		imagesc(rot90(fliplr(reshape(mu(:,2),G))));
+    	daspect([1/aspectRatio,1,1]);
+		colormap(viridis);
+		colorbar;
+    	print(fign+600,'-loose','-r900',['-d' EXT], [prefix,figName{600},'-',frame,'.',EXT]);
+		close(fign+600);
+	end
 
 	test_grad = false;
     [gx,gy,gt,gr] = myGrad(G,mu,B2_ind,I2_ind,logical(Pi),v(id.OR,:),[id.OD],test_grad,prefix);
@@ -521,29 +525,30 @@ for ENcounter = whichones
     
     
     % --- Figures 1-12,100-101: plot current net
-    myV1replay(G,bc,ENlist,v,ENcounter,T(:,1:5),T_vec,Pi,murange,id,tens,[],figlist);
+    myV1replay(G,aspectRatio,bc,ENlist,v,ENcounter,T(:,1:5),T_vec,Pi,murange,id,tens,[],figlist,fign);
 
 	fID = fopen([prefix,'ORcolor-',frame,'.bin'],'w');
 	fwrite(fID, mu(:,id.OR), 'double');
-    disp('OR range:')
-    disp([min(mu(:,id.OR)), max(mu(:,id.OR))]);
+    %disp('OR range:')
+    %disp([min(mu(:,id.OR)), max(mu(:,id.OR))]);
     assert(sum(isnan(mu(:,id.OR))) == sum(Pi==0));
 	fclose(fID);
 
     if ~isempty(ENdir)
         Figs = [1:16]; % Energy and cpu time get printed at end only
         for i=find(plotfig(Figs))
-			if i == 2 || i == 13 || i == 14 || i == 15 || i == 16
-				set (0,'currentfigure',i);
+			if i == 1 || i == 2 || i == 13 || i == 14 || i == 15 || i == 16
+				set (0,'currentfigure',fign+i);
 				hold on
 				plot(xx, yy, '*r', 'MarkerSize', 1.0);
+				axis on
 			end
-            print(i,'-loose','-r900',['-d' EXT], [prefix,figName{i},'-',frame,'.',EXT]);
+            print(fign+i,'-loose','-r900',['-d' EXT], [prefix,figName{i},'-',frame,'.',EXT]);
         end
 		if ENcounter == whichones(1)
  			Figs = [100:102];		
         	for i=find(plotfig(Figs))
-        	    print(Figs(i),'-loose','-r300',['-d' EXT],[prefix,figName{Figs(i)},'.',EXT]);
+        	    print(fign+Figs(i),'-loose','-r300',['-d' EXT],[prefix,figName{Figs(i)},'.',EXT]);
         	end
 		end
     end
@@ -560,15 +565,21 @@ for ENcounter = whichones
     % --- Figures 20-24: unweighted histograms of the maps VFx,VFy,OD,ORt,ORr
     % Note: for the standard EN, the histograms are strongly quantised to the
     % training set values.
-    Varsi = [1 2 3 6 7];
+    Varsi = [1 2];
+    VarsL = {'Visual field X', 'Visual field Y'};
+    Varsl = {'VFx','VFy'};
+	if v(3,3)-v(3,2) == 0
+		Varsi = [Varsi, 3];
+		Varsl = [Varsl, 'OD'];
+		VarsL = [VarsL, 'Ocular dominance']
+	end
+	if v(7,3)-v(7,2) == 0
+		Varsi = [Varsi, 6, 7];
+		Varsl = [Varsl, 'ORt', 'ORr'];
+		VarsL = [VarsL, 'Orientation angle', 'Orientation selectivity'];
+	end
     Varsn = length(Varsi);
     Vars = mu(logical(Pi),Varsi);				% VFx,VFy,OD,ORt,ORr
-    VarsL = {'Visual field X',...
-        'Visual field Y',...
-        'Ocular dominance',...
-        'Orientation angle',...
-        'Orientation selectivity'};
-    Varsl = {'VFx','VFy','OD','ORt','ORr'};
     Varsax = [min(Vars,[],1);max(Vars,[],1)];
     Varsax = Varsax + [-1;1]*diff(Varsax,1,1)/10;
     Figs = 20; Figs = Figs:Figs+Varsn-1;
@@ -587,14 +598,14 @@ for ENcounter = whichones
         % Plot this figure
         if plotfig(Figs(i))
             if firstone
-                if ~ishandle(Figs(i))
-                    figure(Figs(i));
+                if ~ishandle(fign+Figs(i))
+                    figure(fign+Figs(i));
                 end
-                set(Figs(i),'Position',[Figsp(i,:) Figss],...
+                set(fign+Figs(i),'Position',[Figsp(i,:) Figss],...
                     'Name',['Histogram of ' Varsl{i}],...
                     'Color','w','PaperPositionMode','auto');
             end
-            set(0,'CurrentFigure',Figs(i));
+            set(0,'CurrentFigure',fign+Figs(i));
             bar(h(:,2),h(:,1),1);
             tmp = get(gca,'YLim');
             hold on;					% Nominal domain
@@ -609,7 +620,7 @@ for ENcounter = whichones
                 ';   \gamma_1=' num2str(g1,3)],'Visible','on');
             drawnow;
             if ~isempty(ENdir)
-                print(Figs(i),'-loose','-r300',['-d' EXT],...
+                print(fign+Figs(i),'-loose','-r300',['-d' EXT],...
                     [prefix,figName{Figs(i)},'-',frame,'.',EXT]);
             end
         end
@@ -643,14 +654,14 @@ for ENcounter = whichones
     % Plot this figure
     if plotfig(Figs)
         if firstone
-            if ~ishandle(Figs)
-                figure(Figs);
+            if ~ishandle(fign+Figs)
+                figure(fign+Figs);
             end
-            set(Figs,'Position',[Figsp(1,:) Figss],...
+            set(fign+Figs,'Position',[Figsp(1,:) Figss],...
                 'Name','Histogram of OD/ORt crossing angles (interior points)',...
                 'Color','w','PaperPositionMode','auto');
         end
-        set(0,'CurrentFigure',Figs);
+        set(0,'CurrentFigure',fign+Figs);
         plot([0 90],[1 1]/90,'r--');          % Uniform distribution
         hold on; bar(h(:,2),h(:,1),1); hold off;
         set(gca,'XLim',[0 90]);
@@ -660,7 +671,7 @@ for ENcounter = whichones
             '\circ;   \gamma_1=' num2str(g1,3)],'Visible','on');
         drawnow;
         if ~isempty(ENdir)
-            print(Figs,'-loose','-r300',['-d' EXT],...
+            print(fign+Figs,'-loose','-r300',['-d' EXT],...
                 [prefix,figName{Figs},'-',frame,'.',EXT]);
         end
     end
@@ -689,15 +700,15 @@ for ENcounter = whichones
     % Plot this figure
     if plotfig(Figs)
         if firstone
-            if ~ishandle(Figs)
-                figure(Figs);
+            if ~ishandle(fign+Figs)
+                figure(fign+Figs);
             end
-            set(Figs,'Position',[Figsp(2,:) Figss],...
+            set(fign+Figs,'Position',[Figsp(2,:) Figss],...
                 'Name',...
                 'Histogram of OD/ORt crossing angles (boundary points)',...
                 'Color','w','PaperPositionMode','auto');
         end
-        set(0,'CurrentFigure',Figs);
+        set(0,'CurrentFigure',fign+Figs);
         if B_width > 0
             plot([0 90],[1 1]/90,'r--');        % Uniform distribution
             hold on; bar(h(:,2),h(:,1),1); hold off;
@@ -713,7 +724,7 @@ for ENcounter = whichones
             '\circ;   \gamma_1=' num2str(g1,3)],'Visible','on');
         drawnow;
         if ~isempty(ENdir)
-            print(Figs,'-loose','-r300',['-d' EXT],...
+            print(fign+Figs,'-loose','-r300',['-d' EXT],...
                 [prefix,figName{Figs},'-',frame,'.',EXT]);
         end
     end
@@ -740,11 +751,11 @@ for ENcounter = whichones
     % $$$ 	   (gr(I_ind,3)>=OD_gr_th).*(gr(I_ind,6)>=ORt_gr_th),nbins,[0 90]);
     % $$$ % You can visually check the area above the threshold like this:
     % $$$ figure(901); cla;
-    % $$$ myplot(G,bc,gr(:,3)>=OD_gr_th,'img',[1 0 1],[],Pi,[1 1 Figl]);
+    % $$$ myplot(G,aspectRatio,bc,gr(:,3)>=OD_gr_th,'img',[1 0 1],[],Pi,[1 1 Figl]);
     % $$$ figure(902); cla;
-    % $$$ myplot(G,bc,gr(:,6)>=ORt_gr_th,'img',[1 0 1],[],Pi,[1 1 Figl]);
+    % $$$ myplot(G,aspectRatio,bc,gr(:,6)>=ORt_gr_th,'img',[1 0 1],[],Pi,[1 1 Figl]);
     % $$$ figure(903); cla;
-    % $$$ myplot(G,bc,(gr(:,3)>=OD_gr_th).*(gr(:,6)>=ORt_gr_th),...
+    % $$$ myplot(G,aspectRatio,bc,(gr(:,3)>=OD_gr_th).*(gr(:,6)>=ORt_gr_th),...
     % $$$        'img',[1 0 1],[],Pi,[1 1 Figl]);
     
     
@@ -784,15 +795,15 @@ for ENcounter = whichones
         end
         if plotfig(Figs(i))
             if firstone
-                if ~ishandle(Figs(i))
-                    figure(Figs(i));
+                if ~ishandle(fign+Figs(i))
+                    figure(fign+Figs(i));
                 end
-                set(Figs(i),'Position',[Figsp(i,:) Figss],...
+                set(fign+Figs(i),'Position',[Figsp(i,:) Figss],...
                     'Name',['Histogram of ' Varsl{i} ...
                     '/boundary crossing angles'],...
                     'Color','w','PaperPositionMode','auto');
             end
-            set(0,'CurrentFigure',Figs(i));
+            set(0,'CurrentFigure',fign+Figs(i));
             % Plot the histogram of crossing angles and display statistics of it:
             plot([0 90],[1 1]/90,'r--');		% Uniform distribution
             hold on; bar(h(:,2),h(:,1),1); hold off;
@@ -803,7 +814,7 @@ for ENcounter = whichones
                 '\circ;   \gamma_1=' num2str(g1,3)],'Visible','on');
             drawnow;
             if ~isempty(ENdir)
-            	print(Figs(i),'-loose','-r300',['-d' EXT],...
+            	print(fign+Figs(i),'-loose','-r300',['-d' EXT],...
             	    [prefix,figName{Figs(i)},'-',frame,'.',EXT]);
             end
         end
@@ -818,24 +829,29 @@ for ENcounter = whichones
     Figsp = Figsp(1,:) + Figss/2;
     if plotfig(Figs)
         if firstone
-            if ~ishandle(Figs)
-                figure(Figs);
+            if ~ishandle(fign+Figs)
+                figure(fign+Figs);
             end
-            set(Figs,'Position',[Figsp Figss],...
+            set(fign+Figs,'Position',[Figsp Figss],...
                 'Name',['Combined histograms of crossing angles'],...
                 'Color','w','PaperPositionMode','auto');
         end
-        set(0,'CurrentFigure',Figs);
+        set(0,'CurrentFigure',fign+Figs);
         plot([0 90],[1 1]/90,'r--');		% Uniform distribution
+		xangh = xangh./(ones(nbins,1)*sum(xangh,1)) * 100; %normalize
         hold on; H = plot(h(:,2),xangh); hold off;
-        set(gca,'XLim',[0 90],'YLim',[0 1.1*max(xangh(:))]);
+		if max(xangh(:)) > 0
+        	set(gca,'XLim',[0 90],'YLim',[0 1.1*max(xangh(:))]);
+		else
+        	set(gca,'XLim',[0 90],'YLim',[0 inf]);
+		end
         xlabel('Crossing angle in degrees (\circ)');
         set(H,'LineWidth',2);
         legend(H,'OD/ORt (interior points)','OD/ORt (boundary points)',...
             'OD/boundary','ORt/boundary','Location','best');
         drawnow;
         if ~isempty(ENdir)
-            print(Figs,'-loose','-r300',['-d' EXT],...
+            print(fign+Figs,'-loose','-r300',['-d' EXT],...
                 [prefix,figName{Figs},'-',frame,'.',EXT]);
         end
     end
@@ -868,7 +884,7 @@ for ENcounter = whichones
     for i=1:Varsn
         % Compute DFT and statistics if required here or elsewhere
         if any(plotfig([Figs(i) Figs(i)+100 142 50:59 150:160 70:75 170:171])) || statsOnly
-            [tmpfft,tmpkM,tmplM,tmptM,tmpkm,tmplm] = myfft2(G,Vars(:,i),Pi);
+            [tmpfft,tmpkM,tmplM,tmptM,tmpkm,tmplm] = myfft2(G,Vars(:,i),Pi); %aspectRatio
             switch i
                 case 1
                     [ODfft,ODkM,ODlM,ODtM,ODkm,ODlm] = ...
@@ -884,21 +900,21 @@ for ENcounter = whichones
         % Plot this figure
         if plotfig(Figs(i))
             if firstone
-                if ~ishandle(Figs(i))
-                    figure(Figs(i));
+                if ~ishandle(fign+Figs(i))
+                    figure(fign+Figs(i));
                 end
-                set(Figs(i),'Position',[Figsp(i,:) 10 10],...
+                set(fign+Figs(i),'Position',[Figsp(i,:) 10 10],...
                     'Name',[Varsl{i} ' map Fourier spectrum']);
             end
             % $$$       % Plot square-root power instead of the power to see
             % $$$       % low-power values better
             % $$$       tmpfft = sqrt(tmpfft);
-            set(0,'CurrentFigure',Figs(i)); cla;
-            tmp = get(Figs(i),'Position'); Figsp(i,:) = tmp(1:2);
+            set(0,'CurrentFigure',fign+Figs(i)); cla;
+            tmp = get(fign+Figs(i),'Position'); Figsp(i,:) = tmp(1:2);
             % $$$       % Direct colormap (white = high)
-            % $$$       myplot(G,bc,tmpfft,'img',[1 0 max(tmpfft)],[],Pi,[Figsp(i,:) Figss]);
+            % $$$       myplot(G,aspectRatio,bc,tmpfft,'img',[1 0 max(tmpfft)],[],Pi,[Figsp(i,:) Figss]);
             % Inverted colormap to see low-power values better
-            myplot(G,bc,tmpfft,FTplotv,[1 0 max(tmpfft)],[],Pi,[Figsp(i,:) Figss]);
+            myplot(G,aspectRatio,bc,tmpfft,FTplotv,[1 0 max(tmpfft)],[],Pi,[Figsp(i,:) Figss,[],fign+Figs(i)]);
             title(['k = (' num2str(tmpkM(1),2) ',' num2str(tmpkM(2),2) ...
                 ');  \lambda_M = ' num2str(tmplM,3) ...
                 ' pixels;  \alpha_M = ' num2str(tmptM*180/pi,3) ...
@@ -906,7 +922,7 @@ for ENcounter = whichones
                 'FontSize',8,'Visible','on');
             drawnow;
             if ~isempty(ENdir)
-            	print(Figs(i),'-loose','-r300',['-d' EXT],...
+            	print(fign+Figs(i),'-loose','-r300',['-d' EXT],...
             	    [prefix,figName{Figs(i)},'-',frame,'.',EXT]);
             end
         end
@@ -944,14 +960,14 @@ for ENcounter = whichones
         
         % Mark pinwheels in the contours (fig. 2) and OR angle map (fig. 3) too.
         if plotfig(2)
-            set(0,'CurrentFigure',2);
+            set(0,'CurrentFigure',fign+2);
             hold on;
             plot(ORpinwp(:,1),ORpinwp(:,2),'r+','MarkerSize',10);
             plot(ORpinwn(:,1),ORpinwn(:,2),'g+','MarkerSize',10);
             hold off;
         end
         if plotfig(3)
-            set(0,'CurrentFigure',3);
+            set(0,'CurrentFigure',fign+3);
             hold on;
             plot(ORpinwp(:,1),ORpinwp(:,2),'k+','MarkerSize',10);
             plot(ORpinwn(:,1),ORpinwn(:,2),'w+','MarkerSize',10);
@@ -966,22 +982,22 @@ for ENcounter = whichones
     
     % Plot pinwheels wrt OD borders for visual check:
     Figs = 50;
-    if ishandle(7)
-        Figsp = get(7,'Position'); Figsp =  Figsp(1:2);
+    if ishandle(fign+7)
+        Figsp = get(fign+7,'Position'); Figsp =  Figsp(1:2);
     else
         Figsp = [scw sch]/4;
     end
     Figss = floor(min(scw,sch)/3);
     if plotfig(Figs)
         if firstone
-            if ~ishandle(Figs)
-                figure(Figs);
+            if ~ishandle(fign+Figs)
+                figure(fign+Figs);
             end
-            set(Figs,'Name','Pinwheels and OD borders');
+            set(fign+Figs,'Name','Pinwheels and OD borders');
         end
-        set(0,'CurrentFigure',Figs); cla;
-        tmp = get(Figs,'Position'); Figsp = tmp(1:2);
-        myplot(G,bc,ones(M,1),'img',[1 0 1],[],Pi,[Figsp Figss]);
+        set(0,'CurrentFigure',fign+Figs); cla;
+        tmp = get(fign+Figs,'Position'); Figsp = tmp(1:2);
+        myplot(G,aspectRatio,bc,ones(M,1),'img',[1 0 1],[],Pi,[Figsp Figss], [], fign+Figs);
         hold on;
         plot(ODborders(:,1),ODborders(:,2),'k-','LineWidth',1);
         plot(ORpinwp(:,1),ORpinwp(:,2),'r*', 'MarkerSize', 2);
@@ -998,7 +1014,7 @@ for ENcounter = whichones
             'Visible','on','FontSize',9);
         drawnow;
         if ~isempty(ENdir)
-            print(Figs,'-loose','-r300',['-d' EXT],...
+            print(fign+Figs,'-loose','-r300',['-d' EXT],...
             	[prefix,figName{Figs},'-',frame,'.',EXT]);
         end
     end
@@ -1094,7 +1110,7 @@ for ENcounter = whichones
             [1 1/M ORlM^2/M ODlM^2/M ORlm^2/M ODlm^2/M];
         % Update title of fig. 50
         if plotfig(50)
-            tmp = get(get(50,'CurrentAxes'),'Title');
+            tmp = get(get(fign+50,'CurrentAxes'),'Title');
             set(tmp,'String',...
                 [get(tmp,'String') ';    #OD: '  num2str(pinwOD(1)) ...
                 ' (+' num2str(pinwOD(2)) ', -' num2str(pinwOD(3)) ')']);
@@ -1102,7 +1118,7 @@ for ENcounter = whichones
         
         % Average histogram and statistics for the uniformly distributed
         % pinwheel sets:
-        if Ntrials > 0
+        if Ntrials > 0 && npinw >= 1
             % Histogram and statistics for the random pinwheels:
             for i=1:Ntrials
                 [h,KLu,L2u,m,s,g1] = ENhist(dist(:,i),[],nbins,[0 distM],'absfreq');
@@ -1140,15 +1156,15 @@ for ENcounter = whichones
             end
             if plotfig(Figs(i))
                 if firstone
-                    if ~ishandle(Figs(i))
-                        figure(Figs(i));
+                    if ~ishandle(fign+Figs(i))
+                        figure(fign+Figs(i));
                     end
-                    set(Figs(i),'Position',[Figsp(i,:) Figss],...
+                    set(fign+Figs(i),'Position',[Figsp(i,:) Figss],...
                         'Name',['Histogram of pinwheel-OD-border distances '...
                         Varsl{i}],...
                         'Color','w','PaperPositionMode','auto');
                 end
-                set(0,'CurrentFigure',Figs(i));
+                set(0,'CurrentFigure',fign+Figs(i));
                 if isnan(KLu)
                     clf; axis off;
                     text(0.5,0.5,'Not available: empty histogram',...
@@ -1185,7 +1201,7 @@ for ENcounter = whichones
                     ' pixels;   \gamma_1=' num2str(g1,3)],'Visible','on');
                 drawnow;
                 if ~isempty(ENdir)
-            		print(Figs(i),'-loose','-r300',['-d' EXT],...
+            		print(fign+Figs(i),'-loose','-r300',['-d' EXT],...
             			[prefix,figName{Figs(i)},'-',frame,'.',EXT]);
                 end
             end
@@ -1217,7 +1233,7 @@ for ENcounter = whichones
         
         % Average histogram and statistics for the uniformly distributed
         % pinwheel sets:
-        if Ntrials > 0
+        if Ntrials > 0 && npinw >= 1
             % Histogram and statistics for the random pinwheels:
             for i=1:Ntrials
                 [h,KLu,L2u,m,s,g1] = ENhist(dist(:,i),[],nbins,[0 distM],'absfreq');
@@ -1236,7 +1252,7 @@ for ENcounter = whichones
         stats.normD_overMean = amp/mean(h(:,1),'omitnan');
         stats.normD_mode = h(stats.normD_mode,2);
         
-        if plotfig(60)
+        if plotfig(60) && npinw >= 1
             % Plot the histograms of pinwheel distances and display statistics:
             Vars = {Hact,Hrnd};
             Varsn = length(Vars);
@@ -1246,13 +1262,13 @@ for ENcounter = whichones
                 -linspace((Figss(2)+wnt+wnb)-sch-1,...
                 2*(Figss(2)+wnt+wnb)-sch-1,1)'];
             tmp = 1.05*max([hact;have+hstd]);
-            if ~ishandle(60)
-                figure(60);
+            if ~ishandle(fign+60)
+                figure(fign+60);
             end
-            set(60,'Position',[Figsp Figss],...
+            set(fign+60,'Position',[Figsp Figss],...
                 'Name','Histogram of pinwheel-OD-border norm. dist',...
                 'Color','w','PaperPositionMode','auto');
-            set(0,'CurrentFigure',60); cla;
+            set(0,'CurrentFigure',fign+60); cla;
             H = plot(h(:,2),[h(:,1) hact]');
             hold on;
             H1 = plot([0 distM],[1 1]*npinw/nbins,':g');
@@ -1265,7 +1281,7 @@ for ENcounter = whichones
             xlabel('norm. dist inbetween ODborder');
             drawnow;
             if ~isempty(ENdir)
-            	print(60,'-loose','-r300',['-d' EXT],...
+            	print(fign+60,'-loose','-r300',['-d' EXT],...
             		[prefix,figName{60},'-',frame,'.',EXT]);
             end
         end
@@ -1362,7 +1378,7 @@ for ENcounter = whichones
         
         % Average histogram and statistics for the uniformly distributed
         % pinwheel sets:
-        if Ntrials > 0
+        if Ntrials > 0 && npinw >= 1
             % Histogram and statistics for the random pinwheels:
             for i=1:Ntrials
                 [h,KLu,L2u,m,s,g1] = ENhist(dist(:,i),[],nbins,[0 distM],'absfreq');
@@ -1401,16 +1417,16 @@ for ENcounter = whichones
             end
             if plotfig(Figs(i))
                 if firstone
-                    if ~ishandle(Figs(i))
-                        figure(Figs(i));
+                    if ~ishandle(fign+Figs(i))
+                        figure(fign+Figs(i));
                     end
-                    set(Figs(i),'Position',[Figsp(i,:) Figss],...
+                    set(fign+Figs(i),'Position',[Figsp(i,:) Figss],...
                         'Name',...
                         ['Histogram of nearest-pinwheel-pair distances '...
                         Varsl{i}],...
                         'Color','w','PaperPositionMode','auto');
                 end
-                set(0,'CurrentFigure',Figs(i));
+                set(0,'CurrentFigure',fign+Figs(i));
                 if isnan(KLu)
                     clf; axis off;
                     text(0.5,0.5,'Not available: empty histogram',...
@@ -1450,7 +1466,7 @@ for ENcounter = whichones
                     ' pixels;   \gamma_1=' num2str(g1,3)],'Visible','on');
                 drawnow;
                 if ~isempty(ENdir)
-            		print(Figs(i),'-loose','-r300',['-d' EXT],...
+            		print(fign+Figs(i),'-loose','-r300',['-d' EXT],...
             			[prefix,figName{Figs(i)},'-',frame,'.',EXT]);
                 end
             end
@@ -1528,16 +1544,16 @@ for ENcounter = whichones
             for j=1:i-1
                 if plotfig(Figs)
                     if firstone
-                        if ~ishandle(Figs)
-                            figure(Figs);
+                        if ~ishandle(fign+Figs)
+                            figure(fign+Figs);
                         end
-                        set(Figs,'Position',...
+                        set(fign+Figs,'Position',...
                             [Figsp+[j-1 4-i].*(Figss+[2*wnb wnt+wnb]) Figss],...
                             'Name',...
                             ['Gradient scatterplot: ' Varsl{j} ' vs ' Varsl{i}],...
                             'Color','w','PaperPositionMode','auto');
                     end
-                    set(0,'CurrentFigure',Figs);
+                    set(0,'CurrentFigure',fign+Figs);
                     plot(Vars(:,i),Vars(:,j),'m.','MarkerSize',3,'MarkerFaceColor','r');
                     % Mark pinwheels
                     hold on;
@@ -1567,7 +1583,7 @@ for ENcounter = whichones
                         ';   Angle cosine c = ' num2str(c(i,j),3)],'Visible','on');
                     drawnow;
                     if ~isempty(ENdir)
-            			print(Figs,'-loose','-r300',['-d' EXT],...
+            			print(fign+Figs,'-loose','-r300',['-d' EXT],...
             				[prefix,figName{Figs},'-',frame,'.',EXT]);
                     end
                 end
@@ -1599,14 +1615,14 @@ for ENcounter = whichones
     end
     if plotfig(Figs)
         if firstone
-            if ~ishandle(Figs)
-                figure(Figs);
+            if ~ishandle(fign+Figs)
+                figure(fign+Figs);
             end
-            set(Figs,'Position',[Figsp Figss],...
+            set(fign+Figs,'Position',[Figsp Figss],...
                 'Name','Histogram of gOD.gORt',...
                 'Color','w','PaperPositionMode','auto');
         end
-        set(0,'CurrentFigure',Figs);
+        set(0,'CurrentFigure',fign+Figs);
         bar(h(:,2),h(:,1),1);
         xlabel('Product of the gradient moduli of OD and OR');
         title(['KL(u)=' num2str(KLu,3) ';   L_2(u)=' num2str(L2u,3) ...
@@ -1614,7 +1630,7 @@ for ENcounter = whichones
             ';   \gamma_1=' num2str(g1,3)],'Visible','on');
         drawnow;
         if ~isempty(ENdir)
-            print(Figs,'-loose','-r300',['-d' EXT],...
+            print(fign+Figs,'-loose','-r300',['-d' EXT],...
             	[prefix,figName{Figs},'-',frame,'.',EXT]);
         end
     end
@@ -1657,15 +1673,15 @@ for ENcounter = whichones
         % Plot this figure
         if plotfig(Figs(i))
             if firstone
-                if ~ishandle(Figs(i))
-                    figure(Figs(i));
+                if ~ishandle(fign+Figs(i))
+                    figure(fign+Figs(i));
                 end
-                set(Figs(i),'Position',[Figsp(i,:) Figss],...
+                set(fign+Figs(i),'Position',[Figsp(i,:) Figss],...
                     'Name',['Histogram of gradient direction of ' Varsl{i} ...
                     ' (interior points)'],...
                     'Color','w','PaperPositionMode','auto');
             end
-            set(0,'CurrentFigure',Figs(i));
+            set(0,'CurrentFigure',fign+Figs(i));
             plot([-90 90],[1 1]/90/2,'r--');		% Uniform distribution
             hold on; bar(h(:,2),h(:,1),1); hold off;
             set(gca,'XLim',[-90 90],'XTick',-90:30:90);
@@ -1675,7 +1691,7 @@ for ENcounter = whichones
                 '\circ;   \gamma_1=' num2str(g1,3)],'Visible','on');
             drawnow;
             if ~isempty(ENdir)
-            	print(Figs(i),'-loose','-r300',['-d' EXT],...
+            	print(fign+Figs(i),'-loose','-r300',['-d' EXT],...
             		[prefix,figName{Figs(i)},'-',frame,'.',EXT]);
             end
         end
@@ -1700,17 +1716,17 @@ for ENcounter = whichones
         % Plot this figure
         if plotfig(Figs(i)+Varsn)
             if firstone
-                if ~ishandle(Figs(i)+Varsn)
-                    figure(Figs(i)+Varsn);
+                if ~ishandle(fign+Figs(i)+Varsn)
+                    figure(fign+Figs(i)+Varsn);
                 end
-                set(Figs(i)+Varsn,'Position',[Figsp(i+Varsn,:) Figss],...
+                set(fign+Figs(i)+Varsn,'Position',[Figsp(i+Varsn,:) Figss],...
                     'Name',...
                     ['Histogram of gradient direction of ' Varsl{i} ...
                     ' (boundary points)'],...
                     'Color','w',...
                     'PaperPositionMode','auto');
             end
-            set(0,'CurrentFigure',Figs(i)+Varsn);
+            set(0,'CurrentFigure',fign+Figs(i)+Varsn);
             if B_width > 0
                 plot([-90 90],[1 1]/90/2,'r--');        % Uniform distribution
                 hold on; bar(h(:,2),h(:,1),1); hold off;
@@ -1726,7 +1742,7 @@ for ENcounter = whichones
                 '\circ;   \gamma_1=' num2str(g1,3)],'Visible','on');
             drawnow;
             if ~isempty(ENdir)
-            	print(Figs(i)+Varsn,'-loose','-r300',['-d' EXT],...
+            	print(fign+Figs(i)+Varsn,'-loose','-r300',['-d' EXT],...
             		[prefix,figName{Figs(i)+Varsn},'-',frame,'.',EXT]);
             end
         end
@@ -1742,15 +1758,15 @@ for ENcounter = whichones
     for i=1:2
         if plotfig(Figs(i))
             if firstone
-                if ~ishandle(Figs(i))
-                    figure(Figs(i));
+                if ~ishandle(fign+Figs(i))
+                    figure(fign+Figs(i));
                 end
-                set(Figs(i),'Position',[Figsp(i,:) Figss],...
+                set(fign+Figs(i),'Position',[Figsp(i,:) Figss],...
                     'Name',...
                     ['Combined histograms of gradient direction ' VarsL{i}],...
                     'Color','w','PaperPositionMode','auto');
             end
-            set(0,'CurrentFigure',Figs(i));
+            set(0,'CurrentFigure',fign+Figs(i));
             if (B_width > 0) | (i == 1)
                 plot([-90 90],[1 1]/90/2,'r--');		% Uniform distribution
                 hold on; H = plot(hX,angh(:,(1:Varsn)+(i-1)*Varsn)); hold off;
@@ -1765,7 +1781,7 @@ for ENcounter = whichones
             end
             drawnow;
             if ~isempty(ENdir)
-            	print(Figs(i),'-loose','-r300',['-d' EXT],...
+            	print(fign+Figs(i),'-loose','-r300',['-d' EXT],...
             		[prefix,figName{Figs(i)},'-',frame,'.',EXT]);
             end
         end
@@ -1791,20 +1807,20 @@ for ENcounter = whichones
     for i=1:Varsn
         if plotfig(Figs(i))
             if firstone
-                if ~ishandle(Figs(i))
-                    figure(Figs(i));
+                if ~ishandle(fign+Figs(i))
+                    figure(fign+Figs(i));
                 end
-                set(Figs(i),'Position',[Figsp(i,:) 10 10],...
+                set(fign+Figs(i),'Position',[Figsp(i,:) 10 10],...
                     'Name',['OD/OR contours over ' Varsl{i}]);
             end
-            set(0,'CurrentFigure',Figs(i)); cla;
-            tmp = get(Figs(i),'Position'); Figsp(i,:) = tmp(1:2);
-            myplot(G,bc,Vars,GRplotv,[i 0 max(Vars(:,i))],T,Pi,[Figsp(i,:) Figss]);
-            myplot(G,bc,mu,ODplotv,v(id.OD,:),T,Pi,[Figsp(i,:) Figss]);
-            myplot(G,bc,mu,ORplotv,v(id.OR,:),T,Pi,[Figsp(i,:) Figss]);
+            set(0,'CurrentFigure',fign+Figs(i)); cla;
+            tmp = get(fign+Figs(i),'Position'); Figsp(i,:) = tmp(1:2);
+            myplot(G,aspectRatio,bc,Vars,GRplotv,[i 0 max(Vars(:,i))],T,Pi,[Figsp(i,:) Figss],[], fign+Figs(i));
+            myplot(G,aspectRatio,bc,mu,ODplotv,v(id.OD,:),T,Pi,[Figsp(i,:) Figss],[], fign+Figs(i));
+            myplot(G,aspectRatio,bc,mu,ORplotv,v(id.OR,:),T,Pi,[Figsp(i,:) Figss],[], fign+Figs(i));
             title(Kstr,'Visible','on'); drawnow;
             if ~isempty(ENdir)
-            	print(Figs(i),'-loose','-r300',['-d' EXT],...
+            	print(fign+Figs(i),'-loose','-r300',['-d' EXT],...
             		[prefix,figName{Figs(i)},'-',frame,'.',EXT]);
             end
         end
@@ -1812,7 +1828,7 @@ for ENcounter = whichones
     if firstone & any(plotfig(Figs))
         ENcolorbar([],Figs(end)+1,min(find(plotfig(Figs)))+Figs(1)-1); drawnow;
         if ~isempty(ENdir)
-			print(Figs(end)+1,'-loose','-r300',['-d' EXT],...
+			print(fign+Figs(end)+1,'-loose','-r300',['-d' EXT],...
 				[prefix,figName{Figs(end)+1},'-',frame,'.',EXT]);
         end
     end
@@ -1865,9 +1881,10 @@ XT = XT(XT<=lKs);
 % --- Figures 100-101: energy and computation time (from ENV1replay2).
 Figs = 100:101;
 for i=find(plotfig(Figs))
-    ENV1replay2(G,bc,ENlist,v,1,T(:,1:5),Pi,murange,tens,[],Figs(i));
+    %ENV1replay2(G,bc,ENlist,v,1,T(:,1:5),Pi,murange,tens,[],Figs(i),fign);
+    myV1replay(G,aspectRatio,bc,ENlist,v,1,T(:,1:5),T_vec,Pi,murange,id,tens,[],Figs(i),fign);
     if ~isempty(ENdir)
-        print(Figs(i),'-loose','-r300',['-d' EXT],...
+        print(fign+Figs(i),'-loose','-r300',['-d' EXT],...
             [prefix,figName{Figs(i)},'.',EXT]);
     end
 end
@@ -1943,7 +1960,7 @@ for i=find(plotfig(Figs))
     rax = [raxm raxM] + 0.05*raxr*[-1 1]; raxt = linspace(rax(1),rax(2),5);
     raxt = unique(str2num(num2str(raxt,2))); rax = raxt([1 end]);	% Round numbers
     % Plot this figure
-    set(figure(Figs(i)),'Position',[Figsp(i,:) Figss],...
+    set(figure(fign+Figs(i)),'Position',[Figsp(i,:) Figss],...
         'Name',['Histogram stats of ' Figsl{i}],...
         'Color','w','PaperPositionMode','auto');
     clf; hold on;
@@ -1970,7 +1987,7 @@ for i=find(plotfig(Figs))
             'YLim',rax,'YTick',raxt);
         set(H5,'LineStyle',':','Color',lcol)
         hold off;
-        set(Figs(i),'CurrentAxes',AXc(2)); Figsax = [Xax rax];
+        set(fign+Figs(i),'CurrentAxes',AXc(2)); Figsax = [Xax rax];
         set(get(AXc(2),'YLabel'),...
             'String',['\mu, \sigma' Figsunitsr{i}],'Color',rcol);
         set(AXc(2),'YColor',rcol);
@@ -1985,7 +2002,7 @@ for i=find(plotfig(Figs))
     end
     drawnow;
     if ~isempty(ENdir)
-        print(Figs(i),'-loose','-r300',['-d' EXT],...
+        print(fign+Figs(i),'-loose','-r300',['-d' EXT],...
             [prefix,figName{Figs(i)},'.',EXT]);
     end
 end
@@ -2014,7 +2031,7 @@ for i=find(plotfig(Figs))
     rax = [raxm raxM] + 0.05*raxr*[-1 1]; raxt = linspace(rax(1),rax(2),5);
     raxt = unique(str2num(num2str(raxt,2))); rax = raxt([1 end]);	% Round numbers
     % Plot this figure
-    set(figure(Figs(i)),'Position',[Figsp(i,:) Figss],...
+    set(figure(fign+Figs(i)),'Position',[Figsp(i,:) Figss],...
         'Name',['Fourier spectrum statistics of ' Figsl{i}],...
         'Color','w','PaperPositionMode','auto');
     clf; hold on;
@@ -2031,7 +2048,7 @@ for i=find(plotfig(Figs))
         'YLim',rax,'YTick',raxt);
     set(H5,'LineStyle','--','Color',lcol)
     hold off;
-    set(Figs(i),'CurrentAxes',AXc(2)); Figsax = [Xax rax];
+    set(fign+Figs(i),'CurrentAxes',AXc(2)); Figsax = [Xax rax];
     set(get(AXc(2),'YLabel'),...
         'String',['\alpha_M' Figsunitsr{i}],'Color',rcol);
     set(AXc(2),'YColor',rcol);
@@ -2045,7 +2062,7 @@ for i=find(plotfig(Figs))
     legend([H1 H5 H2],'\lambda_M','\lambda_m','\alpha_M','Location','best');
     drawnow;
     if ~isempty(ENdir)
-        print(Figs(i),'-loose','-r300',['-d' EXT],...
+        print(fign+Figs(i),'-loose','-r300',['-d' EXT],...
             [prefix,figName{Figs(i)},'.',EXT]);
     end
 end
@@ -2065,7 +2082,7 @@ if plotfig(142)
     lax = [laxm laxM] + 0.05*laxr*[-1 1]; laxt = linspace(lax(1),lax(2),5);
     laxt = unique(str2num(num2str(laxt,2))); lax = laxt([1 end]);	% Round numbers
     % Plot this figure
-    set(figure(Figs),'Position',[Figsp Figss],...
+    set(figure(fign+Figs),'Position',[Figsp Figss],...
         'Name',['Fourier spectrum statistics of OD and ORt'],...
         'Color','w','PaperPositionMode','auto');
     clf; hold on;
@@ -2085,7 +2102,7 @@ if plotfig(142)
         '\lambda_m(OD)','\lambda_m(OR)','Location','best');
     drawnow;
     if ~isempty(ENdir)
-        print(Figs,'-loose','-r300',['-d' EXT],...
+        print(fign+Figs,'-loose','-r300',['-d' EXT],...
             [prefix,figName{Figs},'.',EXT]);
     end
 end
@@ -2123,7 +2140,7 @@ for i=find(plotfig(Figs))
     raxt = linspace(rax(1),rax(2),5);
     raxt = unique(str2num(num2str(raxt,2))); rax = raxt([1 end]);	% Round numbers
     % Plot this figure
-    set(figure(Figs(i)),'Position',[Figsp(i,:) Figss],...
+    set(figure(fign+Figs(i)),'Position',[Figsp(i,:) Figss],...
         'Name',Figsl{i},...
         'Color','w','PaperPositionMode','auto');
     clf; hold on;
@@ -2150,7 +2167,7 @@ for i=find(plotfig(Figs))
         'YLim',rax,'YTick',raxt);
     set(H8,'LineStyle','-.','Color',rcol)
     hold off;
-    set(Figs(i),'CurrentAxes',AXd(2)); Figsax = [Xax rax];
+    set(fign+Figs(i),'CurrentAxes',AXd(2)); Figsax = [Xax rax];
     set(get(AXd(2),'YLabel'),...
         'String',['\rho_{OR,M}, \rho_{OD,M}, \rho_{OR,m}, \rho_{OD,m}'...
         Figsunitsr{i}],'Color',rcol);
@@ -2167,7 +2184,7 @@ for i=find(plotfig(Figs))
         '\rho_{OR,M}','\rho_{OD,M}','\rho_{OR,m}','\rho_{OD,m}','Location','best');
     drawnow;
     if ~isempty(ENdir)
-        print(Figs(i),'-loose','-r300',['-d' EXT],...
+        print(fign+Figs(i),'-loose','-r300',['-d' EXT],...
             [prefix,figName{Figs(i)},'.',EXT]);
     end
 end
@@ -2197,7 +2214,7 @@ for i=find(plotfig(Figs))
     laxt = linspace(lax(1),lax(2),5);
     laxt = unique(str2num(num2str(laxt,2))); lax = laxt([1 end]);	% Round numbers
     % Plot this figure
-    set(figure(Figs(i)),...
+    set(figure(fign+Figs(i)),...
         'Position',[Figsp(i,:) Figss],...
         'Name',['Correlation statistics for gradients' Figsl{i}],...
         'Color','w','PaperPositionMode','auto');
@@ -2210,7 +2227,7 @@ for i=find(plotfig(Figs))
     legend('gVF-gOD','gVF-gORt','gVF-ORr','gOD-gORt','gOD-ORr','gORt-ORr','Location','best');
     drawnow;
     if ~isempty(ENdir)
-        print(Figs(i),'-loose','-r300',['-d' EXT],...
+        print(fign+Figs(i),'-loose','-r300',['-d' EXT],...
             [prefix,figName{Figs(i)},'.',EXT]);
     end
 end

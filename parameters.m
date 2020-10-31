@@ -4,20 +4,24 @@ addpath(genpath('/home/wd554/MATLAB/'))
  
 gen = 'twister';
 clear seed
-seed = 1435259639;
+seed = 1435269651;
 %seed = 1422230161;
 format = '-dpng';
+
+exchange_nm = false;
 
 separateData = true; % set to false for ease of comparison in one folder
 plots = true;
 new = true;
 ENproc = 'save';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
-name = 'uniformXY-hb1';
-var = 'ODl'
-equi = 'cortex';
-old = true;
-heteroAlpha = 1; % -1 reciprocal, 0 identity, 1 area
+name = 'original-tf0';
+var = 'mixed-long'
+equi = 'VF';
+old = false;
+testRun = false;
+randSeed = true;
+heteroAlpha = 0; % -1 reciprocal, 0 identity, 1 area
 switch heteroAlpha
 case -1
 	wtString = 'r';
@@ -26,21 +30,50 @@ case 0
 case 1
 	wtString = 'a';
 end
-VFpath = 'Training_pos-hb-1.bin';
+%VFpath = '';
+%nvfx = 2.6880
+nvfy = 1.4091
+nvfx = 1.0
+
+nvfRange = [1.0, 1.0, 1.0, 1.0, 1.0];
+%xRange = [1.5, 2.0, 2.5, 3.0, 3.5];
+%yRange = [4/3, 1.0, 0.8, 3/3, 2/3.5];
+xRange = [1.4, 1.6, 1.8, 1.6, 1.6];
+yRange = [1.0, 1.0, 1.0, 1.0, 1.0];
+%lRange = [1.0, 0.6, 1.0, 1.2, 1.0];
+rRange = [0.08, 0.08, 0.08, 0.06, 0.08];
+%rRange = [0.0, 0.0, 0.0, 0.0, 0.0];
+lRange = [0.08, 0.08, 0.08, 0.08, 0.08];
+%lRange = [0.15, 0.15, 0.15, 0.15, 0.15];
+nGrange = [4.0, 4.0, 4.0, 4.0, 4.0];
+betaRange = [10, 10, 10, 10, 10]*50;
+aRrange = [1.0, 1.0, 1.0, 1.0, 1.0;
+		   1.0, 1.0, 1.0, 1.0, 1.0];
+
+%figlist = [1,4,34,60,100,102,600];
+figlist = [1,2,4,5,6,15,16,34,50,60,100,102,600];
+VFpath = '/scratch/wd554/patchV1/original-tf0.bin';
 if isempty(VFpath)
 	ENfilename0 = [name,'-',equi,'-',wtString,'-',var]   % Simulation name ***
 else
 	ENfilename0 = [name,'-ext-',var]   % Simulation name ***
 end
-plotting = 'all' % 'all', 'first', >0 frame, <0 frame:end
-%range = [6,8,10,12,14];
-%range = [1.2,1.3,1.4,1.5,1.6];
-%range = [10,15,20,25,30];
-%range = [1.0,1.25,1.5,1.75,2.0];
-%range = [5,7.5,10,12.5,15];
-range = [0.8,0.9,1.0,1.1,1.2];
-%range = [1.0];
-%range = [1];
+%plotting = 'all' % 'all', 'first', 'last', >0 frame, <0 frame:end
+if testRun
+	plotting = 'first'
+else
+	if new
+		plotting = 'last'
+	else
+		plotting = 'all'
+	end
+end
+if ~testRun
+	range = [1,2,3,4,5];
+	%range = [1];
+else
+	range = [1];
+end
 cortical_VF = 'cortex';
 non_cortical_LR = false;
 % non_cortical_LR = true;
@@ -70,6 +103,9 @@ if length(range) > 1
 	        parpool(length(range));
 	    end
 	end
+	nworker = length(range);
+else
+	nworker = 0;
 end
 if exist('seed','var')
     rng(seed,gen);
@@ -77,100 +113,106 @@ else
     scurr = rng('shuffle')
     seed = scurr.Seed;
 end
-parfor i = 1:length(range)
-%for i = 1:length(range)
+%figlist = [1,100,102];
+parfor (i = 1:length(range), nworker)
+%for i = 1 
     % for non_cortical_shape edge boundaries
     test_dw = 5;
     test_dh = 7;
     % Objective function weights
 
-    alpha = 1.0;		% Fitness term weight
-	%beta = 50*range(i);
-	beta = 500;
+    alpha = 1;		% Fitness term weight
+	beta = betaRange(i);
+	%beta = 100;
     % Training parameters
-	iters = 10; %21;			% No. of annealing rates (saved)
-    max_it = 10;		        % No. of iterations per annealing rate (not saved) ***
+	if testRun
+		iters = 1; %21;			% No. of annealing rates (saved)
+    	max_it = 2;		        % No. of iterations per annealing rate (not saved) ***
+	else
+		iters = 20; %21;			% No. of annealing rates (saved)
+    	max_it = 10;		        % No. of iterations per annealing rate (not saved) ***
+	end
 	%max_it = round(20 *range(i)/range(end)); 
-    Kin = 0.15;			% Initial K ***
-    Kend = 0.03;        % Final K ***    
+    Kin = 0.1;			% Initial K ***
+    Kend = 0.01;        % Final K ***    
     % - VFx: Nx points in [0,1], with interpoint separation dx.
-	%Nx = round(17*range(i))			% Number of points along VFx ***
-	Nx = 17;
+	Nx = 20;
 	%Nx = range(i)
-	%Nx = round(16*range(i)); %			% Number of points along VFx ***
-	%nvf = range(i);
-    nvf = 10;
-    rx = [0 0.25]*nvf;			% Range of VFx
+    rx = [0 1]*nvfx*xRange(i)*nvfRange(i);			% Range of VFx
     % - VFy: ditto for Ny, dy.
 	%
 	% even
-	%Ny = round(34*range(i)) 
-	Ny = 34;
-	%Ny = 60 - range(i);
-	if mod(Nx,2) == 1,Nx = Nx + 1; end
-	if mod(Ny,2) == 1,Ny = Ny - 1; end
-	%if cortical_VF
-	%	assert(Nx*2 == Ny);
-	%end
-	%Ny = round(25*range(i));			% Number of points along VFy ***
-    ry = [0 0.5]*nvf;			% Range of VFy
+	Ny = 62;
+    ry = [0 1]*nvfy*yRange(i)*nvfRange(i);			% Range of VFy
     % - OD: NOD values in range rOD, with interpoint separation dOD.
-	l = 0.11*range(i);
+	l = lRange(i);
+	%l = lRange(i);
+	%l = l0;
     NOD = 2;			% Number of points along OD
     rOD = [-l l];			% Range of OD
     %  coded as NOR Cartesian-coordinate pairs (ORx,ORy). -- later by pol2cart
     %  r = 6*l/pi
 	%r = range(i)*l;			% OR modulus -- the radius of pinwheel
-	r = 1.4*l;
-    NOR = 8;	 %8;		% Number of points along OR    
+	%r = r0;
+    NOR = 6;	 %8;		% Number of points along OR
+	%r = r0*NOR/2*l/pi;
+	r = rRange(i);
     % for myCortex patch
     ODnoise = l*0.0;
     ODabsol = 1.0;
-    nG = 2;
+    nG = nGrange(i);
+	nT = 1;
+    %G = round([64 104]*nG);		% Number of centroids *** 
     G = round([64 104]*nG);		% Number of centroids *** 
-    ecc = 2;
+	g0 = G;
+	G(1) = round(G(1) * aRrange(1,i));
+	G(2) = round(G(2) * aRrange(2,i));
+	aspectRatio = G(2)/g0(2)/(G(1)/g0(1)); % y/x
+    ecc = 2.5;
     nod = 25;
     a = 0.635; b = 96.7; k = sqrt(140)*0.873145;
     fign = 106;
     ENfilename = [var,'-',num2str(range(i))];
-    stats(i) = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,weightType,VFpath,old);
+    stats(i) = myV1driver(exchange_nm,seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,aspectRatio,nT,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,weightType,VFpath,old,randSeed,figlist);
 end
-nnpinw = [stats.npinw];
-nnpinw = nnpinw./mean(nnpinw);
-normD_overMean = [stats.normD_overMean];
-OD_OR_I_ang_overMean = [stats.OD_OR_I_ang_overMean];
-OD_OR_B_ang_overMean = [stats.OD_OR_B_ang_overMean];
-OD_B_ang_overMean = [stats.OD_B_ang_overMean];
-OR_B_ang_overMean = [stats.OR_B_ang_overMean];
+if sum(rRange) > 0 && sum(lRange) > 0
+	nnpinw = [stats.npinw];
+	nnpinw = nnpinw./mean(nnpinw);
+	normD_overMean = [stats.normD_overMean];
+	OD_OR_I_ang_overMean = [stats.OD_OR_I_ang_overMean];
+	OD_OR_B_ang_overMean = [stats.OD_OR_B_ang_overMean];
+	OR_B_ang_overMean = [stats.OR_B_ang_overMean];
+	OD_B_ang_overMean = [stats.OD_B_ang_overMean];
 
-normD_mode = [stats.normD_mode];
-OD_OR_I_angMode = [stats.OD_OR_I_angMode];
-OD_OR_B_angMode = [stats.OD_OR_B_angMode];
-OD_B_angMode = [stats.OD_B_angMode];
-OR_B_angMode = [stats.OR_B_angMode];
-h = figure;
-subplot(1,2,1);
-hold on
-plot(range,nnpinw,'or');
-plot(range,normD_overMean,'-k');
-plot(range,normD_mode,':k');
-plot(range,OD_OR_I_ang_overMean,'s-');
-plot(range,OD_OR_B_ang_overMean,'*-');
-plot(range,OD_B_ang_overMean,'^-');
-plot(range,OR_B_ang_overMean,'>-');
-plot(range,zeros(size(range))+0.5,':g');
-legend({'npinw','normDamp','normDmode','ODOR_I','ODOR_B','OD_B','OR_B'});
-subplot(1,2,2);
-hold on
-plot(range,OD_OR_I_angMode,'s-');
-plot(range,OD_OR_B_angMode,'*-');
-plot(range,OD_B_angMode,'^-');
-plot(range,OR_B_angMode,'>-');
-legend({'ODOR_I','ODOR_B','OD_B','OR_B'});
-figname = [ENfilename0,'/',ENfilename0,'-stats'];
-
-set(gcf,'PaperPositionMode','auto')
-print(gcf, figname, format, '-r150');
-saveas(gcf,[figname,'.fig']);
+	normD_mode = [stats.normD_mode];
+	OD_OR_I_angMode = [stats.OD_OR_I_angMode];
+	OD_OR_B_angMode = [stats.OD_OR_B_angMode];
+	OD_B_angMode = [stats.OD_B_angMode];
+	OR_B_angMode = [stats.OR_B_angMode];
+	h = figure((length(range)+1)*1000+1);
+	subplot(1,2,1);
+	hold on
+	plot(range,nnpinw,'or');
+	plot(range,normD_overMean,'-k');
+	plot(range,normD_mode,':k');
+	plot(range,OD_OR_I_ang_overMean,'s-');
+	plot(range,OD_OR_B_ang_overMean,'*-');
+	plot(range,OD_B_ang_overMean,'^-');
+	plot(range,OR_B_ang_overMean,'>-');
+	plot(range,zeros(size(range))+0.5,':g');
+	legend({'npinw','normDamp','normDmode','ODOR_I','ODOR_B','OD_B','OR_B'});
+	subplot(1,2,2);
+	hold on
+	plot(range,OD_OR_I_angMode,'s-');
+	plot(range,OD_OR_B_angMode,'*-');
+	plot(range,OD_B_angMode,'^-');
+	plot(range,OR_B_angMode,'>-');
+	legend({'ODOR_I','ODOR_B','OD_B','OR_B'});
+	figname = [ENfilename0,'/',ENfilename0,'-stats'];
+	
+	set(h,'PaperPositionMode','auto')
+	print(h, figname, format, '-r150');
+	saveas(h,[figname,'.fig']);
+end
 
 eval(['save ', ENfilename0 '/' ENfilename0 '-stats.mat stats']); 

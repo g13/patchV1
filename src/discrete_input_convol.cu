@@ -51,9 +51,15 @@ Float get_intensity(SmallSize coneType, float x, float y, unsigned int iLayer) {
                                         + tex2DLayered(M_retinaInput, x, y, iLayer))/2.0; 
             break;
         case 4: 
-            contrast = static_cast<Float>(tex2DLayered(L_retinaInput, x, y, iLayer) 
-                                        + tex2DLayered(M_retinaInput, x, y, iLayer) 
-                                        + tex2DLayered(S_retinaInput, x, y, iLayer))/3.0;
+			/* Hunt Lum
+            contrast = static_cast<Float>(tex2DLayered(L_retinaInput, x, y, iLayer) * 0.361222
+                                        + tex2DLayered(M_retinaInput, x, y, iLayer) * 0.638804
+                                        + tex2DLayered(S_retinaInput, x, y, iLayer) * (-7.127501e-6);
+			*/
+			// CAT02
+            contrast = static_cast<Float>(tex2DLayered(L_retinaInput, x, y, iLayer) * 0.45436904
+                                        + tex2DLayered(M_retinaInput, x, y, iLayer) * 0.47353315
+                                        + tex2DLayered(S_retinaInput, x, y, iLayer) * 0.0720978);
             break;
         default:
             printf("unrecognized cone type");
@@ -674,13 +680,14 @@ void LGN_convol_parvo(
         Size denorm,
         bool saveOutputB4V1
 ) {
-    __shared__ Float reducedS[warpSize];
     __shared__ Float reducedC[warpSize];
+    __shared__ Float reducedS[warpSize];
     extern __shared__ Float nSampleShared[];
 
     // weights are stored in shapes of (nLGN, nType, weight)
     Size tid = threadIdx.y*blockDim.x + threadIdx.x;
     Size nSample = blockDim.x * blockDim.y;
+	//Float *nSampleTemp = nSampleShared + nSample;
 	
     //TODO: Itau may take different value for different cone type
     // convolve center and update luminance
@@ -824,12 +831,22 @@ void LGN_convol_parvo(
         //3. For all the new frames
         for (Size iFrame = 0; iFrame < nFrame; iFrame++) {
             //Get F_i by reduce - p: in space
-            Float local_I = get_intensity(3, x0S, y0S, (currentFrame + iFrame) % maxFrame);
-            block_reduce<Float>(reducedS, local_I);
+			Float local_I[2];
+            local_I[0] = get_intensity(typeC, x0S, y0S, (currentFrame + iFrame) % maxFrame);
+            local_I[1] = get_intensity(typeS, x0S, y0S, (currentFrame + iFrame) % maxFrame);
+            block_reduce2<Float>(reducedC, reducedS, local_I);
             if (tid == 0) {
                 // __shared__ to (register/local) to __shared__
-                nSampleShared[iFrame] = reducedS[0]/nSample;  // shared memory now used for spatial mean luminance, F_i
+                nSampleShared[iFrame] = reducedC[0]/nSample;  // shared memory now used for spatial mean luminance, F_i
+                nSampleShared[nFrame + iFrame] = reducedS[0]/nSample;  // shared memory now used for spatial mean luminance, F_i
             }
+			if (saveOutputB4V1 && iPatch == nPatch && iFrame == nFrame-1) {
+            	Float local_I = get_intensity(3, x0S, y0S, (currentFrame + iFrame) % maxFrame);
+            	block_reduce<Float>(reducedS, local_I);
+				if (tid == 0) {
+                    luminance[id] = reducedS[0]/nSample;
+				}
+			}
         }
         __syncthreads();
         /*
@@ -896,7 +913,7 @@ void LGN_convol_parvo(
         */
         //5. For each sample point in time: 
         //  Get weighted contrast sum from local_I(ntensity) and mean_I(ntensity): p in space 
-        Float tempFilteredC, tempFilteredS;
+        Float tempFiltered[2];
         // initialize with the first frame in the patch
         PosInt it = 0;
         if (iPatch == 0) {
@@ -911,7 +928,8 @@ void LGN_convol_parvo(
             if (frameNow > preFrame) { // advance frame
                 //Load mean luminance from shared memory first
                 PosInt iFrame = frameNow - currentFrame;
-                Float mean_I = nSampleShared[iFrame];
+                Float meanC = nSampleShared[iFrame];
+                Float meanS = nSampleShared[nFrame + iFrame];
 				/* DEBUG
 					__syncthreads();
                 	iFrame = frameNow - currentFrame;
@@ -921,78 +939,99 @@ void LGN_convol_parvo(
 					__syncthreads();
 				*/
                 preFrame = frameNow;
-				
-                // surround 
-                Float local_I = get_intensity(typeS, x0S, y0S, frameNow % maxFrame);
                 Float local_contrast;
-                if (mean_I > 0) {
-                    local_contrast = local_I/mean_I - 1.0;
-                } else {
-                    local_contrast = local_I;
-                }
-                if (abs(local_contrast) > 1.0) {
-                    local_contrast = copyms(1.0, local_contrast); // copyms is copysign(value, sign);
-                }
-
-                Float filteredS = spatialWeight*local_contrast;
-                block_reduce<Float>(reducedS, filteredS);
-                if (saveOutputB4V1 && iPatch == nPatch && iFrame == nFrame-1 && tid ==0) {
-                    contrast[nLGN+id] = reducedS[0];
-                    luminance[id] = mean_I;
-                }
-				/*DEBUG
-                	if (iPatch == nPatch && iFrame == nFrame-1) {
-						if (blockIdx.x == 3) {
-                	        if (tid == 0) {
-						    	printf("typeS:%u, contrastS = %e, mean_I = %e:\n", typeS, reducedS[0], mean_I);
-                	        }
-                	        __syncthreads();
-							printf("local_I = %i-%1.2e*%1.2e, coord = (%1.6e, %1.6e)\n", tid, local_I, spatialWeight, x0S, y0S);
-						}
-                	}
-                */
-
+				Float local_I;
                 // center
                 local_I = get_intensity(typeC, x0C, y0C, frameNow % maxFrame);
-                if (mean_I > 0) {
-                    local_contrast = local_I/mean_I - 1.0;
+				/*
+				if (saveOutputB4V1 && iPatch == nPatch && iFrame == nFrame-1) {
+                	if (iPatch == 0 && iFrame == nFrame-1) {
+						if (blockIdx.x == 0) {
+							nSampleTemp[tid] = local_I;
+							__syncthreads();
+							if (tid == 0) {
+								Float min = 2;
+								Float max = -2;
+								for (PosInt im = 0; im<nSample; im++) {
+									if (min > nSampleTemp[im]) {
+										min = nSampleTemp[im];
+									}
+									if (max < nSampleTemp[im]) {
+										max = nSampleTemp[im];
+									}
+								}
+								printf("type%d-frame%d: local_I:[%e, %e, %e]->[%e,%e]\n", typeC, iFrame, min, meanC, max, min/meanC-1.0, max/meanC-1.0);
+							}
+							__syncthreads();
+						}
+					}
+				} */
+
+                if (meanC > 0) {
+                    local_contrast = local_I/meanC - 1.0;
                 } else {
                     local_contrast = local_I;
                 }
                 if (abs(local_contrast) > 1.0) {
                     local_contrast = copyms(1.0, local_contrast); // copyms is copysign(value, sign);
                 }
-                /* DEBUG
-                	if (iPatch == 0) {
-						if (blockIdx.x == 0 && tid == 0) {
-                	        Float L = get_intensity(0, x0C, y0C, frameNow % maxFrame);
-                	        Float M = get_intensity(1, x0C, y0C, frameNow % maxFrame);
-							printf("p(%e,%e), mean_I:%e, contrast: %e, Int: %e,%e,%e\n", x0C, y0C, nSampleShared[iFrame], local_contrast, L, M, local_I);
 
-						}
-                	}
-				*/
+				Float filtered[2];
+                filtered[0] = spatialWeight*local_contrast;
+				
+                // surround 
+                local_I = get_intensity(typeS, x0S, y0S, frameNow % maxFrame);
+                if (meanS > 0) {
+                    local_contrast = local_I/meanS - 1.0;
+                } else {
+                    local_contrast = local_I;
+                }
+                if (abs(local_contrast) > 1.0) {
+                    local_contrast = copyms(1.0, local_contrast); // copyms is copysign(value, sign);
+                }
 
-                Float filteredC = spatialWeight*local_contrast;
-                block_reduce<Float>(reducedC, filteredC);
+                filtered[1] = spatialWeight*local_contrast;
+
+                block_reduce2<Float>(reducedC, reducedS, filtered);
                 if (saveOutputB4V1 && iPatch == nPatch && iFrame == nFrame-1 && tid == 0) {
                     contrast[id] = reducedC[0];
-					/* DEBUG
-						if (blockIdx.x == 52583) {
-							printf("contrastC = %e, mean_I = %e, local_I = %e -> lc = %e\n", reducedC[0], mean_I, local_I, local_contrast);
-						}
-					*/
+                    contrast[nLGN+id] = reducedS[0];
                 }
+
+				/*
+				if (saveOutputB4V1 && iPatch == nPatch && iFrame == nFrame-1) {
+                	if (iPatch == 0 && iFrame == nFrame-1) {
+						if (blockIdx.x == 0) {
+							nSampleTemp[tid] = local_I;
+							__syncthreads();
+							if (tid == 0) {
+								Float min = 2;
+								Float max = -2;
+								for (PosInt im = 0; im<nSample; im++) {
+									if (min > nSampleTemp[im]) {
+										min = nSampleTemp[im];
+									}
+									if (max < nSampleTemp[im]) {
+										max = nSampleTemp[im];
+									}
+								}
+								printf("type%d-frame%d: local_I:[%e, %e, %e]->[%e,%e]\n", typeS, iFrame, min, meanS, max, min/meanS-1.0, max/meanS-1.0);
+							}
+							__syncthreads();
+						}
+					}
+				} */
 				//__syncthreads();
             }
             if (tid == iSample) {
-                tempFilteredS = reducedS[0]*temporalWeightS; // spatially contrast convolve with temporalWeight 
-                tempFilteredC = reducedC[0]*temporalWeightC;
+                tempFiltered[0] = reducedC[0]*temporalWeightC;
+                tempFiltered[1] = reducedS[0]*temporalWeightS; // spatially contrast convolve with temporalWeight 
 				/* DEBUG
 					if (blockIdx.x == 52583) {
-						printf("%u#%u, wspC*tw: %e*%e = %e\n", iPatch, tid, reducedC[0], temporalWeightC, tempFilteredC);
+						printf("%u#%u, wspC*tw: %e*%e = %e\n", iPatch, tid, reducedC[0], temporalWeightC, tempFiltered[0]);
 					}
-				*/
+				*/	
+				//
             }
 			//__syncthreads();
             // advance time
@@ -1008,26 +1047,26 @@ void LGN_convol_parvo(
 		    }
 		*/
         if (tid >= nActive) {
-            tempFilteredS = 0.0;
-            tempFilteredC = 0.0;
+            tempFiltered[0] = 0.0;
+            tempFiltered[1] = 0.0;
         }
         //6. reduce sum with temporal weights: p in time
-        block_reduce<Float>(reducedS, tempFilteredS);
+        //block_reduce<Float>(reducedS, tempFiltered[1]);
         //7. add to convol: s
-        if (tid == 0) {
-            convolS += reducedS[0];
-        }
+        //if (tid == 0) {
+        //    convolS += reducedS[0];
+        //}
 		/*DEBUG
 			__syncthreads();
 			reducedS[0] = 0.0;
 			if (blockIdx.x == 52583) {
 				if (tid == 0) {
-					printf("%u possible nonzeros, tempFilteredC = ", nActive);
+					printf("%u possible nonzeros, tempFiltered[0] = ", nActive);
 				}
 				for (Size i = 0; i < nSample; i++ ) {
 					if (tid == i) {
-						printf("%e, ", tempFilteredC);
-						reducedS[0] += tempFilteredC;
+						printf("%e, ", tempFiltered[0]);
+						reducedS[0] += tempFiltered[0];
 					}
 					__syncthreads();
 				}
@@ -1036,10 +1075,11 @@ void LGN_convol_parvo(
 				}
 			}
 		*/
-        block_reduce<Float>(reducedC, tempFilteredC);
+        block_reduce2<Float>(reducedC, reducedS, tempFiltered);
         if (tid == 0) {
 			//Float old_convol = convolC;
             convolC += reducedC[0];
+            convolS += reducedS[0];
 			/* DEBUG
 				if (blockIdx.x == 52583) {
 					printf("%e + patchSum #%u: %e = %e\n", old_convol, iPatch, reducedC[0], convolC);
@@ -1214,7 +1254,9 @@ void LGN_convol_magno(
             block_reduce<Float>(reduced, local_I);
             if (tid == 0) {
                 // __shared__ to (register/local) to __shared__
+				Float lum = 
                 nSampleShared[iFrame] = reduced[0]/nSample;  // shared memory now used for spatial mean luminance, F_i
+                luminance[id] = reduced[0]/nSample;
             }
         }
         __syncthreads();

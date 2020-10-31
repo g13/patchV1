@@ -1,4 +1,4 @@
-% ENV1replay2(G,bc,ENlist,v[,whichones,T,Pi,murange,tens,opt,figlist])
+% myV1replay2(G,bc,ENlist,v[,whichones,T,Pi,murange,tens,opt,figlist])
 % Replay elastic net sequence and optionally create movie for the case of
 % 2D cortex in stimulus space (VFx,VFy,OD,ORx,ORy) where VF = visual
 % field, OD = ocular dominance and OR = orientation.
@@ -105,7 +105,10 @@
 
 % Copyright (c) 2002 by Miguel A. Carreira-Perpinan
 
-function myV1replay(G,bc,ENlist,v,whichones,T,T_vec,Pi,murange,id,tens,opt,figlist)
+function myV1replay(G,aspectRatio,bc,ENlist,v,whichones,T,T_vec,Pi,murange,id,tens,opt,figlist,fign)
+if ~exist('fign','var')
+	fign = 0;
+end
 L = length(G);                  % Net dimensionality
 if L == 1, G = [G 1]; end        % So that both L=1 and L=2 work
 [M,D] = size(ENlist(1).mu);
@@ -137,8 +140,10 @@ end
 
 if ~exist('Pi','var') || isempty(Pi)
     Pi = ones(1,M)/M;
+	zPi = [];
 else
     Pi = Pi/sum(Pi);	% Make sure the mixing proportions are normalised
+	zPi = find(Pi==0);
 end
 
 % Ranges for all variables
@@ -198,10 +203,10 @@ end
 
 % Get the position of figure 1 if it exists, otherwise use a default
 % (lower left corner).
-if ~ishandle(1)
-    fg1 = [1 50 10 10];
+if ~ishandle(fign+1)
+    fg1 = [1 5 10 10];
 else
-    fg1 = get(figure(1),'Position');
+    fg1 = get(figure(fign+1),'Position');
 end
 
 % Figure 1: 'img' for OD.
@@ -209,10 +214,11 @@ fg1p = fg1(1:2);					% Position (fig. 1)
 % Axes: given by the grid
 ax1 = gridLim;
 % Figure size
+%/aspectRatio
 ax1R = gridR;
-fg1 = [fg1p 2*fgb*[1 1]+fgt*[0 1]+fgl*[min(ax1R,1) min(1/ax1R,1)]];
+fg1 = [fg1p 2*fgb*[1 1]+fgt*[0 1]+fgl*[min(ax1R*aspectRatio,1) min(1/ax1R/aspectRatio,1)]];
 if plotfig(1)
-    set(figure(1),'Position',fg1,'PaperPositionMode','auto','Color','w',...
+    set(figure(fign+1),'Position',fg1,'PaperPositionMode','auto','Color','w',...
         'Name','Ocular dominance (OD) map',...
         'DoubleBuffer','on','Renderer','painters');
         %'DoubleBuffer','on','Renderer','painters','MenuBar','none');
@@ -224,9 +230,9 @@ fg2p = fg1p;                                            % Position (fig. 2)
 fg2p(2) = fg2p(2) + fg1(4) + wnb + wnt;
 ax2 = gridLim; ax2R = gridR;                                 % Axes (fig. 2)
 fg2 = [fg2p fg1(3:4)];
-if ~ishandle(2)
+if ~ishandle(fign+2)
     if plotfig(2)
-        set(figure(2),'Position',fg2,'PaperPositionMode','auto','Color','w',...
+        set(figure(fign+2),'Position',fg2,'PaperPositionMode','auto','Color','w',...
             'Name','Contours of OD and OR',...
             'DoubleBuffer','on','Renderer','painters');
             %'DoubleBuffer','on','Renderer','painters','MenuBar','none');
@@ -268,7 +274,7 @@ fg3p(1) = fg3p(1) + fg1(3) + 2*wnb;
 ax3 = gridLim; ax3R = gridR;                                 % Axes (fig. 3)
 fg3 = [fg3p fg1(3:4)];
 if plotfig(3)
-    set(figure(3),'Position',fg3,'PaperPositionMode','auto','Color','w',...
+    set(figure(fign+3),'Position',fg3,'PaperPositionMode','auto','Color','w',...
         'Name','Orientation (OR) angle map',...
         'DoubleBuffer','on','Renderer','painters');
         %'DoubleBuffer','on','Renderer','painters','MenuBar','none');
@@ -281,7 +287,7 @@ fg4p(2) = fg4p(2) + fg3(4) + wnb + wnt;
 ax4 = gridLim; ax4R = gridR;                                 % Axes (fig. 4)
 fg4 = [fg4p fg1(3:4)];
 if plotfig(4)
-    set(figure(4),'Position',fg4,'PaperPositionMode','auto','Color','w',...
+    set(figure(fign+4),'Position',fg4,'PaperPositionMode','auto','Color','w',...
         'Name','Orientation (OR) polar map',...
         'DoubleBuffer','on','Renderer','painters');
         %'DoubleBuffer','on','Renderer','painters','MenuBar','none');
@@ -298,7 +304,7 @@ if isfield(id,'VFx') && isfield(id, 'VFy')
     ax5R = (ax5(2)-ax5(1))/(ax5(4)-ax5(3));                 % Axis ratio
     fg5 = [fg5p 2*fgb*[1 1]+fgt*[0 1]+fgl*[min(ax5R,1) min(1/ax5R,1)]];
     if plotfig(5)
-        set(figure(5),'Position',fg5,'PaperPositionMode','auto','Color','w',...
+        set(figure(fign+5),'Position',fg5,'PaperPositionMode','auto','Color','w',...
             'Name','Retinotopic map (VFx,VFy)',...
             'DoubleBuffer','on','Renderer','painters');
             %'DoubleBuffer','on','Renderer','painters','MenuBar','none');
@@ -310,10 +316,10 @@ end
 % Plot properties for 'proj_cart' (see myplot)
 proj_cart_plotv = struct('type','proj_cart',... % Plot type
     'cmap',zeros(256,3),...          % Colormap for 'img*'
-    'line',struct('lsty','-',...     % LineStyle
+    'line',struct('lsty','-',...     % LineStyle %-
     'lcol','r',...     % LineColor
-    'lwid',1,...       % LineWidth
-    'msty','s',...     % MarkerStyle
+    'lwid',0.1,...       % LineWidth
+    'msty','*',...     % MarkerStyle
     'msiz',min(5,500/M),...    % MarkerSize
     'mecol','r',...    % MarkerEdgeColor
     'mfcol','r',...    % MarkerFaceColor
@@ -324,7 +330,7 @@ proj_cart_plotv.line(2).lcol = 'b';
 proj_cart_plotv.line(2).lwid = 1;
 proj_cart_plotv.line(2).msty = 's';
 proj_cart_plotv.line(2).msiz = 5;
-proj_cart_plotv.line(2).mecol = 'b';
+proj_cart_plotv.line(2).mecol = 'k';
 proj_cart_plotv.line(2).mfcol = 'none';
 proj_cart_plotv.line(2).num = 1;                        % Unused
 
@@ -340,7 +346,7 @@ if isfield(id, 'ORx') && isfield(id, 'ORy')
     ax6R = (ax6(2)-ax6(1))/(ax6(4)-ax6(3));                 % Axis ratio
     fg6 = [fg6p 2*fgb*[1 1]+fgt*[0 1]+fgl*[min(ax6R,1) min(1/ax6R,1)]];
     if plotfig(6)
-        set(figure(6),'Position',fg6,'PaperPositionMode','auto','Color','w',...
+        set(figure(fign+6),'Position',fg6,'PaperPositionMode','auto','Color','w',...
             'Name','Orientation map (ORx,ORy)',...
             'DoubleBuffer','on','Renderer','painters','MenuBar','none');
         xlabel('ORx'); ylabel('ORy');
@@ -349,15 +355,16 @@ end
 % Plot properties for 'proj_polar' (see myplot)
 proj_polar_plotv = proj_cart_plotv;
 proj_polar_plotv.type = 'proj_polar';
+proj_polar_plotv.line(1).lsty = 'none';
 
 % Figure 7: 'img' for ORr (OR selectivity map).
 % I position it exactly over figure 4 (the polar map).
 fg7p = fg4p;                                            % Position (fig. 7)
 ax7 = ax4; ax7R = ax4R;                                 % Axes (fig. 7)
 fg7 = fg4;
-if ~ishandle(7)
+if ~ishandle(fign+7)
     if plotfig(7)
-        set(figure(7),'Position',fg7,'PaperPositionMode','auto','Color','w',...
+        set(figure(fign+7),'Position',fg7,'PaperPositionMode','auto','Color','w',...
             'Name','Orientation (OR) selectivity map',...
             'DoubleBuffer','on','Renderer','painters','MenuBar','none');
     end
@@ -374,7 +381,7 @@ if isfield(id,'VFx') && isfield(id, 'VFy') && isfield(id, 'OD')
     % Figure size
     fg8 = fg5;
     if plotfig(8)
-        set(figure(8),'Position',fg8,'PaperPositionMode','auto','Color','w',...
+        set(figure(fign+8),'Position',fg8,'PaperPositionMode','auto','Color','w',...
             'Name','Retinotopic map + OD (VFx,VFy,OD)',...
             'DoubleBuffer','on','Renderer','painters');
         xlabel('VFx'); ylabel('VFy'); zlabel('OD');
@@ -390,7 +397,7 @@ if isfield(id,'ORx') && isfield(id, 'ORy') && isfield(id, 'OD')
     % Figure size
     fg9 = fg6;
     if plotfig(9)
-        set(figure(9),'Position',fg9,'PaperPositionMode','auto','Color','w',...
+        set(figure(fign+9),'Position',fg9,'PaperPositionMode','auto','Color','w',...
             'Name','Orientation map + OD (ORx,ORy,OD)',...
             'DoubleBuffer','on','Renderer','painters');
         xlabel('ORx'); ylabel('ORy'); zlabel('OD');
@@ -410,7 +417,7 @@ if isfield(id,'VFx') && isfield(id, 'VFy') && isfield(id, 'ORr')
     % Figure size
     fg10 = fg4;
     if plotfig(10)
-        set(figure(10),'Position',fg10,'PaperPositionMode','auto','Color','w',...
+        set(figure(fign+10),'Position',fg10,'PaperPositionMode','auto','Color','w',...
             'Name','Retinotopic map + OD (VFx,VFy,ORr)',...
             'DoubleBuffer','on','Renderer','painters');
         xlabel('VFx'); ylabel('VFy'); zlabel('ORr');
@@ -425,7 +432,7 @@ fg11p = fg2p;                                            % Position (fig. 11)
 ax11 = ax1; ax11R = ax1R;                                % Axes (fig. 11)
 fg11 = [fg11p fg1(3:4)];
 if plotfig(11) && exist('tens','var')
-    set(figure(11),'Position',fg11,'PaperPositionMode','auto','Color','w',...
+    set(figure(fign+11),'Position',fg11,'PaperPositionMode','auto','Color','w',...
         'Name','Tension map',...
         'DoubleBuffer','on','Renderer','painters','MenuBar','none');
     % Compute tension maps for all frames to normalise the tension range.
@@ -435,8 +442,10 @@ if plotfig(11) && exist('tens','var')
     DD = tens{1};
     DDmu2 = zeros(M,length(ENlist));
     for ENcounter = 1:length(ENlist)
+    	mu = ENlist(ENcounter).mu;
+    	mu(zPi,:) = NaN;			% Disabled centroids aren't plotted
         DDmu2(:,ENcounter) = ...
-            sum(reshape(sum((DD*ENlist(ENcounter).mu).^2,2),M,size(DD,1)/M),2);
+            sum(reshape(sum((DD*mu).^2,2),M,size(DD,1)/M),2);
     end
     % DDmu2 has the following characteristics:
     % - For frame 1 (the roughly topographic, noisy initial net) most
@@ -461,15 +470,15 @@ if plotfig(11) && exist('tens','var')
         'cmap',tmp);				% Colormap for 'img*'
     % Fig. 12 (colorbar)
     DDmu2ticks = str2num(num2str(linspace(DDmu2v(2),DDmu2v(3),6),2));  % Ticks
-    ENcolorbar(DDmu2ticks,12,11,DDplotv.cmap);
-    set(12,'Name','Scale for fig. 11'); drawnow;
+    ENcolorbar(DDmu2ticks,fign+12,fign+11,DDplotv.cmap);
+    set(fign+12,'Name','Scale for fig. 11'); drawnow;
 end
 % Figure 13
 fg13 = fg2;
 ax13 = gridLim;
-if ~ishandle(13)
+if ~ishandle(fign+13)
     if plotfig(13)
-        set(figure(13),'Position',fg2,'PaperPositionMode','auto','Color','w',...
+        set(figure(fign+13),'Position',fg2,'PaperPositionMode','auto','Color','w',...
             'Name','Contours of OD and VFx',...
             'DoubleBuffer','on','Renderer','painters');
             %'DoubleBuffer','on','Renderer','painters','MenuBar','none');
@@ -489,9 +498,9 @@ VFxplotv = struct('type','contour',...             % Plot type
 % Figure 14
 fg14 = fg2;
 ax14 = gridLim;
-if ~ishandle(14)
+if ~ishandle(fign+14)
     if plotfig(14)
-        set(figure(14),'Position',fg2,'PaperPositionMode','auto','Color','w',...
+        set(figure(fign+14),'Position',fg2,'PaperPositionMode','auto','Color','w',...
             'Name','Contours of OD and VFy',...
             'DoubleBuffer','on','Renderer','painters');
             %'DoubleBuffer','on','Renderer','painters','MenuBar','none');
@@ -510,9 +519,9 @@ VFyplotv = struct('type','contour',...             % Plot type
 
 fg15 = fg2;
 ax15 = gridLim;
-if ~ishandle(15)
+if ~ishandle(fign+15)
     if plotfig(15)
-        set(figure(15),'Position',fg2,'PaperPositionMode','auto','Color','w',...
+        set(figure(fign+15),'Position',fg2,'PaperPositionMode','auto','Color','w',...
             'Name','Contours of OD and VFx',...
             'DoubleBuffer','on','Renderer','painters');
             %'DoubleBuffer','on','Renderer','painters','MenuBar','none');
@@ -521,9 +530,9 @@ end
 
 fg16 = fg2;
 ax16 = gridLim;
-if ~ishandle(16)
+if ~ishandle(fign+16)
     if plotfig(16)
-        set(figure(16),'Position',fg2,'PaperPositionMode','auto','Color','w',...
+        set(figure(fign+16),'Position',fg2,'PaperPositionMode','auto','Color','w',...
             'Name','Contours of OD and VFx',...
             'DoubleBuffer','on','Renderer','painters');
             %'DoubleBuffer','on','Renderer','painters','MenuBar','none');
@@ -541,20 +550,25 @@ if any(plotfig(100:102))
         Tens = [Tens;ENlist(ENcounter).stats.tension_vec];
         times = [times;ENlist(ENcounter).stats.time];	% Computation time
     end
+    TensPercent = Es(:,3)./Es(:,1)*100;
     its(1) = NaN;
     lKs = length(Ks);
-    Vars = {Es,times};
+    Vars = {Es,times,Tens};
     Varsn = length(Vars);
     Varsl = {'Objective function',...
-        'Computation time'};
+        'Computation time', 'Tension terms'};
     VarsL = {'Objective function E',...
         {['Computation time in seconds (means: ' ...
-        num2str(mean(times),'%0.3g ') ')'],ENlist(end).stats.cpu}};
+        num2str(mean(times),'%0.3g ') ')'],ENlist(end).stats.cpu},...
+		'Tension terms'};
     Varsax = zeros(Varsn,4);
-    axm = min(Es(:)); axM = max(Es(:)); axr = axM - axm;
-    Varsax(1,:) = [1 lKs axm axM] + 0.05*(lKs-1)*[-1 1 0 0] + 0.1*axr*[0 0 -1 1];
+    %axm = min(Es(:)); axM = max(Es(:)); axr = axM - axm;
+    axm = 0; axM = max(Es(:)); axr = axM - axm;
+    Varsax(1,:) = [1 lKs axm axM] + 0.05*(lKs-1)*[-1 1 0 0] + 0.1*axr*[0 0 0 1];
     axm = 0; axM = max(times(:)); axr = axM - axm;
     Varsax(2,:) = [1 lKs axm axM] + 0.05*(lKs-1)*[-1 1 0 0] + 0.1*axr*[0 0 0 1];
+    axm = 0; axM = max(Tens(:)); axr = axM - axm;
+    Varsax(3,:) = [1 lKs axm axM] + 0.05*(lKs-1)*[-1 1 0 0] + 0.1*axr*[0 0 0 1];
     Figs = 100; Figs = Figs:Figs+Varsn-1;
     Figss = [560 420];
     Figsp = repmat([1 sch+1-Figss(2)-wnt-wnb],Varsn,1);
@@ -562,10 +576,17 @@ if any(plotfig(100:102))
     
     for i=1:Varsn
         if plotfig(Figs(i))
-            figure(Figs(i)); clf;
-            set(gcf,'Position',[Figsp(i,:) Figss],'Name',Varsl{i},...
+            figure(fign+Figs(i)); clf;
+            set(fign+Figs(i),'Position',[Figsp(i,:) Figss],'Name',Varsl{i},...
                 'Color','w','MenuBar','none','PaperPositionMode','auto');
-            plot(Vars{i},'-'); axis(Varsax(i,:));
+            plot(Vars{i},'-'); 
+			axis(Varsax(i,:));
+			if Figs(i) == 100
+				yyaxis right
+        		plot(TensPercent,':');
+				ylabel('Tens/Total %');
+				yyaxis left 
+			end
             XT = get(gca,'XTick');
             XT = XT(((floor(XT)-XT)==0) & (XT>0) & (XT<=lKs));
             if XT(1) > 1 XT = [1 XT]; end
@@ -575,19 +596,13 @@ if any(plotfig(100:102))
             text(XT,repmat(Varsax(i,4)+0.025*diff(Varsax(i,3:4)),size(XT)),...
                 num2str(Ks(XT),3),'HorizontalAlignment','center','FontSize',6);
             text(mean(Varsax(i,1:2)),Varsax(i,4)+0.065*diff(Varsax(i,3:4)),'K');
-            if Figs(i) == 100
-                legend('Total','Fitness term','Tension term with beta','Location','best'); % -- updated by Wei May 31 2019
+            if Figs(i) == 102
+        		legend('Tens VFx', 'Tens VFy', 'Tens OD', 'Tens ORx', 'Tens ORy', 'Location','best');
             else
-                legend('Total','Fitness term','Tension term with beta','Location','best');
+                legend('Total','Fitness term','Tension term with beta','Location','best'); % -- updated by Wei May 31 2019
             end
             %legend('Total','Fitness term','Tension term',0);
         end
-    end
-    if plotfig(102)
-        figure(102);
-        plot(Tens);
-        legend('Tens VFx', 'Tens VFy', 'Tens OD', 'Tens ORx', 'Tens ORy', 'Location','best');
-		title('Tension terms with beta');
     end
 end
 
@@ -595,6 +610,7 @@ end
 for ENcounter = whichones
     % Extract current net
     mu = ENlist(ENcounter).mu;
+    mu(zPi,:) = NaN;			% Disabled centroids aren't plotted
     thisK = ENlist(ENcounter).stats.K(end);
     thisE = ENlist(ENcounter).stats.E(end,:);
     thistime = ENlist(ENcounter).stats.time(end,:);
@@ -607,110 +623,110 @@ for ENcounter = whichones
     end
     % Plot current net
     if plotfig(1) && isfield(id, 'OD')
-        set(0,'CurrentFigure',1); cla;
-        tmp = get(1,'Position'); fg1(1:2) = tmp(1:2);
-        myplot(G,bc,mu,'img',v(id.OD,:),T,Pi,fg1,ax1);
+        set(0,'CurrentFigure',fign+1); cla;
+        tmp = get(fign+1,'Position'); fg1(1:2) = tmp(1:2);
+        myplot(G,aspectRatio,bc,mu,'img',v(id.OD,:),T,Pi,fg1,ax1, fign+1);
         title(Kstr,'Visible','on'); drawnow;
     end
     if plotfig(2) && isfield(id, 'OD') && isfield(id, 'OR')
-        set(0,'CurrentFigure',2); cla;
-        tmp = get(2,'Position'); fg2(1:2) = tmp(1:2);
-        myplot(G,bc,mu,ODplotv,v(id.OD,:),T,Pi,fg2,ax2);
-        myplot(G,bc,mu,ORplotv,v(id.OR,:),T,Pi,fg2,ax2);
+        set(0,'CurrentFigure',fign+2); cla;
+        tmp = get(fign+2,'Position'); fg2(1:2) = tmp(1:2);
+        myplot(G,aspectRatio,bc,mu,ODplotv,v(id.OD,:),T,Pi,fg2,ax2, fign+2);
+        myplot(G,aspectRatio,bc,mu,ORplotv,v(id.OR,:),T,Pi,fg2,ax2, fign+2);
         title(Kstr,'Visible','on'); drawnow;
     end
     if plotfig(3) && isfield(id, 'OR')
-        set(0,'CurrentFigure',3); cla;
-        tmp = get(3,'Position'); fg3(1:2) = tmp(1:2);
-        myplot(G,bc,mu,'img_per',v(id.OR,:),T,Pi,fg3,ax3);
+        set(0,'CurrentFigure',fign+3); cla;
+        tmp = get(fign+3,'Position'); fg3(1:2) = tmp(1:2);
+        myplot(G,aspectRatio,bc,mu,'img_per',v(id.OR,:),T,Pi,fg3,ax3, fign+3);
         title(Kstr,'Visible','on'); drawnow;
     end
     if plotfig(4) && isfield(id, 'OR') && isfield(id, 'ORr')
-        set(0,'CurrentFigure',4); cla;
-        tmp = get(4,'Position'); fg4(1:2) = tmp(1:2);
-        myplot(G,bc,mu,'img_per',v([id.OR, id.ORr],:),T,Pi,fg4,ax4);
+        set(0,'CurrentFigure',fign+4); cla;
+        tmp = get(fign+4,'Position'); fg4(1:2) = tmp(1:2);
+        myplot(G,aspectRatio,bc,mu,'img_per',v([id.OR, id.ORr],:),T,Pi,fg4,ax4, fign+4);
         title(Kstr,'Visible','on'); drawnow;
     end
     if plotfig(5) && isfield(id, 'VFx') && isfield(id, 'VFy')
-        set(0,'CurrentFigure',5); cla;
-        tmp = get(5,'Position'); fg5(1:2) = tmp(1:2);
-        myplot(G,bc,mu,proj_cart_plotv,v([id.VFx, id.VFy],:),T,Pi,fg5,ax5);
+        set(0,'CurrentFigure',fign+5); cla;
+        tmp = get(fign+5,'Position'); fg5(1:2) = tmp(1:2);
+        myplot(G,aspectRatio,bc,mu,proj_cart_plotv,v([id.VFx, id.VFy],:),T,Pi,fg5,ax5, fign+5);
         title(Kstr,'Visible','on'); drawnow;
     end
     if plotfig(6) && isfield(id, 'ORx') && isfield(id, 'ORy')
-        set(0,'CurrentFigure',6); cla;
-        tmp = get(6,'Position'); fg6(1:2) = tmp(1:2);
-        myplot(G,bc,mu,proj_polar_plotv,v([id.ORx, id.ORy],:),T,Pi,fg6,ax6);
+        set(0,'CurrentFigure',fign+6); cla;
+        tmp = get(fign+6,'Position'); fg6(1:2) = tmp(1:2);
+        myplot(G,aspectRatio,bc,mu,proj_polar_plotv,v([id.ORx, id.ORy],:),T,Pi,fg6,ax6, fign+6);
         title(Kstr,'Visible','on'); drawnow;
     end
     if plotfig(7) && isfield(id, 'ORr')
-        set(0,'CurrentFigure',7); cla;
-        tmp = get(7,'Position'); fg7(1:2) = tmp(1:2);
-        myplot(G,bc,mu,'img',v(id.ORr,:),T,Pi,fg7,ax7);
+        set(0,'CurrentFigure',fign+7); cla;
+        tmp = get(fign+7,'Position'); fg7(1:2) = tmp(1:2);
+        myplot(G,aspectRatio,bc,mu,'img',v(id.ORr,:),T,Pi,fg7,ax7, fign+7);
         title(Kstr,'Visible','on'); drawnow;
     end
     if plotfig(8) && isfield(id, 'VFx') && isfield(id, 'VFy') && isfield(id, 'OD')
-        set(0,'CurrentFigure',8); cla;
-        tmp = get(8,'Position'); fg8(1:2) = tmp(1:2);
-        myplot(G,bc,mu,proj_cart_plotv,v([id.VFx,id.VFy,id.OD],:),T,Pi,fg8,ax8);
+        set(0,'CurrentFigure',fign+8); cla;
+        tmp = get(fign+8,'Position'); fg8(1:2) = tmp(1:2);
+        myplot(G,aspectRatio,bc,mu,proj_cart_plotv,v([id.VFx,id.VFy,id.OD],:),T,Pi,fg8,ax8, fign+8);
         title(Kstr,'Visible','on'); drawnow;
     end
     if plotfig(9) && isfield(id, 'ORx') && isfield(id, 'ORy') && isfield(id, 'OD')
-        set(0,'CurrentFigure',9); cla;
-        tmp = get(9,'Position'); fg9(1:2) = tmp(1:2);
-        myplot(G,bc,mu,proj_cart_plotv,v([id.ORx, id.ORy, id.OD],:),T,Pi,fg9,ax9);
+        set(0,'CurrentFigure',fign+9); cla;
+        tmp = get(fign+9,'Position'); fg9(1:2) = tmp(1:2);
+        myplot(G,aspectRatio,bc,mu,proj_cart_plotv,v([id.ORx, id.ORy, id.OD],:),T,Pi,fg9,ax9, fign+9);
         title(Kstr,'Visible','on'); drawnow;
     end
     if plotfig(10) && isfield(id, 'VFx') && isfield(id, 'VFy') && isfield(id, 'ORr')
-        set(0,'CurrentFigure',10); cla;
-        tmp = get(10,'Position'); fg10(1:2) = tmp(1:2);
-        myplot(G,bc,mu,proj_cart_plotv,v([id.VFx, id.VFy, id.ORr],:),T,Pi,fg10,ax10);
+        set(0,'CurrentFigure',fign+10); cla;
+        tmp = get(fign+10,'Position'); fg10(1:2) = tmp(1:2);
+        myplot(G,aspectRatio,bc,mu,proj_cart_plotv,v([id.VFx, id.VFy, id.ORr],:),T,Pi,fg10,ax10, fign+10);
         title(Kstr,'Visible','on'); drawnow;
     end
     if plotfig(11) && exist('tens','var')
-        set(0,'CurrentFigure',11); cla;
-        tmp = get(11,'Position'); fg11(1:2) = tmp(1:2);
-        myplot(G,bc,DDmu2(:,ENcounter),DDplotv,DDmu2v,T,Pi,fg11,ax11);
+        set(0,'CurrentFigure',fign+11); cla;
+        tmp = get(fign+11,'Position'); fg11(1:2) = tmp(1:2);
+        myplot(G,aspectRatio,bc,DDmu2(:,ENcounter),DDplotv,DDmu2v,T,Pi,fg11,ax11, fign+11);
         title(Kstr,'Visible','on'); drawnow;
     end
     if plotfig(13) && isfield(id, 'OD') && isfield(id, 'VFx')
-        set(0,'CurrentFigure',13); cla;
-        tmp = get(13,'Position'); fg2(1:2) = tmp(1:2);
-        myplot(G,bc,mu,ODplotv,v(id.OD,:),T,Pi,fg13,ax13);
-        myplot(G,bc,mu,VFxplotv,v(id.VFx,:),T,Pi,fg13,ax13);
+        set(0,'CurrentFigure',fign+13); cla;
+        tmp = get(fign+13,'Position'); fg2(1:2) = tmp(1:2);
+        myplot(G,aspectRatio,bc,mu,ODplotv,v(id.OD,:),T,Pi,fg13,ax13, fign+13);
+        myplot(G,aspectRatio,bc,mu,VFxplotv,v(id.VFx,:),T,Pi,fg13,ax13, fign+13);
         title(Kstr,'Visible','on'); drawnow;
     end
     if plotfig(14) && isfield(id, 'OD') && isfield(id, 'VFy')
-        set(0,'CurrentFigure',14); cla;
-        tmp = get(14,'Position'); fg2(1:2) = tmp(1:2);
-        myplot(G,bc,mu,ODplotv,v(id.OD,:),T,Pi,fg14,ax14);
-        myplot(G,bc,mu,VFyplotv,v(id.VFy,:),T,Pi,fg14,ax14);
+        set(0,'CurrentFigure',fign+14); cla;
+        tmp = get(fign+14,'Position'); fg2(1:2) = tmp(1:2);
+        myplot(G,aspectRatio,bc,mu,ODplotv,v(id.OD,:),T,Pi,fg14,ax14, fign+14);
+        myplot(G,aspectRatio,bc,mu,VFyplotv,v(id.VFy,:),T,Pi,fg14,ax14, fign+14);
         title(Kstr,'Visible','on'); drawnow;
     end
     if plotfig(15) && isfield(id, 'OD') && isfield(id, 'VFx') && isfield(id, 'VFy')
 
-        set(0,'CurrentFigure',15); cla;
-        tmp = get(15,'Position'); fg2(1:2) = tmp(1:2);
-        myplot(G,bc,mu,ODplotv,v(id.OD,:),T,Pi,fg15,ax15);
-        myplot(G,bc,mu,VFxplotv,v(id.VFx,:),T,Pi,fg15,ax15);
-        myplot(G,bc,mu,VFyplotv,v(id.VFy,:),T,Pi,fg15,ax15);
+        set(0,'CurrentFigure',fign+15); cla;
+        tmp = get(fign+15,'Position'); fg2(1:2) = tmp(1:2);
+        myplot(G,aspectRatio,bc,mu,ODplotv,v(id.OD,:),T,Pi,fg15,ax15, fign+15);
+        myplot(G,aspectRatio,bc,mu,VFxplotv,v(id.VFx,:),T,Pi,fg15,ax15, fign+15);
+        myplot(G,aspectRatio,bc,mu,VFyplotv,v(id.VFy,:),T,Pi,fg15,ax15, fign+15);
         title(Kstr,'Visible','on'); drawnow;
     end
     if plotfig(16) && isfield(id, 'OR') && isfield(id, 'VFx') && isfield(id, 'VFy')
 
-        set(0,'CurrentFigure',16); cla;
-        tmp = get(16,'Position'); fg2(1:2) = tmp(1:2);
-        myplot(G,bc,mu,ORplotv,v(id.OR,:),T,Pi,fg16,ax16);
-        myplot(G,bc,mu,VFxplotv,v(id.VFx,:),T,Pi,fg16,ax16);
-        myplot(G,bc,mu,VFyplotv,v(id.VFy,:),T,Pi,fg16,ax16);
+        set(0,'CurrentFigure',fign+16); cla;
+        tmp = get(fign+16,'Position'); fg2(1:2) = tmp(1:2);
+        myplot(G,aspectRatio,bc,mu,ORplotv,v(id.OR,:),T,Pi,fg16,ax16, fign+16);
+        myplot(G,aspectRatio,bc,mu,VFxplotv,v(id.VFx,:),T,Pi,fg16,ax16, fign+16);
+        myplot(G,aspectRatio,bc,mu,VFyplotv,v(id.VFy,:),T,Pi,fg16,ax16, fign+16);
         title(Kstr,'Visible','on'); drawnow;
 	end
     if plotfig(100) && domovie
-        set(0,'CurrentFigure',100);
+        set(0,'CurrentFigure',fign+100);
         hold on; plot(its(ENcounter),thisE,'ro'); hold off; drawnow;
     end
     if plotfig(101) && domovie
-        set(0,'CurrentFigure',101);
+        set(0,'CurrentFigure',fign+101);
         hold on; plot(its(ENcounter),thistime,'ro'); hold off; drawnow;
     end
     % Other options

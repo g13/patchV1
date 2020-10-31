@@ -7,6 +7,9 @@ function d = normDist(ORpinw, ODborders, lm, fign)
     n = size(ORpinw,1);
     m = size(ODborders,1);
     d = zeros(n,1);
+	if m == 0
+		return;
+	end
     od = d;
     bpx = d;
     bpy = d;
@@ -56,11 +59,17 @@ function d = normDist(ORpinw, ODborders, lm, fign)
             od(i) = sqrt(od(i));
             ody = boy - y0;
             odx = box - x0;
-            otheta = abs(atan2(ody,odx) - theta(i));
-            if otheta > pi
-                otheta = abs(2*pi - otheta);
-            end
-            assert(otheta > pi/2);
+            %otheta = abs(atan2(ody,odx) - theta(i));
+            %if otheta > pi
+            %    otheta = abs(2*pi - otheta);
+            %end
+			%if otheta <= pi/2
+			%	otheta
+			%	theta(i)
+			%	odx
+			%	ody
+            %	assert(otheta > pi/2);
+			%end
             if fign > 0
                 figure(fign);
                 hold on

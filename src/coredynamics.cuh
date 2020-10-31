@@ -83,10 +83,13 @@ struct AdEx { //Adaptive Exponential IF
 	__device__
 	__forceinline__
 	void compute_spike_time(Float dt, Float t0) {
-		if (v > vPeak) v = vPeak;
-		Float dv0 = v0-vR;
-		Float denorm = logrithm((v-vR)/dv0);
-    	tsp = t0 + logrithm((vThres-vR)/dv0)/denorm*dt;
+		//if (v > vPeak) v = vPeak;
+		//Float dv0 = v0-vR;
+		//Float denorm = logrithm((v-vR)/dv0);
+    	//tsp = t0 + logrithm((vThres-vR)/dv0)/denorm*dt;
+		Float eT = exponential(-(vThres - v0));
+		Float eV = exponential(-(v - v0));
+		tsp = t0 + (1-eT)/(1-eV)*dt;
 	}
 
 	__device__ 
@@ -143,7 +146,7 @@ void recal_G_vec(
         std::vector<std::vector<std::vector<Float>>> &spikeTrain, std::vector<std::vector<Size>> &trainDepth, std::vector<std::vector<PosInt>> &currentTimeSlot,
         std::vector<Size> &nVec,  std::vector<std::vector<PosInt>> &vecID, std::vector<std::vector<Float>> &conVec, std::vector<std::vector<Float>> &delayVec,
         Float gE[], Float gI[], Float hE[], Float hI[], Float pE[], Float pI[], Size typeAcc[],
-        std::default_random_engine *h_rGenCond, Float synFail[], Size synPerCon[],
+        std::default_random_engine *h_rGenCond, Float synFail[], Float synPerCon[],
         Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, Size nType, Size nE, Size nV1, Float speedOfThought, Size chunkSize
 );
 
@@ -191,7 +194,7 @@ void compute_V_collect_spike_learnFF(
         Size* __restrict__ typeAcc,
         curandStateMRG32k3a* __restrict__ rGenCond,
         Float* __restrict__ synFailFF,
-        Size* __restrict__ synPerConFF,
+        Float* __restrict__ synPerConFF,
         curandStateMRG32k3a* __restrict__ rNoisy,
         Float* __restrict__ noisyDep,
         PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeFF, Size ngTypeE, Size ngTypeI, ConductanceShape condFF, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, int learning, int varSlot, Size nType,
@@ -223,7 +226,7 @@ void recal_G_mat( // <<< nblock[partial], blockSize >>>
         Size* __restrict__ typeAcc,
         curandStateMRG32k3a* __restrict__ rGenCond,
         Float* __restrict__ synFail,
-        Size* __restrict__ synPerCon,
+        Float* __restrict__ synPerCon,
         Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nE, Size nI, Size nV1, Float speedOfThought, int learning, PosInt block_offset, Size nType,
         LearnVarShapeE lE, LearnVarShapeQ lQ, PosInt iChunk
 );

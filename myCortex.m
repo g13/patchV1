@@ -1,7 +1,8 @@
-function [Pi, W, LR, VF] = myCortex(stream, G, xrange, tr_x, yrange, tr_y, VFweights, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch,savepath,cortical_VF)
+function [plotPi, Pi, W, H, LR, VF] = myCortex(stream, G, aspectRatio, xrange, T_xrange, tr_x, yrange, T_yrange, tr_y, VFweights, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch,savepath,cortical_VF)
     nx = G(1);
     ny = G(2);
     Pi = ones(nx,ny);
+    plotPi = ones(nx,ny);
     VF = zeros(nx,ny,2);
     if manual_LR
         LR_noise = noise * randn(stream,nx,ny);
@@ -32,28 +33,74 @@ function [Pi, W, LR, VF] = myCortex(stream, G, xrange, tr_x, yrange, tr_y, VFwei
     
     tw0 = sum(sqrt(diff(tx).^2 + diff(ty).^2))/nod;
     rate0 = 1/(6*tw0);
+
+	dx1 = T_xrange(2) + k*log(a/b) - max(rx);
+	dx0 = T_xrange(1) + k*log(a/b) - min(bx);
+	dy = T_yrange(2) - max(ty);
     
     x0 = [bx rx(1:ny*resol/2)]-k*log(a/b);
-    by = [by ry(1:ny*resol/2)];
-    ty = [ty fliplr(ry((ny*resol/2+1):ny*resol))];
+    by0 = [by ry(1:ny*resol/2)];
+    ty0 = [ty fliplr(ry((ny*resol/2+1):ny*resol))];
     
-    W = dipole(ecc,0,a,b,k)-k*log(a/b);
-    x = linspace(-W/(2*nx-4), W+W/(2*nx-4), nx);
+    %W = dipole(ecc,0,a,b,k)-k*log(a/b);
+    %x = linspace(dx0-W/(2*nx-4), W+W/(2*nx-4)+dx1, nx);
+    %W = W+W/(nx-2)+dx1-dx0;
+	%d = W/(nx-1); 
+    x = linspace(T_xrange(1), T_xrange(2), nx);
+	W = x(end) - x(1);
 	disp(['starting at x = ', num2str((x(1) + x(2))/2)]);
-    W = W+W/(nx-2);
-	d = W/(nx-1); 
-    H = d*ny;
-    y = linspace(-H/2, H/2, ny);
+	H = max_y + dy;
+    y = linspace(-H, H, ny);
     
     for ix = 1:nx
         if x(ix) < x0(1) || x(ix) > x0(end)
+            plotPi(ix,:) = 0;
+        else
+			if x(ix) == x0(end)
+				jx = length(x0);
+			else
+            	jx = find(x(ix)-x0 <= 0, 1, 'first');
+			end
+            assert(~isempty(jx));
+			if jx > 1
+            	r = (x(ix) - x0(jx-1))/(x0(jx)-x0(jx-1));
+            	yb = by0(jx-1) + r*(by0(jx)-by0(jx-1));
+            	yt = ty0(jx-1) + r*(ty0(jx)-ty0(jx-1));
+			else
+            	yb = by0(1);
+            	yt = ty0(1);
+			end
+
+            for iy = 1:ny
+                if y(iy) < yb || y(iy) > yt
+                    plotPi(ix,iy) = 0;
+                end
+            end
+        end
+    end
+
+    x1 = [bx+dx0 rx(1:ny*resol/2)+dx1]-k*log(a/b);
+    by1 = [by ry(1:ny*resol/2)]-dy;
+    ty1 = [ty fliplr(ry((ny*resol/2+1):ny*resol))]+dy;
+
+    for ix = 1:nx
+        if x(ix) < x1(1) || x(ix) > x1(end)
             Pi(ix,:) = 0;
         else
-            jx = find(x(ix)-x0 < 0, 1, 'first');
+			if x(ix) == x1(end)
+				jx = length(x1);
+			else
+            	jx = find(x(ix)-x1 < 0, 1, 'first');
+			end
             assert(~isempty(jx));
-            r = (x(ix) - x0(jx-1))/(x0(jx)-x0(jx-1));
-            yb = by(jx-1) + r*(by(jx)-by(jx-1));
-            yt = ty(jx-1) + r*(ty(jx)-ty(jx-1));
+			if jx > 1
+            	r = (x(ix) - x1(jx-1))/(x1(jx)-x1(jx-1));
+            	yb = by1(jx-1) + r*(by1(jx)-by1(jx-1));
+            	yt = ty1(jx-1) + r*(ty1(jx)-ty1(jx-1));
+			else
+            	yb = by0(1);
+            	yt = ty0(1);
+			end
             for iy = 1:ny
                 if y(iy) < yb || y(iy) > yt
                     Pi(ix,iy) = 0;
@@ -61,14 +108,15 @@ function [Pi, W, LR, VF] = myCortex(stream, G, xrange, tr_x, yrange, tr_y, VFwei
             end
         end
     end
+
     if plot_patch > 0
         figure;
 		subplot(2,2,1)
-        daspect([1,1,1]);
+        daspect([1,1/aspectRatio,1]);
         xlim([x0(1), x0(end)]);
         hold on
-        plot(x0,ty,'k');
-        plot(x0,by,'k');
+        plot(x0,ty0,'k');
+        plot(x0,by0,'k');
 		xlabel('Initial mu interpolation points density x 0.01');
     end
 	% ecc-polar grid for VF see COMMENTs in function assign_pos_VF of assign_attr.py 
@@ -125,12 +173,14 @@ function [Pi, W, LR, VF] = myCortex(stream, G, xrange, tr_x, yrange, tr_y, VFwei
 	    		else
 	    			scatter(tr_x, tr_y, 3, cm(128,:), 'filled');
 	    		end
+				disp([min(tr_x), max(tr_x)]);
+				disp([min(tr_y), max(tr_y)]);
 	    	end
-            plot(x0,ty,'-r');
-            plot(x0,by,'-r');
-            xlim([min([min(x0),min(tr_x(:))]),max([max(x0),max(tr_x(:))])]);
-            ylim([min([min(by),min(tr_y(:))]),max([max(ty),max(tr_y(:))])]);
-            daspect([1,1,1]);
+            plot(x0,ty0,'-r');
+            plot(x0,by0,'-r');
+            xlim([min([min(x0),T_xrange(1)]),max([max(x0),T_xrange(2)])]);
+            ylim([min([min(by0),T_yrange(1)]),max([max(ty0),T_yrange(2)])]);
+            daspect([1,1/aspectRatio,1]);
 	    	colormap(viridis);
 	    	colorbar;
 	    	xlabel('Training Points weights in area (or 1/area)');
@@ -188,12 +238,12 @@ function [Pi, W, LR, VF] = myCortex(stream, G, xrange, tr_x, yrange, tr_y, VFwei
 	    	imagesc(VF(:,:,1));
 	    	colormap(viridis);
 	    	colorbar;
-            daspect([1,1,1]);
+            daspect([1,1/aspectRatio,1]);
 	    	subplot(4,2,4)
 	    	imagesc(VF(:,:,2));
 	    	colormap(viridis);
 	    	colorbar;
-            daspect([1,1,1]);
+            daspect([1,1/aspectRatio,1]);
 	    end
 	    pPi = reshape(Pi > 0, prod(G),1);
 	    VF = reshape(VF, prod(G), 2);
@@ -224,12 +274,12 @@ function [Pi, W, LR, VF] = myCortex(stream, G, xrange, tr_x, yrange, tr_y, VFwei
 	    	imagesc(VF(:,:,1));
 	    	colormap(viridis);
 	    	colorbar;
-            daspect([1,1,1]);
+            daspect([1,1/aspectRatio,1]);
 	    	subplot(4,2,8)
 	    	imagesc(VF(:,:,2));
 	    	colormap(viridis);
 	    	colorbar;
-            daspect([1,1,1]);
+            daspect([1,1/aspectRatio,1]);
 	    	if manual_LR
 	    		subplot(1,2,1)
 	    	end

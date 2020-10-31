@@ -29,13 +29,18 @@ __device__ pFeature p_OD = ODpref;
 
 __device__
 Float OPpref(Float post, Float pre, Float r) { // orientation preference
-    Float dp = pre-post;
-    if (abs(dp) > M_PI/2) {
-        dp += copyms(M_PI, -dp);
-    }
-    Float sig = M_PI/r; // set spread here
-    Float A = square_root(2*M_PI);
-    Float p = exponential(-dp*dp/(2*sig*sig))/(A*sig);
+	Float p;
+	if (r > 0) {
+    	Float dp = post - pre;
+    	if (abs(dp) > M_PI/2) {
+    	    dp += copyms(M_PI, -dp);
+    	}
+    	Float sig = M_PI/r; // set spread here
+    	Float A = square_root(2*M_PI);
+    	p = exponential(-dp*dp/(2*sig*sig))/(A*sig);
+	} else {
+		p = 1/M_PI;
+	}
     return p; 
 }
 __device__ pFeature p_OP = OPpref;
@@ -115,5 +120,41 @@ void read_LGN_sSum(std::string filename, Float sSum[], Float sSumMax[], Float sS
     }
     delete []array;
     delete []nTypeCount;
+    input_file.close();
+}
+
+void read_LGN_V1(std::string filename, Size nLGN_V1[], Size nLGN_V1_Max[], Size typeAcc[], Size nType) {
+    std::ifstream input_file;
+    input_file.open(filename, std::fstream::in | std::fstream::binary);
+    if (!input_file) {
+        std::string errMsg{ "Cannot open or find " + filename + "\n" };
+        throw errMsg;
+    }
+    Size nList, maxList;
+    input_file.read(reinterpret_cast<char*>(&nList), sizeof(Size));
+    input_file.read(reinterpret_cast<char*>(&maxList), sizeof(Size));
+
+    Float *array = new Float[nList*maxList];
+    for (PosInt i=0; i<nType; i++) {
+        //nLGN_V1Mean[i] = 0.0;
+        nLGN_V1_Max[i] = 0.0;
+    }
+    for (PosInt i=0; i<nList; i++) {
+        Size listSize;
+        input_file.read(reinterpret_cast<char*>(&listSize), sizeof(Size));
+		nLGN_V1[i] = listSize;
+        input_file.read(reinterpret_cast<char*>(&array[i*maxList]), listSize * sizeof(Float));
+        PosInt k = i%blockSize;
+        for (PosInt j = 0; j<nType; j++) {
+            if (k<typeAcc[j]) {
+                k = j;
+                break;
+            }
+        }
+        if (nLGN_V1[i] > nLGN_V1_Max[k]) {
+            nLGN_V1_Max[k] = nLGN_V1[i];
+        }
+    }
+    delete []array;
     input_file.close();
 }

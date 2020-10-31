@@ -1,9 +1,10 @@
 #!/bin/bash
+#SBATCH -p serial 
 #SBATCH --job-name=jS
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=2
 #SBATCH --mem=40GB
-#SBATCH --time=12:00:00
+#SBATCH --time=4:00:00
 #SBATCH -o log/jS_%J.out
 #SBATCH --mail-user=wd554@nyu.edu
 #SBATCH --mail-type=END
@@ -27,5 +28,5 @@ conda activate general
 # <<< conda initialize <<<
 
 date
-python jScript.py
+python macro.py
 date
