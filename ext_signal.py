@@ -8,17 +8,21 @@ RGB2XYZ = np.array([[0.49000, 0.31000, 0.20000],\
 
 #D65
 XYZ2LMS = np.array([[ 0.4002, 0.7076, -0.0808],\
-                        [-0.2263, 1.1653,  0.0457],\
-                        [      0,      0,  0.9182]])
+                    [-0.2263, 1.1653,  0.0457],\
+                    [      0,      0,  0.9182]])
 """
 XYZ2LMS = np.array([[ 0.38971, 0.68898, -0.07868],\
                     [-0.22981, 1.18340,  0.04641],\
                     [       0,       0,  1.00000]])
 """
 
-sRGB2XYZ = np.array([[0.4124, 0.3576, 0.1805],\
-                     [0.2126, 0.7152, 0.0722],\
-                     [0.0193, 0.1192, 0.9504]])
+XYZ2sRGB = np.array([[ 3.24096994, -1.53738318, -0.49861076],\
+                     [-0.96924364,  1.87596750,  0.04155506],\
+                     [ 0.05563008, -0.20397696,  1.05697151]])
+# wiki sRGB
+sRGB2XYZ = np.array([[0.41239080, 0.35758434, 0.18048079],\
+                     [0.21263901, 0.71516868, 0.07219232],\
+                     [0.01933082, 0.11919478, 0.95053215]])
 
 #sBGR2LMS = np.matmul(XYZ2LMS,sRGB2XYZ[:,::-1])
 sBGR2LMS = np.matmul(XYZ2LMS,sRGB2XYZ[:,::-1])
@@ -77,18 +81,18 @@ def img_to_LMS(image):
     LMS = np.matmul(np.reshape(image.astype('float'), (image.size//3, 3)), sRGB2LMS.T)/255
     return LMS.reshape(image.shape)
 
-def sRGB_gamma(data):
+def apply_sRGB_gamma(data):
     cast = np.copy(data).reshape(data.size)
     select = cast<0.0031308
-    cast[select] = cast[select]*12.92
-    select = True - select
-    cast[select] = np.power(cast[select], 1/2.4) * 1.055 - 0.055
+    cast[select] = cast[select]*323/25
+    select = np.logical_not(select)
+    cast[select] = (211*np.power(cast[select], 5/12)-11) / 200
     return cast.reshape(data.shape)
     
 def inverse_sRGB_gamma(data):
     cast = np.copy(data).reshape(data.size)
     select = cast<0.04045
-    cast[select] = cast[select]/12.92
-    select = True - select
-    cast[select] = np.power((cast[select]+0.055)/1.055, 2.4)
+    cast[select] = cast[select]*25/323
+    select = np.logical_not(select)
+    cast[select] = np.power((200*cast[select]+11)/211, 12/5)
     return cast.reshape(data.shape)

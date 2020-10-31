@@ -65,7 +65,8 @@ def generate_random(amp, cSize, c0, fname, time, frameRate = 120, ecc = 2.5, buf
 
                 data = np.concatenate((dataL,dataR), axis = 1)
 
-            pixelData = np.reshape(np.round(data*255), (npixel,npixel,3)).astype('uint8')
+            #pixelData = np.reshape(np.round(data*255), (npixel,npixel,3)).astype('uint8')
+            pixelData = np.round(apply_sRGB_gamma(np.matmul(LMS2sRGB, data.reshape(npixel*npixel,3).T))*255).reshape(npixel,npixel,3).astype('uint8')
             # bgr->lms
             LMS_seq[it,:,:,:] = data[:,:,::-1].reshape((npixel*npixel,3)).T.reshape((3,npixel,npixel))
 
@@ -82,7 +83,7 @@ def generate_random(amp, cSize, c0, fname, time, frameRate = 120, ecc = 2.5, buf
     cv.destroyAllWindows()
     return LMS
 
-def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel, c1, c2, fname, time, phase, sharpness, frameRate = 120, ecc = 2.5, buffer_ecc = 0.25, gtype = 'drifting', neye = 2, bar = False, center = np.pi/2, wing = np.pi/2, genMovie = True):
+def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel, c1, c2, fname, time, phase, sharpness, frameRate = 120, ecc = 2.5, buffer_ecc = 0.25, gtype = 'drifting', neye = 2, bar = False, center = np.pi/2, wing = np.pi/2, inputLMS = False, genMovie = True):
     """
     spatialFrequency: cycle per degree
     temporalFrequency: Hz
@@ -147,9 +148,11 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
         sharpness = np.zeros(nseq) + sharpness
 
     ########### VIDEO encodes as BGR: 
-    # rgb->bgr
-    c1 = np.reshape(c1[::-1],(1,3))
-    c2 = np.reshape(c2[::-1],(1,3))
+    if not inputLMS: # rgb->bgr
+        c1 = c1[::-1]
+        c2 = c2[::-1]
+    c1 = np.reshape(c1,(1,3))
+    c2 = np.reshape(c2,(1,3))
 
     if neye == 1:
         X, Y = meshgrid(np.linspace(-1,1,a)*(ecc+buffer_ecc)*np.pi/180, np.linspace(-1,1,b)*(ecc+buffer_ecc)*np.pi/180)
@@ -207,9 +210,14 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
                     dataR = grating(amp[i], radTF, radSF, direction[i], a, b, c1, c2, phase[i], t, X, Y, bar, center, wing)
                 data = np.concatenate((dataL,dataR), axis = 1)
 
-            pixelData = np.reshape(np.round(data*255), (npixel,npixel,3)).astype('uint8')
-            # bgr->lms
-            LMS_seq[it,:,:,:] = data[:,:,::-1].reshape((npixel*npixel,3)).T.reshape((3,npixel,npixel))
+            if inputLMS:
+                # lms->rgb->bgr
+                pixelData = np.round(apply_sRGB_gamma(np.matmul(LMS2sRGB, data.reshape(npixel*npixel,3).T))*255).T.reshape(npixel,npixel,3)[:,:,::-1].astype('uint8')
+                LMS_seq[it,:,:,:] = data.reshape((npixel*npixel,3)).T.reshape((3,npixel,npixel))
+            else: # input is sRGB
+                pixelData = np.round(data*255).reshape(npixel,npixel,3).astype('uint8')
+                # bgr->rgb->lms
+                LMS_seq[it,:,:,:] = np.matmul(sRGB2LMS, inverse_sRGB_gamma(data[:,:,::-1].reshape((npixel*npixel,3)).T)).reshape((3,npixel,npixel))
 
             if genMovie:
                 output.write(pixelData)
@@ -246,6 +254,9 @@ def logistic(sharpness):
                 A = np.power(exp_half,2)/(np.exp(sharpness)-1)
                 C = exp_half/(1-np.exp(sharpness))
                 x = A/(1.0 + np.exp(-sharpness*(x-0.5))) + C
+            else:
+                x[x > 0.5] = 1
+                x[x < 0.5] = 0
             return x
         return static_nolinearity
     return decorator_logistic
