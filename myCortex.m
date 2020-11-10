@@ -1,16 +1,5 @@
-function [plotPi, Pi, W, H, LR, VF] = myCortex(stream, G, aspectRatio, xrange, T_xrange, tr_x, yrange, T_yrange, tr_y, VFweights, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch,savepath,cortical_VF)
-    nx = G(1);
-    ny = G(2);
-    Pi = ones(nx,ny);
-    plotPi = ones(nx,ny);
-    VF = zeros(nx,ny,2);
-    if manual_LR
-        LR_noise = noise * randn(stream,nx,ny);
-        LR = rOD(1) + (rOD(2)-rOD(1))*rand(stream,nx,ny);
-        %     LR = zeros(nx,ny);
-    else
-        LR = zeros(nx,ny);
-    end
+function [Pi, W, H, LR, VF, G, qx] = myCortex(stream, Gx, aspectRatio, xrange, T_xrange, tr_x, yrange, T_yrange, tr_y, VFweights, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch,savepath,cortical_VF)
+    nx = Gx;
 	log_e = linspace(log(1),log(ecc+1),nx*resol);
     e = exp(log_e)-1;
     band_e = exp(linspace(log(1),log(ecc+1),nod+1))-1;
@@ -25,36 +14,97 @@ function [plotPi, Pi, W, H, LR, VF] = myCortex(stream, G, aspectRatio, xrange, T
     ty = imag(w);
     assert(sum(bx-tx)==0);
     
-    p = linspace(-pi/2, pi/2,ny*resol);
-	w = dipole(e(end),p,a,b,k);
-    rx = real(w);
-    ry = imag(w);
-    max_y = max(ry);
+    max_y = max(ty);
     
     tw0 = sum(sqrt(diff(tx).^2 + diff(ty).^2))/nod;
     rate0 = 1/(6*tw0);
 
-	dx1 = T_xrange(2) + k*log(a/b) - max(rx);
-	dx0 = T_xrange(1) + k*log(a/b) - min(bx);
-	dy = T_yrange(2) - max(ty);
+    W = dipole(ecc,0,a,b,k)-k*log(a/b);
+	W = W + W/(nx-2);
+	dx = W/(nx-1)
+
+	W0 = -dx/2;
+	if W0 >= T_xrange(1)
+		while W0 >= T_xrange(1)
+			W0 = W0 - dx;
+			nx = nx + 1;
+		end
+		W0 = W0 + dx
+		nx = nx - 1;
+		front_edge = T_xrange(1) - W0
+	else
+		disp('x front');
+		[T_xrange(1), W0]
+	end
+	qx = W0
+
+	W1 = W-dx/2;
+	if W1 <= T_xrange(2)
+		while W1 <= T_xrange(2)
+			W1 = W1 + dx;
+			nx = nx + 1;
+		end
+		W1 = W1 - dx
+		nx = nx - 1
+		tail_edge = T_xrange(2) - W1
+	else
+		disp('x tail');
+		[T_xrange(2), W1]
+	end
+
+	added_x = nx - Gx
+    x = linspace(W0, W1, nx);
+	W = W1 - W0;
+	dx_check = x(2) - x(1)
+	dy = dx/aspectRatio
+
+	Gy_hlf = ceil((max_y + dy/2)/dy);
+	H = Gy_hlf * dy - dy/2;
+	added_y = 0;
+	if H <= T_yrange(2)
+		while H <= T_yrange(2)
+			H = H + dy;
+			Gy_hlf = Gy_hlf + 1;
+			added_y = added_y + 1;
+		end
+		H = H - dy
+		Gy_hlf = Gy_hlf - 1;
+		added_y = (added_y - 1)*2
+		Y_edge = T_yrange(2) - H 
+	else
+		disp('y range');
+		[T_yrange(2), H]
+	end
+
+	Gy = 2*Gy_hlf;
+	ny = Gy
+	Gx = nx;
+
+	G = [Gx, Gy];
+    y = linspace(-H, H, ny);
+	check_dy = y(2)-y(1)
+
+    Pi = ones(nx,ny);
+    VF = zeros(nx,ny,2);
+    if manual_LR
+        LR_noise = noise * randn(stream,nx,ny);
+        LR = rOD(1) + (rOD(2)-rOD(1))*rand(stream,nx,ny);
+        %     LR = zeros(nx,ny);
+    else
+        LR = zeros(nx,ny);
+    end
+    p = linspace(-pi/2, pi/2,ny*resol);
+	w = dipole(e(end),p,a,b,k);
+    rx = real(w);
+    ry = imag(w);
     
     x0 = [bx rx(1:ny*resol/2)]-k*log(a/b);
     by0 = [by ry(1:ny*resol/2)];
     ty0 = [ty fliplr(ry((ny*resol/2+1):ny*resol))];
     
-    %W = dipole(ecc,0,a,b,k)-k*log(a/b);
-    %x = linspace(dx0-W/(2*nx-4), W+W/(2*nx-4)+dx1, nx);
-    %W = W+W/(nx-2)+dx1-dx0;
-	%d = W/(nx-1); 
-    x = linspace(T_xrange(1), T_xrange(2), nx);
-	W = x(end) - x(1);
-	disp(['starting at x = ', num2str((x(1) + x(2))/2)]);
-	H = max_y + dy;
-    y = linspace(-H, H, ny);
-    
     for ix = 1:nx
         if x(ix) < x0(1) || x(ix) > x0(end)
-            plotPi(ix,:) = 0;
+            Pi(ix,:) = 0;
         else
 			if x(ix) == x0(end)
 				jx = length(x0);
@@ -71,36 +121,6 @@ function [plotPi, Pi, W, H, LR, VF] = myCortex(stream, G, aspectRatio, xrange, T
             	yt = ty0(1);
 			end
 
-            for iy = 1:ny
-                if y(iy) < yb || y(iy) > yt
-                    plotPi(ix,iy) = 0;
-                end
-            end
-        end
-    end
-
-    x1 = [bx+dx0 rx(1:ny*resol/2)+dx1]-k*log(a/b);
-    by1 = [by ry(1:ny*resol/2)]-dy;
-    ty1 = [ty fliplr(ry((ny*resol/2+1):ny*resol))]+dy;
-
-    for ix = 1:nx
-        if x(ix) < x1(1) || x(ix) > x1(end)
-            Pi(ix,:) = 0;
-        else
-			if x(ix) == x1(end)
-				jx = length(x1);
-			else
-            	jx = find(x(ix)-x1 < 0, 1, 'first');
-			end
-            assert(~isempty(jx));
-			if jx > 1
-            	r = (x(ix) - x1(jx-1))/(x1(jx)-x1(jx-1));
-            	yb = by1(jx-1) + r*(by1(jx)-by1(jx-1));
-            	yt = ty1(jx-1) + r*(ty1(jx)-ty1(jx-1));
-			else
-            	yb = by0(1);
-            	yt = ty0(1);
-			end
             for iy = 1:ny
                 if y(iy) < yb || y(iy) > yt
                     Pi(ix,iy) = 0;

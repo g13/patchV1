@@ -1,5 +1,5 @@
 % estimate weighted gt (in myV1stats.m) when single pixel gradient orientation is not sufficient
-function gt = gtEstimate(gt0, gr, pick, Pi, h, centeroff)	
+function gt = gtEstimate(gt0, gr, pick, h, centeroff)	
 	if nargin < 5
 		centeroff = true;
 		if nargin < 4

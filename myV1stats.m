@@ -327,7 +327,7 @@ figName{1} = 'OD_map';
 figName{2} = 'OD-OR_contour';
 figName{3} = 'OR_angleMap';
 figName{4} = 'OR_polarMap';
-figName{5} = 'VFMap';
+figName{5} = 'VF_map';
 figName{6} = 'OR_circle';
 figName{7} = 'ORpinw_map';
 figName{13} = 'OD-VFx_contour';
@@ -362,7 +362,7 @@ if strcmp(bc,'periodic')
     B_ind = [];
 else
     test_boundary = false;
-    B_width = 5;
+    B_width = 3;
 	assert(mod(B_width,2) == 1);
     [B_ind, I_ind, B1_ind, I1_ind, B2_ind, I2_ind, B1_ang] = set_bc(reshape(logical(Pi),G(1),G(2)), B_width, right_open, test_boundary, prefix, ~right_open);
     

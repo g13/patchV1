@@ -15,9 +15,10 @@ plots = true;
 new = true;
 ENproc = 'save';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
-name = 'original-tf0';
-var = 'mixed-long'
+name = 'or-ft10';
+var = 'or-ft10-nG4s-rand'
 equi = 'VF';
+cortical_VF = 'cortex';
 old = false;
 testRun = false;
 randSeed = true;
@@ -32,27 +33,40 @@ case 1
 end
 %VFpath = '';
 %nvfx = 2.6880
-nvfy = 1.4091
+nvfy = 1.4623
 nvfx = 1.0
 
-nvfRange = [1.0, 1.0, 1.0, 1.0, 1.0];
+G0 = [64, 94];
+rotate = [0,0,0,0,0];
+nvfRange = [0.9, 0.9, 0.9, 0.9, 0.9]*3*sqrt(2);
 %xRange = [1.5, 2.0, 2.5, 3.0, 3.5];
 %yRange = [4/3, 1.0, 0.8, 3/3, 2/3.5];
-xRange = [1.4, 1.6, 1.8, 1.6, 1.6];
-yRange = [1.0, 1.0, 1.0, 1.0, 1.0];
+xRange = [1.0, 1.0, 1.0, 1.0, 1.0];
+yRange = [0.75, 0.75, 0.75, 0.75, 0.75];
 %lRange = [1.0, 0.6, 1.0, 1.2, 1.0];
-rRange = [0.08, 0.08, 0.08, 0.06, 0.08];
 %rRange = [0.0, 0.0, 0.0, 0.0, 0.0];
-lRange = [0.08, 0.08, 0.08, 0.08, 0.08];
+rRange = [0.12, 0.12, 0.12, 0.12, 0.12];
 %lRange = [0.15, 0.15, 0.15, 0.15, 0.15];
+lRange = [0.12, 0.12, 0.12, 0.12, 0.12];
+
 nGrange = [4.0, 4.0, 4.0, 4.0, 4.0];
-betaRange = [10, 10, 10, 10, 10]*50;
+betaRange = [15, 15, 15, 15, 15]*50;
 aRrange = [1.0, 1.0, 1.0, 1.0, 1.0;
 		   1.0, 1.0, 1.0, 1.0, 1.0];
 
-%figlist = [1,4,34,60,100,102,600];
-figlist = [1,2,4,5,6,15,16,34,50,60,100,102,600];
-VFpath = '/scratch/wd554/patchV1/original-tf0.bin';
+Kin = 0.1;			% Initial K ***
+Kend = 0.02;        % Final K ***    
+if testRun
+	iters = 1; %21;			% No. of annealing rates (saved)
+	max_it = 2;		        % No. of iterations per annealing rate (not saved) ***
+else
+	iters = 10; %21;			% No. of annealing rates (saved)
+	max_it = 10;		        % No. of iterations per annealing rate (not saved) ***
+end
+%max_it = round(20 *range(i)/range(end)); 
+figlist = [1,2,4,5,6,34,50,60,100,102];
+%figlist = [1,2,4,5,6,15,16,34,50,60,100,102,600];
+VFpath = '/scratch/wd554/patchV1/or-ft10-Copy.bin';
 if isempty(VFpath)
 	ENfilename0 = [name,'-',equi,'-',wtString,'-',var]   % Simulation name ***
 else
@@ -74,7 +88,6 @@ if ~testRun
 else
 	range = [1];
 end
-cortical_VF = 'cortex';
 non_cortical_LR = false;
 % non_cortical_LR = true;
 uniform_LR = true;
@@ -113,7 +126,6 @@ else
     scurr = rng('shuffle')
     seed = scurr.Seed;
 end
-%figlist = [1,100,102];
 parfor (i = 1:length(range), nworker)
 %for i = 1 
     % for non_cortical_shape edge boundaries
@@ -125,16 +137,6 @@ parfor (i = 1:length(range), nworker)
 	beta = betaRange(i);
 	%beta = 100;
     % Training parameters
-	if testRun
-		iters = 1; %21;			% No. of annealing rates (saved)
-    	max_it = 2;		        % No. of iterations per annealing rate (not saved) ***
-	else
-		iters = 20; %21;			% No. of annealing rates (saved)
-    	max_it = 10;		        % No. of iterations per annealing rate (not saved) ***
-	end
-	%max_it = round(20 *range(i)/range(end)); 
-    Kin = 0.1;			% Initial K ***
-    Kend = 0.01;        % Final K ***    
     % - VFx: Nx points in [0,1], with interpoint separation dx.
 	Nx = 20;
 	%Nx = range(i)
@@ -163,7 +165,7 @@ parfor (i = 1:length(range), nworker)
     nG = nGrange(i);
 	nT = 1;
     %G = round([64 104]*nG);		% Number of centroids *** 
-    G = round([64 104]*nG);		% Number of centroids *** 
+    G = round(G0*nG);		% Number of centroids *** 
 	g0 = G;
 	G(1) = round(G(1) * aRrange(1,i));
 	G(2) = round(G(2) * aRrange(2,i));
@@ -173,7 +175,7 @@ parfor (i = 1:length(range), nworker)
     a = 0.635; b = 96.7; k = sqrt(140)*0.873145;
     fign = 106;
     ENfilename = [var,'-',num2str(range(i))];
-    stats(i) = myV1driver(exchange_nm,seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,aspectRatio,nT,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,weightType,VFpath,old,randSeed,figlist);
+    stats(i) = myV1driver(exchange_nm,seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,aspectRatio,nT,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,weightType,VFpath,old,randSeed,figlist,rotate);
 end
 if sum(rRange) > 0 && sum(lRange) > 0
 	nnpinw = [stats.npinw];

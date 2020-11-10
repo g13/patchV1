@@ -322,8 +322,8 @@ end
 if ~isempty(fg) && ~isempty(ax)
     % axfg fits axes as large as possible inside the figure, respecting the
     % margins and aspect ratio.
-	%fgb = fgb*2;
-	%fgt = fgt*2;
+	%fgb = fgb*2.0;
+	%fgt = fgt*2.0;
     axfg = [fgb/fg(3) fgb/fg(4) 1-2*fgb/fg(3) 1-(fgt+2*fgb)/fg(4)];
     fgR = (fg(3)-2*fgb)/(fg(4)-2*fgb-fgt);                % Usable figure ratio
     %if fgR < axR                                          % Respect aspect ratio
