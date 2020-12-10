@@ -6,15 +6,15 @@ RGB2XYZ = np.array([[0.49000, 0.31000, 0.20000],\
                     [0.17697, 0.81240, 0.01063],\
                     [0.00000, 0.01000, 0.99000]])/0.17697
 
-#D65
-XYZ2LMS = np.array([[ 0.4002, 0.7076, -0.0808],\
-                    [-0.2263, 1.1653,  0.0457],\
-                    [      0,      0,  0.9182]])
-"""
-XYZ2LMS = np.array([[ 0.38971, 0.68898, -0.07868],\
-                    [-0.22981, 1.18340,  0.04641],\
-                    [       0,       0,  1.00000]])
-"""
+#Hunt D65
+#XYZ2LMS = np.array([[ 0.4002, 0.7076, -0.0808],\
+#                    [-0.2263, 1.1653,  0.0457],\
+#                    [      0,      0,  0.9182]])
+
+#CAT02
+XYZ2LMS = np.array([[ 0.7328, 0.4296, -0.1624],\
+                    [-0.7036, 1.6975,  0.0061],\
+                    [ 0.0030, 0.0136,  0.9834]])
 
 XYZ2sRGB = np.array([[ 3.24096994, -1.53738318, -0.49861076],\
                      [-0.96924364,  1.87596750,  0.04155506],\
@@ -25,13 +25,19 @@ sRGB2XYZ = np.array([[0.41239080, 0.35758434, 0.18048079],\
                      [0.01933082, 0.11919478, 0.95053215]])
 
 #sBGR2LMS = np.matmul(XYZ2LMS,sRGB2XYZ[:,::-1])
-sBGR2LMS = np.matmul(XYZ2LMS,sRGB2XYZ[:,::-1])
-sRGB2LMS = sBGR2LMS[:,::-1]
+#sRGB2LMS = sBGR2LMS[:,::-1]
+sRGB2LMS = np.matmul(XYZ2LMS,sRGB2XYZ)
+sBGR2LMS = sRGB2LMS[:,::-1]
 LMS2sRGB = np.linalg.inv(sRGB2LMS)
 
-BGR2LMS = np.matmul(XYZ2LMS,RGB2XYZ[:,::-1])
-RGB2LMS = BGR2LMS[:,::-1]
-LMS2RGB = np.linalg.inv(sRGB2LMS)
+RGB2LMS = np.matmul(XYZ2LMS,RGB2XYZ)
+BGR2LMS = RGB2LMS[:,::-1]
+LMS2RGB = np.linalg.inv(RGB2LMS)
+
+LMS2XYZ = np.linalg.inv(XYZ2LMS)
+print(f'lum in LMS = {LMS2XYZ[1,:]}')
+print(np.matmul(LMS2XYZ, LMS2XYZ.T))
+print(np.matmul(LMS2sRGB, LMS2sRGB.T))
 
 def video_to_LMS_time_series(vid, start, end):
     cap = cv.VideoCapture(vid+'.avi')

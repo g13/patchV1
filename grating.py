@@ -3,7 +3,7 @@ import cv2 as cv
 import functools
 from ext_signal import *
 #TODO: heterogeneous buffers, to save texture memory
-def generate_random(amp, cSize, c0, fname, time, frameRate = 120, ecc = 2.5, buffer_ecc = 0.25, neye = 2, gtype = 'uniform', seed = None, shift = None):
+def generate_random(amp, cSize, c0, fname, time, frameRate = 120, ecc = 2.5, buffer_ecc = 0.25, neye = 2, gtype = 'uniform', seed = None, shift = None, inputLMS = True):
     """
     buffer_ecc: buffering area, to avoid border problems in texture memory accesses
     neye == 2:
@@ -19,7 +19,7 @@ def generate_random(amp, cSize, c0, fname, time, frameRate = 120, ecc = 2.5, buf
         npixel = int(round(2*(ecc+2*buffer_ecc)/cSize))
         a = npixel//2
     b = npixel  
-    FourCC = cv.VideoWriter_fourcc(*'HFYU')
+    FourCC = cv.VideoWriter_fourcc(*'FFV1')
     output = cv.VideoWriter(fname+'.avi', FourCC, frameRate, (npixel,npixel), True)
 
     if isinstance(time, (list, tuple, np.ndarray)):
@@ -35,7 +35,9 @@ def generate_random(amp, cSize, c0, fname, time, frameRate = 120, ecc = 2.5, buf
 
     ########### VIDEO encodes as BGR: 
     # rgb->bgr
-    c0 = np.reshape(c0[::-1],(1,3))
+    if not inputLMS:
+        c0 = c0[::-1]
+    c0 = c0.reshape((1,3))
 
     np.random.seed(seed)
     LMS = np.empty((nseq,), dtype=object)
@@ -108,7 +110,8 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
         a = npixel//2  
     b = npixel  
     if genMovie:
-        FourCC = cv.VideoWriter_fourcc(*'HFYU')
+        #FourCC = cv.VideoWriter_fourcc(*'HFYU')
+        FourCC = cv.VideoWriter_fourcc(*'MP4V')
         output = cv.VideoWriter(fname+'.avi', FourCC, frameRate, (npixel,npixel), True)
 
     if isinstance(time, (list, tuple, np.ndarray)):
@@ -153,6 +156,12 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
         c2 = c2[::-1]
     c1 = np.reshape(c1,(1,3))
     c2 = np.reshape(c2,(1,3))
+    control = np.zeros(3)
+    for i in range(3):
+        if c1[0,i] >= c2[0,i]:
+           control[i] = 1
+        else: 
+           control[i] = -1
 
     if neye == 1:
         X, Y = meshgrid(np.linspace(-1,1,a)*(ecc+buffer_ecc)*np.pi/180, np.linspace(-1,1,b)*(ecc+buffer_ecc)*np.pi/180)
@@ -177,9 +186,9 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
         radSF = spatialFrequency[i]*180/np.pi*2*np.pi
         s = sharpness[i]
         print(f'sharpness={s}')
-        @logistic(s)
-        def grating(amp, radTF, radSF, direction, a, b, c1, c2, phase, t, X, Y, bar, center = 0, wing = 0):
-            return sine_wave(amp, radTF, radSF, direction, a, b, c1, c2, phase, t, X, Y, bar, center, wing)
+        #@logistic(s)
+        def grating(amp, radTF, radSF, direction, a, b, c1, c2, control, s, phase, t, X, Y, bar, center = 0, wing = 0):
+            return sine_wave(amp, radTF, radSF, direction, a, b, c1, c2, control, s, phase, t, X, Y, bar, center, wing)
 
         if gtype == 'rotating':
             half = nstep//2 
@@ -197,23 +206,35 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
             t = it * dt
             if neye == 1:
                 if gtype == 'rotating':
-                    data = grating(amp[i], radTF, radSF, direction[i]-dd[it], a, b, c1, c2, phase[i], t, X, Y, bar, center, wing)
+                    data = grating(amp[i], radTF, radSF, direction[i]-dd[it], a, b, c1, c2, control, s, phase[i], t, X, Y, bar, center, wing)
                 if gtype == 'drifting':
-                    data = grating(amp[i], radTF, radSF, direction[i], a, b, c1, c2, phase[i], t, X, Y, bar, center, wing)
+                    data = grating(amp[i], radTF, radSF, direction[i], a, b, c1, c2, control, s, phase[i], t, X, Y, bar, center, wing)
 
             else:
                 if gtype == 'rotating':
-                    dataL = grating(amp[i], radTF, radSF, direction[i]-dd[it], a, b, c1, c2, phase[i], t, X, Y, bar, center, wing)
-                    dataR = grating(amp[i], radTF, radSF, direction[i]+dd[it], a, b, c1, c2, phase[i], t, X, Y, bar, center, wing)
+                    dataL = grating(amp[i], radTF, radSF, direction[i]-dd[it], a, b, c1, c2, control, s, phase[i], t, X, Y, bar, center, wing)
+                    dataR = grating(amp[i], radTF, radSF, direction[i]+dd[it], a, b, c1, c2, control, s, phase[i], t, X, Y, bar, center, wing)
                 if gtype == 'drifting':
-                    dataL = grating(amp[i], radTF, radSF, direction[i], a, b, c1, c2, phase[i], t, X, Y, bar, center, wing)
-                    dataR = grating(amp[i], radTF, radSF, direction[i], a, b, c1, c2, phase[i], t, X, Y, bar, center, wing)
+                    dataL = grating(amp[i], radTF, radSF, direction[i], a, b, c1, c2, control, s, phase[i], t, X, Y, bar, center, wing)
+                    dataR = grating(amp[i], radTF, radSF, direction[i], a, b, c1, c2, control, s, phase[i], t, X, Y, bar, center, wing)
                 data = np.concatenate((dataL,dataR), axis = 1)
 
             if inputLMS:
                 # lms->rgb->bgr
-                pixelData = np.round(apply_sRGB_gamma(np.matmul(LMS2sRGB, data.reshape(npixel*npixel,3).T))*255).T.reshape(npixel,npixel,3)[:,:,::-1].astype('uint8')
-                LMS_seq[it,:,:,:] = data.reshape((npixel*npixel,3)).T.reshape((3,npixel,npixel))
+                _LMS = data.reshape(npixel*npixel,3).T
+                assert((_LMS>=0).all())
+                assert((_LMS<=1).all())
+                _sRGB = np.matmul(LMS2sRGB, _LMS)
+                if (_sRGB<0).any() or (_sRGB>1).any():
+                    print('sRGB space is not enough to represent the color')
+                    print(f'{c1, c2}')
+                    print(f'{np.min(_sRGB, axis = 1), np.max(_sRGB, axis = 1)}')
+                    pick = _sRGB > 1
+                    _sRGB[pick] = 1
+                    pick = _sRGB < 0
+                    _sRGB[pick] = 0
+                pixelData = np.round(apply_sRGB_gamma(_sRGB)*255).T.reshape(npixel,npixel,3)[:,:,::-1].astype('uint8')
+                LMS_seq[it,:,:,:] = _LMS.reshape((3,npixel,npixel))
             else: # input is sRGB
                 pixelData = np.round(data*255).reshape(npixel,npixel,3).astype('uint8')
                 # bgr->rgb->lms
@@ -249,19 +270,22 @@ def logistic(sharpness):
         @functools.wraps(function)
         def static_nolinearity(*args, **kwargs):
             x = function(*args, **kwargs)
-            if sharpness > 0:
-                exp_half = np.exp(sharpness/2)+1
-                A = np.power(exp_half,2)/(np.exp(sharpness)-1)
-                C = exp_half/(1-np.exp(sharpness))
-                x = A/(1.0 + np.exp(-sharpness*(x-0.5))) + C
-            else:
-                x[x > 0.5] = 1
-                x[x < 0.5] = 0
+            if sharpness != 1:
+                if sharpness > 0:
+                    exp_half = np.exp(sharpness/2)+1
+                    A = np.power(exp_half,2)/(np.exp(sharpness)-1)
+                    C = exp_half/(1-np.exp(sharpness))
+                    x = A/(1.0 + np.exp(-sharpness*(x-0.5))) + C
+                else:
+                    x[x > 0.5] = 1
+                    x[x < 0.5] = 0
+            assert((x<=1).all())
+            assert((x>=0).all())
             return x
         return static_nolinearity
     return decorator_logistic
 
-def sine_wave(amp, radTF, radSF, direction, a, b, c1, c2, phase, t, X, Y, bar, center, wing):
+def sine_wave(amp, radTF, radSF, direction, a, b, c1, c2, control, sharpness, phase, t, X, Y, bar, center, wing):
     phi = (np.cos(direction)*X + np.sin(direction)*Y)*radSF - radTF*t
     if bar:
         #floor_phi = np.floor(phi/(2*np.pi)).astype(int)
@@ -269,9 +293,28 @@ def sine_wave(amp, radTF, radSF, direction, a, b, c1, c2, phase, t, X, Y, bar, c
         pick = np.abs(phi + (phase + center)) > wing
         phi[pick] = -phase
     rel_color = np.reshape(1+amp*np.sin(phi + phase), (a*b,1))/2
+    if sharpness != 1:
+        if sharpness > 0:
+            exp_half = np.exp(sharpness/2)+1
+            A = np.power(exp_half,2)/(np.exp(sharpness)-1)
+            C = exp_half/(1-np.exp(sharpness))
+            rel_color = A/(1.0 + np.exp(-sharpness*(rel_color-0.5))) + C
+        else:
+            rel_color[rel_color > 0.5] = 1
+            rel_color[rel_color < 0.5] = 0
+        
+    assert((rel_color <= 1.0).all())
+    assert((rel_color >= 0.0).all())
     color = np.matmul(np.ones((a*b,1)), c1) + np.matmul(rel_color, (c2-c1))
-    return color.reshape((b,a,3))/255
-
+    for i in range(3):
+        if control[i] > 0:
+            assert((color[:,i] <= c1[0,i]).all())
+            assert((color[:,i] >= c2[0,i]).all())
+        else:
+            assert((color[:,i] >= c1[0,i]).all())
+            assert((color[:,i] <= c2[0,i]).all())
+        
+    return color.reshape((b,a,3))
 
 def randomized(amp, a, b, c0, gtype):
     if gtype == 'uniform':
