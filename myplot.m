@@ -1,4 +1,4 @@
-% ENplot(G,bc,mu,plottype,v[,T,Pi,fg,ax]) Plot elastic net
+% myplot(G,bc,mu,plottype,v[,T,Pi,fg,ax]) Plot elastic net
 %
 % In:
 %   G: list of grid lengths.
@@ -154,7 +154,7 @@
 
 % Copyright (c) 2001 by Miguel A. Carreira-Perpinan
 
-function myplot(G,bc,mu,plottype,v,T,Pi,fg,ax)
+function myplot(G,aspectRatio,bc,mu,plottype,v,T,Pi,fg,ax,fign)
 L = length(G);                  % Net dimensionality
 if L == 1 G = [G 1]; end        % So that both L=1 and L=2 work
 [M,D] = size(mu);
@@ -180,21 +180,21 @@ if ischar(plottype)
     switch plotv.type
         case {'proj_cart','proj_polar'}
             % Centroids
-            plotv.line(1).lsty = '-';
+            plotv.line(1).lsty = 'none';
             plotv.line(1).lcol = 'r';
             plotv.line(1).lwid = 1;
-            plotv.line(1).msty = 's';
-            plotv.line(1).msiz = min(5,500/M);
-            plotv.line(1).mecol = 'r';
-            plotv.line(1).mfcol = 'r';
+            plotv.line(1).msty = 'o';
+            plotv.line(1).msiz = 2.5;
+            plotv.line(1).mecol = 'g';
+            plotv.line(1).mfcol = 'none';
             plotv.line(1).num = 1;                      % Unused
             % Cities
             plotv.line(2).lsty = 'none';
             plotv.line(2).lcol = 'b';
             plotv.line(2).lwid = 1;
             plotv.line(2).msty = 's';
-            plotv.line(2).msiz = plotv.line(1).msiz*8/5;
-            plotv.line(2).mecol = 'b';
+            plotv.line(2).msiz = 5;
+            plotv.line(2).mecol = 'm';
             plotv.line(2).mfcol = 'none';
             plotv.line(2).num = 1;                      % Unused
         case 'img'
@@ -230,8 +230,8 @@ end
 % Create a figure if there aren't any
 curfig = get(0,'CurrentFigure');
 if isempty(curfig)
-    figure(1);
-    set(figure(1),'Position',[1 50 10 10],'PaperPositionMode','auto');
+    figure(fign);
+    set(figure(fign),'Position',[1 50 10 10],'PaperPositionMode','auto');
 end
 
 % Set view for 3D plots
@@ -253,7 +253,7 @@ end
 % Note: Matlab plots the title just above the graph; it would be nicer if
 % it centred it vertically on the blank space above the graph.
 if ~exist('fg','var') | isempty(fg)
-    fgp = get(gcf,'Position'); fgp = fgp(1:2);		% Position
+    fgp = get(figure(fign),'Position'); fgp = fgp(1:2);		% Position
 else
     fgp = fg(1:2);
 end
@@ -270,7 +270,7 @@ end
 % - The 'OpenGL' renderer doesn't seem any faster than the 'painters'.
 % - For 'proj*' plots, 'painters' is much faster than 'zbuffer' (which we
 %   don't need because we don't have hidden objects).
-set(gcf,'DoubleBuffer','on','Renderer','painters');
+set(figure(fign),'DoubleBuffer','on','Renderer','painters');
 set(gca,'SortMethod','childorder'); % updated by Wei May 31 2019
 % original: set(gca,'DrawMode','fast');
 
@@ -289,14 +289,12 @@ if ~exist('ax','var') || isempty(ax)
         % Axes: tightly given by the training set and reference vectors
         tmp = cat(1,T(:,v(:,1)),mu(:,v(:,1)));
         ax = [min(tmp); max(tmp)]; ax = ax(:)';
+		axR = (ax(2)-ax(1))/(ax(4)-ax(3));
     else
         % Axes: given by the grid
         ax = [-1 1 -1 1]/2 + [1 G(1) 1 G(2)];
+    	axR = (ax(2)-ax(1))/(ax(4)-ax(3));
     end
-end
-% Axis ratio
-if ~isempty(ax)
-    axR = (ax(2)-ax(1))/(ax(4)-ax(3));
 else
     tmp = axis;
     axR = (tmp(2)-tmp(1))/(tmp(4)-tmp(3));
@@ -324,13 +322,15 @@ end
 if ~isempty(fg) && ~isempty(ax)
     % axfg fits axes as large as possible inside the figure, respecting the
     % margins and aspect ratio.
+	%fgb = fgb*2.0;
+	%fgt = fgt*2.0;
     axfg = [fgb/fg(3) fgb/fg(4) 1-2*fgb/fg(3) 1-(fgt+2*fgb)/fg(4)];
     fgR = (fg(3)-2*fgb)/(fg(4)-2*fgb-fgt);                % Usable figure ratio
-    if fgR < axR                                          % Respect aspect ratio
-        axfg = axfg + [0 1/2 0 -1] * ((1-fgR/axR)*axfg(4));
-    else
-        axfg = axfg + [1/2 0 -1 0] * ((1-axR/fgR)*axfg(3));
-    end
+    %if fgR < axR                                          % Respect aspect ratio
+    %    axfg = axfg + [0 1/2 0 -1] * ((1-fgR/axR)*axfg(4));
+    %else
+    %    axfg = axfg + [1/2 0 -1 0] * ((1-axR/fgR)*axfg(3));
+    %end
 end
 % ----------------------------------------------------------------------
 
@@ -430,6 +430,8 @@ switch plotv.type
         else
             image(rot90(fliplr(reshape(tmp1,G(1),G(2)))));
         end
+		daspect([1,aspectRatio,1]);
+		%daspect([1,1,1]);
         % ----------------------------------------------------------------------
         
         % ----------------------------------------------------------------------
@@ -456,8 +458,10 @@ switch plotv.type
             % $$$              'MarkerEdgeColor',plotv.line(i).mecol,...
             % $$$              'MarkerFaceColor',plotv.line(i).mfcol);
         end
+		%daspect([1*aspectRatio,1,1]);
+		daspect([1,aspectRatio,1]);
+		%daspect([1,1,1]);
         % ----------------------------------------------------------------------
-        
 end
 hold off;
 
@@ -467,13 +471,13 @@ if ~isempty(ax)
     if strcmp(plotv.type,'proj_cart') | strcmp(plotv.type,'proj_polar')
         switch size(v,1)
             case 2
-                set(gca,'Visible','off');
+                set(gca,'Visible','on');
             case 3
                 set(gca,'Visible','on','Box','on','DataAspectRatio',[1 1 1]);
                 view(az,el);
         end
     else
-        set(gca,'XTick',[],'YTick',[],'XDir','normal','YDir','reverse','Box','on');
+        set(gca,'XTick',[],'YTick',[],'XDir','normal','YDir','normal','Box','on');
         % Matlab doesn't seem to draw the box for images, so I have to do it:
         hold on;
         plot([ax(1) ax(2) ax(2) ax(1) ax(1)],[ax(3) ax(3) ax(4) ax(4) ax(3)],'k-');
@@ -484,18 +488,18 @@ end
 % FIGURE
 if ~isempty(fg)
     if strcmp(plotv.type,'proj_cart') && (size(v,1) == 3)
-        %set(gcf,'Position',fg,'Color','w','MenuBar','figure',...
+        %set(figure(fign),'Position',fg,'Color','w','MenuBar','figure',...
         %    'PaperPositionMode','auto');
-        set(gcf,'Position',fg,'Color','w',...
+        set(figure(fign),'Position',fg,'Color','w',...
             'PaperPositionMode','auto');
     else
-        %set(gcf,'Position',fg,'Color','w','MenuBar','none',...
+        %set(figure(fign),'Position',fg,'Color','w','MenuBar','none',...
         %   'PaperPositionMode','auto');
-        set(gcf,'Position',fg,'Color','w',...
+        set(figure(fign),'Position',fg,'Color','w',...
             'PaperPositionMode','auto');
         if ~isempty(ax)
             set(gca,'Position',axfg);
-        end;
+        end
     end
 end
 

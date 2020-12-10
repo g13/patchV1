@@ -822,7 +822,8 @@ int main(int argc, char *argv[]) {
         		    Float rand = uniform_01(rGen);
 					Float v;
         		    if (rand >= ratio) {
-        		        v = 1.0;
+        		        //v = 1.0;
+        		        v = rand;
         		    } else {
         		        v = 0.0;
         		    }

@@ -12,6 +12,7 @@
 #include <tuple>
 #include <vector>
 #include <chrono>
+#include "cuda_profiler_api.h"
 #include "boost/program_options.hpp"
 #include "LGN_props.cuh"
 #include "LGN_props.h"

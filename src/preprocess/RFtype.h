@@ -234,7 +234,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                         }
                     } */
                 }
-                Float sSum = normalize(fnLGNeff, p_n);
+                Size sSum = normalize(fnLGNeff, p_n);
                 // make connection and update ID and strength list
                 nConnected = connect(idList, strengthList, rGen, max_nCon, sSum, top_pick);
             } else {
@@ -274,14 +274,14 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         return envelope * (1.0 + amp * opponent * modulation);
     }
     // normalize prob.
-    Float normalize(Float fnLGNeff, bool p_n) {
+    Size normalize(Float fnLGNeff, bool p_n) {
 	    // average connection probability is controlled at fnLGNeff.
 		Float norm;
-		Float sSum;
+		Size sSum;
         if (p_n) { // if percentage
-			sSum = fnLGNeff*prob.size();
+			sSum = static_cast<Size>(round(fnLGNeff*prob.size()));
         } else { // number restriction
-			sSum = fnLGNeff;
+			sSum = static_cast<Size>(round(fnLGNeff));
         }
 		if (sSum > 0) {
     		norm = std::accumulate(prob.begin(), prob.end(), 0.0) / sSum;
@@ -300,7 +300,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 		return sSum;
     }
     // make connections
-    virtual Size connect(std::vector<Size> &idList, std::vector<Float> &strengthList, RandomEngine &rGen, Float max_nCon, Float sSum, bool top_pick) {
+    virtual Size connect(std::vector<Size> &idList, std::vector<Float> &strengthList, RandomEngine &rGen, Float max_nCon, Size sSum, bool top_pick) {
 		// make connections and normalized strength i.e., if prob > 1 then s = 1 else s = prob
         std::uniform_real_distribution<Float> uniform(0,1);
         std::normal_distribution<Float> normal(0,0.05);
@@ -309,8 +309,10 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 		newList.reserve(n);
 		if (sSum > 0) {
 			Size count = 0; 
+			Size n_to_connect = sSum;
+			assert(n_to_connect <= max_nCon);
 			if (!top_pick) {
-				do  {
+				do  { // variable connection
 					newList.clear();
 					strengthList.clear();
 					for (PosInt i = 0; i < n; i++) {
@@ -328,17 +330,16 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 						std::cout << "too many iters, sum over prob #" << prob.size() << " = " << std::accumulate(prob.begin(), prob.end(), 0.0) << "\n";
 						assert(count <= 20);
 					}
-				} while (newList.size() > max_nCon || newList.size() == 0);
-			} else {
-				Size n_to_connect;
-				// decide number to connect first
-				do  {
+				} while (newList.size() == 0 || newList.size() > max_nCon);
+			} else { // fixed number
+				/*
+				do  { // decide number to connect first
 					n_to_connect = 0;
 					for (PosInt i = 0; i < n; i++) {
+						prob[i] *= 1+normal(rGen);
 						if (uniform(rGen) < prob[i]) {
 							n_to_connect++;
 						}
-						prob[i] *= 1+normal(rGen);
 					}
 					count++;
 					if (count > 20) {
@@ -346,6 +347,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 						assert(count <= 20);
 					}
 				} while (n_to_connect > max_nCon || n_to_connect == 0);
+				*/
 				// pick the tops
 				do  {
 					PosInt i = std::distance(prob.begin(), std::max_element(prob.begin(), prob.end()));
@@ -356,7 +358,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 					} else {
 						strengthList.push_back(1);
 					}
-				} while (newList.size() < n_to_connect);
+				} while (newList.size() < n_to_connect || newList.size() > max_nCon);
 			}
 
         	Float con_irl = std::accumulate(strengthList.begin(), strengthList.end(), 0.0);

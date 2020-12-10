@@ -7,6 +7,7 @@ import matplotlib.gridspec as gs
 import numpy as np
 from mpl_toolkits.mplot3d import axes3d
 from matplotlib import cm
+from readPatchOutput import *
 
 import sys
 if len(sys.argv) > 1:
@@ -16,8 +17,8 @@ if len(sys.argv) > 1:
     else:
         input_suffix = ""
 else:
-    input_suffix = ""
     output_suffix = ""
+    input_suffix = ""
 
 precision = 'f4'
 print(output_suffix)
@@ -32,12 +33,19 @@ plotContrastDist = False
 plotStat = False
 nLGN_1D = 16
 nt_ = 4000
-nstep = 1000
+nstep = 4000
 seed = 1653781
 #iLGN = np.array([0,137,255])
 #iLGN = np.array([6*16+3,7*16+3,8*16+3, 6*16+10,7*16+10,8*16+10])
 #iLGN = np.arange(185133)
 ns = 10
+
+parameterFn = "patchV1_cfg" +output_suffix + ".bin"
+
+LGN_spFn = "LGN_sp" + output_suffix
+
+prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, = read_cfg(parameterFn)
+print(f'frRatioLGN = {frRatioLGN}, convolRatio = {convolRatio}')
 
 output = "LGN_gallery" + output_suffix + ".bin"
 with open(output, 'rb') as f:
@@ -79,6 +87,10 @@ with open(output, 'rb') as f:
     sharpness = np.fromfile(f, precision, nLGN)
     coneType = np.fromfile(f, 'u4', 2*nLGN).reshape(2,nLGN)
 
+
+if plotResponseSample:
+    LGN_spScatter = readLGN_sp(LGN_spFn + ".bin", prec = prec)
+
 if 'iLGN' not in locals():
     np.random.seed(seed)
     iLGN = np.random.randint(nLGN, size =ns)
@@ -97,7 +109,12 @@ with open(output_fn, 'rb') as f:
         nstep = nt_
     print(f'nstep = {nstep}')
     interstep = nt_//nstep
+    if interstep != nt/nstep:
+        raise Exception(f'nstep: {nstep} is not divisible by nt_: {nt_}')
     tt = np.arange(nstep)*interstep
+    t = tt * dt
+    print(f'interstep = {interstep}')
+    print(t[0], t[-1])
     nLGN = np.fromfile(f, 'u4', count = 1)[0]
     LGNfr  = np.zeros((nstep,ns))
     frStat = np.zeros(nLGN)
@@ -118,7 +135,6 @@ with open(output_fn, 'rb') as f:
         luminance[it,:] = data[iLGN]
         contrast[it,:,:] = np.fromfile(f, precision, count = 2*nLGN).reshape(2,nLGN)
 
-t = tt * dt
 if plotResponseSample:
     fig = plt.figure('LGN', dpi = 600)
     grid = gs.GridSpec(ns, 1, figure = fig, hspace = 0.2)
@@ -126,16 +142,19 @@ if plotResponseSample:
         j = iLGN[i]
         ax = fig.add_subplot(grid[i,:])
         ax.plot(t, convol[:,i].T/max_convol[j], 'g', lw = 0.1)
-        max_convol_irl = np.max(convol[:,i])
+        max_convol_irl = np.max(convol[:,i]*convolRatio)
         print([max_convol_irl, max_convol[j], max_convol_irl/max_convol[j]])
         ax.plot(t, contrast[:,0,j], ':r', lw = 0.1, label = 'C')
         ax.plot(t, contrast[:,1,j], ':b', lw = 0.1, label = 'S')
         ax.plot(t, luminance[:,i], ':m', lw = 0.1, label = 'lum')
+        ax.plot(LGN_spScatter[j], np.zeros(len(LGN_spScatter[j])), '*g', ms = 1.0)
+
         ax.set_ylim([-1.0,1.0])
         if i == 0:
             ax.legend()
         ax2 = ax.twinx()
         ax2.plot(t, LGNfr[:,i], 'k', lw = 0.1)
+        ax2.legend()
         ax2.set_ylim(bottom = 0)
         if LGN_k[0,j] > 0:
             on_off = 'on'
@@ -143,7 +162,7 @@ if plotResponseSample:
             on_off = 'off'
         ix = np.mod(j, nLGN_1D)
         iy = np.int(np.floor(j/nLGN_1D))
-        ax2.set_title(f'LGN #{j} {(ix,iy)}, ' + on_off + f' fr: {np.mean(LGNfr[:,i]):.3f}/{np.max(LGNfr[:,i]):.3f}Hz')
+        ax2.set_title(f'LGN #{j} {(ix,iy)}, {LGN_type[j]} ' + on_off + f' fr: {np.mean(LGNfr[:,i]):.3f}/{np.max(LGNfr[:,i]):.3f}Hz')
     fig.savefig('lgn-response' + output_suffix + '.png')
 
 if plotContrastDist:

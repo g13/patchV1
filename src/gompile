@@ -14,6 +14,7 @@ nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std
 
 rm -f connect.o
 nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c connect.cu
+#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v -lineinfo -std=c++11 -g -O0 -c connect.cu
 
 #rm -f genCon.o
 #nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -O2 -c genCon.cu

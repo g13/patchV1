@@ -1,17 +1,25 @@
-from patch_geo_func import x_ep, y_ep, model_block_ep
+from patch_geo_func import x_ep, y_ep, model_block_ep, e_x
 from repel_system import simulate_repel
 from parallel_repel_system import simulate_repel_parallel
+from p_repel_system import parallel_repel
+from multiprocessing.sharedctypes import RawArray
+import multiprocessing as mp
+from ctypes import c_double, c_int32
+
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm 
+
 from sys import stdout
 from scipy import integrate
 import numpy as np
 import time
 import py_compile
 py_compile.compile('assign_attr.py')
+import functools
+print = functools.partial(print, flush=True)
 
 class macroMap:
-    def __init__(self, LR_Pi_file, pos_file, posUniform = False, OPgrid_file = None, OD_file = None, OP_file = None, VFxy_file = None):
+    def __init__(self, LR_Pi_file, pos_file, shrink = False, posUniform = False, OPgrid_file = None, OD_file = None, OP_file = None, VFxy_file = None):
         with open(pos_file,'r') as f:
             self.nblock = np.fromfile(f,'u4', count=1)[0]
             self.blockSize = np.fromfile(f,'u4', count=1)[0]
@@ -29,24 +37,43 @@ class macroMap:
             self.b = np.fromfile(f, 'f8', count=1)[0]
             self.k = np.fromfile(f, 'f8', count=1)[0]
             self.ecc = np.fromfile(f, 'f8', count=1)[0]
-            self.nx = np.fromfile(f, 'i4', count=1)[0]
-            self.ny = np.fromfile(f, 'i4', count=1)[0]
-            # processing
-            W = x_ep(self.ecc,0, self.k, self.a, self.b)
-            self.x = np.linspace(-W/(2*self.nx-4), W+W/(2*self.nx-4), self.nx)
-            W = W+W/(self.nx-2)
-            d = W/(self.nx-1)
-            H = d*self.ny
-            self.y = np.linspace(-H/2, H/2, self.ny)
-            self.xx, self.yy = np.meshgrid(self.x,self.y)
-            # continue reading
-            self.Pi = np.reshape(np.fromfile(f, 'i4', count = self.nx*self.ny),(self.ny,self.nx))
-            LR = np.reshape(np.fromfile(f, 'f8', count = self.nx*self.ny),(self.ny,self.nx))
-        # double to int
-        self.LR = np.empty((self.ny,self.nx), dtype = 'i4') 
-        self.LR[LR > 0] = 1
-        self.LR[LR < 0] = -1
-        self.LR[self.Pi <=0] = 0
+            nx = np.fromfile(f, 'i4', count=1)[0]
+            ny = np.fromfile(f, 'i4', count=1)[0]
+            self.Pi = np.reshape(np.fromfile(f, 'i4', count = nx*ny),(ny,nx))
+            self.x = np.fromfile(f, 'f8', count = nx)
+            x_max = max(self.pos[0,:])
+            x_min = min(self.pos[0,:])
+            if x_min < self.x[0] or x_max > self.x[-1]:
+                raise Exception(f'neuronal x-position {[x_min, x_max]} break outside of grid {[self.x[0], self.x[-1]]}')
+            self.y = np.fromfile(f, 'f8', count = self.ny)
+            y_max = max(self.pos[1,:])
+            y_min = min(self.pos[1,:])
+            if y_min < self.y[0] or y_max > self.y[-1]:
+                raise Exception(f'neuronal y-position {[y_min, y_max]} break outside of grid {[self.y[0], self.y[-1]]}')
+            LR = np.reshape(np.fromfile(f, 'f8', count = nx*ny),(ny,nx))
+
+            if shrink:
+                self.nx = np.nonzero(self.x > x_max)[0][0] + 1
+                self.x = self.x[:self.nx]
+                self.ecc = e_x(self.x[-1], k, a, b)
+                y0 = np.nonzero(self.y < y_min)[0][-1]
+                y1 = np.nonzero(self.y > y_max)[0][0]+1
+                self.y = self.y[y0:y1]
+                self.ny = self.y.size
+                self.Pi = self.Pi[y0:y1,:self.nx]
+            else:
+                self.nx = nx
+                self.ny = ny
+
+            self.xx, self.yy = np.meshgrid(self.x, self.y)
+            # double to int
+            self.LR = np.empty((self.ny,self.nx), dtype = 'i4') 
+            self.LR[LR > 0] = 1
+            self.LR[LR < 0] = -1
+            if shrink:
+                self.LR = self.LR[y0:y1,:self.nx]
+
+            self.LR[self.Pi <=0] = 0
         ratio = self.Pi.size/(np.sum(self.Pi>0))
         self.necc = np.round(self.nx * ratio).astype(int)
         self.npolar = np.round(self.ny * ratio).astype(int)
@@ -68,12 +95,20 @@ class macroMap:
         # read preset orientation preferences
         if OPgrid_file is not None:
             with open(OPgrid_file,'r') as f:
-                self.OPgrid = np.reshape(np.fromfile(f, 'f8', count = self.nx*self.ny),(self.ny,self.nx))
-                assert(np.max(self.OPgrid[self.Pi>0]) <= np.pi/2 and np.min(self.OPgrid[self.Pi>0]) >= -np.pi/2)
+                self.OPgrid_x = np.reshape(np.fromfile(f, 'f8', count = nx*ny),(ny,nx))
+                self.OPgrid_y = np.reshape(np.fromfile(f, 'f8', count = nx*ny),(ny,nx))
+                if shrink:
+                    self.OPgrid_x = self.OPgrid_x[y0:y1,:self.nx]
+                    self.OPgrid_y = self.OPgrid_y[y0:y1,:self.nx]
+                self.OPgrid = np.arctan2(self.OPgrid_y, self.OPgrid_x)
 
         if OP_file is not None:
             with open(OP_file,'r') as f:
-                self.op = np.reshape(np.fromfile(f, 'f8', count = self.nx*self.ny),(self.ny,self.nx))
+                self.op = np.fromfile(f, 'f8')
+                if self.op.size != self.nx*self.ny:
+                    raise Exception(f'wrong op file: {OP_file}, size of grid no match')
+                else:
+                    self.op = np.reshape(self.op,(self.ny,self.nx))
 
         if VFxy_file is not None:
             with open(VFxy_file,'r') as f:
@@ -81,8 +116,12 @@ class macroMap:
                 self.vpos = np.reshape(np.fromfile(f, 'f8', count = self.networkSize*2),self.pos.shape)
 
         if OD_file is not None:
-            with open(OD_file,'r') as f:
+            with open(OD_file,'rb') as f:
                 self.ODlabel = np.fromfile(f, 'i4', count = self.networkSize)
+                print('loading OD_labels...')
+                assert(np.sum(self.ODlabel > 0) + np.sum(self.ODlabel < 0) == self.networkSize)
+                print('checked')
+
         
         self.pODready = OD_file is not None
         self.pOPready = OP_file is not None 
@@ -95,8 +134,8 @@ class macroMap:
         self.OD_VF_reconciled = False 
 
     # interpolate orientation preference for each neuron in from the OP grid
-    def assign_pos_OP(self):
-        if not self.posUniform:
+    def assign_pos_OP(self, force):
+        if not self.posUniform and not force:
             print('positions are not yet adjusted')
             return None
         i, j, coord = self.get_ij_grid(get_d2 = False, get_coord = True)
@@ -107,17 +146,15 @@ class macroMap:
             pick = a < -np.pi/2
             a[pick] = a[pick] + np.pi
             return a
-        def thetaDiff(a, b):
-            return thetaRebound(b-a)
         def thetaInterpolate(a, b, r):
             #assert((r>=0).all() and (r<=1).all())
             mean = thetaRebound(a + r*thetaRebound(b-a))
             return mean 
 
-        fOPgrid = (self.OPgrid + np.pi/2)/np.pi
-        opgrid = np.stack((fOPgrid[i,j], fOPgrid[i+1,j], fOPgrid[i,j+1], fOPgrid[i+1,j+1]), axis = -1)
-        assert(opgrid.shape[0] == self.networkSize)
-        assert(opgrid.shape[1] == 4)
+                                #bot-left     #top-left     #bot-right        #top-right
+        opgrid_x = np.stack((self.OPgrid_x[i,j], self.OPgrid_x[i+1,j], self.OPgrid_x[i,j+1], self.OPgrid_x[i+1,j+1]), axis = -1)
+        opgrid_y = np.stack((self.OPgrid_y[i,j], self.OPgrid_y[i+1,j], self.OPgrid_y[i,j+1], self.OPgrid_y[i+1,j+1]), axis = -1)
+        assert((np.isnan(opgrid_x) == np.isnan(opgrid_y)).all())
         #  i,j
         # grid:
         #  1,0; 1,1 | 1; 3
@@ -126,152 +163,256 @@ class macroMap:
         b = np.empty((self.networkSize))
         self.op = np.empty((self.networkSize))
         # if fully defined:
-        pick = np.logical_not(np.isnan(opgrid).any(-1))
+        pick = np.logical_not(np.isnan(opgrid_x).any(-1))
         if np.sum(pick) > 0:
             # interpolation direction left -> right, bottom -> top
-            a[pick] = thetaInterpolate(opgrid[pick,0], opgrid[pick,2], coord[0,pick])
-            b[pick] = thetaInterpolate(opgrid[pick,1], opgrid[pick,3], coord[0,pick])
-            self.op[pick] = thetaInterpolate(a[pick], b[pick], coord[1,pick])
+            a = opgrid_x[pick,0] + coord[0,pick] * (opgrid_x[pick,2] - opgrid_x[pick,0])
+            b = opgrid_x[pick,1] + coord[0,pick] * (opgrid_x[pick,3] - opgrid_x[pick,1])
+            op_x = a + coord[1,pick] * (b - a)
+
+            a = opgrid_y[pick,0] + coord[0,pick] * (opgrid_y[pick,2] - opgrid_y[pick,0])
+            b = opgrid_y[pick,1] + coord[0,pick] * (opgrid_y[pick,3] - opgrid_y[pick,1])
+            op_y = a + coord[1,pick] * (b - a)
+            self.op[pick] = np.arctan2(op_y, op_x)
 
         # if bottom-left undefined:
-        pick = np.logical_and(np.isnan(opgrid[:,0]), np.logical_not(np.isnan(opgrid[:,1:]).any(-1)))
+        pick = np.logical_and(np.isnan(opgrid_x[:,0]), np.logical_not(np.isnan(opgrid_x[:,1:]).any(-1)))
         if np.sum(pick) > 0:
-            # origin at top-right # 3
-            fraction = (1-coord[0,pick]) + (1-coord[1,pick])
+            # origin at top-right # 3 fan from top to right
+            fraction = np.arctan2(1-coord[1,pick], 1-coord[0,pick])/(np.pi/2)
             #assert(np.sum(fraction > 1) == 0)
-            a[pick] = thetaInterpolate(opgrid[pick,3], opgrid[pick,1], fraction)
-            b[pick] = thetaInterpolate(opgrid[pick,3], opgrid[pick,2], fraction)
-            self.op[pick] = thetaInterpolate(a[pick], b[pick], (1 - coord[1,pick])/fraction)
+            a = opgrid_x[pick,3] + (opgrid_x[pick,1] - opgrid_x[pick,3])*coord[0,pick]
+            b = opgrid_x[pick,3] + (opgrid_x[pick,2] - opgrid_x[pick,3])*coord[1,pick]
+            op_x = a + fraction * (b - a)
+
+            a = opgrid_y[pick,3] + (opgrid_y[pick,1] - opgrid_y[pick,3])*coord[0,pick]
+            b = opgrid_y[pick,3] + (opgrid_y[pick,2] - opgrid_y[pick,3])*coord[1,pick]
+            op_y = a + fraction * (b - a)
+            self.op[pick] = np.arctan2(op_y, op_x)
 
         # if top-left undefined:
-        pick = np.logical_and(np.isnan(opgrid[:,1]), np.logical_not(np.isnan(opgrid[:,[0,2,3]]).any(-1)))
+        pick = np.logical_and(np.isnan(opgrid_x[:,1]), np.logical_not(np.isnan(opgrid_x[:,[0,2,3]]).any(-1)))
         if np.sum(pick) > 0:
-            # origin at bottom-right # 2
-            fraction = (1-coord[0,pick]) + coord[1,pick]
+            # origin at bottom-right # 2 fan from bot to right
+            fraction = np.arctan2(coord[1,pick], 1-coord[0,pick])/(np.pi/2)
             #assert(np.sum(fraction > 1) == 0)
-            a[pick] = thetaInterpolate(opgrid[pick,2], opgrid[pick,0], fraction)
-            b[pick] = thetaInterpolate(opgrid[pick,2], opgrid[pick,3], fraction)
-            self.op[pick] = thetaInterpolate(a[pick], b[pick], coord[1,pick]/fraction)
+            a = opgrid_x[pick,2] + (opgrid_x[pick,0] - opgrid_x[pick,2])*coord[0,pick]
+            b = opgrid_x[pick,2] + (opgrid_x[pick,3] - opgrid_x[pick,2])*coord[1,pick]
+            op_x = a + fraction * (b - a)
 
+            a = opgrid_y[pick,2] + (opgrid_y[pick,0] - opgrid_y[pick,2])*coord[0,pick]
+            b = opgrid_y[pick,2] + (opgrid_y[pick,3] - opgrid_y[pick,2])*coord[1,pick]
+            op_y = a + fraction * (b - a)
+            self.op[pick] = np.arctan2(op_y, op_x)
+            
         # if bottom-right undefined:
-        pick = np.logical_and(np.isnan(opgrid[:,2]), np.logical_not(np.isnan(opgrid[:,[0,1,3]]).any(-1)))
+        pick = np.logical_and(np.isnan(opgrid_x[:,2]), np.logical_not(np.isnan(opgrid_x[:,[0,1,3]]).any(-1)))
         if np.sum(pick) > 0:
-            # origin at top-left # 1
-            fraction = coord[0,pick] + (1-coord[1,pick])
+            # origin at top-left # 1 fan from top to left
+            fraction = np.arctan2(1-coord[1,pick], coord[0,pick])/(np.pi/2)
             #assert(np.sum(fraction > 1) == 0)
-            a[pick] = thetaInterpolate(opgrid[pick,1], opgrid[pick,3], fraction)
-            b[pick] = thetaInterpolate(opgrid[pick,1], opgrid[pick,0], fraction)
-            self.op[pick] = thetaInterpolate(a[pick], b[pick], (1 - coord[1,pick])/fraction)
+            a = opgrid_x[pick,1] + (opgrid_x[pick,3] - opgrid_x[pick,1])*coord[0,pick]
+            b = opgrid_x[pick,1] + (opgrid_x[pick,0] - opgrid_x[pick,1])*coord[1,pick]
+            op_x = a + fraction * (b - a)
+
+            a = opgrid_y[pick,1] + (opgrid_y[pick,3] - opgrid_y[pick,1])*coord[0,pick]
+            b = opgrid_y[pick,1] + (opgrid_y[pick,0] - opgrid_y[pick,1])*coord[1,pick]
+            op_y = a + fraction * (b - a)
+            self.op[pick] = np.arctan2(op_y, op_x)
 
         # if top-right undefined:
-        pick = np.logical_and(np.isnan(opgrid[:,3]), np.logical_not(np.isnan(opgrid[:,:-1]).any(-1)))
+        pick = np.logical_and(np.isnan(opgrid_x[:,3]), np.logical_not(np.isnan(opgrid_x[:,:-1]).any(-1)))
         if np.sum(pick) > 0:
-            # origin at top-left # 0
-            fraction = coord[0,pick] + coord[1,pick]
+            # origin at top-left # 0 fan from bot to left
+            fraction = np.arctan2(coord[1,pick], coord[0,pick])/(np.pi/2)
             #assert(np.sum(fraction > 1) == 0)
-            a[pick] = thetaInterpolate(opgrid[pick,0], opgrid[pick,2], fraction)
-            b[pick] = thetaInterpolate(opgrid[pick,0], opgrid[pick,1], fraction)
-            self.op[pick] = thetaInterpolate(a[pick], b[pick], coord[1,pick]/fraction)
+            a = opgrid_x[pick,0] + (opgrid_x[pick,2] - opgrid_x[pick,0])*coord[0,pick]
+            b = opgrid_x[pick,0] + (opgrid_x[pick,1] - opgrid_x[pick,0])*coord[1,pick]
+            op_x = a + fraction * (b - a)
+
+            a = opgrid_y[pick,0] + (opgrid_y[pick,2] - opgrid_y[pick,0])*coord[0,pick]
+            b = opgrid_y[pick,0] + (opgrid_y[pick,1] - opgrid_y[pick,0])*coord[1,pick]
+            op_y = a + fraction * (b - a)
+            self.op[pick] = np.arctan2(op_y, op_x)
 
         # if top vertices undefined:
-        pick = np.logical_and(np.isnan(opgrid[:,[1,3]]).all(-1), np.logical_not(np.isnan(opgrid[:,[0,2]]).any(-1)))
+        pick = np.logical_and(np.isnan(opgrid_x[:,[1,3]]).all(-1), np.logical_not(np.isnan(opgrid_x[:,[0,2]]).any(-1)))
         if np.sum(pick) > 0:
-            self.op[pick] = thetaInterpolate(opgrid[pick,0], opgrid[pick,2], coord[0,pick])
+            op_x = opgrid_x[pick,0] + (opgrid_x[pick,2] - opgrid_x[pick,0])*coord[0,pick]
+            op_y = opgrid_y[pick,0] + (opgrid_y[pick,2] - opgrid_y[pick,0])*coord[0,pick]
+            self.op[pick] = np.arctan2(op_y, op_x)
 
         # if bottom vertices undefined:
-        pick = np.logical_and(np.isnan(opgrid[:,[0,2]]).all(-1), np.logical_not(np.isnan(opgrid[:,[1,3]]).any(-1)))
+        pick = np.logical_and(np.isnan(opgrid_x[:,[0,2]]).all(-1), np.logical_not(np.isnan(opgrid_x[:,[1,3]]).any(-1)))
         if np.sum(pick) > 0:
-            self.op[pick] = thetaInterpolate(opgrid[pick,1], opgrid[pick,3], coord[0,pick])
+            op_x = opgrid_x[pick,1] + (opgrid_x[pick,3] - opgrid_x[pick,1])*coord[0,pick]
+            op_y = opgrid_y[pick,1] + (opgrid_y[pick,3] - opgrid_y[pick,1])*coord[0,pick]
+            self.op[pick] = np.arctan2(op_y, op_x)
 
         # if left vertices undefined:
-        pick = np.logical_and(np.isnan(opgrid[:,[0,1]]).all(-1), np.logical_not(np.isnan(opgrid[:,[2,3]]).any(-1)))
+        pick = np.logical_and(np.isnan(opgrid_x[:,[0,1]]).all(-1), np.logical_not(np.isnan(opgrid_x[:,[2,3]]).any(-1)))
         if np.sum(pick) > 0:
-            self.op[pick] = thetaInterpolate(opgrid[pick,2], opgrid[pick,3], coord[1,pick])
+            op_x = opgrid_x[pick,2] + (opgrid_x[pick,3] - opgrid_x[pick,2])*coord[1,pick]
+            op_y = opgrid_y[pick,2] + (opgrid_y[pick,3] - opgrid_y[pick,2])*coord[1,pick]
+            self.op[pick] = np.arctan2(op_y, op_x)
 
         # if right vertices undefined:
-        pick = np.logical_and(np.isnan(opgrid[:,[3,2]]).all(-1), np.logical_not(np.isnan(opgrid[:,[0,1]]).any(-1)))
+        pick = np.logical_and(np.isnan(opgrid_x[:,[3,2]]).all(-1), np.logical_not(np.isnan(opgrid_x[:,[0,1]]).any(-1)))
         if np.sum(pick) > 0:
-            self.op[pick] = thetaInterpolate(opgrid[pick,0], opgrid[pick,1], coord[1,pick])
+            op_x = opgrid_x[pick,0] + (opgrid_x[pick,1] - opgrid_x[pick,0])*coord[1,pick]
+            op_y = opgrid_y[pick,0] + (opgrid_y[pick,1] - opgrid_y[pick,0])*coord[1,pick]
+            self.op[pick] = np.arctan2(op_y, op_x)
 
         # if only bottom-left is defined:
-        pick = np.logical_and(np.isnan(opgrid[:,1:]).all(-1), np.logical_not(np.isnan(opgrid[:,0])))
-        if np.sum(pick) > 0: # then it's the top-right of the neighbor grid
-            tfraction = np.arctan2(coord[1,pick], coord[0,pick])*2/np.pi
-            rfraction = np.sqrt(np.power(coord[1,pick],2) + np.power(coord[0,pick],2))/0.5
-            htop = thetaInterpolate(fOPgrid[i[pick]-1,j[pick]], opgrid[pick,0], 0.5)
-            vtop = thetaInterpolate(fOPgrid[i[pick],j[pick]-1], opgrid[pick,0], 0.5) # vertical wall for the vertice extended from the horizontal line
-            self.op[pick] = thetaInterpolate(opgrid[pick,0], thetaInterpolate(htop, vtop, tfraction), rfraction)
+        pick = np.logical_and(np.isnan(opgrid_x[:,1:]).all(-1), np.logical_not(np.isnan(opgrid_x[:,0])))
+        if np.sum(pick) > 0:
+            self.op[pick] = self.OPgrid[i[pick], j[pick]]
 
         # if only bottom-right is defined:
-        pick = np.logical_and(np.isnan(opgrid[:,[0,1,3]]).all(-1), np.logical_not(np.isnan(opgrid[:,2])))
-        if np.sum(pick) > 0: # then it's the top-left of the neighbor grid
-            tfraction = np.arctan2(coord[1,pick], 1-coord[0,pick])*2/np.pi
-            rfraction = np.sqrt(np.power(coord[1,pick],2) + np.power(1-coord[0,pick],2))/0.5
-            htop = thetaInterpolate(fOPgrid[i[pick]-1,j[pick]+1], opgrid[pick,2], 0.5)
-            vtop = thetaInterpolate(fOPgrid[i[pick],j[pick]+2], opgrid[pick,2], 0.5)
-            self.op[pick] = thetaInterpolate(opgrid[pick,2], thetaInterpolate(htop, vtop, tfraction), rfraction)
+        pick = np.logical_and(np.isnan(opgrid_x[:,[0,1,3]]).all(-1), np.logical_not(np.isnan(opgrid_x[:,2])))
+        if np.sum(pick) > 0: # 
+            self.op[pick] = self.OPgrid[i[pick], j[pick]+1]
 
         # if only top-left is defined:
-        pick = np.logical_and(np.isnan(opgrid[:,[0,2,3]]).all(-1), np.logical_not(np.isnan(opgrid[:,1])))
-        if np.sum(pick) > 0: # then it's the bottom-right of the neighbor grid
-            tfraction = np.arctan2(1-coord[1,pick], coord[0,pick])*2/np.pi
-            rfraction = np.sqrt(np.power(1-coord[1,pick],2) + np.power(coord[0,pick],2))/0.5
-            htop = thetaInterpolate(fOPgrid[i[pick]+2,j[pick]], opgrid[pick,1], 0.5)
-            vtop = thetaInterpolate(fOPgrid[i[pick]+1,j[pick]-1], opgrid[pick,1], 0.5)
-            self.op[pick] = thetaInterpolate(opgrid[pick,1], thetaInterpolate(htop, vtop, tfraction), rfraction)
+        pick = np.logical_and(np.isnan(opgrid_x[:,[0,2,3]]).all(-1), np.logical_not(np.isnan(opgrid_x[:,1])))
+        if np.sum(pick) > 0: #
+            self.op[pick] = self.OPgrid[i[pick]+1, j[pick]]
 
         # if only top-right is defined:
-        pick = np.logical_and(np.isnan(opgrid[:,[0,1,2]]).all(-1), np.logical_not(np.isnan(opgrid[:,3])))
-        if np.sum(pick) > 0: # then it's the bottom-left of the neighbor grid
-            tfraction = np.arctan2(1-coord[1,pick], 1-coord[0,pick])*2/np.pi
-            rfraction = np.sqrt(np.power(1-coord[1,pick],2) + np.power(1-coord[0,pick],2))/0.5
-            htop = thetaInterpolate(fOPgrid[i[pick]+2,j[pick]+1], opgrid[pick,3], 0.5)
-            vtop = thetaInterpolate(fOPgrid[i[pick]+1,j[pick]+2], opgrid[pick,3], 0.5)
-            self.op[pick] = thetaInterpolate(opgrid[pick,3], thetaInterpolate(htop, vtop, tfraction), rfraction)
+        pick = np.logical_and(np.isnan(opgrid_x[:,[0,1,2]]).all(-1), np.logical_not(np.isnan(opgrid_x[:,3])))
+        if np.sum(pick) > 0: #
+            self.op[pick] = self.OPgrid[i[pick]+1, j[pick]+1]
 
         assert(self.op.size == self.networkSize)
         assert(np.sum(np.isnan(self.op)) == 0)
         self.pOPready = True
 
+        self.op = (self.op + np.pi)/2/np.pi
+        print('op ready')
         return self.op
 
     # memory requirement high, faster 
     def assign_pos_OD1(self, check = True):
+        print('faster, high mem required')
+        """ check duplicates beforehand
         duplicate = 0
-        for i in np.arange(self.networkSize):
+        pos = self.pos.reshape(2,self.nblock,self.blockSize)
+        for i in range(self.nblock):
             #assert(np.sum((self.pos[:,i] - self.pos[:,i+1:].T == 0).all(-1))==0)
-            test = (self.pos[:,i] - self.pos[:,i+1:].T == 0).all(-1)
-            nd = np.sum(test.any())
-            if nd > 0:
-                duplicate = duplicate + 1
-                did = np.nonzero(test)[0] + i+1
-                print(f'#{i} is duplicated by #{did} at {self.pos[:,i]}')
+            test_x = np.tile(pos[0,i,:], (self.blockSize,1)) - pos[0,i,:].T
+            nd = 0
+            if np.sum(test_x == 0) > self.blockSize:
+                test_y = np.tile(pos[1,i,:], (self.blockSize,1)) - pos[1,i,:].T
+                nd = (np.sum(np.logical_and(test_x, test_y)) - self.blockSize)/2
+                duplicate = duplicate + nd
+                if nd > 0:
+                    print(f'{nd} neurons are duplicated by in block {i}')
+            stdout.write(f'\r{(i+1)/self.nblock*100:.3f}%')
+        stdout.write('\n')
         if duplicate > 0:
             print(f'before pos adjustment: {duplicate} points have duplicate(s)')
             assert(duplicate == 0)
+        """
 
+        print('get_ij_grid')
         i, j, d2 = self.get_ij_grid(get_d2 = True, get_coord = False)
-        print(np.sum(np.abs(self.LR[i,j]) + np.abs(self.LR[i+1,j]) + np.abs(self.LR[i,j+1]) + np.abs(self.LR[i+1,j+1]) == 0))
 
         # pick neurons that is outside the discrete ragged boundary
-        d2[self.Pi[i,j]<=0,    0] = np.float('inf')
-        d2[self.Pi[i+1,j]<=0,  1] = np.float('inf')
-        d2[self.Pi[i,j+1]<=0,  2] = np.float('inf')
-        d2[self.Pi[i+1,j+1]<=0,3] = np.float('inf')
-        nbp = np.sum((d2 == np.tile(np.array([np.float('inf'), np.float('inf'), np.float('inf'), np.float('inf')]), (self.networkSize,1))).any(-1))
+        d2[self.Pi[i,j]<=0,    0] = np.float('inf') #bot_left
+        d2[self.Pi[i+1,j]<=0,  1] = np.float('inf') #top_left
+        d2[self.Pi[i,j+1]<=0,  2] = np.float('inf') #bot_right
+        d2[self.Pi[i+1,j+1]<=0,3] = np.float('inf') #top_right
+        ibp = (d2 == np.tile(np.array([np.float('inf'), np.float('inf'), np.float('inf'), np.float('inf')]), (self.networkSize,1))).any(-1)
+        nbp = np.sum(ibp)
         print(f'#boundary points: {nbp} ')
-        assert(np.sum((d2 == np.tile(np.array([np.float('inf'), np.float('inf'), np.float('inf'), np.float('inf')]), (self.networkSize,1))).all(-1)) == 0)
+
+        outcast = (d2 == np.tile(np.array([np.float('inf'), np.float('inf'), np.float('inf'), np.float('inf')]), (self.networkSize,1))).all(-1)
+        if np.sum(outcast) > 0:
+            assert(False)
+            
+        per_unit_area = 2*np.sqrt(3) # in cl^2
+        cl = np.sqrt((self.area/self.networkSize)/per_unit_area)
+        if cl > self.subgrid[0]/2 or cl > self.subgrid[1]/2:
+            cl = 0.5 * np.min(self.subgrid/2)
+            print('restricting reflection length to a quarter of subgrid size')
+        print((cl, self.subgrid))
+
         ipick = np.argmin(d2,1)
         
         # retain neurons inside the discrete ragged boundary
-        outsideRaggedBound = ((self.Pi[i,j] <= 0) + (self.Pi[i+1,j] <= 0) + (self.Pi[i,j+1] <= 0) + (self.Pi[i+1,j+1] <= 0)).astype(bool)
+        outsideRaggedBound = np.stack((self.Pi[i,j] <= 0, self.Pi[i+1,j] <= 0, self.Pi[i,j+1] <= 0, self.Pi[i+1,j+1] <= 0), axis = -1).any(1)
+        print(outsideRaggedBound.shape)
         print(f'adjust {np.sum(outsideRaggedBound)} positions near the boundary')
-        x = np.mod(ipick[outsideRaggedBound],2)
-        y = ipick[outsideRaggedBound]//2
-        bx = self.xx[i[outsideRaggedBound] + x , j[outsideRaggedBound] + y]
-        by = self.yy[i[outsideRaggedBound] + x , j[outsideRaggedBound] + y]
-        self.pos[0,outsideRaggedBound] = bx + (self.pos[0,outsideRaggedBound]-bx)/3
-        self.pos[1,outsideRaggedBound] = by + (self.pos[1,outsideRaggedBound]-by)/3
+        x = ipick[outsideRaggedBound]//2
+        y = np.mod(ipick[outsideRaggedBound],2)
+        bx = self.xx[i[outsideRaggedBound] + y , j[outsideRaggedBound] + x]
+        by = self.yy[i[outsideRaggedBound] + y , j[outsideRaggedBound] + x]
+
+        indices = np.arange(self.networkSize)
+
+        # bot_left
+        bot_left = np.logical_and(x == 0, y == 0)
+        if bot_left.any():
+            oRB_copy = outsideRaggedBound.copy()
+            oRB_copy[indices[outsideRaggedBound][np.logical_not(bot_left)]] = False
+
+            cx = bx[bot_left] + self.subgrid[0]/2
+            cy = by[bot_left] + self.subgrid[1]/2
+
+            pick = cx - self.pos[0,oRB_copy] < cl
+            ii_pick = indices[oRB_copy][pick]
+            self.pos[0, ii_pick] = cx[pick] - cl - np.abs(self.pos[0, ii_pick] - cx[pick])/(self.subgrid[0]/2) * (self.subgrid[0]/2 - cl)
+            pick = cy - self.pos[1,oRB_copy] < cl
+            ii_pick = indices[oRB_copy][pick]
+            self.pos[1, ii_pick] = cy[pick] - cl - np.abs(self.pos[1, ii_pick] - cy[pick])/(self.subgrid[1]/2) * (self.subgrid[1]/2 - cl)
+
+        # bot_right
+        bot_right = np.logical_and(x == 1, y == 0)
+        if bot_right.any():
+            oRB_copy = outsideRaggedBound.copy()
+            oRB_copy[indices[outsideRaggedBound][np.logical_not(bot_right)]] = False
+
+            cx = bx[bot_right] - self.subgrid[0]/2
+            cy = by[bot_right] + self.subgrid[1]/2
+
+            pick = self.pos[0,oRB_copy] - cx < cl
+            ii_pick = indices[oRB_copy][pick]
+            self.pos[0, ii_pick] = cx[pick] + cl + np.abs(self.pos[0, ii_pick] - cx[pick])/(self.subgrid[0]/2) * (self.subgrid[0]/2 - cl)
+            pick = cy - self.pos[1,oRB_copy] < cl                                                                                        
+            ii_pick = indices[oRB_copy][pick]                                                                                            
+            self.pos[1, ii_pick] = cy[pick] - cl - np.abs(self.pos[1, ii_pick] - cy[pick])/(self.subgrid[1]/2) * (self.subgrid[1]/2 - cl)
+
+        # top_left
+        top_left = np.logical_and(x == 0, y == 1)
+        if top_left.any():
+            oRB_copy = outsideRaggedBound.copy()
+            oRB_copy[indices[outsideRaggedBound][np.logical_not(top_left)]] = False
+
+            cx = bx[top_left] + self.subgrid[0]/2
+            cy = by[top_left] - self.subgrid[1]/2
+
+            pick = cx - self.pos[0,oRB_copy] < cl
+            ii_pick = indices[oRB_copy][pick]
+            self.pos[0, ii_pick] = cx[pick] - cl - np.abs(self.pos[0, ii_pick] - cx[pick])/(self.subgrid[0]/2) * (self.subgrid[0]/2 - cl)
+            pick = self.pos[1,oRB_copy] - cy < cl                                                                                        
+            ii_pick = indices[oRB_copy][pick]                                                                                            
+            self.pos[1, ii_pick] = cy[pick] + cl + np.abs(self.pos[1, ii_pick] - cy[pick])/(self.subgrid[1]/2) * (self.subgrid[1]/2 - cl)
+
+        # top_right
+        top_right = np.logical_and(x == 1, y == 1)
+        if top_right.any():
+            oRB_copy = outsideRaggedBound.copy()
+            oRB_copy[indices[outsideRaggedBound][np.logical_not(top_right)]] = False
+
+            cx = bx[top_right] - self.subgrid[0]/2
+            cy = by[top_right] - self.subgrid[1]/2
+
+            pick = self.pos[0,oRB_copy] - cx < cl
+            ii_pick = indices[oRB_copy][pick]
+            self.pos[0, ii_pick] = cx[pick] + cl + np.abs(self.pos[0, ii_pick] - cx[pick])/(self.subgrid[0]/2) * (self.subgrid[0]/2 - cl)
+            pick = self.pos[1,oRB_copy] - cy < cl                                                                                        
+            ii_pick = indices[oRB_copy][pick]                                                                                            
+            self.pos[1, ii_pick] = cy[pick] + cl + np.abs(self.pos[1, ii_pick] - cy[pick])/(self.subgrid[1]/2) * (self.subgrid[1]/2 - cl)
 
         print('assign ocular dominance preference to neuron according to their position in the cortex')
         self.ODlabel = np.zeros((self.networkSize), dtype = int)
@@ -279,48 +420,119 @@ class macroMap:
         self.ODlabel[ipick == 1] = self.LR[i+1,  j][ipick == 1]
         self.ODlabel[ipick == 2] = self.LR[i,  j+1][ipick == 2]
         self.ODlabel[ipick == 3] = self.LR[i+1,j+1][ipick == 3]
-
         assert(np.sum(self.ODlabel > 0) + np.sum(self.ODlabel < 0) == self.networkSize)
 
         print('retract neurons from the OD-boundary to avoid extreme repelling force later')
         # move neuron away from LR boundary to avoid extreme repelling force.
-        # collect neurons in heterogeneous LR grid 
+        # collect neurons in heterogeneous LR grids
         LRgridType = np.stack((self.LR[i, j], self.LR[i+1, j], self.LR[i, j+1], self.LR[i+1, j+1]), axis=-1)
+        #bpick = np.logical_or(np.sum(LRgridType, axis=-1) == -2, np.sum(LRgridType, axis=-1) == 2)
         bpick = np.logical_and(np.sum(LRgridType, axis=-1) != -4, np.sum(LRgridType, axis=-1) != 4)
         # exclude cortex boundary grids
         bpick = np.logical_and(bpick, np.logical_not(outsideRaggedBound))
         npick = np.sum(bpick)
 
-        x = np.mod(ipick[bpick],2)
-        y = ipick[bpick]//2
-        bx = self.xx[i[bpick] + x , j[bpick] + y]
-        by = self.yy[i[bpick] + x , j[bpick] + y]
-        self.pos[0,bpick] = bx + (self.pos[0,bpick] - bx)/2
-        self.pos[1,bpick] = by + (self.pos[1,bpick] - by)/2
-        
+        x = ipick[bpick]//2
+        y = np.mod(ipick[bpick],2)
+        bx = self.xx[i[bpick] + y , j[bpick] + x]
+        by = self.yy[i[bpick] + y , j[bpick] + x]
+        #self.pos[0,bpick] = bx + (self.pos[0,bpick] - bx)/3
+        #self.pos[1,bpick] = by + (self.pos[1,bpick] - by)/3
+
+        indices = np.arange(self.networkSize)
+        # bot_left
+        bot_left = np.logical_and(x == 0, y == 0)
+        if bot_left.any():
+            bp_copy = bpick.copy()
+            bp_copy[indices[bpick][np.logical_not(bot_left)]] = False
+
+            cx = bx[bot_left] + self.subgrid[0]/2
+            cy = by[bot_left] + self.subgrid[1]/2
+
+            pick = cx - self.pos[0,bp_copy] < cl
+            ii_pick = indices[bp_copy][pick]
+            self.pos[0, ii_pick] = cx[pick] - cl - np.abs(self.pos[0, ii_pick] - cx[pick])/(self.subgrid[0]/2) * (self.subgrid[0]/2 - cl)
+            pick = cy - self.pos[1,bp_copy] < cl                                                                                         
+            ii_pick = indices[bp_copy][pick]                                                                                             
+            self.pos[1, ii_pick] = cy[pick] - cl - np.abs(self.pos[1, ii_pick] - cy[pick])/(self.subgrid[1]/2) * (self.subgrid[1]/2 - cl)
+
+        # bot_right
+        bot_right = np.logical_and(x == 1, y == 0)
+        if bot_right.any():
+            bp_copy = bpick.copy()
+            bp_copy[indices[bpick][np.logical_not(bot_right)]] = False
+
+            cx = bx[bot_right] - self.subgrid[0]/2
+            cy = by[bot_right] + self.subgrid[1]/2
+
+            pick = self.pos[0,bp_copy] - cx < cl
+            ii_pick = indices[bp_copy][pick]
+            self.pos[0, ii_pick] = cx[pick] + cl + np.abs(self.pos[0, ii_pick] - cx[pick])/(self.subgrid[0]/2) * (self.subgrid[0]/2 - cl)
+            pick = cy - self.pos[1,bp_copy] < cl                                                                                         
+            ii_pick = indices[bp_copy][pick]                                                                                             
+            self.pos[1, ii_pick] = cy[pick] - cl - np.abs(self.pos[1, ii_pick] - cy[pick])/(self.subgrid[1]/2) * (self.subgrid[1]/2 - cl)
+
+        # top_left
+        top_left = np.logical_and(x == 0, y == 1)
+        if top_left.any():
+            bp_copy = bpick.copy()
+            bp_copy[indices[bpick][np.logical_not(top_left)]] = False
+
+            cx = bx[top_left] + self.subgrid[0]/2
+            cy = by[top_left] - self.subgrid[1]/2
+
+            pick = cx - self.pos[0,bp_copy] < cl
+            ii_pick = indices[bp_copy][pick]
+            self.pos[0, ii_pick] = cx[pick] - cl - np.abs(self.pos[0, ii_pick] - cx[pick])/(self.subgrid[0]/2) * (self.subgrid[0]/2 - cl)
+            pick = self.pos[1,bp_copy] - cy < cl                                                                                         
+            ii_pick = indices[bp_copy][pick]                                                                                             
+            self.pos[1, ii_pick] = cy[pick] + cl + np.abs(self.pos[1, ii_pick] - cy[pick])/(self.subgrid[1]/2) * (self.subgrid[1]/2 - cl)
+
+        # top_right
+        top_right = np.logical_and(x == 1, y == 1)
+        if top_right.any():
+            bp_copy = bpick.copy()
+            bp_copy[indices[bpick][np.logical_not(top_right)]] = False
+
+            cx = bx[top_right] - self.subgrid[0]/2
+            cy = by[top_right] - self.subgrid[1]/2
+
+            pick = self.pos[0,bp_copy] - cx < cl
+            ii_pick = indices[bp_copy][pick]
+            self.pos[0, ii_pick] = cx[pick] + cl + np.abs(self.pos[0, ii_pick] - cx[pick])/(self.subgrid[0]/2) * (self.subgrid[0]/2 - cl)
+            pick = self.pos[1,bp_copy] - cy < cl                                                                                         
+            ii_pick = indices[bp_copy][pick]                                                                                             
+            self.pos[1, ii_pick] = cy[pick] + cl + np.abs(self.pos[1, ii_pick] - cy[pick])/(self.subgrid[1]/2) * (self.subgrid[1]/2 - cl)
+
         # checks
         if check:
             self.check_pos(False, False) # check outer boundary only
             # check if exists overlap positions
             print('after pos adjustment: ')
             duplicate = 0
-            for i in np.arange(self.networkSize):
+            pos = self.pos.reshape(2,self.nblock,self.blockSize)
+            for i in range(self.nblock):
                 #assert(np.sum((self.pos[:,i] - self.pos[:,i+1:].T == 0).all(-1))==0)
-                test = (self.pos[:,i] - self.pos[:,i+1:].T == 0).all(-1)
-                nd = np.sum(test.any())
-                if nd > 0:
-                    duplicate = duplicate + 1
-                    did = np.nonzero(test)[0] + i+1
-                    print(f'#{i} is duplicated by #{did} at {self.pos[:,i]}')
+                test_x = np.tile(pos[0,i,:], (self.blockSize,1)) - pos[0,i,:].T
+                nd = 0
+                if np.sum(test_x == 0) > self.blockSize:
+                    test_y = np.tile(pos[1,i,:], (self.blockSize,1)) - pos[1,i,:].T
+                    nd = (np.sum(np.logical_and(test_x, test_y)) - self.blockSize)/2
+                    duplicate = duplicate + nd
+                    if nd > 0:
+                        print(f'{nd} neurons are duplicated by in block {i}')
+                #stdout.write(f'\r{(i+1)/self.nblock*100:.3f}%')
+            #stdout.write('\n')
             if duplicate > 0:
-                print(f'after pos adjustment: {duplicate} points have duplicate(s)')
+                print(f'{duplicate} point(s) have duplicate(s)')
                 assert(duplicate == 0)
+            else:
+                print(f'no duplicates')
         
         self.pODready = True
         return self.ODlabel
     # boundary define by 4 corners
     def define_bound(self, grid):
-        print('defining the boundary midway through the grid')
         ngrid = (self.nx-1) * (self.ny-1)
         bpGrid = np.empty((ngrid,2,3))
         btypeGrid = np.empty(ngrid, dtype = int)
@@ -336,11 +548,27 @@ class macroMap:
         unb = np.array([1,0,1,0], dtype = bool)
         unpick = (bgrid - unb == 0).all(-1)
         nunpick = np.sum(unpick)
-        assert(nunpick == 0)
+        if nunpick > 0:
+            indices = np.nonzero(unpick)[0]
+            p, q = np.unravel_index(indices, (self.ny-1, self.nx-1))
+            pick0 = self.Pi[p, q+1] == 0
+            pick1 = self.Pi[p+1, q] == 0
+            assert(np.logical_or(pick0, pick1).all())
+            bgrid[indices[pick0], :] = np.array([1,1,1,0])
+            bgrid[indices[pick1], :] = np.array([1,0,1,1])
+
         unb = np.array([0,1,0,1], dtype = bool)
         unpick = (bgrid - unb == 0).all(-1)
         nunpick = nunpick + np.sum(unpick)
-        assert(nunpick == 0)
+        if nunpick > 0:
+            indices = np.nonzero(unpick)[0]
+            p, q = np.unravel_index(indices, (self.ny-1, self.nx-1))
+            pick0 = self.Pi[p, q] == 0
+            pick1 = self.Pi[p+1, q+1] == 0
+            assert(np.logical_or(pick0, pick1).all())
+            bgrid[indices[pick0], :] = np.array([1,1,0,1])
+            bgrid[indices[pick1], :] = np.array([0,1,1,1])
+
         ## pick boundary
         # horizontal
         hb = np.array([0,0,1,1], dtype = bool)
@@ -498,27 +726,25 @@ class macroMap:
         i, j = np.nonzero(tmpLR > 0)
         i = i + 1
         j = j + 1
+        # spread out
         LR[i+1,j+1] = 1
         LR[i+1,j-1] = 1
         LR[i-1,j+1] = 1
         LR[i-1,j-1] = 1
+        LR[i+1,j] = 1
+        LR[i-1,j] = 1
+        LR[i,j+1] = 1
+        LR[i,j-1] = 1
+
         ngrid = (self.nx-1) * (self.ny-1)
         LRgrid = np.stack((LR[:-1,:-1], LR[:-1,1:], LR[1:,1:], LR[1:,:-1]), axis=2)
         LRgrid = LRgrid.reshape((ngrid,4))
-        # pick touching boundaries
+        # pick corner-touching boundaries
         pick = (LRgrid - np.array([1,0,1,0]) == 0).all(-1)
         pick = np.logical_or(pick, (LRgrid - np.array([0,1,0,1]) == 0).all(-1))
+        print(f'{sum(pick)} touches before')
         indices = np.nonzero(pick)[0]
         p, q = np.unravel_index(indices, (self.ny-1, self.nx-1))
-        # asserts non-functional
-        pick = LR[p, q] == 1
-        assert((LR[p[pick], q[pick] + 1] == 0).all())
-        assert((LR[p[pick] + 1, q[pick] + 1] == 1).all())
-        assert((LR[p[pick] + 1, q[pick]] == 0).all())
-        pick = LR[p, q] == 0
-        assert((LR[p[pick], q[pick] + 1] == 1).all())
-        assert((LR[p[pick] + 1, q[pick] + 1] == 0).all())
-        assert((LR[p[pick] + 1, q[pick]] == 1).all())
         # merge
         LR[p  ,   q] = 1
         LR[p  , q+1] = 1 
@@ -526,6 +752,7 @@ class macroMap:
         LR[p+1,   q] = 1 
         # do not expand outside of cortex
         LR[self.Pi<=0] = 0
+
         spreaded = False 
         if np.sum(LR > 0) == np.sum(self.Pi > 0):
             spreaded = True
@@ -580,7 +807,7 @@ class macroMap:
         b_cl = b_scale/p_scale * i_cl
 
         oldpos = self.pos.copy()
-        self.pos, convergence, nlimited, _ = simulate_repel(area, self.subgrid, self.pos, dt, OD_bound, btype, boundary_param, particle_param, ax = ax1, seed = seed, p_scale = p_scale, b_scale = b_scale, fixed = fixed, mshape = '.', b_cl = b_cl, i_cl = i_cl)
+        self.pos, convergence, nlimited = simulate_repel(area, self.subgrid, self.pos, dt, OD_bound, btype, boundary_param, particle_param, ax = ax1, seed = seed, p_scale = p_scale, b_scale = b_scale, fixed = fixed, mshape = '.', b_cl = b_cl, i_cl = i_cl)
 
         if check:
             self.check_pos(False, False) # check outer boundary only
@@ -605,10 +832,10 @@ class macroMap:
             self.define_bound_LR()
 
         oldpos = self.pos.copy()
-        self.pos[:,pL], convergenceL, nlimitedL, _ = simulate_repel(areaL, self.subgrid, self.pos[:,pL], dt, self.OD_boundL, self.btypeL, boundary_param, particle_param, ax = ax1, seed = seed)
+        self.pos[:,pL], convergenceL, nlimitedL = simulate_repel(areaL, self.subgrid, self.pos[:,pL], dt, self.OD_boundL, self.btypeL, boundary_param, particle_param, ax = ax1, seed = seed)
         if check:
             self.check_pos()
-        self.pos[:,pR], convergenceR, nlimitedR, _ = simulate_repel(areaR, self.subgrid, self.pos[:,pR], dt, self.OD_boundR, self.btypeR, boundary_param, particle_param, ax = ax2, seed = seed)
+        self.pos[:,pR], convergenceR, nlimitedR = simulate_repel(areaR, self.subgrid, self.pos[:,pR], dt, self.OD_boundR, self.btypeR, boundary_param, particle_param, ax = ax2, seed = seed)
         if check:
             self.check_pos()
 
@@ -616,7 +843,111 @@ class macroMap:
             self.posUniform = True
         return oldpos, convergenceL, convergenceR, nlimitedL, nlimitedR
 
-    def make_pos_uniform_parallel(self, dt, b_scale, p_scale, figname, ncpu = 16, ndt0 = 0, check = True):
+    def make_pos_uniform_p(self, dt, p_scale, b_scale, figname, ncore = 0, ndt_decay = 0, roi_ratio = 2.0, k1 = 1.0, k2 = 0.5, chop_ratio = 0, spercent = 0.01, seed = -1, local_plot = False, check = False):
+        if not self.pODready:
+            self.assign_pos_OD1()
+        pR = self.ODlabel > 0
+        pL = self.ODlabel < 0
+        nR = np.sum(pR)
+        nL = np.sum(pL)
+        areaL = self.area * nL/(nR+nL)
+        areaR = self.area * nR/(nR+nL)
+        print(f'smooth area: {areaL}, {areaR}')
+        subarea = self.subgrid[0] * self.subgrid[1]
+        areaR = subarea * np.sum(self.LR == 1)
+        areaL = subarea * np.sum(self.LR == -1)
+        print(f'grid area: {areaL}, {areaR}, used in simulation')
+        if self.LR_boundary_defined is False:
+            self.define_bound_LR()
+
+        if chop_ratio == 0:
+            chop_ratio = self.nblock/(self.nx*self.ny)
+        oldpos = self.pos.copy()
+        nx = np.round(self.nx*chop_ratio).astype('i4')
+        ny = np.round(self.ny*chop_ratio).astype('i4')
+
+    ##  prepare shared memory
+        raw_shared_cmem = RawArray(c_int32, np.zeros(ncore, dtype = 'i4'))
+        shared_cmem = np.frombuffer(raw_shared_cmem, dtype = 'i4')
+    # Left
+        posL = np.empty(self.nblock, dtype = object)
+        pickL = pL.view().reshape((self.nblock,self.blockSize))
+        pos = self.pos.view().reshape((2,self.nblock,self.blockSize))
+        blockPick = np.ones(self.nblock)
+        for i in range(self.nblock):
+            if np.sum(pickL[i,:]) > 0:
+                posL[i] = pos[:,i,pickL[i,:]]
+            else:
+                blockPick[i] = 0
+        posL = posL[blockPick>0]
+        blockL = posL.size
+        blockSizeL = np.array([p.shape[1] for p in posL])
+        nL = np.sum(pL)
+
+        raw_shared_dmem = RawArray(c_double, np.zeros(nL*7, dtype = 'f8'))
+        raw_shared_imem = RawArray(c_int32, np.zeros(nL, dtype = 'i4'))
+        shared_dmem = np.frombuffer(raw_shared_dmem, dtype = 'f8')
+        shared_imem = np.frombuffer(raw_shared_imem, dtype = 'i4')
+
+        # populate position in shared array
+        shared_dmem[:2*nL] = np.hstack([p.flatten() for p in posL])
+        posL = np.empty(blockL, dtype = object)
+        i0 = 0
+        for i in range(blockL):
+            i1 = i0 + blockSizeL[i]*2
+            posL[i] = shared_dmem[i0:i1].reshape((2,blockSizeL[i]))
+            i0 = i1
+        assert(i0 == 2*nL)
+
+        raw_shared_bmem = RawArray(c_double, np.zeros(nx*ny*6, dtype = 'f8'))
+        shared_bmem = np.frombuffer(raw_shared_bmem, dtype = 'f8') 
+        raw_shared_nmem = RawArray(c_int32, np.zeros(nx*ny*6, dtype = 'i4')) # for neighbor_list and id
+        shared_nmem = np.frombuffer(raw_shared_nmem, dtype = 'i4') 
+
+        self.pos[:,pL] = parallel_repel(areaL, self.subgrid, posL, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, p_scale, self.OD_boundL, self.btypeL, b_scale, nx, ny, ncore, dt, spercent, figname + 'L', ndt_decay, 1.0, roi_ratio, k1, k2, seed, 1.0, local_plot)
+        if check:
+            self.check_pos()
+
+        posR = np.empty(self.nblock, dtype = object)
+        pickR = pR.view().reshape((self.nblock,self.blockSize))
+        pos = self.pos.view().reshape((2,self.nblock,self.blockSize))
+        blockPick = np.ones(self.nblock)
+        for i in range(self.nblock):
+            if np.sum(pickR[i,:]) > 0:
+                posR[i] = pos[:,i,pickR[i,:]]
+            else:
+                blockPick[i] = 0
+        posR = posR[blockPick>0]
+        blockR = posR.size
+        blockSizeR = np.array([p.shape[1] for p in posR])
+        nR = np.sum(pR)
+
+        raw_shared_dmem = RawArray(c_double, np.zeros(nR*7, dtype = 'f8'))
+        raw_shared_imem = RawArray(c_int32, np.zeros(nR, dtype = 'i4'))
+        shared_dmem = np.frombuffer(raw_shared_dmem, dtype = 'f8')
+        shared_imem = np.frombuffer(raw_shared_imem, dtype = 'i4')
+
+        # populate position in shared array
+        shared_dmem[:2*nR] = np.hstack([p.flatten() for p in posR])
+        posR = np.empty(blockR, dtype = object)
+        i0 = 0
+        for i in range(blockR):
+            i1 = i0 + blockSizeR[i]*2
+            posR[i] = shared_dmem[i0:i1].reshape((2,blockSizeR[i]))
+            i0 = i1
+        assert(i0 == 2*nR)
+
+        # no need to re-declare bmem, nmem and cmem
+
+        self.pos[:,pR] = parallel_repel(areaR, self.subgrid, posR, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, p_scale, self.OD_boundR, self.btypeR, b_scale, nx, ny, ncore, dt, spercent, figname + 'R', ndt_decay, 1.0, roi_ratio, k1, k2, seed, 1.0, local_plot)
+        if check:
+            self.check_pos()
+
+        if not self.posUniform:
+            self.posUniform = True
+        return oldpos
+
+    def make_pos_uniform_parallel(self, dt, b_scale, p_scale, figname, ncpu = 16, ndt0 = 0, check = False):
         if not self.pODready:
             self.assign_pos_OD1()
         pR = self.ODlabel > 0
@@ -645,18 +976,38 @@ class macroMap:
             self.posUniform = True
         return oldpos
 
-    def spread_pos_VF(self, dt, vpfile, lrfile, LRlabel, seed = None, firstTime = True, particle_param = None, boundary_param = None, ax = None, p_scale = 2.0, b_scale = 1.0):
+    def spread_pos_VF(self, dt, vpfile, lrfile, LRlabel, seed = None, firstTime = True, continuous = True, particle_param = None, boundary_param = None, ax = None, p_scale = 2.0, b_scale = 1.0, ndt_decay = 0, roi_ratio = 2, k1 = 1.0, k2 = 0.5, ncore= 0, limit_ratio = 1.0, chop_ratio = 0):
+        if ncore == 0:
+            ncore = mp.cpu_count()
+            print(f'{ncore} cores found')
+        if chop_ratio == 0:
+            chop_ratio = self.nblock/(self.nx*self.ny)
+
+        oldpos = self.pos.copy()
+        nx = np.round(self.nx*chop_ratio).astype('i4')
+        ny = np.round(self.ny*chop_ratio).astype('i4')
+
         ngrid = np.sum(self.Pi).astype(int)
         if LRlabel == 'L':
             LRpick = self.ODlabel < 0
         else:
             assert(LRlabel == 'R')
             LRpick = self.ODlabel > 0
+        nLR = np.sum(LRpick)
+        print('#' +LRlabel+f': {nLR}')
+        pickLR = LRpick.view().reshape((self.nblock,self.blockSize))
 
-        if not hasattr(self, 'vpos'):
-            # dont reinit for the other stripe
-            self.vpos = self.pos.copy() # always init with pos
-        if firstTime is True:
+    ##  prepare shared memory
+        raw_shared_cmem = RawArray(c_int32, np.zeros(ncore, dtype = 'i4'))
+        shared_cmem = np.frombuffer(raw_shared_cmem, dtype = 'i4')
+        raw_shared_dmem = RawArray(c_double, np.zeros(nLR*7, dtype = 'f8'))
+        raw_shared_imem = RawArray(c_int32, np.zeros(nLR, dtype = 'i4'))
+        shared_dmem = np.frombuffer(raw_shared_dmem, dtype = 'f8')
+        shared_imem = np.frombuffer(raw_shared_imem, dtype = 'i4')
+
+        if not hasattr(self,'vpos'):
+            self.vpos = self.pos.copy() 
+        if firstTime:
             LR = self.LR.copy()
             if LRlabel == 'L':
                 LR[LR > 0] = 0
@@ -664,42 +1015,103 @@ class macroMap:
             else:
                 LR[LR < 0] = 0
                 LR[LR > 0] = 1
+           # populate position in shared array
+            #vposLR = np.empty(self.nblock, dtype = object)
+            #vpos = self.pos.view().reshape((2,self.nblock,self.blockSize))
+            chop_size = np.zeros(self.nblock, dtype = 'i4')
+            k = 0
+            for i in range(self.nblock):
+                npick = np.sum(pickLR[i,:])
+                if npick > 0:
+                    chop_size[k] = npick
+                    #vposLR[k] = vpos[:,i,pickLR[i,:]]
+                    k = k + 1
+            nchop0 = k
+            #vposLR = vposLR[:k]
+            chop_size0 = chop_size[:k].copy()
+            
+            #shared_dmem[:2*nLR] = np.hstack([p.flatten() for p in vposLR])
+            vposLR = self.pos[:, LRpick].copy()
         else:
-            with open(vpfile,'rb') as f:
-                self.vpos[:,LRpick] = np.fromfile(f).reshape(2, np.sum(LRpick))
-            with open(lrfile,'rb') as f:
-                LR = np.fromfile(f).reshape(self.Pi.shape)
+            with open(lrfile+'.bin','rb') as f:
+                consts = np.fromfile(f, 'i4', 2)
+                LR = np.fromfile(f, 'i4', count = np.prod(self.Pi.shape)).reshape(self.Pi.shape)
+
+            with open(vpfile+'.bin','rb') as f:
+                nchop0 = np.fromfile(f, 'i4', 1)[0]
+                chop_size0 = np.fromfile(f, 'i4', nchop0)
+                assert(sum(chop_size0) == nLR)
+                vposLR = np.fromfile(f, 'f8').reshape(2, nLR)
+                #i0 = 0
+                #ii0 = 0
+                #k = 0
+                #for i in range(nchop0):
+                #    if chop_size0[k] > 0:
+                #        i1 = i0 + chop_size0[k]
+                #        ii1 = ii0 + chop_size0[k]*2
+                #        shared_dmem[ii0:ii1] = vposLR[:,i0:i1].flatten()
+                #        k = k + 1
+                #        i0 = i1
+                #        ii0 = ii1
+                #assert(ii0 == 2*nLR)
+
+        assert(np.sum(chop_size0) == nLR)
+        raw_shared_bmem = RawArray(c_double, np.zeros(nx*ny*6, dtype = 'f8'))
+        shared_bmem = np.frombuffer(raw_shared_bmem, dtype = 'f8') 
+        raw_shared_nmem = RawArray(c_int32, np.zeros(nx*ny*6, dtype = 'i4')) # for neighbor_list and id
+        shared_nmem = np.frombuffer(raw_shared_nmem, dtype = 'i4') 
 
         if ax is not None:
             if seed is None:
                 seed = np.int64(time.time())
             np.random.seed(seed)
-            nLR = np.sum(LRpick)
-            nsLR = np.int(nLR*0.1)
+            nsLR = np.int(nLR*0.01)
             print(f'sample size: {nsLR}')
             pick = np.random.choice(nLR, nsLR, replace = False)
             #pick = np.arange(nLR)
+        else:
+            pick = None
 
-        continuous = True 
         if continuous:
             spreaded = False # at least one time
-            ip = 0
+            ip = 0 # plotting index
             ppos = None
             starting = True
             while spreaded is False:
-                self.vpos[:, LRpick], LR, spreaded, ratio, ppos, ip, OD_bound = self.spread(dt, self.vpos[:, LRpick], LR, particle_param, boundary_param, ax, pick, ppos, ip, starting, p_scale = p_scale, b_scale = b_scale)
+                vposLR, LR, spreaded, ppos, ip, OD_bound = self.spread(dt, vposLR, nchop0, chop_size0, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, LR, nx, ny, particle_param, boundary_param, ax, pick, ppos, ip, starting, figname = vpfile, p_scale = p_scale, b_scale = b_scale, ndt_decay = ndt_decay, roi_ratio = roi_ratio, k1 = k1, k2 = k2, ncore = ncore, limit_ratio = limit_ratio, chop_ratio = 0)
                 starting = False
-                print(f'{np.sum(LR).astype(int)}/{ngrid}')
-                with open(vpfile,'wb') as f:
-                    self.vpos[:, LRpick].tofile(f)
-                with open(lrfile,'wb') as f:
-                    LR.tofile(f)
+                print(f'#{ip}: {np.sum(LR).astype(int)}/{ngrid}')
+
+                assert(vposLR.shape[1] == nLR)
+                assert(np.sum(chop_size) == nLR)
+                with open(vpfile + f'-{ip}.bin','wb') as f:
+                    np.array([nchop0]).astype('i4').tofile(f)
+                    chop_size0.astype('i4').tofile(f)
+                    vposLR.tofile(f)
+                with open(lrfile + f'-{ip}.bin','wb') as f:
+                    np.array([LR.size, OD_bound.shape[0]]).astype('i4').tofile(f)
+                    LR.astype('i4').tofile(f)
+                    OD_bound.copy().astype(float).tofile(f)
+                print('data stored')
         else:
-            self.vpos[:, LRpick], LR, _, _, OD_bound = self.spread(dt, self.vpos[:, LRpick], LR, particle_param, boundary_param, ax = None, pick = None, p_scale = p_scale, b_scale = b_scale)
-            with open(vpfile,'wb') as f:
-                self.vpos[:, LRpick].tofile(f)
-            with open(lrfile,'wb') as f:
-                LR.tofile(f)
+            ip = 0 # plotting index
+            ppos = None
+            starting = True
+            vposLR, LR, spreaded, ppos, _, OD_bound = self.spread(dt, vposLR, nchop0, chop_size0, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, LR, nx, ny, particle_param, boundary_param, ax, pick, ppos, ip, starting, figname = vpfile, p_scale = p_scale, b_scale = b_scale, ndt_decay = ndt_decay, k1 = k1, k2 = k2, ncore = ncore, limit_ratio = limit_ratio, chop_ratio = 0, seed = seed, plotOnly = False, noSpread = False)
+            print(f'spreaded = {spreaded}')
+            assert(vposLR.shape[1] == nLR)
+            with open(vpfile+'-ss.bin','wb') as f:
+                np.array([nchop0]).astype('i4').tofile(f)
+                chop_size0.astype('i4').tofile(f)
+                vposLR.tofile(f)
+            with open(lrfile+'-ss.bin','wb') as f:
+                np.array([LR.size, OD_bound.shape[0]]).astype('i4').tofile(f)
+                LR.astype('i4').tofile(f)
+                OD_bound.copy().astype(float).tofile(f)
+            print('data stored')
+
+        self.vpos[:, LRpick] = vposLR # when spreaded, return in shape (2,nLR)
+
         if ax is not None:
             # connecting points on grid sides
             ax.plot(OD_bound[:,0,[0,2]].squeeze(), OD_bound[:,1,[0,2]].squeeze(), ',r')
@@ -722,7 +1134,7 @@ class macroMap:
         else:
             self.vposRready = True
 
-    def spread(self, dt, pos, LR, particle_param = None, boundary_param = None, ax = None, pick = None, ppos = None, ip = 0, starting = True, p_scale = 2.0, b_scale = 1.0):
+    def spread(self, dt, vpos_flat, nchop, chop_size, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, LR, nx, ny, particle_param = None, boundary_param = None, ax = None, pick = None, ppos = None, ip = 0, starting = True, figname = None, p_scale = 2.0, b_scale = 1.0, ndt_decay = 0, roi_ratio = 2, k1 = 1.0, k2 = 0.5, ncore = 0, limit_ratio = 1.0, chop_ratio = 0, seed = -1, plotOnly = False, noSpread = False):
         if starting and ax is not None:
             OD_bound, btype = self.define_bound(LR)
             # connecting points on grid sides
@@ -732,11 +1144,13 @@ class macroMap:
         subarea = self.subgrid[0] * self.subgrid[1]
 
         old_area = subarea * np.sum(LR == 1)
-        n = pos.shape[1]
-        LR, spreaded = self.diffuse_bound(LR)
+        if not noSpread or ip == 0:
+            LR, spreaded = self.diffuse_bound(LR)
+        else:
+            spreaded = False
         area = subarea * np.sum(LR == 1)
         ratio = area/old_area
-        print(f'area increases {ratio*100}%')
+        print(f'area increases {ratio*100:.3f}%')
         
         OD_bound, btype = self.define_bound(LR)
 
@@ -744,17 +1158,29 @@ class macroMap:
             assert(pick is not None)
             if ppos is None:
                 ppos = np.empty((2,2,pick.size)) # start/ending, x/y, selected id
-                ppos[0,:,:] = pos[:,pick].copy()
+                ppos[0,:,:] = vpos_flat[:,pick].copy()
 
-        pos, _, _, _ = simulate_repel(area, self.subgrid, pos, dt, OD_bound, btype, boundary_param, particle_param, p_scale = p_scale, b_scale = b_scale)
+        if not plotOnly:
+            # input vpos as view of chops # return as (2, n) in the original order
+            vpos_chop = np.empty(nchop, dtype = object)
+            i0 = 0
+            ii0 = 0
+            for i in range(nchop):
+                i1 = i0 + chop_size[i]
+                ii1 = ii0 + chop_size[i]*2
+                shared_dmem[ii0:ii1] = vpos_flat[:,i0:i1].flatten()
+                vpos_chop[i] = shared_dmem[ii0:ii1].view().reshape((2,chop_size[i]))
+                i0 = i1
+                ii0 = ii1
+        #
+            vpos_flat = parallel_repel(area, self.subgrid, vpos_chop, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, p_scale, OD_bound, btype, b_scale, nx, ny, ncore, dt, 0, figname, ndt_decay, 1/np.sqrt(ratio), roi_ratio, k1 = k1, k2 = k2, seed = seed, limit_ratio = limit_ratio, local_plot = False)
+
+        ip = ip + 1
         if ax is not None:
-            ip = ip + 1
-            ppos[ip%2,:,:] = pos[:,pick].copy()
+            ppos[ip%2,:,:] = vpos_flat[:,pick].copy()
             ax.plot(ppos[:,0,:].squeeze(), ppos[:,1,:].squeeze(), '-,c', lw = 0.01)
 
-            return pos, LR, spreaded, ratio, ppos, ip, OD_bound
-        else:
-            return pos, LR, spreaded, ratio, OD_bound
+        return vpos_flat, LR, spreaded, ppos, ip, OD_bound
 
     def get_ij_grid(self, get_d2 = True, get_coord = True):
         print('get the index of the nearest vertex for each neuron in its own grid')
@@ -765,10 +1191,46 @@ class macroMap:
         y1 = self.y[1:]
         # index in y-dimension
         i = np.nonzero(np.logical_and(np.tile(self.pos[1,:],(self.ny-1,1))-y0.reshape(self.ny-1,1) > 0, np.tile(self.pos[1,:],(self.ny-1,1))-y1.reshape(self.ny-1,1) <= 0).T)[1]
-        assert(i.size == self.networkSize)
+        if not i.size == self.networkSize:
+            nrogue = self.networkSize - i.size
+            print(f'{nrogue} particles have gone rogue, {self.pos.shape}')
+            assert(np.sum(np.logical_or(self.pos[1,:] > self.y[-1], self.pos[1,:] < self.y[0])) == nrogue)
+            assert(i.size == self.networkSize)
+
+        print('indexed in y-dimension')
         # index in x-dimension
         j = np.nonzero(np.logical_and(np.tile(self.pos[0,:],(self.nx-1,1))-x0.reshape(self.nx-1,1) > 0, np.tile(self.pos[0,:],(self.nx-1,1))-x1.reshape(self.nx-1,1) <= 0).T)[1]
-        assert(j.size == self.networkSize)
+        if not j.size == self.networkSize:
+            nrogue = self.networkSize - j.size
+            print(f'{nrogue} particles have gone rogue')
+            assert(np.sum(np.logical_or(self.pos[1,:] > self.x[-1], self.pos[1,:] < self.x[0])) == nrogue)
+            assert(j.size == self.networkSize)
+        print('indexed in x-dimension')
+
+        
+        outcast = np.stack((self.Pi[i,j]<=0, self.Pi[i+1,j]<=0, self.Pi[i,j+1]<=0, self.Pi[i+1,j+1]<=0), axis = -1).all(-1)
+        nout = np.sum(outcast)
+        if nout > np.sqrt(self.nblock):
+            raise Exception('too much outcasts: {nout}, something is wrong')
+        else:
+            while nout > 0:
+                indices = np.nonzero(outcast)[0]
+                for iout in indices:
+                    iblock = iout//self.blockSize
+                    mean_bpos = np.mean(self.pos[:,iblock*self.blockSize:(iblock+1)*self.blockSize], axis =-1)
+                    iout_pos = self.pos[:,iout].copy()
+                    self.pos[:,iout] = iout_pos + (mean_bpos - iout_pos)*np.random.rand()
+                    
+                j[indices] = np.nonzero(np.logical_and(np.tile(self.pos[0,indices],(self.nx-1,1))-x0.reshape(self.nx-1,1) > 0, np.tile(self.pos[0,indices],(self.nx-1,1))-x1.reshape(self.nx-1,1) <= 0).T)[1]
+                i[indices] = np.nonzero(np.logical_and(np.tile(self.pos[1,indices],(self.ny-1,1))-y0.reshape(self.ny-1,1) > 0, np.tile(self.pos[1,indices],(self.ny-1,1))-y1.reshape(self.ny-1,1) <= 0).T)[1]
+
+                outcast = np.stack((self.Pi[i,j]<=0, self.Pi[i+1,j]<=0, self.Pi[i,j+1]<=0, self.Pi[i+1,j+1]<=0), axis = -1).all(-1)
+                old_nout = nout
+                nout = np.sum(outcast)
+                print(f'{old_nout - nout} outcasts corrected')
+            print('no outcasts')
+
+
         if not get_d2 and not get_coord:
             return i, j
         else:
@@ -809,7 +1271,7 @@ class macroMap:
             else:
                 return i, j, d2.T
 
-    def plot_map(self,ax1,ax2,ax3,dpi,pltOD=True,pltVF=True,pltOP=True,ngridLine=4):
+    def plot_map(self,ax1,ax2,ax3,dpi,pltOD=True,pltVF=True,pltOP=True,forceOP=False,ngridLine=4):
         if pltOD:
             if not self.pODready:
                 #self.assign_pos_OD0()
@@ -817,22 +1279,20 @@ class macroMap:
                 
             if pltOP:
                 if not self.pOPready:
-                    if self.assign_pos_OP() is None:
+                    if self.assign_pos_OP(forceOP) is None:
                         print('Orientation Preference is not plotted')
-                bMS = 1 * np.power(72,2)/self.networkSize
-                sMS = 4 * np.float_power(1/dpi,2)
-                #s = max(bMS, sMS)
-                s = sMS
+            if pltOP and self.pOPready:
+                s = (self.networkSize/self.area/1000/25*72/dpi)**2
                 hsv = cm.get_cmap('hsv')
                 pick = np.logical_not(np.isnan(self.OPgrid))
                                                                                                                     # theta to ratio
-                ax1.scatter(self.xx[pick], self.yy[pick], s = (2*72/dpi)**2, linewidths=0.0, marker = '^', c= hsv((self.OPgrid[pick]/np.pi+0.5).flatten()))
+                ax1.scatter(self.xx[pick], self.yy[pick], s = s, linewidths=0.0, marker = '^', c= hsv(((self.OPgrid[pick]+np.pi)/2/np.pi).flatten()))
                 pick = self.ODlabel>0 
-                ax1.scatter(self.pos[0,pick], self.pos[1,pick], s = (2*72/dpi)**2, linewidths=0.0, marker = '.', c = hsv(self.op[pick]))
+                ax1.scatter(self.pos[0,pick], self.pos[1,pick], s = s, linewidths=0.0, marker = '.', c = hsv(self.op[pick]))
                 pick = self.ODlabel<0 
                 hsv_val = np.asarray(hsv(self.op[pick]), dtype = float)
                 hsv_val[0,:] = 0.75
-                ax1.scatter(self.pos[0,pick], self.pos[1,pick], s = (2*72/dpi)**2, linewidths=0.0, marker = '.', c =  hsv_val)
+                ax1.scatter(self.pos[0,pick], self.pos[1,pick], s = s, linewidths=0.0, marker = '.', c =  hsv_val)
             else:
                 #ax1.plot(self.pos[0,:], self.pos[1,:],',k')
                 #ax1.plot(self.xx[self.Pi<=0], self.yy[self.Pi<=0],',r')
@@ -884,12 +1344,14 @@ class macroMap:
                 pos.tofile(f)
 
         if OD_file is not None:
-            with open(OD_file,'wb') as f:
-                self.ODlabel.tofile(f)
+            if not self.pODready: 
+                self.assign_pos_OD1()
+                with open(OD_file,'wb') as f:
+                    self.ODlabel.astype('i4').tofile(f)
 
         if OP_file is not None:
             if not self.pOPready:
-                if not self.assign_pos_OP() is None:
+                if not self.assign_pos_OP(True) is None:
                     with open(OP_file,'wb') as f:
                         self.op.tofile(f)
 
@@ -978,6 +1440,7 @@ class macroMap:
     #
     # memory requirement low, slower
     def assign_pos_OD0(self):
+        print('slower, low mem requirement')
         ## determine which blocks to be consider in each subgrid to avoid too much iteration over the whole network
         # calculate reach of each block as its radius, some detached blocks may be included
         pos = self.pos.reshape(2,self.nblock,self.blockSize)

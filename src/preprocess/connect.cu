@@ -5,17 +5,20 @@ extern __device__ __constant__ pFeature pref[];
 // TODO: randomize neuronal attributes by using distribution, strength x number of con. should be controlled
 __global__ 
 void initialize(curandStateMRG32k3a* __restrict__ state,
-                Size*  __restrict__ preType, // 
-                Float* __restrict__ rden,
-                Float* __restrict__ raxn,
-                Float* __restrict__ dden,
-                Float* __restrict__ daxn,
-                Float* __restrict__ preF_type,
-                Float* __restrict__ preS_type,
-                Size*  __restrict__ preN_type,
-                Float* __restrict__ LGN_V1_sSum,
-                Float* __restrict__ ExcRatio,
-                Float extExcRatio, Float min_FB_ratio, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, Float p_n_LGNeff) 
+			Size*  __restrict__ preType, // 
+			Float* __restrict__ rden,
+			Float* __restrict__ raxn,
+			Float* __restrict__ dden,
+			Float* __restrict__ daxn,
+			Float* __restrict__ preF_type,
+			Float* __restrict__ preS_type,
+			Size*  __restrict__ preN_type,
+			Size* __restrict__ nLGN_V1,
+			Float* __restrict__ ExcRatio,
+			Float* __restrict__ extExcRatio,
+            Float* __restrict__ synPerCon,
+            Float* __restrict__ synPerConFF,
+			Float min_FB_ratio, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, Float p_n_LGNeff) 
 {
     //__shared__ reduced[warpSize];
     Size id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -37,13 +40,15 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
         }
 	}
 
-	Float LGN_sSum = LGN_V1_sSum[id];
-	Float presetConstExc = p_n_LGNeff + init_pack.sumType[type]*(1+extExcRatio);
+
+	Float LGN_syn = nLGN_V1[id]*synPerConFF[type];
+	Float Cortical_syn = init_pack.nTypeMat[type]*synPerCon[type];
+	Float presetConstExcSyn = p_n_LGNeff*synPerConFF[type] + Cortical_syn;
     Float ratio;
-	if (init_pack.sumType[type] == 0) {
+	if (init_pack.nTypeMat[type] == 0 || synPerCon[type] == 0) {
 		ratio = 1.0;
 	} else {
-		ratio = (presetConstExc - LGN_sSum)/(init_pack.sumType[type]*(1+extExcRatio));
+		ratio = (presetConstExcSyn - LGN_syn)/Cortical_syn;
 	}
     if (ratio < min_FB_ratio) ratio = min_FB_ratio;
 	ExcRatio[id] = ratio;
@@ -51,17 +56,20 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
 		PosInt tid = i*networkSize+id;
 		PosInt ttid = i*nType + type;
         if (CmoreN) {
-    	    preS_type[tid] = init_pack.sTypeMat[ttid];
+			Float excessRatio = 1.0;
             if (i < init_pack.iArchType[0]) {
-                preN_type[tid] = static_cast<Size>(rounding(ratio*init_pack.nTypeMat[ttid]));
+				Float fpreN = ratio*init_pack.nTypeMat[ttid]*(1-extExcRatio[type]);
+				Size preN = static_cast<Size>(rounding(fpreN));
+                preN_type[tid] = preN;
+				excessRatio *= fpreN/preN;
             } else {
-    	        //preN_type[tid] = static_cast<Size>(rounding((ratio + LGN_sSum/init_pack.sumType[i*nType+0])*init_pack.nTypeMat[ttid]));
     	        preN_type[tid] = init_pack.nTypeMat[ttid];
             }
+    	    preS_type[tid] = init_pack.sTypeMat[ttid]*excessRatio;
         } else {
     	    preN_type[tid] = init_pack.nTypeMat[ttid];
             if (i < init_pack.iArchType[0]) {
-                preS_type[tid] = ratio*init_pack.sTypeMat[ttid];
+                preS_type[tid] = ratio*init_pack.sTypeMat[ttid]*(1-extExcRatio[type]);
             } else {
     	        //preS_type[tid] = (ratio+ LGN_sSum/init_pack.sumType[i*nType+0])*init_pack.sTypeMat[ttid];
     	        preS_type[tid] = init_pack.sTypeMat[ttid];
@@ -268,7 +276,7 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
 	*/
 }
 
-__launch_bounds__(1024,1)
+//__launch_bounds__(1024,1)
 __global__ 
 void generate_connections(double* __restrict__ pos,
                           Float* __restrict__ preF_type,
@@ -282,6 +290,8 @@ void generate_connections(double* __restrict__ pos,
                           Float* __restrict__ delayMat,
                           Float* __restrict__ conVec, //for neighbor block connections
                           Float* __restrict__ delayVec, //for neighbor block connections
+                          Size* __restrict__ max_N,
+                          PosInt* __restrict__ _vecID,
                           Size* __restrict__ vecID,
                           Size* __restrict__ nVec,
                           Size* __restrict__ preTypeConnected,
@@ -293,7 +303,7 @@ void generate_connections(double* __restrict__ pos,
                           Float* __restrict__ daxn,
                           Size* __restrict__ typeAcc0,
                           curandStateMRG32k3a* __restrict__ state,
-                          PosInt block_offset, Size networkSize, Size maxDistantNeighbor, Size nearNeighborBlock, Size maxNeighborBlock, Size nType, Size nFeature, bool gaussian_profile, bool strictStrength, Float tol) 
+                          Size sum_max_N, PosInt block_offset, Size networkSize, Size maxDistantNeighbor, Size nearNeighborBlock, Size maxNeighborBlock, Size nType, Size nFeature, bool gaussian_profile, bool strictStrength, Float tol) 
 {
     // TODO: load with warps but more, e.g., raxn, daxn, preType
     __shared__ double x1[blockSize];
@@ -417,6 +427,8 @@ void generate_connections(double* __restrict__ pos,
             __syncthreads();
         }
     }
+    delete []pF;
+    delete []fV;
     __syncwarp();
     Size* pN = new Size[nType];
     #pragma unroll
@@ -425,34 +437,33 @@ void generate_connections(double* __restrict__ pos,
         preTypeAvail[i*networkSize + id] = sumType[i];
 		if (sumType[i] < ceiling(pN[i]*tol)) {
 			printf("neuron %u-%u dont have enough type %u neurons to connect to\n", blockIdx.x, threadIdx.x, i);
-			assert(sumType[i] >= ceiling(pN[i]*tol));
+			assert(sumType[i] >= ceiling(pN[i]*(1+tol)));
 		}
     }
 	__syncthreads();
-    delete []pF;
-    delete []fV;
     //============= redistribute p of all ==========
     Float* sumStrType = new Float[nType];
-    Float* sumType0 = new Float[nType];
+    bool* typeConnected = new bool[nType];
     Float* pS = new Float[nType];
     Size* nid = new Size[nType];
-	Size max_N = 0;
+	Size _sum_max_N = 0;
+	PosInt** __vecID = new PosInt*[nType];
     #pragma unroll
     for (Size i=0; i<nType; i++) {
-		if (pN[i] > max_N) max_N = pN[i];
+     	__vecID[i] = _vecID + id*sum_max_N + _sum_max_N;
+		_sum_max_N += max_N[i];
         pS[i] = preS_type[i*networkSize + id];
-    	sumType[i] = 0;
 		nid[i] = 0;
+		typeConnected[i] = false;
+		sumP[i] = pN[i]/sumP[i]; // now is a ratio
     }
-    PosInt* _vecID = new PosInt[nType*max_N];
 
     curandStateMRG32k3a localState = state[id];
 	Size count = 0;
 	Size connected = false;
 	while (!connected) {
     	for (Size i=0; i<nType; i++) {
-			sumType0[i] = sumType[i];
-			if (sumType0[i] < ceiling(tol*pN[i])) {
+			if (!typeConnected[i]) {
     	    	sumType[i] = 0;
     	    	sumStrType[i] = 0;
 			}
@@ -464,10 +475,12 @@ void generate_connections(double* __restrict__ pos,
     	        PosIntL mid = (static_cast<PosIntL>(blockIdx.x*nearNeighborBlock + in)*blockDim.x + i)*blockDim.x + threadIdx.x;
     	        Size ipre = bid + i;
     	        Size ip = preType[ipre];
-				if (sumType0[ip] < ceiling(tol*pN[ip])) {
+				if (!typeConnected[ip]) {
     	        	Float p = abs(conMat[mid]);
     	        	if (p > 0) {
-						if (count == 0) p *= pN[ip]/sumP[ip];
+						if (count == 0) {
+							p *= sumP[ip];
+						} 
     	        	    Float xrand = uniform(&localState);
     	        	    if (xrand < p) {
     	        	        Float str = pS[ip];
@@ -492,11 +505,11 @@ void generate_connections(double* __restrict__ pos,
     	            Size tid = (nn-in)*blockDim.x + i;
     	            Size ipre = bid + i;
     	            Size ip = preType[ipre];
-					if (sumType0[ip] < ceiling(tol*pN[ip])) {
+					if (!typeConnected[ip]) {
     	            	Float p = tempNeighbor[tid];
     	            	if (p > 0) {
 							if (count == 0) {
-    	            	    	p *= pN[ip]/sumP[ip];
+    	            	    	p *= sumP[ip];
 								tempNeighbor[tid] = p;
 							}
     	            	    Float xrand = uniform(&localState);
@@ -507,11 +520,11 @@ void generate_connections(double* __restrict__ pos,
     	            	        }
     	            	        sumType[ip] ++;
     	            	        sumStrType[ip] += str;
-    	            	        _vecID[ip*max_N + nid[ip]] = tid;
+    	            	        __vecID[ip][nid[ip]] = tid;
     	            	        nid[ip]++;
-                				if (nid[ip] > max_N) {
-                				    printf("set bigger max_N, currently %u\n", max_N);
-                				    assert(nid[ip] <= max_N);
+                				if (nid[ip] > max_N[ip]) {
+                				    printf("set bigger max_N, currently %u\n", max_N[ip]);
+                				    assert(nid[ip] <= max_N[ip]);
                 				}
     	            	    }
     	            	}
@@ -522,24 +535,26 @@ void generate_connections(double* __restrict__ pos,
     	}
 		connected = true;
 		for (PosInt i=0;i<nType;i++) {
-			if (sumType[i] < ceiling(pN[i]*tol)) {
+			typeConnected[i] = (sumType[i] <= ceiling(pN[i]*(1+tol))) && (sumType[i] >= flooring(pN[i]*(1-tol)));
+			if (!typeConnected[i]) {
 				connected = false;
 			}
 		}
 		count++;
-		if (count > 1 && !connected) {
+		if (count > 100 && !connected) {
 			printf("neuron %u-%u need to make another round(%u) of connection, because of %u/%u, %u/%u\n", blockIdx.x, threadIdx.x, count, sumType[0],pN[0], sumType[1],pN[1]);
 		}
-		if (count >= 20) {
+		/*if (count >= 100) {
 			printf("neuron %u-%u don't have one (or any) of the types of neurons to connect to\n", blockIdx.x, threadIdx.x);
-			assert(count < 20);
+			assert(count < 100);
 			//connected = true;
-		}
+		}*/
 		if (count == 1) {
     		delete []sumP;
 		}
 	}
-	delete []sumType0;
+	__syncthreads();
+	delete []typeConnected;
 	Size total_nid = 0;
 	for (PosInt i=0; i<nType; i++) {
 		total_nid += nid[i];
@@ -559,6 +574,8 @@ void generate_connections(double* __restrict__ pos,
     #pragma unroll
     for (Size i=0; i<nType; i++) {
         preTypeConnected[i*networkSize + id] = sumType[i];
+		//assert(sumType[i] < round(pN[i]*1.5) && sumType[i] > round(pN[i]*2.f/3.f));
+		assert(sumType[i] <= ceiling(pN[i]*(1+tol)) && sumType[i] >= flooring(pN[i]*(1-tol)));
         sumStrType[i] = 0;
     }
     delete []sumType;
@@ -608,7 +625,7 @@ void generate_connections(double* __restrict__ pos,
 					i = typeAcc0[ip+1]-1;
 					continue;
 				}
-				if (_vecID[ip*max_N + qid[ip]] == tid) {
+				if (__vecID[ip][qid[ip]] == tid) {
 					Float p = tempNeighbor[tid];
 					Float str = pS[ip];
 					if (p > 1) str *= p;
@@ -639,6 +656,7 @@ void generate_connections(double* __restrict__ pos,
     if (nb > 0) {
         delete []tempNeighbor;
     }
+	delete []__vecID;
 
     delete []ratio;
     #pragma unroll

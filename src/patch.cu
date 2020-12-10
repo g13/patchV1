@@ -57,6 +57,7 @@ int main(int argc, char **argv) {
     bool getLGN_sp;
 	bool delPrevSnapshot;
 	bool asInit;
+	bool use_v0;
     int rebound;
     int learning;
     int iModel;
@@ -77,8 +78,6 @@ int main(int argc, char **argv) {
     vector<Float> tonicDep;
     vector<Float> synFailFF;
     vector<Float> synFail;
-    vector<Size> synPerConFF;
-    vector<Size> synPerCon;
     // TODO: specify proportion of different types of conductances
 	vector<Float> grFF;
 	vector<Float> grE;
@@ -225,8 +224,6 @@ int main(int argc, char **argv) {
 		("tonicDep", po::value<vector<Float>>(&tonicDep), "tonic depolarization borrow from NMC model")
         ("synFailFF",  po::value<vector<Float>>(&synFailFF), "FF synpase failure rate of size nType")
         ("synFail",  po::value<vector<Float>>(&synFail), "synpase failure rate of size [nType, nType]")
-        ("synPerConFF",  po::value<vector<Size>>(&synPerConFF), "synpases per feedforward connection, size of nType")
-        ("synPerCon",  po::value<vector<Size>>(&synPerCon), "synpases per cortical connection size of [nType, nType]")
         ("manual", po::value<bool>(&manual)->default_value(false), "manually connect neurons, modify on top of conMat")
         ("preList", po::value<vector<PosInt>>(&preList), "the presynaptic neurons of the manual connections")
         ("postList", po::value<vector<PosInt>>(&postList), "the postynaptic neurons of the manual connections")
@@ -250,6 +247,7 @@ int main(int argc, char **argv) {
 		("getLGN_sp", po::value<bool>(&getLGN_sp)->default_value(false), "if write LGN spikes to file")
 		("delPrevSnapshot", po::value<bool>(&delPrevSnapshot)->default_value(true), "delete old snapshot")
 		("asInit", po::value<bool>(&asInit)->default_value(true), "use snapshot for initialization not to resume previous simulation")
+		("use_v0", po::value<bool>(&use_v0)->default_value(false), "use v0 to initialize membrane potential, otherwise is set according to depC")
 		("useNewLGN", po::value<bool>(&useNewLGN)->default_value(true), "regenerate the a new ensemble of LGN parameters according to their distribution");
 
 	// files
@@ -381,6 +379,8 @@ int main(int argc, char **argv) {
 
 	Size nType;
 	vector<Size> typeAccCount;
+    vector<Float> synPerConFF;
+    vector<Float> synPerCon;
 	ifstream fConnectome_cfg(connectome_cfg_filename + conV1_suffix, fstream::in | fstream::binary);
 	if (!fConnectome_cfg) {
 		cout << "Cannot open or find " << connectome_cfg_filename + conV1_suffix <<"\n";
@@ -388,7 +388,12 @@ int main(int argc, char **argv) {
 	} else {
 		fConnectome_cfg.read(reinterpret_cast<char*>(&nType), sizeof(Size));
 		typeAccCount.assign(nType,0);
+		synPerCon.assign(nType*nType,0);
+		synPerConFF.assign(nType,0);
 		fConnectome_cfg.read(reinterpret_cast<char*>(&typeAccCount[0]), nType*sizeof(Size));
+		fConnectome_cfg.read(reinterpret_cast<char*>(&synPerCon[0]), nType*nType*sizeof(Float));
+		fConnectome_cfg.read(reinterpret_cast<char*>(&synPerConFF[0]), nType*sizeof(Float));
+
 		fConnectome_cfg.close();
 	}
 
@@ -568,12 +573,6 @@ int main(int argc, char **argv) {
 	if (synPerConFF.size() != nType && synPerConFF.size() != 1) {
 		cout << "the size of synPerConFF has size of " << synPerConFF.size() << " != " << nType << " or 1.\n";
 		return EXIT_FAILURE;
-	} else {
-		if (synPerConFF.size() != nType) {
-        	for (PosInt i=1; i<nType; i++) {
-				synPerConFF.push_back(synPerConFF[0]);
-			}
-		}
 	}
 
     ConductanceShape condFF(&(grFF[0]), &(gdFF[0]), ngTypeFF);
@@ -1220,6 +1219,37 @@ int main(int argc, char **argv) {
 		return bound;
 	};
 
+	Size nParvo = 0;
+    Size nMagno = 0;
+    Size nParvo_I = 0;
+    Size nParvo_C = 0;
+    Size nMagno_I = 0;
+    Size nMagno_C = 0;
+	// parvo_I, magno_I, parvo_C, magno_C
+    for (PosInt i=0; i<nLGN; i++) {
+        if (static_cast<InputType_t>(LGNtype[i]) < 4) {
+            nParvo++;
+            if (i < nLGN_I) {
+                nParvo_I++;
+                assert(nParvo_I == i+1);
+            } else {
+                nParvo_C++;
+                assert(nParvo_C == i+1-nLGN_I);
+            }
+        } else {
+            nMagno++;
+            if (i < nLGN_I) {
+                nMagno_I++;
+                assert(nMagno_I == i+1-nParvo_I);
+            } else {
+                nMagno_C++;
+                assert(nMagno_C == i+1-nLGN_I-nParvo_C);
+            }
+        }
+    }
+    cout << nParvo << " parvo-cellular LGN (" << nParvo_I << ", " << nParvo_C << ") and " << nMagno << " (" << nMagno_I << ", " << nMagno_C << ") magno-cellular LGN\n";
+
+
 	if (useNewLGN) { // Setup LGN here 
 		cout << "initializing LGN spatial parameters...\n";
 		// TODO: k, rx, ry, surround_x, surround_y or their distribution parameters readable from file
@@ -1366,8 +1396,10 @@ int main(int argc, char **argv) {
 		Float acuityS_M[2] = {0.18f*deg2rad, 0.06f*deg2rad/1.349f};
 		Float pTspD[2];
 		Float tspR, tspD;
-        Float sharpness_dist[2] = {10.0, 1.0};
-        Float c50_dist[2] = {0.25, 0.03}; //
+        Float sharpness_dist[2] = {1.0, 0.1};
+        Float sharpness_distM[2] = {10.0, 1.0};
+        Float c50_dist[2] = {0.5, 0.06}; //
+        Float c50_distM[2] = {0.25, 0.03}; //
         //Float sharpness_dist[2] = {1.0, 1.0};
         //Float c50_dist[2] = {0.5, 0.03}; //
 		Float spontPercentUL = 0.15; // 0.15
@@ -1606,7 +1638,8 @@ int main(int argc, char **argv) {
 		    		    delay[i] = get_rand_from_gauss(delay_onC, rGen_LGNsetup, nonNegativeBound);
 		    		    delay[i+nLGN] = get_rand_from_gauss(delay_offS, rGen_LGNsetup, nonNegativeBound);
 		    	        // NOTE: proportion between L and M, significantly overlap in cone response curve, is implemented to calculate maxConvol
-		    	        covariant[i] = 0.53753461391295254; 
+		    	        //covariant[i] = 0.53753461391295254; 
+		    	        covariant[i] = 1;
                         break;
                     case InputType::MoffLon: case InputType::LoffMon:
                         // off-centers
@@ -1644,7 +1677,8 @@ int main(int argc, char **argv) {
 		    			delay[i] = get_rand_from_gauss(delay_offC, rGen_LGNsetup, nonNegativeBound);
 		    			delay[i+nLGN] = get_rand_from_gauss(delay_onS, rGen_LGNsetup, nonNegativeBound);
 		    	        // NOTE: proportion between L and M, significantly overlap in cone response curve, is implemented to calculate maxConvol
-		    	        covariant[i] = 0.53753461391295254; 
+		    	        //covariant[i] = 0.53753461391295254; 
+		    	        covariant[i] = 1;
                         break;
                     /* TODO: magno dist
                     case InputType::OnOff:
@@ -1688,19 +1722,26 @@ int main(int argc, char **argv) {
 		    //cout << "\n";
 
 		    norm = normal_distribution<Float>(c50_dist[0], c50_dist[1]);
+		    auto normM = normal_distribution<Float>(c50_distM[0], c50_distM[1]);
 		    auto get_c50 = get_rand_from_gauss0(rGen_LGNsetup, norm, positiveBound);
-		    generate(c50.begin(), c50.end(), get_c50);
-		    for (Size j = 0; j<nLGN; j++) {
-		    	assert(c50[j] < 1.0);
-		    }
+		    auto get_c50M = get_rand_from_gauss0(rGen_LGNsetup, normM, positiveBound);
+		    generate(c50.begin(), c50.begin()+nParvo_I, get_c50);
+		    generate(c50.begin()+nLGN_I, c50.begin()+nParvo_C, get_c50);
+		    generate(c50.begin()+nParvo_I, c50.begin()+nLGN_I, get_c50M);
+		    generate(c50.begin()+nLGN_I+nParvo_C, c50.end(), get_c50M);
 
 		    auto unityIncBound = get_incLowBound(1.0);
 		    norm = normal_distribution<Float>(sharpness_dist[0], sharpness_dist[1]);
-		    auto get_sharpness = get_rand_from_gauss0(rGen_LGNsetup, norm, unityIncBound);
-		    generate(sharpness.begin(), sharpness.end(), get_sharpness);
-		    for (Size j = 0; j<nLGN; j++) {
-		    	assert(sharpness[j] >= 1.0);
-		    }    
+		   	normM = normal_distribution<Float>(sharpness_distM[0], sharpness_distM[1]);
+		   	auto get_sharpness = get_rand_from_gauss0(rGen_LGNsetup, norm, unityIncBound);
+		   	auto get_sharpnessM = get_rand_from_gauss0(rGen_LGNsetup, normM, unityIncBound);
+		    generate(sharpness.begin(), sharpness.begin()+nParvo_I, get_sharpness);
+		    generate(sharpness.begin()+nLGN_I, sharpness.begin()+nParvo_C, get_sharpness);
+		    generate(sharpness.begin()+nParvo_I, sharpness.begin()+nLGN_I, get_sharpnessM);
+		    generate(sharpness.begin()+nLGN_I+nParvo_C, sharpness.end(), get_sharpnessM);
+		   	for (Size j = 0; j<nLGN; j++) {
+		   		assert(sharpness[j] >= 1.0);
+		   	}    
         } else {
 		    for (unsigned int i=0; i<nLGN; i++) {
 		    	// using median from table 2,3  (on,off)/all * table 5,6 with matching c.v.# Benardete and Kaplan 1997
@@ -1740,7 +1781,8 @@ int main(int argc, char **argv) {
 		    		    delay[i] = delay_onC[0];
 		    		    delay[i+nLGN] = delay_offS[0];
 		    	        // NOTE: proportion between L and M, significantly overlap in cone response curve, is implemented to calculate maxConvol
-		    	        covariant[i] = 0.53753461391295254; 
+		    	        //covariant[i] = 0.53753461391295254; 
+		    	        covariant[i] = 1;
                         break;
                     case InputType::MoffLon: case InputType::LoffMon:
 		    			// off-centers
@@ -1774,7 +1816,8 @@ int main(int argc, char **argv) {
 		    			delay[i] = delay_offC[0];
 		    			delay[i+nLGN] = delay_onS[0];
 		    	        // NOTE: proportion between L and M, significantly overlap in cone response curve, is implemented to calculate maxConvol
-		    	        covariant[i] = 0.53753461391295254; 
+		    	        //covariant[i] = 0.53753461391295254; 
+		    	        covariant[i] = 1.0;
                         break;
                     case InputType::OnOff: 
 		    			// on-centers
@@ -1847,9 +1890,14 @@ int main(int argc, char **argv) {
 		    	// non-linearity
 		    	spont[i] =  spontPercent;
 		    	//cout << "\r" << i << "/" << nLGN;
+				if (static_cast<InputType_t>(LGNtype[i]) < 4) {
+            		sharpness[i] = sharpness_dist[0];
+            		c50[i] = c50_dist[0];
+				} else {
+            		sharpness[i] = sharpness_distM[0];
+            		c50[i] = c50_distM[0];
+				}
 		    }
-            sharpness.assign(nLGN, sharpness_dist[0]);
-            c50.assign(nLGN, c50_dist[0]);
         }
         //============
         if (ignoreRetinogeniculateDelay) {
@@ -1925,35 +1973,7 @@ int main(int argc, char **argv) {
 		fLGN.read(reinterpret_cast<char*>(&covariant[0]), nLGN*sizeof(Float));
 		fLGN.close();	
 	}
-    Size nParvo = 0;
-    Size nMagno = 0;
-    Size nParvo_I = 0;
-    Size nParvo_C = 0;
-    Size nMagno_I = 0;
-    Size nMagno_C = 0;
-    for (PosInt i=0; i<nLGN; i++) {
-        if (coneType[i] < 3) {
-            nParvo++;
-            if (i < nLGN_I) {
-                nParvo_I++;
-                assert(nParvo_I == i+1);
-            } else {
-                nParvo_C++;
-                assert(nParvo_C == i+1-nLGN_I);
-            }
-        } else {
-            nMagno++;
-            if (i < nLGN_I) {
-                nMagno_I++;
-                assert(nMagno_I == i+1-nParvo_I);
-            } else {
-                nMagno_C++;
-                assert(nMagno_C == i+1-nLGN_I-nParvo_C);
-            }
-        }
-    }
-    cout << nParvo << " parvo-cellular LGN (" << nParvo_I << ", " << nParvo_C << ") and " << nMagno << " (" << nMagno_I << ", " << nMagno_C << ") magno-cellular LGN\n";
-    
+        
 	hSpatial_component hSpat(nLGN, 2, LGN_polar, LGN_rw, LGN_ecc, LGN_rh, LGN_orient, LGN_k);
 	hTemporal_component hTemp(nLGN, 2, tauR, tauD, delay, ratio, nR, nD);
 	hStatic_nonlinear hStat(nLGN, spont, c50, sharpness);
@@ -3001,8 +3021,8 @@ int main(int argc, char **argv) {
     Float *d_noisyDep;
     Float *d_synFailFF;
     Float *d_synFail;
-    Size *d_synPerConFF;
-    Size *d_synPerCon;
+    Float *d_synPerConFF;
+    Float *d_synPerCon;
     Size *typeAcc;
     Float *d_pFF;
     Float *d_pE;
@@ -3016,8 +3036,8 @@ int main(int argc, char **argv) {
     checkCudaErrors(cudaMalloc((void**)&d_noisyDep, nType*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void**)&d_synFailFF, nType*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void**)&d_synFail, nType*nType*sizeof(Float)));
-    checkCudaErrors(cudaMalloc((void**)&d_synPerConFF, nType*sizeof(Size)));
-    checkCudaErrors(cudaMalloc((void**)&d_synPerCon, nType*nType*sizeof(Size)));
+    checkCudaErrors(cudaMalloc((void**)&d_synPerConFF, nType*sizeof(Float)));
+    checkCudaErrors(cudaMalloc((void**)&d_synPerCon, nType*nType*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void**)&typeAcc, nType*sizeof(Size)));
     checkCudaErrors(cudaMalloc((void**)&d_pFF, nType*ngTypeFF*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void**)&d_pE,  nType*ngTypeE*sizeof(Float)));
@@ -3025,8 +3045,8 @@ int main(int argc, char **argv) {
 	checkCudaErrors(cudaMemcpy(d_noisyDep,  &(noisyDep[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_synFailFF,  &(synFailFF[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_synFail,  &(synFail[0]), nType*nType*sizeof(Float), cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_synPerConFF, &(synPerConFF[0]), nType*sizeof(Size), cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_synPerCon, &(synPerCon[0]), nType*nType*sizeof(Size), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_synPerConFF, &(synPerConFF[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_synPerCon, &(synPerCon[0]), nType*nType*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(typeAcc, &(typeAccCount[0]), nType*sizeof(Size), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_pFF, &(pFF[0]), nType*ngTypeFF*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_pE,  &(pE[0]),  nType*ngTypeE*sizeof(Float), cudaMemcpyHostToDevice));
@@ -3035,6 +3055,7 @@ int main(int argc, char **argv) {
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 	cout << "synFail, receptor ratio set\n";
 
+	vector<Float> iTonicDep(nV1, 0);
 	fConStats.open(conStats_filename + conV1_suffix, fstream::in | fstream::binary);
 	if (!fConStats) {
 		cout << "Cannot open or find " << conStats_filename <<" to read V1 ExcRatios.\n";
@@ -3042,7 +3063,6 @@ int main(int argc, char **argv) {
 	} else {
 		Size discard;
 		vector<float> ExcRatio(nV1, 0);
-		vector<Float> iTonicDep(nV1, 0);
 
 		fConStats.read(reinterpret_cast<char*>(&discard),sizeof(Size));
 		assert(discard == nType);
@@ -3233,13 +3253,22 @@ int main(int argc, char **argv) {
     	    	    assert(h_w0 + iblock*blockSize + typeAcc0[i+1] <= h_w0 + nV1);
     	    	}
 			}
-    	    auto vBound = get_excRangeBound(vI, vT[i]);
-    	    auto get_v0 = get_rand_from_norm(rGen_initV1, v0[i*2+0], v0[i*2+1], vBound);
-    	    for (PosInt iblock = 0; iblock < nblock; iblock++) {
-			    generate(h_v0 + iblock*blockSize + typeAcc0[i], h_v0 + iblock*blockSize + typeAcc0[i+1], get_v0);
-    	        assert(h_v0 + iblock*blockSize + typeAcc0[i+1] <= h_v0 + nV1);
-    	    }
+			if (use_v0) {
+    			auto vBound = get_excRangeBound(vI, vT[i]);
+    			auto get_v0 = get_rand_from_norm(rGen_initV1, v0[i*2+0], v0[i*2+1], vBound);
+    			for (PosInt iblock = 0; iblock < nblock; iblock++) {
+				    generate(h_v0 + iblock*blockSize + typeAcc0[i], h_v0 + iblock*blockSize + typeAcc0[i+1], get_v0);
+    			    assert(h_v0 + iblock*blockSize + typeAcc0[i+1] <= h_v0 + nV1);
+    			}
+			} else {
+    			for (PosInt iblock = 0; iblock < nblock; iblock++) {
+					for (PosInt j=typeAcc0[i]; j<typeAcc0[i+1]; j++) {
+						h_v0[iblock*blockSize + j] = vR[i] + (vT[i]-vR[i])*iTonicDep[iblock*blockSize + j];
+					}
+				}
+			}
     	}
+
 		Float v0Mean = accumulate(h_v0, h_v0 + nV1, 0.0)/nV1;
 		Float v0Min = *min_element(h_v0, h_v0 + nV1);
 		Float v0Max = *max_element(h_v0, h_v0 + nV1);
@@ -4433,6 +4462,8 @@ int main(int argc, char **argv) {
 		cout << "pushed input frame to last snapshot\n";
 	}
     //***************************
+	size_t pSharedSize = sizeof(Float)*2*nSample;
+	if (pSharedSize < sizeof(Float)*2*parvoFrame) pSharedSize = sizeof(Float)*2*parvoFrame;
 	for (unsigned int it = 0; it < nt; it++) {
 		farSpiked = false;
 		Float t = it*dt;
@@ -4494,9 +4525,12 @@ int main(int argc, char **argv) {
 		   jt-2, jt-1, jt ...nRetrace... it
 		 */// perform kernel convolution with built-in texture interpolation
         if (nParvo > 0) {
+			if (it > 0) {
+				cudaProfilerStart();
+			}
 		    parvoGrid.x = nParvo;
 		    parvoGrid.y = 1;
-		    LGN_convol_parvo<<<parvoGrid, parvoBlock, sizeof(Float)*nSample, mainStream>>>(
+		    LGN_convol_parvo<<<parvoGrid, parvoBlock, pSharedSize, mainStream>>>(
 		    		luminance,
 		    		parvo_SW_storage, parvo_SC_storage, parvo_TW_storage,
 		    		currentConvol, contrast,
@@ -4513,6 +4547,9 @@ int main(int argc, char **argv) {
             #ifdef SYNC
                 checkCudaErrors(cudaDeviceSynchronize());
             #endif
+			if (it > 0) {
+				cudaProfilerStop();
+			}
         }
         if (nMagno > 0) {
             LGN_convol_magno<<<magnoGrid, magnoBlock, sizeof(Float)*mSample, magnoStream>>>(
@@ -4619,7 +4656,13 @@ int main(int argc, char **argv) {
                 iStatus++;
             }
         }
+		if (it > 0) {
+			cudaProfilerStart();
+		}
 		LGN_nonlinear<<<nLGN_block, nLGN_thread, 0, mainStream>>>(nLGN, *dLGN.logistic, maxConvol, currentConvol, convolRatio, d_LGN_fr, d_LGN_sInfo, d_sx, d_sy, leftTimeRate, lastNegLogRand, randState, dLGN_type, typeStatus, lVarFFpre, varSlot, lFF_E_pre, lFF_I_pre, nLearnTypeFF, dt, learning, learnData_FF, LGN_switch, getLGN_sp);
+		if (it > 0) {
+			cudaProfilerStop();
+		}
         #ifdef CHECK
 		    getLastCudaError("LGN_nonlinear failed");
         #endif
@@ -4776,6 +4819,9 @@ int main(int argc, char **argv) {
 		PosInt block_offset = 0;
         size_t p_offset = 0;
         size_t p_total = 0;
+		//if (it > 500) {
+		//	cudaProfilerStart();
+		//}
 		for (PosInt i = 0; i < nChunk; i++) {
 			if (i >= iSizeSplit) chunkSize = remainChunkSize;
 			size_t mChunkSize = chunkSize * nearBlockSize;
@@ -4845,6 +4891,9 @@ int main(int argc, char **argv) {
 			block_offset += chunkSize;
 			p_offset += 2*mChunkSize;
 		}
+		//if (it > 500) {
+		//	cudaProfilerStop();
+		//}
         assert(block_offset == nblock);
         assert(p_total + p_offset == matSize*2);
 		for (PosInt i = 0; i < matConcurrency; i++) {
@@ -5154,7 +5203,7 @@ int main(int argc, char **argv) {
 				fSnapshot.close();
 				// remove old snapshotInterval
 				if (oldTimeStamp != 0 && delPrevSnapshot) {
-					string oldSnapshot_Fn = "snapshotInterval"+ to_string(oldTimeStamp) + output_suffix;
+					string oldSnapshot_Fn = "snapShot_"+ to_string(oldTimeStamp) + output_suffix;
 					if (remove(oldSnapshot_Fn.c_str()) != 0) cout << "failed to remove preivous snapshot\n";
 					else cout << "... removed previous snapshot\n";
 				}
@@ -5199,7 +5248,7 @@ int main(int argc, char **argv) {
 	ofstream fPatchV1_cfg;
 	fPatchV1_cfg.open(patchV1_cfg_filename + output_suffix, fstream::out | fstream::binary);
 	if (!fPatchV1_cfg) {
-		cout << "Cannot open or find " << connectome_cfg_filename + conV1_suffix <<"\n";
+		cout << "Cannot open or find " << patchV1_cfg_filename + output_suffix <<"\n";
 		return EXIT_FAILURE;
 	} else {
 
@@ -5220,6 +5269,8 @@ int main(int argc, char **argv) {
 		fPatchV1_cfg.write((char*) &(typeAccCount[0]), nType*sizeof(Size));
 		fPatchV1_cfg.write((char*) &(sRatioLGN[0]), nType*sizeof(Float));
 		fPatchV1_cfg.write((char*) &sRatioV1, sizeof(Float));
+		fPatchV1_cfg.write((char*) &frRatioLGN, sizeof(Float));
+		fPatchV1_cfg.write((char*) &convolRatio, sizeof(Float));
 
 		fPatchV1_cfg.write((char*) &seed, sizeof(PosIntL));	
 		fPatchV1_cfg.write((char*) &nLGN, sizeof(Size));	

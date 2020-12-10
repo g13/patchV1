@@ -1,4 +1,3 @@
-
 % 2D cortex in stimulus space (VFx,VFy,OD,ORx,ORy) where VF = visual
 % field, OD = ocular dominance and OR = orientation.
 %
@@ -26,10 +25,14 @@
 % scaffolding for the underlying continuous set of training vectors.
 % 'noisy' and 'uniform*' approximate online training over the continuous
 % domain of (VFx,VFy,OD,ORt).
-function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,nvf,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,ecc,nod,a,b,k,fign,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,weightType,VFpath,old)
-	irange = fign;
+function stats = myV1driver(exchange_nm,seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,aspectRatio,nT,ecc,nod,a,b,k,fign,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,weightType,VFpath,old, randSeed, figlist, rotate)
+	iRange = fign;
     datafileabsolpath = [pwd,'/',ENfilename0,'-',ENfilename,'.mat'];
-	stream = RandStream('mt19937ar','Seed',seed);
+	if randSeed
+		stream = RandStream('mt19937ar','Seed',seed+fign);
+	else
+		stream = RandStream('mt19937ar','Seed',seed);
+	end
 	[tmp, tmp] = mkdir([ENfilename0,'/',ENfilename]);
 
     if ~exist(datafileabsolpath,'file') || new
@@ -64,6 +67,11 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
         if isempty(VFpath)
 		    if cortical_shape
 		    	%assert(2*Nx == Ny);
+                w = dipole_ext(ecc,0,a,b,k) - k*log(a/b);
+				mu_rx = [0, real(w)]
+                w = dipole_ext(ecc,pi/2,a,b,k) - k*log(a/b);
+				y0 = imag(w);
+				mu_ry = [-y0, y0]
 		    	switch equi
 		    		case 'VF'
 		    			x_vec0 = linspace(rx(1),rx(2),Nx+1);
@@ -72,11 +80,13 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
 		    			x_vec = midpoints(x_vec0);
 		    			y_vec = midpoints(y_vec0);
 
-		    			halfNy = Ny/2;
+		    			halfNy = round(Ny/2);
 		    			vfx = linspace(0,ecc,Nx+1);
 		    			vfy = linspace(0,ecc,halfNy+1);
 		    			mvfx = midpoints(vfx);
 		    			mvfy = midpoints(vfy);
+
+
 		    			[vfx, vfy] = meshgrid(vfx, vfy);
 		    			[vfpolar, vfecc] = cart2pol(vfx, vfy);
                     	w = dipole_ext(vfecc,vfpolar,a,b,k) - k*log(a/b);
@@ -92,6 +102,10 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
                     	            p(:,2) = [x_cortex(i,j+1),   y_cortex(i,j+1)]';
                     	            p(:,3) = [x_cortex(i+1,j+1), y_cortex(i+1,j+1)]';
                     	            p(:,4) = [x_cortex(i+1,j),   y_cortex(i+1,j)]';
+                    	            %p(:,1) = [vfx(i,j),     vfy(i,j)]';
+                    	            %p(:,2) = [vfx(i,j+1),   vfy(i,j+1)]';
+                    	            %p(:,3) = [vfx(i+1,j+1), vfy(i+1,j+1)]';
+                    	            %p(:,4) = [vfx(i+1,j),   vfy(i+1,j)]';
 		    						switch weightType
 		    							case 'area'
                     	            		VFweights(i,j) = find_area(p);
@@ -126,7 +140,7 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
                     	yy_cortex = imag(w);
 		    	
 		    		case 'cortex'
-		    			halfNy = Ny/2;
+		    			halfNy = round(Ny/2);
 		    			x2ecc = @(x) (a-b*exp(x/k))./(exp(x/k)-1);
 
 		    			v_max = dipole_ext(ecc,0,a,b,k)-k*log(a/b);
@@ -200,8 +214,95 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
 		    	y_vec0 = linspace(ry(1),ry(2),Ny+1);
 		    	x_vec = midpoints(x_vec0);
 		    	y_vec = midpoints(y_vec0);
+				if rotate ~=0
 		    	%x_vec = cumsum([0.25, 0.5*ones(1,Nx/2-1), ones(1,Nx/2)]);
 		    	%x_vec = rx(1) + x_vec/(max(x_vec)+0.5) * (rx(2) - rx(1));
+					if rotate < 0
+						rot_mat = [cos(-rotate), sin(-rotate); -sin(-rotate), cos(-rotate)]';
+					else
+						rot_mat = [cos(rotate), sin(rotate); -sin(rotate), cos(rotate)]';
+					end
+
+					xx0 = [rx(1); rx(2); rx(1); rx(2)];
+					yy0 = [ry(1); ry(1); ry(2); ry(2)];
+					center = [mean(rx), mean(ry)]
+					[xx0, yy0]
+					corners = [xx0-center(1), yy0-center(2)]*rot_mat + repmat(center, [4,1])
+					if rotate < 0
+						x_range = [min([rx(1); corners(:,1)]), max([rx(2); corners(:,1)])];
+						y_range = [min([ry(1); corners(:,2)]), max([ry(2); corners(:,2)])];
+					else
+						x_range = [min(corners(:,1)), max(corners(:,1))];
+						y_range = [min(corners(:,2)), max(corners(:,2))];
+					end
+
+					Nxx = round(Nx/diff(rx)*diff(x_range));
+					Nyy = round(Ny/diff(ry)*diff(y_range));
+					x_r = linspace(x_range(1), x_range(2), Nxx);
+					y_r = linspace(y_range(1), y_range(2), Nyy);
+					[xx, yy] = ndgrid(x_r, y_r);
+					xx = xx(:);
+					yy = yy(:);
+					if rotate < 0
+						xmean = mean(xx);
+						ymean = mean(yy);
+						T_xy = [xx-xmean, yy-ymean]*rot_mat + repmat([xmean, ymean], [Nxx*Nyy,1]);
+						pick = T_xy(:,1) <= rx(2) & T_xy(:,2) <= ry(2) & T_xy(:,1) >= rx(1) & T_xy(:,2) >= ry(1);
+						T_xy = T_xy(pick,:);
+						Nxy = size(T_xy,1);
+						facs = factor(Nxy);
+						nfac = length(facs);
+						Nxx = 1;
+						for i=1:(nfac-1)
+							Nxx = Nxx*facs(i);
+							if Nxx*facs(i+1) > Nxy/2
+								Nyy = Nxy/Nxx;
+								break;
+							end
+						end
+						% place holder for Nxx*Nyy entries in T
+						x_vec = linspace(rx(1), rx(2), Nxx);
+						y_vec = linspace(ry(1), ry(2), Nyy);
+					else
+						T_xy = [xx, yy];
+						l1 = sum((corners(2,:) - corners(1,:)).^2);	
+						l2 = sum((corners(3,:) - corners(1,:)).^2);	
+						l1_vec = corners(2,:) - corners(1,:);
+						l2_vec = corners(3,:) - corners(1,:);
+						l0_vec = T_xy - repmat(corners(1,:),[Nxx*Nyy,1]);
+						ap = l0_vec*l1_vec';
+						aq = l0_vec*l2_vec';
+						pick = ap > 0 & ap < l1 & aq > 0 & aq < l2;
+						disp('T_xy')
+						rx_flat = rx;
+						ry_flat = ry;
+						rx = x_range;
+						ry = y_range;
+						x_range
+						[min(T_xy(:,1)), max(T_xy(:,1))]
+						ry
+						y_range
+						[min(T_xy(:,2)), max(T_xy(:,2))]
+						T_xy = T_xy(pick,:);
+						disp('T_xy(pick)')
+						[min(T_xy(:,1)), max(T_xy(:,1))]
+						[min(T_xy(:,2)), max(T_xy(:,2))]
+						Nxy = size(T_xy,1);
+						facs = factor(Nxy);
+						nfac = length(facs);
+						Nxx = 1;
+						for i=1:(nfac-1)
+							Nxx = Nxx*facs(i);
+							if Nxx*facs(i+1) > Nxy/2
+								Nyy = Nxy/Nxx;
+								break;
+							end
+						end
+						% place holder for Nxx*Nyy entries in T
+						x_vec = linspace(rx(1), rx(2), Nxx);
+						y_vec = linspace(ry(1), ry(2), Nyy);
+					end
+				end
 		    end
             T = ENtrset('grid',zeros(1,5),...
                 x_vec,...	% VFx
@@ -210,32 +311,61 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
                 tmp1,...				% ORtheta
                 linspace(rORr(1),rORr(2),NORr),stream);%,... % ORr
 
+			if rotate ~= 0
+            	for i=1:NOD*NORr*NOR
+            	    start = (i-1)*Nxy + 1;
+            	    stop = i*Nxy;
+            	    T(start:stop,1:2) = T_xy;
+            	end
+			end
+
 		    dx = mean(diff(x_vec));
 		    dy = mean(diff(y_vec));
+			disp([num2str(prod(G)/(Nx*Ny)), 'neurons per visual field position']);
         else
 			disp(['reading VF training points from ', VFpath])
-            fID = fopen(VFpath, 'rb');
-            nxny = fread(fID, 1, 'int');
-            data = fread(fID, [nxny,2], 'double');
-            x_cortex = data(:,1); 
+            fID = fopen(VFpath, 'r');
+            nxny = fread(fID, 1, 'int')
+            data = fread(fID, [nxny,4], 'double');
+            x_cortex = data(:,1); %  points on the mu grid
             y_cortex = data(:,2);
-            xx_cortex = data(:,1); 
+            xx_cortex = data(:,1); % mid points
             yy_cortex = data(:,2);
-            rx0 = fread(fID, 2, 'double');
-            ry0 = fread(fID, 2, 'double');
+            x_deformed = data(:,3); % deformed T points
+            y_deformed = data(:,4);
+            mu_rx = fread(fID, 2, 'double')
+            mu_ry = fread(fID, 2, 'double')
+            df_mu_rx = fread(fID, 2, 'double')
+            df_mu_ry = fread(fID, 2, 'double')
 			dx = (rx(2)-rx(1))/nxny;
 			dy = (ry(2)-ry(1))/nxny;
             vf = fread(fID, [nxny,2], 'double');
+            vf_rx = fread(fID, 2, 'double')
+            vf_ry = fread(fID, 2, 'double')
+            transform = fread(fID, 2, 'double');
+            pivot0 = fread(fID, 2, 'double')
+			VFweights = fread(fID, nxny, 'double');
+			midp = fread(fID, 1, 'int');
+			fclose(fID);
+
+		    if heteroAlpha ~= 0
+		    	if heteroAlpha == 1
+		    		alpha_v = repmat(VFweights(:), NOD*NOR*NORr,1);
+				else
+		    		assert(heteroAlpha == -1);
+		    		alpha_v = repmat(1./VFweights(:), NOD*NOR*NORr,1);
+				end
+		    	alpha = alpha_v/sum(alpha_v)*length(alpha_v) * alpha;
+			end
 
             facs = factor(nxny)
             nfac = length(facs);
             assert(nfac > 1);
 			fac1 = 1;
-			for i=1:nfac
+			for i=1:(nfac-1)
 				fac1 = fac1*facs(i);
-				if fac1 > nxny/fac1
-					fac1
-					fac2 = nxny/fac1
+				if fac1*facs(i+1) > nxny/2
+					fac2 = nxny/fac1;
 					break;
 				end
 			end
@@ -247,17 +377,19 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
                 linspace(rOD(1),rOD(2),NOD),...	% OD
                 tmp1,...				        % ORtheta
                 linspace(rORr(1),rORr(2),NORr),stream);% ORr
-			x_vec0 = linspace(rx(1), rx(2), fac1);
-			y_vec0 = linspace(ry(1), ry(2), fac2);
+			x_vec0 = linspace(rx(1), rx(2), Nx);
+			y_vec0 = linspace(ry(1), ry(2), Ny);
+			%x_vec0 = linspace(rx(1), rx(2), fac1);
+			%y_vec0 = linspace(ry(1), ry(2), fac2);
 			xy = zeros(nxny,2);
 			switch cortical_VF
 		    	case 'VF'
 					[xy(:,1), xy(:,2)] = pol2cart(vf(:,2),vf(:,1));
-					xy(:,1) = rx(1) + (xy(:,1) - 0)*(rx(2)-rx(1))/ecc;
-					xy(:,2) = ry(1) + (xy(:,2) + ecc)*(ry(2)-ry(1))/(2*ecc);
+					xy(:,1) = rx(1) + (xy(:,1) - vf_rx(1))*(rx(2)-rx(1))/(vf_rx(2)-vf_rx(1));
+					xy(:,2) = ry(1) + (xy(:,2) - vf_ry(1))*(ry(2)-ry(1))/(vf_ry(2)-vf_ry(1));
 		    	case 'cortex'
-					xy(:,1) = rx(1) + (x_cortex - rx0(1))*(rx(2)-rx(1))/(rx0(2)-rx0(1));
-					xy(:,2) = ry(1) + (y_cortex - ry0(1))*(ry(2)-ry(1))/(ry0(2)-ry0(1));
+					xy(:,1) = rx(1) + (x_deformed - df_mu_rx(1))*(rx(2)-rx(1))/(df_mu_rx(2)-df_mu_rx(1));
+					xy(:,2) = ry(1) + (y_deformed - df_mu_ry(1))*(ry(2)-ry(1))/(df_mu_ry(2)-df_mu_ry(1));
 			end
 			
             for i=1:NOD*NORr*NOR
@@ -265,15 +397,19 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
                 stop = i*nxny;
                 T(start:stop,1:2) = xy;
             end
+			disp('training range');
+			[min(xy(:,1)), max(xy(:,1))]
+			[min(xy(:,2)), max(xy(:,2))]
 		    VFweights_hlf = ones(nxny,1);
+			disp([num2str(prod(G)/nxny), 'neurons per visual field position']);
         end
 		dOD = 2*l;
-		disp(['#',num2str(irange),': dx = ',num2str(dx), ', dy = ', num2str(dy), ', dOD = ', num2str(dOD)]);
+		disp(['#',num2str(iRange),': dx = ',num2str(dx), ', dy = ', num2str(dy), ', dOD = ', num2str(dOD)]);
         % For non-rectangular cortex shapes, create a suitable Pi here:
         resol = 10;
         if cortical_shape
 			manual_LR = ~non_cortical_LR && ~uniform_LR;
-            [Pi, W, LR, VF] = myCortex(stream, G, rx, x_cortex, ry, y_cortex, VFweights_hlf, ecc, a, b, k, resol, nod, rOD*ODabsol, ODnoise, manual_LR, fign, [ENfilename0,'/',ENfilename], cortical_VF);
+            [Pi, W, H, LR, VF, G, qx, Pi_x, Pi_y] = myCortex(stream, G(1), aspectRatio, rx, mu_rx, x_cortex, ry, mu_ry, y_cortex, VFweights_hlf, ecc, a, b, k, resol, nod, rOD*ODabsol, ODnoise, manual_LR, fign, [ENfilename0,'/',ENfilename], cortical_VF);
 			fID = fopen([ENfilename0,'/',ENfilename,'-RefVF.bin'],'w');
 			fwrite(fID, xx_cortex(:), 'double');
 			fwrite(fID, yy_cortex(:), 'double');
@@ -281,6 +417,8 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
 			fclose(fID);
         else
             Pi = zeros(G);
+			Pi_x = x_vec;
+			Pi_y = y_vec;
             Pi(1+test_dw*nG:G(1)-nG*test_dw, 1+test_dh*nG:G(2)-nG*test_dh) = 1;
             %Pi = [];			% Don't disable any centroid
             W = G(1)-nG*test_dw;			% Net width along 1st var. (arbitrary units)
@@ -309,6 +447,8 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
                 fwrite(fID, ecc, 'double');
                 fwrite(fID, int32(G), 'int');
 				fwrite(fID, Pi, 'int');
+				fwrite(fID, Pi_x, 'double');
+				fwrite(fID, Pi_y, 'double');
 				fclose(fID);
 			end
         end
@@ -363,8 +503,10 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
         %     G = [64 104]*nG;		% Number of centroids ***    
         %     G = [64 96]*nG;		% Number of centroids ***   3.4
         bc = 'nonperiodic'		% One of 'nonperiodic', 'periodic' ***
+		%p = 2^(nG-1);
         p = 1;			% Stencil order (of derivative) ***
-        s = {[0 -1 1],[0;-1;1]};	% Stencil list ***
+		s = stencil(nT);
+        %s = {[0 -1 1],[0;-1;1]};	% Stencil list ***
         L = length(G); M = prod(G);
         %%% parameters that does not matter
         % test_boundary = false;
@@ -389,22 +531,31 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
         % $$$   normcte = 1;
 		
 		if cortical_shape
-			d = W/(G(1)-1);
-			assert(mod(G(2)/2,2) == 0);
-			scale = (G(1)-1)/W;
+			%assert(mod(G(2)/2,2) == 0);
+			xscale = (G(1)-1)/W;
+			yscale = (G(2)-1)/(2*H);
+			disp('dxdy');
+			1/xscale
+			1/yscale
 			if isempty(VFpath)
 				xx_cortex = [flipud(xx_cortex); xx_cortex];
 				yy_cortex = [-flipud(yy_cortex); yy_cortex];
 			end
-			xgrid = 1.5 + xx_cortex*scale;
-			ygrid = yy_cortex*scale;
-			ylim = max(ygrid);
-			lift = 1 + (G(2)-1 - 2*ylim)/2;
-			ygrid = lift + ygrid + ylim;
+			xgrid = 1 + (xx_cortex-qx)*xscale;
+			disp('xgrid');
+			[min(xgrid), max(xgrid)]
+			ygrid = 1 + (yy_cortex+H)*yscale;
+			disp('ygrid');
+			[min(ygrid), max(ygrid)]
 		else
-			[xgrid, ygrid] = meshgrid(x_vec, y_vec);
-			xgrid = 1 + xgrid/(v(3,id.VFx)-v(2,id.VFx))*(G(1)-1);
-			ygrid = 1 + ygrid/(v(3,id.VFy)-v(2,id.VFy))*(G(2)-1);
+			if rotate ~= 0
+				xgrid = 1 + (T_xy(:,1)-rx(1))/(rx(2)-rx(1))*(G(1)-1);
+				ygrid = 1 + (T_xy(:,2)-ry(1))/(ry(2)-ry(1))*(G(2)-1);
+			else
+				[xgrid, ygrid] = meshgrid(x_vec, y_vec);
+				xgrid = 1 + xgrid/(rx(2)-rx(1))*(G(1)-1);
+				ygrid = 1 + ygrid/(ry(2)-ry(1))*(G(2)-1);
+			end
 		end
 
         % Initial elastic net: retinotopic with some noise and random, uniform
@@ -416,44 +567,142 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
 				if old
         			mu = ENtrset('grid',zeros(1,2),...		% Small noise
         			    linspace(rx(1),rx(2),G(1)),...	% VFx
-        			    linspace(ry(1),ry(2),G(2)),stream);	% VFy
+        			    linspace(ry(2),ry(2),G(2)),stream);	% VFy
 				else
                 	mu = reshape(VF, M, 2);
 				end
             case 'cortex'
-                tmp1 = linspace(rx(1),rx(2),G(1)-1);
-                dtmp = (tmp1(2)-tmp1(1))/2;
-                tmp1 = linspace(rx(1)-dtmp, rx(2) + dtmp, G(1));
-                w = dipole_ext(ecc,pi/2,a,b,k) - k*log(a/b);
-                xmax = real(w);
-                ymax = imag(w);
-                ylength = (xmax + xmax/(G(1)-2))/(G(1)-1)*(G(2)-1);
-                yratio_hlf = 2*ymax/ylength;
-                hy = (ry(2)-ry(1))/2/yratio_hlf;
-                if mod(G(2),2) == 0
-                    G2_hlf = G(2)/2
-                    tmp2 = linspace(0, hy, G2_hlf + 1);
-                    tmp2 = midpoints(tmp2);
-                    tmp2 = [-fliplr(tmp2), tmp2];
-                    tmp2 = tmp2 + hy;
-                else
-                    G2_hlf = (G(2)+1)/2
-                    tmp2 = linspace(0, hy, G2_hlf);
-                    tmp2 = [-fliplr(tmp2), tmp2(2:end)];
-                    tmp2 = tmp2 + hy;
-                end
-        	    mu = ENtrset('grid',zeros(1,2),...		% Small noise
-        	        tmp1,...	% VFx
-        	        tmp2,stream);	% VFy
+				if ~isempty(VFpath) 
+					%figure;
+					if ~isempty(transform)
+						slope0 = transform(1)
+						shrink = transform(2)
+					end
+					if shrink < 1.0
+						W
+						H
+						dx = W/(G(1)-1)
+						dy = 2*H/(G(2)-1)
+						slope = slope0 * 1;
+						mu_xy = zeros(M,2);
+						% output of meshgrid is the transpose of the output of ndgrid
+						if mod(G(2),2) == 0
+							[cart_x, cart_y] = ndgrid(linspace(0,W,G(1)), linspace(dy/2,H,G(2)/2));
+						else
+							
+							[cart_x, cart_y] = ndgrid(linspace(0,W,G(1)), linspace(0,H,(G(2)+1)/2));
+						end
+						cart = cat(3,cart_x, cart_y);
+						disp('tx ty')
+						tx = [min(min(cart(:,:,1))), max(max(cart(:,:,1)))]
+						ty = [min(min(cart(:,:,2))), max(max(cart(:,:,2)))]
+
+						pivot = [pivot0(1) - mu_rx(1), 0]
+						b = pivot(2) - slope*pivot(1);
+						pivot = reshape([repmat(pivot(1), size(cart_x)), repmat(pivot(2), size(cart_y))], size(cart));
+						dxx = (cart_y - slope*cart_x - b)*slope/(1+slope*slope);
+						dyy = -dxx/slope;
+						cart = (1-shrink)*reshape([dxx, dyy], size(cart)) + cart;
+						%plot(cart(:,:,1), cart(:,:,2), '-*r', 'MarkerSize', 0.2)
+						rad = atan(slope) - atan(slope*shrink);
+						rot_mat = [cos(rad), sin(rad); -sin(rad), cos(rad)]';
+						transformed_cart = reshape(reshape(cart - pivot, [prod(size(cart_x)),2])*rot_mat,size(cart))+pivot;
+						plot(transformed_cart(:,:,1), transformed_cart(:,:,2), '-sg', 'MarkerSize', 0.2)
+						if mod(G(2),2) == 0
+							transformed_cart_reflect = reshape([transformed_cart(:,:,1), - transformed_cart(:,:,2)], size(cart));,
+						else
+							transformed_cart_reflect = reshape([transformed_cart(:,2:end,1), - transformed_cart(:,2:end,2)], [size(cart,1),size(cart,2)-1,2]);,
+						end
+						transformed_cart = cat(2,flip(transformed_cart_reflect,2), transformed_cart);
+						%plot(transformed_cart(:,:,1)+100, transformed_cart(:,:,2), '-ok', 'MarkerSize', 0.2)
+						disp('mu_xy before rxry');
+						tx0 = min(min(transformed_cart(:,:,1)))
+						tx1 = max(max(transformed_cart(:,:,1)))
+						df_mu_rx
+						ty0 = min(min(transformed_cart(:,:,2)))
+						ty1 = max(max(transformed_cart(:,:,2)))
+						df_mu_ry
+						mu_xy(:,1) = reshape(rx(1) + (transformed_cart(:,:,1)-df_mu_rx(1))*(rx(2)-rx(1))/diff(df_mu_rx), [M,1]);
+						mu_xy(:,2) = reshape(ry(1) + (transformed_cart(:,:,2)-df_mu_ry(1))*(ry(2)-ry(1))/diff(df_mu_ry), [M,1]);
+        	    		mu = mu_xy;
+						disp('mu_xy');
+						rx
+						[min(mu(:,1)), max(mu(:,1))]
+						ry
+						[min(mu(:,2)), max(mu(:,2))]
+						%subplot(1,2,2)
+						%hold on
+						%plot(mu_xy(:,1), mu_xy(:,2), '-ok', 'MarkerSize', 0.2);
+
+        				%print(gcf,'-loose','-r600', '-dpng',[ENfilename0,'/',ENfilename,'-transform.png']);
+						%
+					else
+                		tmp1 = linspace(rx(1),rx(2),G(1));
+                		tmp2 = linspace(ry(1),ry(2),G(2));
+        	    		mu = ENtrset('grid',zeros(1,2),...		% Small noise
+        	    		    tmp1,...	% VFx
+        	    		    tmp2,stream);	% VFy
+					end
+				else
+                	tmp1 = linspace(rx(1),rx(2),G(1));
+                	tmp2 = linspace(ry(1),ry(2),G(2));
+        	    	mu = ENtrset('grid',zeros(1,2),...		% Small noise
+        	    	    tmp1,...	% VFx
+        	    	    tmp2,stream);	% VFy
+				end
+
+                %dtmp = (tmp1(2)-tmp1(1))/2;
+                %tmp1 = linspace(rx(1)-dtmp, rx(2) + dtmp, G(1));
+                %w = dipole_ext(ecc,pi/2,a,b,k) - k*log(a/b);
+                %xmax = real(w);
+                %ymax = imag(w);
+
+                %ylength = 2*ymax/xmax*G(2);
+                %yratio_hlf = 2*ymax/ylength;
+                %hy = (ry(2)-ry(1))/2/yratio_hlf;
+
+                %tmp2 = linspace(0, 2*hy, G(2));
+
+				%[min(tmp1), max(tmp1)]
+				%[min(tmp1), max(tmp2)]
+				%disp('mu points range');
+				%[min(mu(:,1)), max(mu(:,1))]
+				%rx
+				%[min(mu(:,2)), max(mu(:,2))]
+				%ry
             end
 		else
-        	mu = ENtrset('grid',zeros(1,2),...		% Small noise
-        	    linspace(rx(1),rx(2),G(1)),...	% VFx
-        	    linspace(ry(1),ry(2),G(2)),stream);	% VFy
+			if rotate > 0
+				[xx, yy] = ndgrid(linspace(rx_flat(1),rx_flat(2), G(1)), linspace(ry_flat(1),ry_flat(2), G(2)));
+				xx = xx(:);
+				yy = yy(:);
+				rot_mat = [cos(rotate), sin(rotate); -sin(rotate), cos(rotate)]';
+				xmean = mean(xx)
+				ymean = mean(yy)
+				mu_xy = [xx-xmean, yy-ymean]*rot_mat + repmat([xmean, ymean], [G(1)*G(2),1]);
+				mu = mu_xy;
+				disp('mu_xy')
+				x_range
+				[min(mu_xy(:,1)), max(mu_xy(:,1))]
+				[min(T_xy(:,1)), max(T_xy(:,1))]
+				y_range
+				[min(mu_xy(:,2)), max(mu_xy(:,2))]
+				[min(T_xy(:,2)), max(T_xy(:,2))]
+			else
+        		%mu = ENtrset('grid',zeros(1,2),...		% Small noise
+        		%    linspace(rx(1),rx(2),G(1)),...	% VFx
+        		%    linspace(ry(1),ry(2),G(2)),stream);	% VFy
+				tmp = rand(M,2);
+				tmp(:,1) = rx(1) + tmp(:,1) * (rx(2) - rx(1));
+				tmp(:,2) = ry(1) + tmp(:,2) * (ry(2) - ry(1));
+				mu = tmp;
+			end
 		end
         %    mu = reshape(gridVF, M, 2);
         if uniform_LR
-            mu = [mu, ENtrset('uniform',rOD,M,stream)];
+			LR(:) = mean(rOD);
+            mu = [mu reshape(LR,M,1)];		% OD
+            %mu = [mu, ENtrset('uniform',rOD,M,stream)];
         else
             mu = [mu reshape(LR,M,1)];		% OD
         end
@@ -466,9 +715,9 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
         % mu = ENtrset('grid',zeros(1,2),...		% Small noise
         %    linspace(rx(1),rx(2),G(1)),...	% VFx
         %    linspace(ry(1),ry(2),G(2)),stream);	% VFy
-        mu = [mu ENtrset('uniform',[-pi/2 pi/2;...		% ORtheta
-           0 r],... % ORr
-           M,stream)];
+		%OR = zeros(size(OR));
+		OR = ENtrset('uniform',[-pi/2 pi/2;0 r], M,stream);
+        mu = [mu OR];
         %         -lSF lSF],...   % -- SF
         %         M)];
         if isfield(id, 'ORx')    
@@ -504,7 +753,7 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
                 % I would prefer to have the initial value of mu in ENlist(0),
                 % but crap Matlab does not allow negative or zero indices.
                 if strcmp(ENproc,'varplot')
-                    myV1replay(G,bc,ENlist,v,1,T,T_vec,Pi,murange,id);
+                    myV1replay(G,aspectRatio,bc,ENlist,v,1,T,T_vec,Pi,murange,id);
                 end
             case {'save','saveplot'}
                 % Save parameters in separate files with names xxx0001, xxx0002, etc.
@@ -524,7 +773,7 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
                     ENlist = struct('mu',mu,'stats',struct(...
                         'K',NaN,'E',[NaN NaN NaN],'time',[NaN NaN NaN],...
                         'cpu','','code',1,'it',0));
-                    myV1replay(G,bc,ENlist,v,1,T,T_vec,Pi,murange,id);
+                    myV1replay(G,aspectRatio,bc,ENlist,v,1,T,T_vec,Pi,murange,id);
                 end
             otherwise
                 % Do nothing.
@@ -553,7 +802,7 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
             
             % Update parameters:
         %     disp(['K#',num2str(ENcounter),' = ', num2str(Ksched(ENcounter))]);
-            [mu,stats] = ENtr_ann(Tr,S,Pi,mu,Ksched(ENcounter),alpha,betanorm,...
+            [mu,stats] = ENtr_ann(exchange_nm,Tr,S,Pi,mu,Ksched(ENcounter),alpha,betanorm,...
                 annrate,max_it,max_cyc,min_K,tol,method,0,stream);
             if isfield(id, 'OR')
                 [tmp1,tmp2] = cart2pol(mu(:,id.ORx),mu(:,id.ORy));
@@ -570,12 +819,12 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
                     ENlist(ENcounter+1).mu = mu;
                     ENlist(ENcounter+1).stats = stats;
                     if strcmp(ENproc,'varplot')
-                        myV1replay(G,bc,ENlist,v,ENcounter+1,T,T_vec,Pi,murange,id);
+                        myV1replay(G,aspectRatio,bc,ENlist,v,ENcounter+1,T,T_vec,Pi,murange,id);
                     end
                 case {'save','saveplot'}
                     save(sprintf('%s-%s%04d.mat',ENfilename0,ENfilename,ENcounter),'mu','stats','murange');
                     if strcmp(ENproc,'saveplot')
-                        myV1replay(G,bc,struct('mu',mu,'stats',stats),v,1,T,T_vec,Pi,murange,id);
+                        myV1replay(G,aspectRatio,bc,struct('mu',mu,'stats',stats),v,1,T,T_vec,Pi,murange,id);
                     end
                 otherwise
                     % Do nothing.
@@ -617,7 +866,7 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
         % Plot some statistics for the objective function value and computation time
         switch ENproc
             case {'varplot','saveplot'}
-                myV1replay(G,bc,ENlist,v,1,T,T_vec,Pi,murange,id,[],[],[100, 102]);
+                myV1replay(G,aspectRatio,bc,ENlist,v,1,T,T_vec,Pi,murange,id,[],[],[100, 102]);
             otherwise
                 % Do nothing.
         end
@@ -626,17 +875,47 @@ function stats = myV1driver(seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,c
         disp('data exist');
         load([ENfilename0,'-',ENfilename,'.mat']);
     end
-    if plots
-        %figlist = [1,2,3,4,5,7,15,16,20,21,100,102,34, 40, 41, 50, 54, 60];
-        figlist = [1,2,4,5,15,16,34,50,60,100,102];
-		% less figures
-        %figlist = [1,4,100,102,34,60];
-    else
-        figlist = [];
+	if ~exist('figlist', 'var')
+    	if plots
+        	%figlist = [1,2,3,4,5,7,15,16,20,21,100,102,34, 40, 41, 50, 54, 60];
+        	figlist = [1,2,4,5,6,15,16,34,50,60,100,102];
+        	%figlist = [1];
+			% less figures
+        	%figlist = [1,4,100,102,34,60];
+		else
+        	figlist = [];
+		end
     end
 	statsOnly = true;
+	if l == 0
+		figlist(figlist == 1) = [];
+		figlist(figlist == 2) = [];
+		figlist(figlist == 13) = [];
+		figlist(figlist == 14) = [];
+		figlist(figlist == 15) = [];
+		figlist(figlist == 34) = [];
+		figlist(figlist == 40) = [];
+		figlist(figlist == 50) = [];
+		figlist(figlist == 54) = [];
+		figlist(figlist == 60) = [];
+		statsOnly = false;
+	end
+	if r == 0
+		figlist(figlist == 2) = [];
+		figlist(figlist == 3) = [];
+		figlist(figlist == 4) = [];
+		figlist(figlist == 6) = [];
+		figlist(figlist == 7) = [];
+		figlist(figlist == 16) = [];
+		figlist(figlist == 34) = [];
+		figlist(figlist == 41) = [];
+		figlist(figlist == 50) = [];
+		figlist(figlist == 54) = [];
+		figlist(figlist == 60) = [];
+		statsOnly = false;
+	end
 	right_open = cortical_shape;
-    stats = myV1stats(stream,G,bc,ENlist,v,plotting,T,T_vec,Pi,murange,id,[],[ENfilename0,'/',ENfilename,'.png'],figlist,statsOnly,right_open,separateData,xgrid,ygrid);
+    stats = myV1stats(stream,G,aspectRatio,bc,ENlist,v,plotting,T,T_vec,Pi,murange,id,[],[ENfilename0,'/',ENfilename,'.png'],figlist,statsOnly,right_open,separateData,xgrid,ygrid,iRange,ENfilename);
 	if saveLR
 		for i = 1:iters
 			fID = fopen([ENfilename0,'/',ENfilename,'-LR_Pi',num2str(i),'.bin'],'a');
@@ -662,4 +941,23 @@ function area = find_area(p)
     b = p(:,4) - p(:,3);
     area = area + abs(a(1)*b(2) - a(2)*b(1));
     area = area/2;
+end
+function s = stencil(nT)
+	s = {};
+	if nT == 4
+		q = [0, 0, 0, 0, -25, 48, -36, 16, -3]/12;
+		s = [s, q, q'];
+	end
+	if nT == 3
+		q = [0, 0, -3, -10, 18, -6, 1]/12;
+		s = [s, q, q'];
+	end
+	if nT == 2
+		q = [0, 0, -3, 4, -1]/2;
+		s = [s, q, q'];
+	end
+	if nT == 1
+		q = [0 -1 1];
+		s = [s, q, q'];
+	end
 end

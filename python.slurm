@@ -1,9 +1,11 @@
 #!/bin/bash
+##SBATCH -p nvidia 
+##SBATCH --gres=gpu:1
 #SBATCH -p serial 
-#SBATCH --job-name=surf
 #SBATCH --nodes=1
+#SBATCH --job-name=surf
 #SBATCH --cpus-per-task=28
-#SBATCH --mem=64GB
+#SBATCH --mem=96GB
 #SBATCH --time=10:00:00
 #SBATCH -o log/surf_%J.out
 #SBATCH --mail-user=wd554@nyu.edu
@@ -27,6 +29,7 @@ conda activate general
 # <<< conda initialize <<<
 
 date
-python getLGNsurface_I.py
-python parallel_repel_system_I.py
+python script1.py
+#python getLGNsurface_I.py
+#python parallel_repel_system_I.py
 date
