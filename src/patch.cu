@@ -4525,6 +4525,9 @@ int main(int argc, char **argv) {
 		   jt-2, jt-1, jt ...nRetrace... it
 		 */// perform kernel convolution with built-in texture interpolation
         if (nParvo > 0) {
+			if (it > 0) {
+				cudaProfilerStart();
+			}
 		    parvoGrid.x = nParvo;
 		    parvoGrid.y = 1;
 		    LGN_convol_parvo<<<parvoGrid, parvoBlock, pSharedSize, mainStream>>>(
@@ -4544,6 +4547,9 @@ int main(int argc, char **argv) {
             #ifdef SYNC
                 checkCudaErrors(cudaDeviceSynchronize());
             #endif
+			if (it > 0) {
+				cudaProfilerStop();
+			}
         }
         if (nMagno > 0) {
             LGN_convol_magno<<<magnoGrid, magnoBlock, sizeof(Float)*mSample, magnoStream>>>(
@@ -4650,7 +4656,13 @@ int main(int argc, char **argv) {
                 iStatus++;
             }
         }
+		if (it > 0) {
+			cudaProfilerStart();
+		}
 		LGN_nonlinear<<<nLGN_block, nLGN_thread, 0, mainStream>>>(nLGN, *dLGN.logistic, maxConvol, currentConvol, convolRatio, d_LGN_fr, d_LGN_sInfo, d_sx, d_sy, leftTimeRate, lastNegLogRand, randState, dLGN_type, typeStatus, lVarFFpre, varSlot, lFF_E_pre, lFF_I_pre, nLearnTypeFF, dt, learning, learnData_FF, LGN_switch, getLGN_sp);
+		if (it > 0) {
+			cudaProfilerStop();
+		}
         #ifdef CHECK
 		    getLastCudaError("LGN_nonlinear failed");
         #endif
@@ -4807,6 +4819,9 @@ int main(int argc, char **argv) {
 		PosInt block_offset = 0;
         size_t p_offset = 0;
         size_t p_total = 0;
+		//if (it > 500) {
+		//	cudaProfilerStart();
+		//}
 		for (PosInt i = 0; i < nChunk; i++) {
 			if (i >= iSizeSplit) chunkSize = remainChunkSize;
 			size_t mChunkSize = chunkSize * nearBlockSize;
@@ -4876,6 +4891,9 @@ int main(int argc, char **argv) {
 			block_offset += chunkSize;
 			p_offset += 2*mChunkSize;
 		}
+		//if (it > 500) {
+		//	cudaProfilerStop();
+		//}
         assert(block_offset == nblock);
         assert(p_total + p_offset == matSize*2);
 		for (PosInt i = 0; i < matConcurrency; i++) {

@@ -10,6 +10,9 @@ import matplotlib
 matplotlib.use('Agg')
 from repel_system import rec_boundary
 
+import functools
+print = functools.partial(print, flush=True)
+
 from datetime import datetime
 import numpy as np
 import py_compile
@@ -53,11 +56,13 @@ class p_repel_system:
             if self.pid == 0:
                 print('initialized')
 
-    def get_acc_update_limiting(self):
+    def get_acc_update_limiting(self, pid):
         pos = self.particle.pos[:,self.index].copy()
         # for every particle picked
         for i in range(self.m):
             ## calculate repelling acceleratoin from the nearest boundary
+            stdout.write(f'\r{(i+1)/self.m*100:.3f}%')
+            stdout.flush()
             ds = self.boundary.pos[:,:,1] - pos[:,i].reshape(1,2)
             ib = np.argmin(np.sum(np.power(ds, 2), axis = -1))
             self.particle.acc[:,i], limiting = self.boundary.get_acc[ib](ib, pos[:,i])
@@ -82,7 +87,7 @@ class p_repel_system:
                     direction = ds[:,pick]/r[rpick]
                     self.particle.acc[:,i] = self.particle.acc[:,i] + np.sum(self.particle.f(r[rpick])*direction, axis=-1)
 
-    def next(self, dt, final):
+    def next(self, dt, pid, final):
         # limitation on displacement and velocity are needed, but not acceleration
         nlimited = 0
         # get to new position by speed * dt + 1/2 * acc * dt^2
@@ -254,7 +259,7 @@ def simulate_repel_parallel(area, subgrid, pPos, dt, bPos, bType, b_scale, p_sca
     procs = []
     for i in range(n):
         index = n_in_m(nParticle, n, i)
-        print(f'patch size = {index.size}')
+        print(f'patch size = {index.size}', flush = True)
         proc = Process(target = parallel_repel, args = (area, subgrid, nParticle, particlePos, p_scale, nBoundary, boundPos, boundType, b_scale, dt, i, index, update_barrier, output_lock, 1.0, figname, ndt0))
         procs.append(proc)
         proc.start()

@@ -16,7 +16,7 @@ new = true;
 ENproc = 'save';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
 name = 'or-ft10';
-var = 'or-ft10-nG4s-rand'
+var = 'or-ft10-nG4s-rand2'
 equi = 'VF';
 cortical_VF = 'cortex';
 old = false;
@@ -31,9 +31,10 @@ case 0
 case 1
 	wtString = 'a';
 end
+ecc = 2.0;
 %VFpath = '';
 %nvfx = 2.6880
-nvfy = 1.4623
+nvfy = 1.4981
 nvfx = 1.0
 
 G0 = [64, 94];
@@ -45,9 +46,9 @@ xRange = [1.0, 1.0, 1.0, 1.0, 1.0];
 yRange = [0.75, 0.75, 0.75, 0.75, 0.75];
 %lRange = [1.0, 0.6, 1.0, 1.2, 1.0];
 %rRange = [0.0, 0.0, 0.0, 0.0, 0.0];
-rRange = [0.12, 0.12, 0.12, 0.12, 0.12];
+rRange = [0.11, 0.11, 0.11, 0.11, 0.12];
 %lRange = [0.15, 0.15, 0.15, 0.15, 0.15];
-lRange = [0.12, 0.12, 0.12, 0.12, 0.12];
+lRange = [0.11, 0.12, 0.13, 0.14, 0.15];
 
 nGrange = [4.0, 4.0, 4.0, 4.0, 4.0];
 betaRange = [15, 15, 15, 15, 15]*50;
@@ -66,7 +67,7 @@ end
 %max_it = round(20 *range(i)/range(end)); 
 figlist = [1,2,4,5,6,34,50,60,100,102];
 %figlist = [1,2,4,5,6,15,16,34,50,60,100,102,600];
-VFpath = '/scratch/wd554/patchV1/or-ft10-Copy.bin';
+VFpath = '/scratch/wd554/patchV1/or-ft10.bin';
 if isempty(VFpath)
 	ENfilename0 = [name,'-',equi,'-',wtString,'-',var]   % Simulation name ***
 else
@@ -99,12 +100,6 @@ saveLR = true;
 % SET both LR to false for manual_LR
 % cortical_shape = false;
 cortical_shape = true;
-if exist(ENfilename0, 'dir') && new
-    rmdir(ENfilename0,'s');
-end
-if ~exist(ENfilename0, 'dir')
-    mkdir(ENfilename0);
-end
 
 copyfile([mfilename,'.m'],[ENfilename0,'/',ENfilename0,'_p.m']);
 if length(range) > 1
@@ -126,6 +121,14 @@ else
     scurr = rng('shuffle')
     seed = scurr.Seed;
 end
+
+if exist(ENfilename0, 'dir') && new
+    rmdir(ENfilename0,'s');
+end
+if ~exist(ENfilename0, 'dir')
+    mkdir(ENfilename0);
+end
+
 parfor (i = 1:length(range), nworker)
 %for i = 1 
     % for non_cortical_shape edge boundaries
@@ -170,7 +173,6 @@ parfor (i = 1:length(range), nworker)
 	G(1) = round(G(1) * aRrange(1,i));
 	G(2) = round(G(2) * aRrange(2,i));
 	aspectRatio = G(2)/g0(2)/(G(1)/g0(1)); % y/x
-    ecc = 2.5;
     nod = 25;
     a = 0.635; b = 96.7; k = sqrt(140)*0.873145;
     fign = 106;

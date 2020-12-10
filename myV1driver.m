@@ -409,7 +409,7 @@ function stats = myV1driver(exchange_nm,seed,ENproc,ENfilename0,ENfilename,non_c
         resol = 10;
         if cortical_shape
 			manual_LR = ~non_cortical_LR && ~uniform_LR;
-            [Pi, W, H, LR, VF, G, qx] = myCortex(stream, G(1), aspectRatio, rx, mu_rx, x_cortex, ry, mu_ry, y_cortex, VFweights_hlf, ecc, a, b, k, resol, nod, rOD*ODabsol, ODnoise, manual_LR, fign, [ENfilename0,'/',ENfilename], cortical_VF);
+            [Pi, W, H, LR, VF, G, qx, Pi_x, Pi_y] = myCortex(stream, G(1), aspectRatio, rx, mu_rx, x_cortex, ry, mu_ry, y_cortex, VFweights_hlf, ecc, a, b, k, resol, nod, rOD*ODabsol, ODnoise, manual_LR, fign, [ENfilename0,'/',ENfilename], cortical_VF);
 			fID = fopen([ENfilename0,'/',ENfilename,'-RefVF.bin'],'w');
 			fwrite(fID, xx_cortex(:), 'double');
 			fwrite(fID, yy_cortex(:), 'double');
@@ -417,6 +417,8 @@ function stats = myV1driver(exchange_nm,seed,ENproc,ENfilename0,ENfilename,non_c
 			fclose(fID);
         else
             Pi = zeros(G);
+			Pi_x = x_vec;
+			Pi_y = y_vec;
             Pi(1+test_dw*nG:G(1)-nG*test_dw, 1+test_dh*nG:G(2)-nG*test_dh) = 1;
             %Pi = [];			% Don't disable any centroid
             W = G(1)-nG*test_dw;			% Net width along 1st var. (arbitrary units)
@@ -445,6 +447,8 @@ function stats = myV1driver(exchange_nm,seed,ENproc,ENfilename0,ENfilename,non_c
                 fwrite(fID, ecc, 'double');
                 fwrite(fID, int32(G), 'int');
 				fwrite(fID, Pi, 'int');
+				fwrite(fID, Pi_x, 'double');
+				fwrite(fID, Pi_y, 'double');
 				fclose(fID);
 			end
         end
@@ -685,9 +689,13 @@ function stats = myV1driver(exchange_nm,seed,ENproc,ENfilename0,ENfilename,non_c
 				[min(mu_xy(:,2)), max(mu_xy(:,2))]
 				[min(T_xy(:,2)), max(T_xy(:,2))]
 			else
-        		mu = ENtrset('grid',zeros(1,2),...		% Small noise
-        		    linspace(rx(1),rx(2),G(1)),...	% VFx
-        		    linspace(ry(1),ry(2),G(2)),stream);	% VFy
+        		%mu = ENtrset('grid',zeros(1,2),...		% Small noise
+        		%    linspace(rx(1),rx(2),G(1)),...	% VFx
+        		%    linspace(ry(1),ry(2),G(2)),stream);	% VFy
+				tmp = rand(M,2);
+				tmp(:,1) = rx(1) + tmp(:,1) * (rx(2) - rx(1));
+				tmp(:,2) = ry(1) + tmp(:,2) * (ry(2) - ry(1));
+				mu = tmp;
 			end
 		end
         %    mu = reshape(gridVF, M, 2);

@@ -1,4 +1,4 @@
-function [Pi, W, H, LR, VF, G, qx] = myCortex(stream, Gx, aspectRatio, xrange, T_xrange, tr_x, yrange, T_yrange, tr_y, VFweights, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch,savepath,cortical_VF)
+function [Pi, W, H, LR, VF, G, qx, x, y] = myCortex(stream, Gx, aspectRatio, xrange, T_xrange, tr_x, yrange, T_yrange, tr_y, VFweights, ecc, a, b, k, resol, nod, rOD, noise, manual_LR, plot_patch,savepath,cortical_VF)
     nx = Gx;
 	log_e = linspace(log(1),log(ecc+1),nx*resol);
     e = exp(log_e)-1;

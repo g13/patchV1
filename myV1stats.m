@@ -336,6 +336,7 @@ figName{15} = 'OD-VF_contour';
 figName{16} = 'OR-VF_contour';
 figName{20} = 'hist_VFx';
 figName{21} = 'hist_VFy';
+figName{30} = 'OD-OR_angle';
 figName{34} = 'crossing_angles';
 figName{40} = 'FFT-OD';
 figName{41} = 'FFT-OR';
@@ -528,7 +529,8 @@ for ENcounter = whichones
     myV1replay(G,aspectRatio,bc,ENlist,v,ENcounter,T(:,1:5),T_vec,Pi,murange,id,tens,[],figlist,fign);
 
 	fID = fopen([prefix,'ORcolor-',frame,'.bin'],'w');
-	fwrite(fID, mu(:,id.OR), 'double');
+	fwrite(fID, mu(:,id.ORx), 'double');
+	fwrite(fID, mu(:,id.ORy), 'double');
     %disp('OR range:')
     %disp([min(mu(:,id.OR)), max(mu(:,id.OR))]);
     assert(sum(isnan(mu(:,id.OR))) == sum(Pi==0));
@@ -663,9 +665,11 @@ for ENcounter = whichones
         end
         set(0,'CurrentFigure',fign+Figs);
         plot([0 90],[1 1]/90,'r--');          % Uniform distribution
+		h(:,1) = h(:,1)./(ones(nbins,1)*sum(h(:,1))) * 100; %normalize
         hold on; bar(h(:,2),h(:,1),1); hold off;
         set(gca,'XLim',[0 90]);
         xlabel('Crossing angle in degrees (\circ)');
+        ylabel('Percentage %');
         title(['KL(u)=' num2str(KLu,3) ';   L_2(u)=' num2str(L2u,3) ...
             ';   \mu=' num2str(m,3) '\circ;   \sigma=' num2str(s,3) ...
             '\circ;   \gamma_1=' num2str(g1,3)],'Visible','on');
@@ -846,6 +850,7 @@ for ENcounter = whichones
         	set(gca,'XLim',[0 90],'YLim',[0 inf]);
 		end
         xlabel('Crossing angle in degrees (\circ)');
+        ylabel('Percentage %');
         set(H,'LineWidth',2);
         legend(H,'OD/ORt (interior points)','OD/ORt (boundary points)',...
             'OD/boundary','ORt/boundary','Location','best');

@@ -897,10 +897,16 @@ void recal_G_mat(
 {
     // each thread is the post neuron that collects its presynaptic input conductances
     // initialize
+	__shared__ Size tA[max_nType];
+	if (threadIdx.x == 0) {
+    	for (PosInt i=0; i<nType; i++) {
+    	    tA[i] = typeAcc[i];
+    	}
+	}
     PosInt itype;
     #pragma unroll (max_nType)
     for (PosInt i=0; i<nType; i++) {
-        if (threadIdx.x < typeAcc[i]) {
+        if (threadIdx.x < tA[i]) {
             itype = i;
             break;
         }
@@ -942,7 +948,7 @@ void recal_G_mat(
         }
     }
 
-    __syncthreads();
+    //__syncthreads();
     #pragma unroll (4)
     for (PosInt ib = 0; ib < nNeighborBlock[blockIdx.x]; ib++) {
 		PosInt local_bid = blockIdx.x*nearNeighborBlock + ib;
@@ -958,7 +964,7 @@ void recal_G_mat(
 			PosInt jtype;	
     		#pragma unroll (max_nType)
     		for (PosInt j=0; j<nType; j++) {
-    		    if (i < typeAcc[j]) {
+    		    if (i < tA[j]) {
     		        jtype = j;
     		        break;
     		    }
