@@ -28,7 +28,7 @@ class macroMap:
             print(f'nblock = {self.nblock}, blockSize = {self.blockSize}, posDim = {self.dataDim}')
             pos = np.reshape(np.fromfile(f,'f8',count = self.dataDim*self.networkSize),(self.nblock,self.dataDim,self.blockSize))
         self.pos = np.zeros((2,self.networkSize))
-        self.pos[0,:] = pos[:,0,:].reshape(self.networkSize)
+        self.pos[0,:] = pos[:,0,:].reshape(self.networkSize) # dont use transpose
         self.pos[1,:] = pos[:,1,:].reshape(self.networkSize)
         if self.dataDim == 3:
             self.zpos = pos[:,2,:]
