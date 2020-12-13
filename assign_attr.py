@@ -19,7 +19,7 @@ import functools
 print = functools.partial(print, flush=True)
 
 class macroMap:
-    def __init__(self, LR_Pi_file, pos_file, shrink = False, posUniform = False, OPgrid_file = None, OD_file = None, OP_file = None, VFxy_file = None):
+    def __init__(self, LR_Pi_file, pos_file, crop = False, posUniform = False, OPgrid_file = None, OD_file = None, OP_file = None, VFxy_file = None):
         with open(pos_file,'r') as f:
             self.nblock = np.fromfile(f,'u4', count=1)[0]
             self.blockSize = np.fromfile(f,'u4', count=1)[0]
@@ -45,35 +45,63 @@ class macroMap:
             x_min = min(self.pos[0,:])
             if x_min < self.x[0] or x_max > self.x[-1]:
                 raise Exception(f'neuronal x-position {[x_min, x_max]} break outside of grid {[self.x[0], self.x[-1]]}')
-            self.y = np.fromfile(f, 'f8', count = self.ny)
+            self.y = np.fromfile(f, 'f8', count = ny)
             y_max = max(self.pos[1,:])
             y_min = min(self.pos[1,:])
             if y_min < self.y[0] or y_max > self.y[-1]:
                 raise Exception(f'neuronal y-position {[y_min, y_max]} break outside of grid {[self.y[0], self.y[-1]]}')
             LR = np.reshape(np.fromfile(f, 'f8', count = nx*ny),(ny,nx))
 
-            if shrink:
+            if crop:
+                print('cropping grid to sample area')
                 self.nx = np.nonzero(self.x > x_max)[0][0] + 1
+                print(f'old x: #{nx}, {[self.x[0], self.x[-1]]}, y: #{ny}, {[self.y[0], self.y[-1]]}')
                 self.x = self.x[:self.nx]
-                self.ecc = e_x(self.x[-1], k, a, b)
+                self.ecc = e_x(self.x[-1], self.k, self.a, self.b)
                 y0 = np.nonzero(self.y < y_min)[0][-1]
                 y1 = np.nonzero(self.y > y_max)[0][0]+1
                 self.y = self.y[y0:y1]
                 self.ny = self.y.size
                 self.Pi = self.Pi[y0:y1,:self.nx]
+
+                # seal the right side of the crop
+                n = self.ny*self.nx*10
+                p_range = np.linspace(-np.pi/2,np.pi/2,n)
+                rx = np.array([x_ep(self.ecc, p,self.k,self.a,self.b) for p in p_range])
+                ry = np.array([y_ep(self.ecc, p,self.k,self.a,self.b) for p in p_range])
+                for iy in range(self.ny):
+                    if self.y[iy] < ry[0] or self.y[iy] > ry[-1]:
+                        self.Pi[iy,:] = 0
+                        continue
+                    else:
+                        jy = np.nonzero(self.y[iy] <= ry)[0][0]
+                    assert(jy > 0)
+                    r = (self.y[iy] - ry[jy-1])/(ry[jy]-ry[jy-1])
+                    x = rx[jy-1] + r*(rx[jy]-rx[jy-1])
+                    for ix in range(self.nx):
+                        if self.x[ix] > x:
+                            self.Pi[iy,ix] = 0
+
+                print(f'new x: #{self.nx}, {[self.x[0], self.x[-1]]}, y: #{self.ny}, {[self.y[0], self.y[-1]]}')
+                print(f'cropped grid of {nx}x{ny} to {self.nx}x{self.ny}')
+                #for i in range(self.ny):
+                #    print(self.Pi[i, :])
             else:
                 self.nx = nx
                 self.ny = ny
 
             self.xx, self.yy = np.meshgrid(self.x, self.y)
             # double to int
-            self.LR = np.empty((self.ny,self.nx), dtype = 'i4') 
+            self.LR = np.empty((ny,nx), dtype = 'i4') 
             self.LR[LR > 0] = 1
             self.LR[LR < 0] = -1
-            if shrink:
+            if crop:
                 self.LR = self.LR[y0:y1,:self.nx]
 
             self.LR[self.Pi <=0] = 0
+            #print('=======')
+            #for i in range(self.ny):
+            #    print(self.LR[i, :])
         ratio = self.Pi.size/(np.sum(self.Pi>0))
         self.necc = np.round(self.nx * ratio).astype(int)
         self.npolar = np.round(self.ny * ratio).astype(int)
@@ -97,7 +125,7 @@ class macroMap:
             with open(OPgrid_file,'r') as f:
                 self.OPgrid_x = np.reshape(np.fromfile(f, 'f8', count = nx*ny),(ny,nx))
                 self.OPgrid_y = np.reshape(np.fromfile(f, 'f8', count = nx*ny),(ny,nx))
-                if shrink:
+                if crop:
                     self.OPgrid_x = self.OPgrid_x[y0:y1,:self.nx]
                     self.OPgrid_y = self.OPgrid_y[y0:y1,:self.nx]
                 self.OPgrid = np.arctan2(self.OPgrid_y, self.OPgrid_x)
@@ -105,10 +133,6 @@ class macroMap:
         if OP_file is not None:
             with open(OP_file,'r') as f:
                 self.op = np.fromfile(f, 'f8')
-                if self.op.size != self.nx*self.ny:
-                    raise Exception(f'wrong op file: {OP_file}, size of grid no match')
-                else:
-                    self.op = np.reshape(self.op,(self.ny,self.nx))
 
         if VFxy_file is not None:
             with open(VFxy_file,'r') as f:
@@ -535,7 +559,7 @@ class macroMap:
     def define_bound(self, grid):
         ngrid = (self.nx-1) * (self.ny-1)
         bpGrid = np.empty((ngrid,2,3))
-        btypeGrid = np.empty(ngrid, dtype = int)
+                            # low-left   # low-right    # top-right   # top-left
         bgrid = np.stack((grid[:-1,:-1], grid[:-1,1:], grid[1:,1:], grid[1:,:-1]), axis=2)
         assert(bgrid.shape[0] == self.ny-1 and bgrid.shape[1] == self.nx-1 and bgrid.shape[2] == 4)
         bgrid = bgrid.reshape((ngrid,4))
@@ -544,7 +568,10 @@ class macroMap:
         yy0 = self.yy[:-1,:-1].reshape(ngrid)
         yy1 = self.yy[1:,:-1].reshape(ngrid)
 
-        # unimplemented boundaries: if assertation error, increase the resolution of the grid
+        # cross like boundaries
+        bgrid_cross = np.zeros(bgrid.shape, dtype = int)
+        bpGrid_cross = bpGrid.copy()
+
         unb = np.array([1,0,1,0], dtype = bool)
         unpick = (bgrid - unb == 0).all(-1)
         nunpick = np.sum(unpick)
@@ -554,20 +581,20 @@ class macroMap:
             pick0 = self.Pi[p, q+1] == 0
             pick1 = self.Pi[p+1, q] == 0
             assert(np.logical_or(pick0, pick1).all())
-            bgrid[indices[pick0], :] = np.array([1,1,1,0])
-            bgrid[indices[pick1], :] = np.array([1,0,1,1])
+            bgrid[indices, :] = np.array([1,0,0,0])
+            bgrid_cross[indices, :] = np.array([0,0,1,0])
 
         unb = np.array([0,1,0,1], dtype = bool)
         unpick = (bgrid - unb == 0).all(-1)
-        nunpick = nunpick + np.sum(unpick)
+        nunpick += np.sum(unpick)
         if nunpick > 0:
             indices = np.nonzero(unpick)[0]
             p, q = np.unravel_index(indices, (self.ny-1, self.nx-1))
             pick0 = self.Pi[p, q] == 0
             pick1 = self.Pi[p+1, q+1] == 0
             assert(np.logical_or(pick0, pick1).all())
-            bgrid[indices[pick0], :] = np.array([1,1,0,1])
-            bgrid[indices[pick1], :] = np.array([0,1,1,1])
+            bgrid[indices, :] = np.array([0,1,0,0])
+            bgrid_cross[indices, :] = np.array([0,0,0,1])
 
         ## pick boundary
         # horizontal
@@ -594,38 +621,38 @@ class macroMap:
             bpGrid[vpick,0,:] = (xx0[vpick] + xx1[vpick]).reshape(nvpick,1)/2
         assert(np.logical_and(vpick,hpick).any() == False)
         ### first horizontal 0:1 then vertical 1:2
-        def pick_boundary_in_turn(bpattern, xx, yy):
-            pick = (bgrid - bpattern == 0).all(-1)
+        def pick_boundary_in_turn(_bgrid_, bpattern, xx, yy, _bpGrid_ = bpGrid):
+            pick = (_bgrid_ - bpattern == 0).all(-1)
             bpattern = np.logical_not(bpattern)
-            pick = np.logical_or(pick, (bgrid - bpattern == 0).all(-1))
+            pick = np.logical_or(pick, (_bgrid_ - bpattern == 0).all(-1))
             npick = np.sum(pick)
             if npick:
-                bpGrid[pick,1,:2] = (yy0[pick] + yy1[pick]).reshape(npick,1)/2
-                bpGrid[pick,0,1:] = (xx0[pick] + xx1[pick]).reshape(npick,1)/2
-                bpGrid[pick,1,2] = yy[pick]
-                bpGrid[pick,0,0] = xx[pick]
+                _bpGrid_[pick,0,1:] = (xx0[pick] + xx1[pick]).reshape(npick,1)/2
+                _bpGrid_[pick,1,:2] = (yy0[pick] + yy1[pick]).reshape(npick,1)/2
+                _bpGrid_[pick,0,0] = xx[pick]
+                _bpGrid_[pick,1,2] = yy[pick]
             return pick, npick
 
         # upper left
-        ulpick, nulpick = pick_boundary_in_turn(np.array([1,0,0,0], dtype=bool), xx0, yy0)
+        ulpick, nulpick = pick_boundary_in_turn(bgrid, np.array([0,0,0,1], dtype=bool), xx0, yy1)
         btype2pick = ulpick
         assert(np.logical_and(ulpick,hpick).any() == False)
         assert(np.logical_and(ulpick,vpick).any() == False)
         # lower left
-        llpick, nllpick = pick_boundary_in_turn(np.array([0,0,0,1], dtype=bool), xx0, yy1)
+        llpick, nllpick = pick_boundary_in_turn(bgrid, np.array([1,0,0,0], dtype=bool), xx0, yy0)
         btype2pick = np.logical_or(btype2pick,llpick)
         assert(np.logical_and(llpick,hpick).any() == False)
         assert(np.logical_and(llpick,vpick).any() == False)
         assert(np.logical_and(llpick,ulpick).any() == False)
         # upper right 
-        urpick, nurpick = pick_boundary_in_turn(np.array([0,1,0,0], dtype = bool), xx1, yy0)
+        urpick, nurpick = pick_boundary_in_turn(bgrid, np.array([0,0,1,0], dtype = bool), xx1, yy1)
         btype2pick = np.logical_or(btype2pick,urpick)
         assert(np.logical_and(urpick,hpick).any() == False)
         assert(np.logical_and(urpick,vpick).any() == False)
         assert(np.logical_and(urpick,ulpick).any() == False)
         assert(np.logical_and(urpick,llpick).any() == False)
         # lower right 
-        lrpick, nlrpick = pick_boundary_in_turn(np.array([0,0,1,0], dtype = bool), xx1, yy1)
+        lrpick, nlrpick = pick_boundary_in_turn(bgrid, np.array([0,1,0,0], dtype = bool), xx1, yy0)
         btype2pick = np.logical_or(btype2pick,lrpick)
         assert(np.logical_and(lrpick,hpick).any() == False)
         assert(np.logical_and(lrpick,vpick).any() == False)
@@ -633,16 +660,25 @@ class macroMap:
         assert(np.logical_and(lrpick,llpick).any() == False)
         assert(np.logical_and(lrpick,urpick).any() == False)
 
+        # get boundary points with crosses
+        # upper left
+        ulpick_cross, nulpick_cross = pick_boundary_in_turn(bgrid_cross, np.array([0,0,0,1], dtype=bool), xx0, yy1, _bpGrid_ = bpGrid_cross)
+        btype2pick_cross = ulpick_cross
+        # upper right 
+        urpick_cross, nurpick_cross = pick_boundary_in_turn(bgrid_cross, np.array([0,0,1,0], dtype = bool), xx1, yy1, _bpGrid_ = bpGrid_cross)
+        btype2pick_cross = np.logical_or(btype2pick_cross,urpick_cross)
+
         ## assemble
-        btypeGrid[hpick] = 0
-        btypeGrid[vpick] = 1
-        btypeGrid[btype2pick] = 2
         nbtype2pick = np.sum([nulpick, nllpick, nurpick, nlrpick])
-        nbtype = nhpick + nvpick + nbtype2pick
+        nbtype2pick_cross = np.sum([nulpick_cross, nurpick_cross])
+        if nbtype2pick_cross != nunpick:
+            raise Exception(f'nbtype cross picked: {nbtype2pick_cross} != {nunpick}')
+        nbtype = nhpick + nvpick + nbtype2pick + nunpick
 
         nout = np.sum((bgrid-np.array([0,0,0,0], dtype = bool) == 0).all(-1))
         nin = np.sum((bgrid-np.array([1,1,1,1], dtype = bool) == 0).all(-1))
-        assert(nbtype == ngrid - np.sum([nin, nout, nunpick]))
+        if nbtype != ngrid + nunpick - np.sum([nin, nout]):
+            raise Exception(f'nbtype: {nbtype} != ngrid: {ngrid} - nin: {nin} - nout: {nout} + nunpick: {nunpick}')
 
         btype = np.empty(nbtype, dtype = int)
         btype[:nhpick] = 0
@@ -651,7 +687,8 @@ class macroMap:
         bp  = np.empty((nbtype,2,3))
         bp[:nhpick,:,:] = bpGrid[hpick,:,:] 
         bp[nhpick:(nhpick+nvpick),:,:] = bpGrid[vpick,:,:]
-        bp[(nhpick+nvpick):,:,:] = bpGrid[btype2pick,:,:]
+        bp[(nhpick+nvpick):(nhpick+nvpick+nbtype2pick),:,:] = bpGrid[btype2pick,:,:]
+        bp[(nhpick+nvpick+nbtype2pick):,:,:] = bpGrid_cross[btype2pick_cross,:,:]
         return bp, btype
     #awaits vectorization
     def assign_pos_VF(self, straightFromPos = False):
@@ -843,7 +880,7 @@ class macroMap:
             self.posUniform = True
         return oldpos, convergenceL, convergenceR, nlimitedL, nlimitedR
 
-    def make_pos_uniform_p(self, dt, p_scale, b_scale, figname, ncore = 0, ndt_decay = 0, roi_ratio = 2.0, k1 = 1.0, k2 = 0.5, chop_ratio = 0, spercent = 0.01, seed = -1, local_plot = False, check = False):
+    def make_pos_uniform_p(self, dt, p_scale, b_scale, figname, ncore = 0, ndt_decay = 0, roi_ratio = 2.0, k1 = 1.0, k2 = 0.5, chop_ratio = 0, spercent = 0.01, seed = -1, lrfile = None, local_plot = False, check = False):
         if not self.pODready:
             self.assign_pos_OD1()
         pR = self.ODlabel > 0
@@ -862,9 +899,12 @@ class macroMap:
 
         if chop_ratio == 0:
             chop_ratio = self.nblock/(self.nx*self.ny)
+        nx = np.ceil(self.nx*chop_ratio).astype('i4')
+        ny = np.ceil(self.ny*chop_ratio).astype('i4')
+        #nx = 2
+        #ny = 2
+
         oldpos = self.pos.copy()
-        nx = np.round(self.nx*chop_ratio).astype('i4')
-        ny = np.round(self.ny*chop_ratio).astype('i4')
 
     ##  prepare shared memory
         raw_shared_cmem = RawArray(c_int32, np.zeros(ncore, dtype = 'i4'))
@@ -904,6 +944,12 @@ class macroMap:
         raw_shared_nmem = RawArray(c_int32, np.zeros(nx*ny*6, dtype = 'i4')) # for neighbor_list and id
         shared_nmem = np.frombuffer(raw_shared_nmem, dtype = 'i4') 
 
+        if lrfile is not None:
+            with open(lrfile + '-L.bin','wb') as f:
+                nb = self.OD_boundL.shape[0]
+                np.array([nb]).astype('i4').tofile(f)
+                self.OD_boundL.copy().astype(float).tofile(f)
+
         self.pos[:,pL] = parallel_repel(areaL, self.subgrid, posL, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, p_scale, self.OD_boundL, self.btypeL, b_scale, nx, ny, ncore, dt, spercent, figname + 'L', ndt_decay, 1.0, roi_ratio, k1, k2, seed, 1.0, local_plot)
         if check:
             self.check_pos()
@@ -937,6 +983,11 @@ class macroMap:
             i0 = i1
         assert(i0 == 2*nR)
 
+        if lrfile is not None:
+            with open(lrfile + '-R.bin','wb') as f:
+                nb = self.OD_boundR.shape[0]
+                np.array([nb]).astype('i4').tofile(f)
+                self.OD_boundR.copy().astype(float).tofile(f)
         # no need to re-declare bmem, nmem and cmem
 
         self.pos[:,pR] = parallel_repel(areaR, self.subgrid, posR, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, p_scale, self.OD_boundR, self.btypeR, b_scale, nx, ny, ncore, dt, spercent, figname + 'R', ndt_decay, 1.0, roi_ratio, k1, k2, seed, 1.0, local_plot)
@@ -982,10 +1033,10 @@ class macroMap:
             print(f'{ncore} cores found')
         if chop_ratio == 0:
             chop_ratio = self.nblock/(self.nx*self.ny)
+        nx = np.ceil(self.nx*chop_ratio).astype('i4')
+        ny = np.ceil(self.ny*chop_ratio).astype('i4')
 
         oldpos = self.pos.copy()
-        nx = np.round(self.nx*chop_ratio).astype('i4')
-        ny = np.round(self.ny*chop_ratio).astype('i4')
 
         ngrid = np.sum(self.Pi).astype(int)
         if LRlabel == 'L':
@@ -1078,7 +1129,7 @@ class macroMap:
             ppos = None
             starting = True
             while spreaded is False:
-                vposLR, LR, spreaded, ppos, ip, OD_bound = self.spread(dt, vposLR, nchop0, chop_size0, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, LR, nx, ny, particle_param, boundary_param, ax, pick, ppos, ip, starting, figname = vpfile, p_scale = p_scale, b_scale = b_scale, ndt_decay = ndt_decay, roi_ratio = roi_ratio, k1 = k1, k2 = k2, ncore = ncore, limit_ratio = limit_ratio, chop_ratio = 0)
+                vposLR, LR, spreaded, ppos, ip, OD_bound = self.spread(dt, vposLR, nchop0, chop_size0, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, LR, nx, ny, lrfile, particle_param, boundary_param, ax, pick, ppos, ip, starting, figname = vpfile, p_scale = p_scale, b_scale = b_scale, ndt_decay = ndt_decay, roi_ratio = roi_ratio, k1 = k1, k2 = k2, ncore = ncore, limit_ratio = limit_ratio, chop_ratio = 0)
                 starting = False
                 print(f'#{ip}: {np.sum(LR).astype(int)}/{ngrid}')
 
@@ -1088,26 +1139,18 @@ class macroMap:
                     np.array([nchop0]).astype('i4').tofile(f)
                     chop_size0.astype('i4').tofile(f)
                     vposLR.tofile(f)
-                with open(lrfile + f'-{ip}.bin','wb') as f:
-                    np.array([LR.size, OD_bound.shape[0]]).astype('i4').tofile(f)
-                    LR.astype('i4').tofile(f)
-                    OD_bound.copy().astype(float).tofile(f)
                 print('data stored')
         else:
             ip = 0 # plotting index
             ppos = None
             starting = True
-            vposLR, LR, spreaded, ppos, _, OD_bound = self.spread(dt, vposLR, nchop0, chop_size0, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, LR, nx, ny, particle_param, boundary_param, ax, pick, ppos, ip, starting, figname = vpfile, p_scale = p_scale, b_scale = b_scale, ndt_decay = ndt_decay, k1 = k1, k2 = k2, ncore = ncore, limit_ratio = limit_ratio, chop_ratio = 0, seed = seed, plotOnly = False, noSpread = False)
+            vposLR, LR, spreaded, ppos, _, OD_bound = self.spread(dt, vposLR, nchop0, chop_size0, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, LR, nx, ny, lrfile, particle_param, boundary_param, ax, pick, ppos, ip, starting, figname = vpfile, p_scale = p_scale, b_scale = b_scale, ndt_decay = ndt_decay, k1 = k1, k2 = k2, ncore = ncore, limit_ratio = limit_ratio, chop_ratio = 0, seed = seed, plotOnly = False, noSpread = False)
             print(f'spreaded = {spreaded}')
             assert(vposLR.shape[1] == nLR)
             with open(vpfile+'-ss.bin','wb') as f:
                 np.array([nchop0]).astype('i4').tofile(f)
                 chop_size0.astype('i4').tofile(f)
                 vposLR.tofile(f)
-            with open(lrfile+'-ss.bin','wb') as f:
-                np.array([LR.size, OD_bound.shape[0]]).astype('i4').tofile(f)
-                LR.astype('i4').tofile(f)
-                OD_bound.copy().astype(float).tofile(f)
             print('data stored')
 
         self.vpos[:, LRpick] = vposLR # when spreaded, return in shape (2,nLR)
@@ -1134,7 +1177,7 @@ class macroMap:
         else:
             self.vposRready = True
 
-    def spread(self, dt, vpos_flat, nchop, chop_size, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, LR, nx, ny, particle_param = None, boundary_param = None, ax = None, pick = None, ppos = None, ip = 0, starting = True, figname = None, p_scale = 2.0, b_scale = 1.0, ndt_decay = 0, roi_ratio = 2, k1 = 1.0, k2 = 0.5, ncore = 0, limit_ratio = 1.0, chop_ratio = 0, seed = -1, plotOnly = False, noSpread = False):
+    def spread(self, dt, vpos_flat, nchop, chop_size, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, LR, nx, ny, lrfile, particle_param = None, boundary_param = None, ax = None, pick = None, ppos = None, ip = 0, starting = True, figname = None, p_scale = 2.0, b_scale = 1.0, ndt_decay = 0, roi_ratio = 2, k1 = 1.0, k2 = 0.5, ncore = 0, limit_ratio = 1.0, chop_ratio = 0, seed = -1, plotOnly = False, noSpread = False):
         if starting and ax is not None:
             OD_bound, btype = self.define_bound(LR)
             # connecting points on grid sides
@@ -1153,6 +1196,11 @@ class macroMap:
         print(f'area increases {ratio*100:.3f}%')
         
         OD_bound, btype = self.define_bound(LR)
+
+        with open(lrfile + f'-{ip}.bin','wb') as f:
+            np.array([LR.size, OD_bound.shape[0]]).astype('i4').tofile(f)
+            LR.astype('i4').tofile(f)
+            OD_bound.copy().astype(float).tofile(f)
 
         if ax is not None:
             assert(pick is not None)

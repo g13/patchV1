@@ -14,22 +14,24 @@ import functools
 print = functools.partial(print, flush=True)
 
 ndt0 = 5 # 15
-ndt1 = 20 # 10
-ndt = 10 #25
+ndt1 = 15 # 10
+ndt = 20 #25
 ncore = 32
 parallel = True
 k1 = 0.5
 k2 = 0.25
-p_scale = 2.25
-b_scale = 1.125
-roi_ratio = 8.0/3.0 
-limit_ratio = 1.0
+p_scale = 3.5
+b_scale = 0.225
+roi_ratio = 2
+limit_ratio = 2.0
+chop_ratio = 0
 #pos_name = 'V1_pos_2D_lowDensity'
-newPos = False
-newOP = False 
+newPos = False 
+newOP = False
 newOD = False 
 
-pos_name = 'fD_pos'
+pos_name = 'fD_sp008_3D'
+lrfile = pos_name + '-bound'
 LR_Pi_file = './FullFledged/or-ft10-ext-or-ft10-nG4s-lr2/or-ft10-nG4s-lr2-4-LR_Pi10.bin'
 OR_file = './FullFledged/or-ft10-ext-or-ft10-nG4s-lr2/or-ft10-nG4s-lr2-4/ORcolor-f0011.bin'
 if newPos:
@@ -49,8 +51,8 @@ else:
 
 uniform_pos_file = 'uniform_' + pos_name + '.bin'
 
-#mMap = macroMap(LR_Pi_file, pos_file, posUniform = False, OD_file = OD_file, OPgrid_file = OR_file, OP_file = OP_file)
-mMap = macroMap(LR_Pi_file, uniform_pos_file, posUniform = True, OD_file = OD_file, OPgrid_file = OR_file, OP_file = OP_file)
+mMap = macroMap(LR_Pi_file, pos_file, crop = True, posUniform = False, OD_file = OD_file, OPgrid_file = OR_file, OP_file = OP_file)
+#mMap = macroMap(LR_Pi_file, uniform_pos_file, shrink = True, posUniform = True, OD_file = OD_file, OPgrid_file = OR_file, OP_file = OP_file)
 """
 fig = plt.figure('macroMap',dpi=1200)
 ax1 = fig.add_subplot(111)
@@ -73,11 +75,11 @@ dx = mMap.x[1] - mMap.x[0]
 dy = mMap.y[1] - mMap.y[0]
 print('#spread uniformly')
 if not mMap.posUniform:
-    dt0 = np.power(2.0,-np.arange(10,11)).reshape(1,1)
-    dt1 = np.power(2.0,-np.arange(11,12)).reshape(1,1)
+    dt0 = np.power(2.0,-np.arange(8,9)).reshape(1,1)
+    dt1 = np.power(2.0,-np.arange(8,9)).reshape(1,1)
     dt = np.hstack((np.tile(dt0,(ndt0,1)).flatten(), np.tile(dt1,(ndt1,1)).flatten()))
     if parallel:
-        oldpos = mMap.make_pos_uniform_p(dt, p_scale, b_scale, pos_name+'2', ncore = ncore, ndt_decay = ndt0, roi_ratio = roi_ratio, k1 = k1, k2 = k2, chop_ratio = 0, spercent = 0.01, seed = -1, local_plot = False)
+        oldpos = mMap.make_pos_uniform_p(dt, p_scale, b_scale, pos_name+'2', ncore = ncore, ndt_decay = ndt0, roi_ratio = roi_ratio, k1 = k1, k2 = k2, chop_ratio = chop_ratio, spercent = 0.01, seed = -1, lrfile = lrfile, local_plot = False)
         print(f'mean: {np.mean(oldpos - mMap.pos, axis = 1)}')
         print(f'std: {np.std(oldpos - mMap.pos, axis = 1)}')
     else:
@@ -99,7 +101,7 @@ if not mMap.posUniform:
 
 print('#stretch for vpos')
 limit_ratio = 2.0
-#'''
+'''
 fig = plt.figure('vposL', dpi = 600)
 dx = mMap.x[1] - mMap.x[0]
 dy = mMap.y[1] - mMap.y[0]
@@ -116,8 +118,8 @@ print(dt)
 ndt_decay = 10
 fT = True # firstTime
 ct = True 
-tmpL = 'tmpL5'
-tmpVF_L = 'tmpVF_L5'
+tmpL = 'tmpL-sp'
+tmpVF_L = 'tmpVF_L-sp'
 ax1 = None
 mMap.spread_pos_VF(dt, tmpVF_L, tmpL, 'L', p_scale = p_scale, b_scale = b_scale, firstTime = fT, continuous = ct, ax = ax1, ndt_decay = ndt_decay, roi_ratio = roi_ratio, k1 = k1, k2 = k2, ncore = ncore, limit_ratio = limit_ratio)
 #mMap.spread_pos_VF(dt, tmpVF_L, tmpL, 'L', firstTime = fT, ax = None, ndt_decay = ndt_decay, ncore = ncore)
