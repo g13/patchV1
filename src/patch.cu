@@ -3121,9 +3121,13 @@ int main(int argc, char **argv) {
 	checkCudaErrors(cudaMalloc((void**)&d_sp0, nType*2*sizeof(Float)));
 	checkCudaErrors(cudaMemcpy(d_sp0, sp0,  nType*2*sizeof(Float), cudaMemcpyHostToDevice));
 	usingGMem += nType*2*sizeof(Float);
-    // to be set after d_nLGNperV1 and d_v is set
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 	
+	// for spikeTrain D2H (only output the current slot to file)
+	Float *d_ogh;
+	Size ncond = nV1*(ngTypeE + ngTypeI);
+	
+
 	Size max_LGNperV1;
 	Float* LGN_V1_s;
 	read_LGN(LGN_V1_s_filename + conLGN_suffix, LGN_V1_s, max_LGNperV1, &(sRatioLGN[0]), &(typeAccCount[0]), nType, learnData_FF, nV1 <= 32); // assign LGN_V1_s and max_LGNperV1
@@ -4358,16 +4362,30 @@ int main(int argc, char **argv) {
     	        */
     	        float* d_conMat = d_conDelayMat[i%matConcurrency];
     	        float* d_delayMat = d_conMat + mChunkSize;
-    	        recal_G_mat<<< chunkSize, blockSize, 0, stream[i%matConcurrency]>>> (
-    	                d_spikeTrain,
-    	                d_conMat, d_delayMat,
-    	                d_nNeighborBlock+block_offset, d_neighborBlockId + block_offset*nearNeighborBlock,
-    	                d_gE[i], d_gI[i], d_hE[i], d_hI[i],
-    	                vAvgE, vLTP_E, vLTD_E, vTripE, vSTDP_QE, vSTDP_QI, d_pE, d_pI, typeAcc,
-    	                rGenCond, d_synFail, d_synPerCon,
-    	                dt, condE, condI, ngTypeE, ngTypeI,
-    	                0, trainDepth,
-    	                nearNeighborBlock, nE, nI, nV1, speedOfThought, learning, block_offset, nType, lE, lQ, i);
+				if (noDelay) {
+    	        	recal_G_mat<<< chunkSize, blockSize, 0, stream[i%matConcurrency]>>> (
+    	        	        d_ogh,
+							d_ogh + ncond,
+    	        	        d_conMat, d_delayMat,
+    	        	        d_nNeighborBlock+block_offset, d_neighborBlockId + block_offset*nearNeighborBlock,
+    	        	        d_gE[i], d_gI[i], d_hE[i], d_hI[i],
+    	        	        vAvgE, vLTP_E, vLTD_E, vTripE, vSTDP_QE, vSTDP_QI, d_pE, d_pI, typeAcc,
+    	        	        rGenCond, d_synFail, d_synPerCon,
+    	        	        dt, condE, condI, ngTypeE, ngTypeI,
+    	        	        0, trainDepth,
+    	        	        nearNeighborBlock, nE, nI, nV1, speedOfThought, learning, block_offset, nType, lE, lQ, i);
+				else {
+    	        	recal_G_mat<<< chunkSize, blockSize, 0, stream[i%matConcurrency]>>> (
+    	        	        d_spikeTrain,
+    	        	        d_conMat, d_delayMat,
+    	        	        d_nNeighborBlock+block_offset, d_neighborBlockId + block_offset*nearNeighborBlock,
+    	        	        d_gE[i], d_gI[i], d_hE[i], d_hI[i],
+    	        	        vAvgE, vLTP_E, vLTD_E, vTripE, vSTDP_QE, vSTDP_QI, d_pE, d_pI, typeAcc,
+    	        	        rGenCond, d_synFail, d_synPerCon,
+    	        	        dt, condE, condI, ngTypeE, ngTypeI,
+    	        	        0, trainDepth,
+    	        	        nearNeighborBlock, nE, nI, nV1, speedOfThought, learning, block_offset, nType, lE, lQ, i);
+				}
     	    
     	        //cudaEventRecord(eTmp[i], stream[i]);
     	    #ifdef CHECK
@@ -4733,7 +4751,7 @@ int main(int argc, char **argv) {
 				currentTimeSlot, trainDepth, max_LGNperV1,
 				ngTypeFF, ngTypeE, ngTypeI, condFF, condE, condI,
 				dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, nE, nI, nV1, learning, varSlot, nType,
-                lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ, iModel); // learning const structs 
+                lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ, iModel, noDelay); // learning const structs 
         #ifdef CHECK
 		    getLastCudaError("compute_V_collect_spike failed");
         #endif
