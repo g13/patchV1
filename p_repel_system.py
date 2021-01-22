@@ -4,6 +4,8 @@ import multiprocessing as mp
 from multiprocessing import Process, Pool, Lock, Barrier
 from multiprocessing.sharedctypes import Value, RawArray
 from ctypes import Structure, c_double, c_int, c_uint, c_int32
+#from viztracer import VizTracer
+import pprofile
 
 import matplotlib.pyplot as plt
 import matplotlib
@@ -13,6 +15,7 @@ from repel_system import rec_boundary
 import functools
 print = functools.partial(print, flush=True)
 import time
+
 def timer(func):
     @functools.wraps(func)
     def wrapper_timer(*args, **kwargs):
@@ -30,7 +33,7 @@ import py_compile
 py_compile.compile('parallel_repel_system.py')
 
 class p_repel_system:
-    def __init__(self, area, subgrid, initial_pos, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, bp, btype, p_scale, b_scale, nx, ny, roi_ratio = 2.0, k1 = 1.0, k2 = 0.5, ncore = 0, limit_ratio = 1.0, ax = None):
+    def __init__(self, area, subgrid, initial_pos, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, bp, btype, p_scale, b_scale, nx, ny, roi_ratio = 2.0, k1 = 1.0, k2 = 0.5, ncore = 0, limit_ratio = 1.0, damp = 0.5, l_ratio = 0.0, l_k = 1.0, ax = None):
         self.ncore = ncore
         per_unit_area = np.sqrt(3)/2 # in cl^2
 
@@ -42,14 +45,16 @@ class p_repel_system:
         if roi_ratio <= 0:
             print('roi_ratio must be positive, set to 2 as default')
             roi_ratio = 2.0
-        roi_ratoi = roi_ratio/p_scale
+        roi_ratio = roi_ratio/p_scale
         self.nb = btype.size
 
         self.boundary = p_rec_boundary(subgrid, bp, btype, a_boundary, self.nb, ax)
         self.particle = p_point_particle(initial_pos, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, self.n, chop_size, a_particle, self.boundary.xl, self.boundary.yl, nx, ny, k1, k2, roi_ratio, self.ncore)
 
         # will be used to limit displacement and velocity
-        self.damp = 0.1
+        self.damp = damp
+        self.l_ratio = l_ratio
+        self.l_k = l_k
         self.default_limiting = self.cl/2 * limit_ratio
         #self.limiting = np.zeros(self.m) + self.default_limiting
 
@@ -62,37 +67,60 @@ class p_repel_system:
         print(f'    radius of influence for boundaries ({self.boundary.r0/subgrid[0]:.3f},{self.boundary.r0/subgrid[1]:.3f})')
         print(f'    default limiting of displacement in one dt: ({self.default_limiting/subgrid[0]:.3f}, {self.default_limiting/subgrid[1]:.3f})')
 
-    def update_vel_acc_limiting(self, dt, cid, pid, ichop, nchop, lock):
+    def update_vel_acc_limiting(self, dt, cid, pid, ichop, nchop, b_ratio, lock):
         if self.particle.chop_size[cid] > 0:
             last_acc = self.particle.acc[cid].copy()
             vel = self.particle.vel[cid].view()
             limiting = self.particle.limiting[cid].view()
-            self.update_acc_limiting(cid, pid, ichop, nchop, lock)
+            self.update_acc_limiting(cid, pid, ichop, nchop, b_ratio, lock)
             # use acc to change the course of velocity
-            vel[:,:] = (1-self.damp) * vel[:,:] + 0.5*(self.particle.acc[cid] + last_acc)*dt
+            #print(f'limiting #{pid}: {[np.min(self.particle.interdis[cid]), np.mean(self.particle.interdis[cid]), np.max(self.particle.interdis[cid])]/self.cl}:{self.cl}')
+            damp = self.damp * self.cl/self.particle.interdis[cid]
+            damp[damp > 1] = 1
+            self.particle.dis_intended[cid] = np.mean(damp)
+            self.particle.dis[cid] = np.std(damp)
+            #damp[self.cl < self.particle.interdis[cid]] = 0
+            #print(f'damp #{cid}: {[np.min(damp), np.mean(damp), np.max(damp)]}: {self.damp}')
+            vel[:,:] = (vel[:,:] + (1-damp) * vel[:,:] + 0.5*(self.particle.acc[cid] + last_acc)*dt + (damp*damp*vel[:,:] - damp*last_acc)*dt*dt)/2
+            #vel[:,:] = (1-self.damp) * vel[:,:] + 0.5*(self.particle.acc[cid] + last_acc)*dt
+            #print(vel)
             # limit the absolute speed
             v = np.linalg.norm(vel, axis = 0)
-            large_vel =  v > limiting/dt
+            l_ratio = self.particle.interdis[cid]/self.cl
+            #l_ratio[l_ratio < self.l_ratio] = 0
+            l_ratio[l_ratio < self.l_ratio] = self.l_k * l_ratio[l_ratio < self.l_ratio]
+            l_ratio[l_ratio > 1] = 1
+            #l_ratio = 1
+            large_vel =  v > limiting/dt * l_ratio
             vel[:,large_vel] = limiting[large_vel]/dt * vel[:,large_vel]/v[large_vel]
 
-    def update_acc_limiting(self, cid, pid, ichop, nchop, lock):
+    def update_acc_limiting(self, cid, pid, ichop, nchop, b_ratio, lock):
         # no need to copy() pos here no write will happen here
+        if pid == self.printing_id:
+            prof = pprofile.Profile()
+            prof.enable()
         if self.particle.chop_size[cid] == 0:
-            return 
+            print(f'chop {cid} has zero particle')
+            return
         pos = self.particle.pos[cid].view()
         # acc is free to update
         acc = self.particle.acc[cid].view()
         nint = np.zeros(self.particle.chop_size[cid])
+        #r_max = np.zeros(self.particle.chop_size[cid])
+        r_min = np.zeros(self.particle.chop_size[cid])
+        #gotit = False
+        #j = -1
         for i in range(self.particle.chop_size[cid]):
             #if i == 0:
             #    with lock:
             #        print(f'{cid}: acc[0] before {acc[:,i]}')
             ## calculate repelling acceleratoin from the nearest boundary
-            percent = (i+1)/self.particle.chop_size[cid]*100
-            mod_size = max([self.particle.chop_size[cid]//10, 2])
-            if pid == self.printing_id and (np.mod(i+1,mod_size) == 0 or i+1 == self.particle.chop_size[cid]):
-                stdout.write(f'\r acc: {ichop}/{nchop} - {i+1}/{self.particle.chop_size[cid]},{percent:.1f}%')
-                stdout.flush()
+            if pid == self.printing_id:
+                percent = (i+1)/self.particle.chop_size[cid]*100
+                mod_size = max([self.particle.chop_size[cid]//10, 2])
+                if (np.mod(i+1,mod_size) == 0 or i+1 == self.particle.chop_size[cid]):
+                    stdout.write(f'\r acc: {ichop}/{nchop} - {i+1}/{self.particle.chop_size[cid]},{percent:.1f}%')
+                    stdout.flush()
 
             #ds = np.mean(self.boundary.pos[:,:,:],axis=-1) - pos[:,i].reshape(1,2) # use the mean of the three guide points to detect cross-like boundaries.
             #ds = self.boundary.pos[:,:,1] - pos[:,i].reshape(1,2)
@@ -100,9 +128,16 @@ class p_repel_system:
             ds = self.boundary.midpos - np.tile(pos[:,i].reshape(2,1),(1,2))
             ib = np.argmin(np.min(np.sum(np.power(ds, 2), axis = -2), axis = -1))
             acc[:,i], limiting = self.boundary.get_acc(ib, pos[:,i])
-            # update the limiting threshold
-            self.particle.limiting[cid][i] =  np.min([limiting/2, self.default_limiting])
+            #if (acc[:,i] != 0).any():
+            #    near_boundary = True
+            #else:
+            #    near_boundary = False 
+
+            acc[:,i] *= b_ratio
             r0 = min(limiting, self.particle.r0)
+            
+            # update the limiting threshold
+            self.particle.limiting[cid][i] =  np.min([limiting, self.default_limiting])
 
             nint[i] = 0
             ## accumulate acceleration from particles
@@ -114,14 +149,18 @@ class p_repel_system:
             if rpick.any():
                 pick[pick] = rpick
                 direction = ds[:,pick]/r[rpick]
+                #r_max[i] = np.max(r[rpick])
                 acc[:,i] = acc[:,i] + np.sum(self.particle.f(r[rpick], self.cl)*direction, axis=-1)
                 nint[i] += np.sum(rpick)
+            rlist = r[rpick].tolist()
 
             # accumulate acceleration from neighboring particles
             npick = self.particle.neighbor_list[self.particle.chop_bid[cid],:] >= 0
             ids = self.particle.neighbor_list[self.particle.chop_bid[cid],npick]
 
             for neighbor in self.particle.block_cid[ids]:
+                if neighbor == -1:
+                    continue
                 neighbor_center = np.array([np.sum(self.particle.block_bound[0,self.particle.chop_bid[neighbor],:])/2, np.sum(self.particle.block_bound[1,self.particle.chop_bid[neighbor],:])/2])
                 # no need to copy() no write will happen here
                 dis_neighbor = np.linalg.norm(neighbor_center - pos[:,i])
@@ -142,25 +181,61 @@ class p_repel_system:
                             direction = ds[:,pick]/r[rpick]
                             acc[:,i] = acc[:,i] + np.sum(self.particle.f(r[rpick], self.cl)*direction, axis=-1)
                             nint[i] += np.sum(rpick)
+                            r_neighbor_max = np.max(r[rpick])
+                            #if r_neighbor_max > r_max[i]:
+                            #    r_max[i] = r_neighbor_max
+                        rlist = rlist +  r[rpick].tolist()
+            nmin = min(len(rlist), 6)
+            if nmin > 0:
+                r_min[i] = np.mean(np.partition(rlist, nmin-1)[:nmin])
+            else:
+                r_min[i] = r0
+            #if near_boundary:
+            #    print(f'near_boundary damp = {self.damp*self.cl/r_min[i]}, limiting = {self.particle.limiting[cid][i]*r_min[i]/self.cl}')
+            #if r_max[i] == 0:
+            #    r_max[i] = r0
+
+            #if j == i: 
+            #    print(f'#{i}: {acc[:,i]} total from {nint[i]}, r0 = {r0}') 
+
             #if i == 0:
             #    with lock:
             #        print(f'{cid}: acc[0] after {self.particle.acc[cid][:,i]}')
         self.particle.nint[cid] = np.mean(nint)
+        nint0 = nint.copy()
+        nint[nint == 0] = 1
+        self.particle.interdis[cid][:] = r_min
+        #self.particle.interdis[cid][:] = r_max/np.sqrt(nint)
+        if pid == self.printing_id:
+            prof.disable()
+            prof.print_stats()
 
     def update_pos(self, dt, cid, final, lock):
         # limitation on displacement and velocity are needed, but not acceleration
+        if self.particle.chop_size[cid] == 0:
+            print(f'chop {cid} has zero particle')
+            return 
+
         pos = self.particle.pos[cid].view()
 
         #pos0 = pos[:,np.array([0,1,2])].copy()
         #pos_shared = self.particle.shared_dmem[:3].copy()
         #acc0 = self.particle.acc[cid][:,np.array([0,1,2])]
 
-        limiting = self.particle.limiting[cid].view()
+        l_ratio = self.particle.interdis[cid]/self.cl
+        #l_ratio[l_ratio < self.l_ratio] = 0
+        l_ratio[l_ratio < self.l_ratio] = self.l_k * l_ratio[l_ratio < self.l_ratio]
+        l_ratio[l_ratio > 1] = 1
+        #l_ratio = 1
+        limiting = self.particle.limiting[cid]*l_ratio
+        #print(f'limiting #{cid}: {[np.min(limiting), np.mean(limiting), np.max(limiting)]/self.default_limiting}')
+
         # get to new position by speed * dt + 1/2 * acc * dt^2
         # limit the change in displacement by the distance to the nearest boundary
         # calculate the new velocity, limit the final speed, not the change of velocity
         
-        dpos = self.particle.vel[cid]*dt + 0.5*self.particle.acc[cid] * np.power(dt,2)
+        dpos = self.particle.vel[cid]*dt
+        #print(f'dpos component {[np.mean(self.particle.vel[cid]*dt), np.mean(0.5*self.particle.acc[cid] * np.power(dt,2))]}')
         # limit change in displacement
         dr = np.linalg.norm(dpos, axis = 0)
         self.particle.dis_intended[cid] = np.mean(dr)
@@ -195,9 +270,9 @@ class p_repel_system:
         remain = np.mod(self.particle.nchop, self.ncore)
         chunksize = chunk + (pid < remain)
         if pid < remain:
-            chops_to_update = (chunk + 1) * pid + np.arange(chunksize)
+            chops_to_update = chunksize * pid + np.arange(chunksize)
         else:
-            chops_to_update = (chunk + 1) * remain +  (pid-remain) * chunksize + np.arange(chunksize)
+            chops_to_update = (chunksize + 1) * remain +  (pid-remain) * chunksize + np.arange(chunksize)
         update_barrier.wait()
         self.particle.core_workload[pid] = np.sum(self.particle.chop_size[chops_to_update])
         update_barrier.wait()
@@ -206,20 +281,21 @@ class p_repel_system:
 
         self.printing_id = np.argmax(self.particle.core_workload)
         if pid == self.printing_id:
-            print(f'chops: {chunksize}x{remain}; {chunk}x{self.ncore-remain}')
+            print(f'chops: {chunk+1}x{remain}; {chunk}x{self.ncore-remain}')
             seed = int(datetime.now().timestamp())
             np.random.seed(seed)
         # when chopping up, fixed
         chunk = self.particle.nblock//self.ncore
         remain = np.mod(self.particle.nblock, self.ncore)
         blocksize = chunk + (pid < remain)
+        if pid == 0:
+            print([self.particle.nblock, self.ncore, chunk, remain, blocksize])
         if pid < remain:
-            blocks_to_update = (chunk + 1) * pid + np.arange(blocksize)
+            blocks_to_update = blocksize * pid + np.arange(blocksize)
         else:
-            blocks_to_update = (chunk + 1) * remain +  (pid-remain) * blocksize + np.arange(blocksize)
-
+            blocks_to_update = (blocksize + 1) * remain +  (pid-remain) * blocksize + np.arange(blocksize)
         if pid == self.printing_id:
-            print(f'blocks: {blocksize}x{remain}; {chunk}x{self.ncore-remain}')
+            print(f'blocks: {chunk+1}x{remain}; {chunk}x{self.ncore-remain}')
 
         if pid == self.printing_id:
             tic = time.perf_counter() 
@@ -233,13 +309,20 @@ class p_repel_system:
             self.default_limiting = ss_limiting*cl_ratio
             self.cl = ss_cl*cl_ratio
             self.particle.r0 = r0*cl_ratio
+            if cl_ratio == 1:
+                b0 = 0
+                b_ratio = b0 + 1
+            else:
+                b_ratio = 1/cl_ratio
+        else:
+            b_ratio = 1
 
         # steady state limiting, cl, and r0
         # update acc and limiting
         nchop = chops_to_update.size
         for cid in chops_to_update:
             ichop = cid - chops_to_update[0] + 1
-            self.update_acc_limiting(cid, pid, ichop, nchop, output_lock)
+            self.update_acc_limiting(cid, pid, ichop, nchop, b_ratio, output_lock)
         update_barrier.wait()
         if pid == self.printing_id:
             toc = time.perf_counter() 
@@ -256,6 +339,7 @@ class p_repel_system:
             if pid == self.printing_id:
                 print(f'iteration {i}')
                 print(f'{self.nb} boundary points and {self.particle.n} particles initialized')
+                print(f'b_ratio = {b_ratio}')
                 print(f'characteristic length (inter-particle-distance) = {self.cl}')
                 print(f'in units of grids ({self.boundary.subgrid[0]:.3f},{self.boundary.subgrid[1]:.3f}):')
                 print(f'    interparticle distance ({self.cl/self.boundary.subgrid[0]:.3f},{self.cl/self.boundary.subgrid[1]:.3f})')
@@ -276,9 +360,7 @@ class p_repel_system:
                 #print(f'after acc: {self.particle.shared_dmem[4*self.particle.n + spick]}')
                 self.particle.nlimited[:] = 0
                 self.particle.nfrozen[:] = 0
-            update_barrier.wait()
-            if pid == self.printing_id:
-                self.particle.check()
+                self.particle.check(self.boundary.midpos, self.boundary.pos)
             update_barrier.wait()
             if i < dt.size - 1:
                 if ndt_decay > 0:
@@ -287,35 +369,49 @@ class p_repel_system:
                         self.default_limiting = ss_limiting*cl_ratio + ss_limiting*(1-cl_ratio)*(i+1)/ndt_decay
                         self.cl = ss_cl*cl_ratio + ss_cl*(1-cl_ratio)*(i+1)/ndt_decay
                         self.particle.r0 = r0*cl_ratio + r0*(1-cl_ratio)*(i+1)/ndt_decay
+                        if cl_ratio == 1:
+                            b_ratio = 1 + (1-(i+1)/ndt_decay)*b0
+                        else:
+                            b_ratio = 1 + (1-(i+1)/ndt_decay)*(1/cl_ratio-1)
 
                 if pid == self.printing_id:
+                    print(f'b_ratio = {b_ratio}')
                     tic = time.perf_counter() 
                 for cid in chops_to_update:
                     ichop = cid - chops_to_update[0] + 1
-                    self.update_vel_acc_limiting(dt[i], cid, pid, ichop, nchop, output_lock)
+                    self.update_vel_acc_limiting(dt[i], cid, pid, ichop, nchop, b_ratio, output_lock)
                 update_barrier.wait()
+
                 if pid == self.printing_id:
                     toc = time.perf_counter() 
                     stdout.write('\n')
                     stdout.flush()
                     print(f'update vel acc limiting took approx. {toc-tic:0.4f} sec')
+                    print(f'damping mean:{np.mean(self.particle.dis_intended[self.particle.chop_size>0]):.3e}, std:{np.mean(self.particle.dis[self.particle.chop_size>0]):.3e}')
                 # parallel chop up and update shared mem
                 if pid == self.printing_id:
-                    old_chopsize = self.particle.chop_size.copy()
-                    self.particle.chop_size[:] = 0
                     tic = time.perf_counter() 
                 old_nchop = self.particle.nchop
                 pos = np.empty(blocksize, dtype = object)
                 acc = np.empty(blocksize, dtype = object)
                 vel = np.empty(blocksize, dtype = object)
                 limiting = np.empty(blocksize, dtype = object)
+                interdis = np.empty(blocksize, dtype = object)
                 back_map = np.empty(blocksize, dtype = object)
                 for j in range(blocksize):
                     bid = blocks_to_update[j]
                     assert(bid < self.particle.nblock)
-                    pos[j], acc[j], vel[j], limiting[j], back_map[j] = self.particle.parallel_chop_up(bid, pid)
+                    pos[j], acc[j], vel[j], limiting[j], interdis[j], back_map[j] = self.particle.parallel_chop_up(bid, pid, output_lock)
+
+                if pid == self.printing_id:
+                    self.particle.block_cid[:] = -1
+                    self.particle.chop_bid[:] = -1
+
                 update_barrier.wait()
                 if pid == self.printing_id:
+                    old_chopsize = self.particle.chop_size.copy()
+                    self.particle.chop_size[:] = 0
+                    #################
                     assert(np.sum(self.particle.block_size) == self.particle.n)
 
                 update_barrier.wait()
@@ -324,7 +420,7 @@ class p_repel_system:
                     toc = time.perf_counter() 
                     print(f'parallel chop up took approx. {toc-tic:0.4f} sec')
                     tic = time.perf_counter() 
-                self.particle.populate_shared_mem(pid, pos, vel, acc, limiting, back_map, blocks_to_update)
+                self.particle.populate_shared_mem(pid, pos, vel, acc, limiting, interdis, back_map, blocks_to_update, output_lock)
                 update_barrier.wait()
                 if pid == self.printing_id:
                     toc = time.perf_counter() 
@@ -332,7 +428,7 @@ class p_repel_system:
                 # update pointers to shared memory
                 if pid == self.printing_id:
                     tic = time.perf_counter() 
-                self.particle.distribute_chops_from_shared_mem()
+                self.particle.distribute_chops_from_shared_mem(pid)
                 update_barrier.wait()
                 if pid == self.printing_id:
                     toc = time.perf_counter() 
@@ -352,12 +448,14 @@ class p_repel_system:
                 with output_lock:
                     if pid == self.printing_id:
                         chop_size_diff = self.particle.chop_size - old_chopsize
-                        assert(np.sum(chop_size_diff) == 0)
-                        print(chop_size_diff)
+                        if np.sum(chop_size_diff) != 0:
+                            print(chop_size_diff)
+                            #############
+                            assert(np.sum(chop_size_diff) == 0)
             with output_lock:
                 if pid == self.printing_id:
                     print(f'================ {(i+1)/dt.size*100:.1f}%')
-                    mod_plot = 5
+                    mod_plot = 10
                     if np.mod(i, mod_plot) == mod_plot-1:
                         flat_pos = self.particle.assemble()
                         with open(mod_plot_fn + '-pos_for_redraw-'+f'{i//mod_plot}'+'.bin', 'wb') as f:
@@ -365,10 +463,7 @@ class p_repel_system:
                             flat_pos.astype(float).tofile(f)
 
 class p_point_particle:
-    def __init__(self, initial_pos, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, n, chop_size, abcl, xl, yl, nx, ny, k1 = 1.0, k2 = 0.5, roi_ratio = 4.0, ncore = 0):
-        if ncore == 0:
-            ncore = mp.cpu_count()
-            print(f'{ncore} cores found')
+    def __init__(self, initial_pos, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, n, chop_size, abcl, xl, yl, nx, ny, k1 = 1.0, k2 = 0.5, roi_ratio = 4.0, ncore = 1):
         self.ncore = ncore
         self.nx = nx
         self.ny = ny
@@ -414,22 +509,41 @@ class p_point_particle:
         for j in range(self.ny):
             self.block_bound[1,j,:,:] = np.tile(yvec[j:j+2], (self.nx,1))
 
+       # potential Lennard-Jones Potential
+        self.k1 = k1
+        self.k2 = k2
+        r0 = np.power(self.k2/self.k1,-1/(self.k1-self.k2))*abcl 
+        if abcl*roi_ratio > r0:
+            self.r0 = r0
+        else:
+            self.r0 = abcl*roi_ratio
+
         self.block_bound = self.block_bound.reshape(2,self.nblock,2)
         self.block_halfDiag = np.sqrt(np.power((yvec[1]-yvec[0]),2) + np.power((xvec[1]-xvec[0]),2))/2
       # default neighbor list
-        self.neighbor_list = np.zeros((self.nblock, 8), dtype = 'i4') - 1
+        nwidth = int(np.ceil(self.r0/np.abs(xvec[1]-xvec[0])))
+        nheight = int(np.ceil(self.r0/np.abs(yvec[1]-yvec[0])))
+        self.neighbor_list = np.zeros((self.nblock, (2*nwidth+1)*(2*nheight+1)-1), dtype = 'i4') - 1
+        print(self.neighbor_list.shape)
         for j in range(self.ny):
             for i in range(self.nx):
                 k = j*self.nx + i
-                list_x, list_y = np.meshgrid(np.arange(i-1,i+2), np.arange(j-1,j+2))
+                ix = np.arange(i-nwidth ,i+nwidth+1)
+                iy = np.arange(j-nheight,j+nheight+1)
+                #print(f'{i,j}: {ix, iy}')
+                list_x, list_y = np.meshgrid(ix, iy)
                 list_id = (list_y * self.nx + list_x).flatten()
                 # remove self-block
-                assert(list_id[4] == k)
-                list_id = np.hstack((list_id[:4], list_id[5:]))
+                k_id = nheight*(2*nwidth+1) + nwidth
+                assert(list_id[k_id] == k)
+                list_id = np.hstack((list_id[:k_id], list_id[k_id+1:]))
+                list_x = np.hstack((list_x.flatten()[:k_id], list_x.flatten()[k_id+1:]))
+                list_y = np.hstack((list_y.flatten()[:k_id], list_y.flatten()[k_id+1:]))
                 # remove outlying neighbors
-                list_id = np.unique(list_id[np.logical_and(list_id >= 0, list_id < self.nblock)])
+                list_id = np.unique(list_id[np.logical_and(np.logical_and(list_x >= 0, list_x < self.nx), np.logical_and(list_y >= 0, list_y < self.ny))])
                 nl = list_id.size
                 self.neighbor_list[k,:nl] = list_id
+                assert((list_id >= 0).all())
                 #print(f'{i,j}: {self.neighbor_list[k,:nl]}')
 
       # shared during parallel processing
@@ -449,7 +563,7 @@ class p_point_particle:
         self.nlimited = shared_nmem[4*self.nblock:5*self.nblock].view() # for summing the number of limited particle
         self.nfrozen = shared_nmem[5*self.nblock:6*self.nblock].view() # for summing the number of freezed particle
         self.core_workload = shared_cmem.view()
-      # initialize
+      # initialize (why necessary?)
         self.shared_dmem[2*self.n: 4*self.n] = 0 # vel
         self.shared_dmem[4*self.n: 6*self.n] = 0 # acc
         self.shared_dmem[6*self.n: 7*self.n] = 0 # limiting
@@ -481,12 +595,6 @@ class p_point_particle:
             self.back_map[i] = self.shared_imem[i0:i1].view()
             i0 = i1
 
-       # potential Lennard-Jones Potential
-        self.k1 = k1
-        self.k2 = k2
-        #self.r0 = np.power(self.k2/self.k1,-1/(self.k1-self.k2))*abcl 
-        self.r0 = abcl*roi_ratio
-
         '''
         rand_name = int(datetime.now().timestamp())
         fig = plt.figure(str(rand_name) + 'test_p', figsize = (12,4))
@@ -501,6 +609,10 @@ class p_point_particle:
         self.initial_chop_up(chop_x, chop_y, maxD)
         #toc = time.perf_counter() 
         #print(f'initial chop up in {toc-tic:0.4f} sec')
+        print(f'{self.block_cid}')
+        print(f'{self.nblock}')
+        print(f'{self.nchop}')
+        print(f'{self.chop_bid}')
         '''
         ax2 = fig.add_subplot(132)
         for i in range(self.nchop):
@@ -564,6 +676,7 @@ class p_point_particle:
         self.vel = np.empty(self.nchop, dtype = object)
         self.acc = np.empty(self.nchop, dtype = object)
         self.limiting = np.empty(self.nchop, dtype = object)
+        self.interdis = np.empty(self.nchop, dtype = object)
         self.back_map = np.empty(self.nchop, dtype = object)
         for i in range(self.nchop):
             i1 = i0 + self.chop_size[i]
@@ -574,11 +687,12 @@ class p_point_particle:
             self.vel[i] = self.shared_dmem[2*self.n + ii0: 2*self.n + ii1].view().reshape((2,self.chop_size[i]))
             self.acc[i] = self.shared_dmem[4*self.n + ii0: 4*self.n + ii1].view().reshape((2,self.chop_size[i]))
             self.limiting[i] = self.shared_dmem[6*self.n + i0: 6*self.n + i1].view()
+            self.interdis[i] = self.shared_dmem[7*self.n + i0: 7*self.n + i1].view()
             self.back_map[i] = self.shared_imem[i0:i1].view()
             i0 = i1
             ii0 = ii1
 
-    def parallel_chop_up(self, k0, pid):
+    def parallel_chop_up(self, k0, pid, lock):
         # get neighbor index
         dis = np.linalg.norm(np.array([np.sum(self.block_bound[0,k0,:])/2,np.sum(self.block_bound[1,k0,:])/2]).reshape(2,1)  - self.chop_pos[:,:self.nchop], axis = 0)
         pick = self.chop_maxD[:self.nchop] + self.block_halfDiag >= dis
@@ -587,6 +701,7 @@ class p_point_particle:
         vel = np.array([])
         acc = np.array([])
         limiting = np.array([])
+        interdis = np.array([])
         back_map = np.array([])
         
         npick = np.sum(pick)
@@ -599,6 +714,7 @@ class p_point_particle:
             tmp_ax = []
             tmp_ay = []
             tmp_limiting = []
+            tmp_interdis = []
             tmp_map = []
             nonzero = False
             cid = np.arange(self.nchop)[pick]
@@ -616,6 +732,7 @@ class p_point_particle:
                     tmp_ax = tmp_ax + self.acc[j][0,pick].tolist()
                     tmp_ay = tmp_ay + self.acc[j][1,pick].tolist()
                     tmp_limiting = tmp_limiting + self.limiting[j][pick].tolist()
+                    tmp_interdis = tmp_interdis + self.interdis[j][pick].tolist()
                     tmp_map = tmp_map + self.back_map[j][pick].tolist()
                     nonzero = True
 
@@ -625,10 +742,11 @@ class p_point_particle:
                 vel = np.array([tmp_vx,tmp_vy]).flatten()
                 acc = np.array([tmp_ax,tmp_ay]).flatten()
                 limiting = np.array(tmp_limiting)
+                interdis = np.array(tmp_interdis)
                 back_map = np.array(tmp_map, dtype = 'i4')
-        return pos, vel, acc, limiting, back_map
+        return pos, vel, acc, limiting, interdis, back_map
 
-    def populate_shared_mem(self, pid, pos, vel, acc, limiting, back_map, blocks_to_update):
+    def populate_shared_mem(self, pid, pos, vel, acc, limiting, interdis, back_map, blocks_to_update, lock):
         self.nchop = np.sum(self.block_size > 0)
         k = 0
         i0 = 0
@@ -650,6 +768,7 @@ class p_point_particle:
                     self.shared_dmem[2*self.n + ii0: 2*self.n + ii1] = vel[j]
                     self.shared_dmem[4*self.n + ii0: 4*self.n + ii1] = acc[j]
                     self.shared_dmem[6*self.n + i0: 6*self.n + i1] = limiting[j]
+                    self.shared_dmem[7*self.n + i0: 7*self.n + i1] = interdis[j]
                     self.shared_imem[i0:i1] = back_map[j]
                     j = j + 1
                 i0 = i1
@@ -661,11 +780,12 @@ class p_point_particle:
         if pid == 0:
             assert(self.nchop == k)
 
-    def distribute_chops_from_shared_mem(self):
+    def distribute_chops_from_shared_mem(self, pid):
         self.pos = np.empty(self.nchop, dtype = object)
         self.vel = np.empty(self.nchop, dtype = object)
         self.acc = np.empty(self.nchop, dtype = object)
         self.limiting = np.empty(self.nchop, dtype = object)
+        self.interdis = np.empty(self.nchop, dtype = object)
         self.back_map = np.empty(self.nchop, dtype = object)
         i0 = 0
         ii0 = 0
@@ -676,6 +796,7 @@ class p_point_particle:
             self.vel[i] = self.shared_dmem[2*self.n + ii0: 2*self.n + ii1].view().reshape((2,self.chop_size[i]))
             self.acc[i] = self.shared_dmem[4*self.n + ii0: 4*self.n + ii1].view().reshape((2,self.chop_size[i]))
             self.limiting[i] = self.shared_dmem[6*self.n + i0: 6*self.n + i1].view()
+            self.interdis[i] = self.shared_dmem[7*self.n + i0: 7*self.n + i1].view()
             self.back_map[i] = self.shared_imem[i0:i1].view()
             i0 = i1
             ii0 = ii1
@@ -696,10 +817,16 @@ class p_point_particle:
 
         return flat_pos
     
-    def check(self, pos = None):
+    def check(self, midpos, bpos, pos = None):
         if pos is None:
             pos = self.assemble()
         if (pos[0,:] < self.xl[0]).any() or (pos[0,:] > self.xl[1]).any() or (pos[1,:] < self.yl[0]).any() or (pos[1,:] > self.yl[1]).any():
+            pick = np.logical_or(pos[0,:] < self.xl[0], np.logical_or(pos[0,:] > self.xl[1],np.logical_or(pos[1,:] < self.yl[0],pos[1,:] > self.yl[1])))
+            plist = np.arange(self.n)[pick]
+            for i in plist:
+                ds = midpos - np.tile(pos[:,i].reshape(2,1),(1,2))
+                ib = np.argmin(np.min(np.sum(np.power(ds, 2), axis = -2), axis = -1))
+                print(f'# {i} {pos[:,i]}, {bpos[ib,:,:]}')
             raise Exception(f'pos of shape {pos.shape} has particles escaped, xrange: {[np.min(pos[0,:]), np.max(pos[0,:])]} inside {[self.xl[0], self.xl[1]]}; yrange: {[np.min(pos[1,:]), np.max(pos[1,:])]} inside {[self.yl[0], self.yl[1]]}')
         else:
             print(f'pos of shape {pos.shape} is within the boundary, check passed')
@@ -756,15 +883,16 @@ class p_rec_boundary(rec_boundary):
         return r, d
 
 def get_r0_f(abcl, k1 = 1.0, k2 = 0.5, roi_ratio = 2):
-    #r0 = np.power(k2/k1,-1/(k1-k2))*abcl
-    r0 = roi_ratio*abcl
+    r0 = np.power(k2/k1,-1/(k1-k2))*abcl
+    if abcl*roi_ratio < r0:
+        r0 = abcl*roi_ratio
     #r0 = np.power(b*k2/a/k1,-1/(k1-k2))*cl
     #r0 = 2*abcl
     #f = lambda r: 2*np.power(abcl/r,3) - np.power(abcl/r,2)
     f = lambda r: k1*np.power(abcl/r,k1+1) - k2*np.power(abcl/r,k2+1)
     return r0, f
 
-def parallel_repel(area, subgrid, particlePos, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, p_scale, boundPos, boundType, b_scale, nx, ny, ncore, dt, spercent, figname, ndt_decay, cl_ratio, roi_ratio, k1 = 1.0, k2 = 0.5, seed = -1, limit_ratio = 1.0, local_plot = True):
+def parallel_repel(area, subgrid, particlePos, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, p_scale, boundPos, boundType, b_scale, nx, ny, ncore, dt, spercent, figname, ndt_decay, cl_ratio, roi_ratio, k1 = 1.0, k2 = 0.5, seed = -1, limit_ratio = 1.0, damp = 0.5, l_ratio = 0.0, l_k = 1.0, local_plot = True):
     if figname is None:
         figname = 'parallel_repel'
     if spercent > 0 and local_plot:
@@ -773,7 +901,7 @@ def parallel_repel(area, subgrid, particlePos, shared_dmem, shared_imem, shared_
     else:
         ax = None
 
-    system = p_repel_system(area, subgrid, particlePos, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, boundPos, boundType, p_scale, b_scale, nx, ny, roi_ratio, k1, k2, ncore, limit_ratio, ax)
+    system = p_repel_system(area, subgrid, particlePos, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, boundPos, boundType, p_scale, b_scale, nx, ny, roi_ratio, k1, k2, ncore, limit_ratio, damp, l_ratio, l_k, ax)
     n0  = system.particle.n
     if spercent > 0 and local_plot:
         if seed < 0:
@@ -800,32 +928,34 @@ def parallel_repel(area, subgrid, particlePos, shared_dmem, shared_imem, shared_
         p.join()
 
     pos = system.particle.assemble()
+    #######
     assert(not np.isnan(pos.flatten()).any())
-    system.particle.check(pos)
+    system.particle.check(system.boundary.midpos,system.boundary.pos, pos = pos)
     
     print('write to file ...')
     with open(figname + '_for_redraw.bin', 'wb') as f:
-        np.array([system.n]).astype('i4').tofile(f)        
+        np.array([system.n]).astype('i4').tofile(f)
         pos.astype(float).tofile(f)
 
     with open(figname+'_final.bin', 'wb') as f:
         nchop_value = nchop.value
-        np.array([nchop_value]).astype('i4').tofile(f)        
-        system.particle.chop_size[:nchop_value].astype('i4').tofile(f)        
+        np.array([nchop_value]).astype('i4').tofile(f)
+        system.particle.chop_size[:nchop_value].astype('i4').tofile(f)
         system.particle.shared_dmem[:2*system.particle.n].tofile(f)
         #system.particle.vel.tofile(f)
         #system.particle.acc.tofile(f)
         #system.particle.limiting.tofile(f)
-        np.array([system.nb]).tofile(f)        
+        np.array([system.nb]).tofile(f)
         boundPos.tofile(f)
         boundType.astype('u4').tofile(f)
         subgrid.tofile(f)
         np.array([area]).tofile(f)
 
     if np.sum(system.particle.chop_size[:nchop_value]) != pos.shape[1]:
+        #print(f'chop sum {np.sum(system.particle.chop_size[:nchop_value])} flat sum: {pos.shape[1]} mismatch')
         raise Exception(f'chop sum {np.sum(system.particle.chop_size[:nchop_value])} flat sum: {pos.shape[1]} mismatch')
     if n0 != pos.shape[1]:
-        assert(pos.shape[1] < n0)
+        #print('#particles: {n0} -> {pos.shape[1]}')
         raise Exception('#particles: {n0} -> {pos.shape[1]}')
 
     print('done')

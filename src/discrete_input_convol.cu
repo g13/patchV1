@@ -748,7 +748,7 @@ void LGN_convol_parvo(
         //F_i is the mean of all sampled pixel value of the ith frame in the LGN's RF.
     */
     
-    SmallSize typeS = coneType[nLGN+id];
+    SmallSize typeS = coneType[id+nLGN];
     SmallSize typeC = coneType[id];
 
     Float spatialWeight = SW_storage[tid];

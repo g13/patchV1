@@ -11,10 +11,10 @@ typedef double Double;
 #define DOUBLE_PRECISION
 
 typedef unsigned int Size;
-typedef long unsigned int BigSize;
+typedef unsigned long BigSize;
 typedef unsigned int SmallSize;
 typedef unsigned int PosInt;
-typedef long unsigned int PosIntL;
+typedef unsigned long PosIntL;
 typedef std::default_random_engine RandomEngine;
 typedef Float (*pFeature) (Float, Float, Float);
 

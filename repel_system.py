@@ -150,8 +150,9 @@ class L_J_potiential:
         self.f = lambda r: k1/r*a*np.power(cl/r,k1) - k2/r*b*np.power(cl/r,k2)
     def plot(self, ax1, ax2, style):
         epsilon = np.finfo(float).eps
-        n = 100
-        r = np.linspace(0,1.1*self.r0,n) + epsilon
+        n = 1000
+        print(self.r0)
+        r = np.linspace(0,40*self.r0,n) + epsilon
         y = self.f(r)
         ax1.plot(r,y,style)
         ax1.plot(self.r0, self.f(self.r0), '*r')

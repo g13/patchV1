@@ -234,6 +234,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                         }
                     } */
                 }
+				// set the number of connections
                 Size sSum = normalize(fnLGNeff, p_n);
                 // make connection and update ID and strength list
                 nConnected = connect(idList, strengthList, rGen, max_nCon, sSum, top_pick);
@@ -291,9 +292,14 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         	if (norm == 0) {
 				sSum = 0;
 			} else {
+				Size nAvail = 0;
         		for (PosInt i=0; i<prob.size(); i++) {
+					if (prob[i] > 0) {
+						nAvail++;
+					}
         		    prob[i] = prob[i] / norm;
         		}
+				sSum = nAvail < sSum? nAvail: sSum;
 			}
 		}
     	//std::cout << fnLGNeff*prob.size() << " ~ " << sum << "\n";

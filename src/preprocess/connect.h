@@ -151,35 +151,64 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
                           Float* __restrict__ block_y,
                           PosInt* __restrict__ neighborBlockId,
                           Size* __restrict__ nNeighborBlock,
-                          Size nblock, Float max_radius, Size maxNeighborBlock);
+                          Size* __restrict__ nNearNeighborBlock,
+                          Size nblock, Float blockROI, Float blockROI_max, Size maxNeighborBlock);
 
 __global__ 
 __launch_bounds__(blockSize, 1)
 void generate_connections(double* __restrict__ pos,
                           Float* __restrict__ preF_type,
-                          Float* __restrict__ preS_type,
+                          Float* __restrict__ gap_preF_type, // nTypeI x nFeature x nTypeI
+                          Float* __restrict__ preS_type, // nType x networkSize
+                          Float* __restrict__ gap_preS_type,
                           Size* __restrict__ preN_type,
+                          Size* __restrict__ gap_preN_type,
                           PosInt* __restrict__ neighborBlockId,
                           Size* __restrict__ nNeighborBlock,
+					      Size* __restrict__ nNearNeighborBlock,
                           Float* __restrict__ rden,
                           Float* __restrict__ raxn,
                           Float* __restrict__ conMat, //within block connections
                           Float* __restrict__ delayMat,
+                          Float* __restrict__ gapMat,
                           Float* __restrict__ conVec, //for neighbor block connections
                           Float* __restrict__ delayVec, //for neighbor block connections
+                          Float* __restrict__ gapVec,
+                          Float* __restrict__ gapDelayVec,
                           Size* __restrict__ max_N,
                           PosInt* __restrict__ _vecID,
+                          Float* __restrict__ disNeighborP,
+                          Float* __restrict__ gap_disNeighborP,
                           Size* __restrict__ vecID,
                           Size* __restrict__ nVec,
+                          Size* __restrict__ gapVecID,
+                          Size* __restrict__ nGapVec,
                           Size* __restrict__ preTypeConnected,
                           Size* __restrict__ preTypeAvail,
                           Float* __restrict__ preTypeStrSum,
+                          Size* __restrict__ preTypeGapped,
+                          Float* __restrict__ preTypeStrGapped,
                           Size* __restrict__ preType,
                           Float* __restrict__ feature,
                           Float* __restrict__ dden,
                           Float* __restrict__ daxn,
+                          Float* __restrict__ synloc,
                           Size* __restrict__ typeAcc0,
                           curandStateMRG32k3a* __restrict__ state,
-                          Size sum_max_N, PosInt block_offset, Size networkSize, Size maxDistantNeighbor, Size nearNeighborBlock, Size maxNeighborBlock, Size nType, Size nFeature, bool gaussian_profile, bool strictStrength, Float tol);
+                          Size sum_max_N, Size gap_sum_max_N, PosInt block_offset, Size networkSize, Size mI, Size maxDistantNeighbor, Size gap_maxDistantNeighbor, Size nearNeighborBlock, Size maxNeighborBlock, Size nType, Size nTypeE, Size nTypeI, Size nE, Size nI, Size nFeature, bool gaussian_profile, bool strictStrength, Float tol);
+
+__global__ 
+__launch_bounds__(blockSize, 1)
+void generate_symmetry(PosInt* __restrict__ clusterID,
+					   PosInt* __restrict__ neighborBlockId,
+					   int* __restrict__ neighborMat,
+					   Float* __restrict__ clusterGapMat,
+					   Size* __restrict__ preTypeGapped,
+					   Float* __restrict__ preTypeStrGapped,
+					   PosInt* __restrict__ preType,
+					   curandStateMRG32k3a* __restrict__ state,
+					   PosInt* __restrict__ i_outstanding,
+					   Float* __restrict__ v_outstanding,
+					   PosInt iblock, Size nblock, Size nearNeighborBlock, Size maxNeighborBlock, Size mI, Size nE, Size nI, Size nTypeE, Size nTypeI);
 
 #endif

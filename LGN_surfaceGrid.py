@@ -27,9 +27,13 @@ def nPosInRectangle(point, x0, x1, y0, y1, leftInclude = False, bottomInclude = 
     return np.sum(xy_ready), np.nonzero(xy_ready)[0]
 
 exist_data = False 
-dpi = 2000
+dpi = 150
+surfID_fn = 'LGN_surfaceID-micro'
+parallel_fileL = 'LGN_uniformL-micro.bin'
+parallel_fileR = 'LGN_uniformR-micro.bin'
+
 if exist_data:
-    with open('LGN_surfaceID.bin', 'rb') as f:
+    with open(surfID_fn + '.bin', 'rb') as f:
         ids = np.fromfile(f, 'u4', count = 2)
         xmax_id = ids[0]
         ymax_id = ids[1]
@@ -44,8 +48,6 @@ if exist_data:
         pos_ind_fill = np.fromfile(f, dtype=bool)
     
 else:
-    parallel_fileL = 'p_repel_finalL.bin'
-    parallel_fileR = 'p_repel_finalR.bin'
     with open(parallel_fileL, 'rb') as f:
         nL = np.fromfile(f, 'u4', count = 1)[0]
         posL = np.fromfile(f, 'f8', count = 2*nL).reshape(2,nL)
@@ -80,15 +82,16 @@ else:
     pos_ind = np.zeros((2,nLGN), dtype = 'i4')
     pos_ind_fill = np.zeros(nLGN, dtype = bool)
     
-    fig = plt.figure('surface_chop', dpi = dpi)
+    fig = plt.figure(surfID_fn + '_chop', dpi = dpi)
     ax = fig.add_subplot(111)
     
-    per_unit_area = 2*np.sqrt(3) # in cl^2
+    per_unit_area = np.sqrt(3)/2 # in cl^2
     # can be empirical choice
-    clL = np.sqrt(areaL/nL/per_unit_area)*1.6
-    clR = np.sqrt(areaR/nR/per_unit_area)*1.6
+    clL = np.sqrt(areaL/nL/per_unit_area)
+    clR = np.sqrt(areaR/nR/per_unit_area)
     cl = clL
-    dline_x = cl*1.5  # empirical
+    ratio0 = 1.5 # first column ratio, different width 
+    dline_x = cl # empirical
     dline_y = cl
     x = []
     y = []
@@ -98,23 +101,31 @@ else:
     total_belonged = 0
     new = False # first column of the right eye
     right = False # 
-    while x[-1] < xmax:
+    while x[-1] < xmax and total_belonged < nLGN:
         print('\n')
         if not right and iy > 0:
             dline_x = cl
+        if iy == 0:
+            dline_x = cl*1.2
         if right:
             cl = clR
             dline_y = cl
             if not new:
                 dline_x = cl
             else:
-                dline_x = cl*1.5
+                dline_x = cl*ratio0
         x.append(x[-1] + dline_x)
         y.append([ymin])
         idy.append([])
         #print(x)
         #print(y)
-        n, ind_x = nPosInRectangle(pos, x[-2], x[-1], ymin, ymax, len(x) == 2, True)
+        n = 0
+        x_end = x[-1]
+        while n == 0 and x_end < xmax:
+            n, ind_x = nPosInRectangle(pos, x[-2], x_end, ymin, ymax, len(x) == 2, True)
+            x_end += dline_x
+        x[-1] = x_end - dline_x
+            
         if total_belonged + n >= nL and not right:
             old_n = n
             n, ind_x = nPosInRectangle(pos, x[-2], mid, ymin, ymax, len(x) == 2, True)
@@ -136,31 +147,24 @@ else:
                         ind_x = ind
         print(f'n = {n}, x = {x[-1]}, dx/dline_x = {(x[-1]-x[-2])/dline_x}')
         print(f'# neurons: {ind_x.size}')
+        if n == 0:
+            raise Exception('zero-sized column encountered')
         belonged = 0
         #print(f'ind_x = {ind_x}')
-        while y[iy][-1] <= ymax:
+        while y[iy][-1] <= ymax and belonged < n:
             y[iy].append(y[iy][-1]+dline_y)
             m, ind = nPosInRectangle(pos[:, ind_x], x[-2], x[-1], y[iy][-2], y[iy][-1], len(x) == 2, len(y[iy]) == 2)
             if m > 1:
-                count = 0
-                breaked0 = False
                 m0 = m
-                while m!=1:
-                    if count == 0:
-                        y[iy][-1] = np.mean(pos[1,ind_x[ind]])
-                    else:
-                        y[iy][-1] = np.mean(pos[1,ind_x[ind][ind1]])
-                    #dy = y[iy][-1] - y[iy][-2]
-                    #if m > 1:
-                    #    y[iy][-1] = y[iy][-2] + dy*0.8
-                    #else: # m == 0
-                    #    y[iy][-1] = y[iy][-2] + dy*1.2
-                    m, ind1 = nPosInRectangle(pos[:, ind_x[ind]], x[-2], x[-1], y[iy][-2], y[iy][-1], len(x) == 2, len(y[iy]) == 2)
-                    count = count + 1
-                    if count >= m0:
-                        print(f'ix = {iy}, iy = {len(y[iy])}, {m0} -> {m}')
-                        breaked0 = True
-                        break
+                yy = np.partition(pos[1,ind_x[ind]], 1)[:2]
+                assert(np.mean(yy) < y[iy][-1])
+                y[iy][-1] = np.mean(yy)
+                #dy = y[iy][-1] - y[iy][-2]
+                #if m > 1:
+                #    y[iy][-1] = y[iy][-2] + dy*0.8
+                #else: # m == 0
+                #    y[iy][-1] = y[iy][-2] + dy*1.2
+                m, ind1 = nPosInRectangle(pos[:, ind_x[ind]], x[-2], x[-1], y[iy][-2], y[iy][-1], len(x) == 2, len(y[iy]) == 2)
                 print(f'ind = {ind}, ind_x[ind][{ind1}] = {ind_x[ind][ind1]}')
                 pos_ind[0,ind_x[ind][ind1]] = iy
                 pos_ind[1,ind_x[ind][ind1]] = len(y[iy])-2
@@ -171,13 +175,11 @@ else:
                         ymin_id = len(y[iy]) - 2
                 assert(len(x)-2 >= 0)
                 assert(len(y[iy])-2 >= 0)
-                if breaked0:
-                    breaked = True
-                    break
             elif m == 1:
                 pos_ind[0,ind_x[ind]] = iy
                 pos_ind[1,ind_x[ind]] = len(y[iy])-2
                 pos_ind_fill[ind_x[ind]] = True
+                print(f'#1: ind = {ind}, {ind_x[ind]}')
                 idy[iy].append(ind_x[ind])
                 if 'other' in locals():
                     if len(y[iy]) - 2 < ymin_id:
@@ -186,7 +188,7 @@ else:
                 assert(m==0)
                 assert(len(ind)==0)
     
-            belonged = belonged + m
+            belonged = belonged + int(m>0)
     
             if iy == 0 or new:
                 dy = y[iy][-1] - y[iy][-2]
@@ -195,15 +197,17 @@ else:
             else:
                 clen_y = len(y[iy])
                 if clen_y < len(y[iy-1]):
-                    dline_y = y[iy-1][clen_y] - y[iy][-1]
+                    dline_y = max([y[iy-1][clen_y] - y[iy][-1], cl])
             #print(f'dy = {dline_y}, y[{iy}, {len(y[iy])}] = {y[iy][-1]}, {belonged}/{n}')
             if belonged > n:
                 print(f"belonged {belonged}, {np.sum(pos_ind_fill[ind_x])} == {n}")
-                #breaked = True
-                #break
+                breaked = True
+                break
         if breaked:
             break
-        print(f'# of rows: {len(y[iy])}')
+        if len(y[iy])-1 < len(idy[iy]):
+            raise Exception(f'# of rows: {len(y[iy])} >= indexed LGN {len(idy[iy])}')
+        print(f'nbelong = {belonged}, n = {n}')
         if len(x) > 2 and len(y[iy]) > len(y[iy-1]) and not new:
             print(f'{len(y[iy])} <= {len(y[iy-1])}, don''t break')
             #break
@@ -224,16 +228,20 @@ else:
         #    break
         iy = iy + 1
         total_belonged = total_belonged + n
+        print(f'filled {np.sum(pos_ind_fill)} == belonged {total_belonged}')
+        assert(np.sum(pos_ind_fill) == total_belonged)
         if total_belonged == nL: 
             print('new')
             new = True
             other = len(y)
-            ymin_id = np.max(pos_ind[1,:])
+            ymin_id = np.max(pos_ind[1,:]) # initialize with ipsi maximum
             
         stdout.write(f'\r progress: {total_belonged}/{nLGN}\n')
         #r0 = r1
     assert(total_belonged == nLGN)
-    assert(pos_ind_fill.all())
+    if not pos_ind_fill.all():
+        #raise Exception(f'{np.sum(np.logical_not(pos_ind_fill))} LGN failed indexing')
+        print(f'{np.sum(np.logical_not(pos_ind_fill))} LGN failed indexing')
     
     xmin_id = np.min(pos_ind[0,:])
     xmax_id = np.max(pos_ind[0,:])
@@ -243,9 +251,11 @@ else:
     assert(np.min(pos_ind[0,:]) >= 0)
     assert(np.min(pos_ind[1,:]) >= 0)
     assert(xmax_id <= len(x)-2)
-    iy = np.argmax([len(col) for col in y]) - 1 # n = lines-1
+    iy = np.argmax([len(col) for col in y]) # n
     n_max = len(y[iy])
-    assert(ymax_id <= n_max-1) # max id = n-1
+    if ymax_id > n_max-1:
+        print(f'ymax_id: {ymax_id} <= {n_max-1} (n_max-1)') # max id = n-1
+        #raise Exception(f'ymax_id: {ymax_id} <= {n_max-1} (n_max-1)') # max id = n-1
 
     print(f'yid range: {[ymin_id, ymax_id]}')
     
@@ -260,7 +270,9 @@ else:
     pos_ind[1,:] = pos_ind[1,:] - ymin_id
 
 assert(np.min(pos_ind[0,:]) == 0)
-assert(np.min(pos_ind[1,:]) == 0)
+if np.min(pos_ind[1,:]) != 0:
+    #raise Exception(f'id-y min = {np.min(pos_ind[1,:])} != 0')
+    print(f'id-y min = {np.min(pos_ind[1,:])} != 0')
 
 figId = plt.figure('surface_Id', dpi = dpi)
 axId = figId.add_subplot(111)
@@ -283,7 +295,7 @@ for i in range(len(idy)):
         axId.plot(pos_ind[0,idy[i][-1]]+0.5, pos_ind[1,idy[i][-1]]+0.5, ',r')
 
 axId.set_aspect('equal')
-figId.savefig('LGNsurface_ID.png', dpi = dpi)
+figId.savefig(surfID_fn + '.png', dpi = dpi)
 
 xx = np.array([x,x])
 yy = np.tile(np.array([ymin, ymax]).T,(len(x),1)).T
@@ -300,9 +312,9 @@ ax.plot(pos[0,np.logical_not(pos_ind_fill)], pos[1,np.logical_not(pos_ind_fill)]
 
 
 ax.set_aspect('equal')
-fig.savefig('LGNsurface_grid.png', dpi = dpi)
+fig.savefig(surfID_fn + 'Grid.png', dpi = dpi)
 if not exist_data:
-    with open('LGN_surfaceID.bin', 'wb') as f:
+    with open(surfID_fn + '.bin', 'wb') as f:
         np.array([xmax_id, ymax_id]).astype('u4').tofile(f)
         pos_ind.tofile(f)
         np.array([xmin, mid, xmax]).tofile(f)

@@ -174,7 +174,7 @@ struct LearnVarShapeE { // types of E->E
     Float gmin;
 };
 
-void learnE(LearnVarShapeE &l, Float tauLTP[], Float tauLTD[], Float tauTrip[], Float tauAvg, Float targetFR, Float A_LTP[], Float gmax, Float gmin, Size n, Float ratio);
+void learnE(LearnVarShapeE &l, Float tauLTP[], Float tauLTD[], Float tauTrip[], Float tauAvg, Float targetFR, Float A_LTP[], Float gmax, Float gmin, Size n);
 void printE(LearnVarShapeE &l);
 
 struct LearnVarShapeQ {
@@ -185,6 +185,6 @@ struct LearnVarShapeQ {
     Float gmax;
     Float gmin;
 };
-void learnQ(LearnVarShapeQ &l, Float tauQ[], Float A_Q[], Float gmax, Float gmin, Size n, Float ratio);
+void learnQ(LearnVarShapeQ &l, Float tauQ[], Float A_Q[], Float gmax, Float gmin, Size n);
 void printQ(LearnVarShapeQ &l);
 #endif

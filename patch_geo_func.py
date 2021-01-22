@@ -91,12 +91,18 @@ def x_ep(e,p,k,a,b,s1=0.76,s2=0.1821):
     ratio = R_ep(e,p,a,s1,s2)/R_ep(e,p,b,s1,s2)
     return k/2*np.log(ratio) - k*np.log(a/b)
 
-def e_x(x,k,a,b):
-    assert((x>=0).all())
-    e0 = np.zeros(x.shape)
-    xr = np.exp(2*x[x>0]/k + 2*np.log(a/b)) 
-    sqrtb2_4ac = np.sqrt(4*np.power(b*xr-a,2) - 4*(xr-1)*(b*b*xr-a*a))
-    e0[x>0] = ((a-b*xr)*2 - sqrtb2_4ac)/2/(xr-1)
+def e_x(x, k, a, b):
+    if hasattr(x, '__len__'):
+        assert((x>=0).all())
+        e0 = np.zeros(x.shape)
+        xr = np.exp(2*x[x>0]/k + 2*np.log(a/b)) 
+        sqrtb2_4ac = np.sqrt(4*np.power(b*xr-a,2) - 4*(xr-1)*(b*b*xr-a*a))
+        e0[x>0] = ((a-b*xr)*2 - sqrtb2_4ac)/2/(xr-1)
+    else:
+        assert(x>0)
+        xr = np.exp(2*x/k + 2*np.log(a/b)) 
+        sqrtb2_4ac = np.sqrt(4*np.power(b*xr-a,2) - 4*(xr-1)*(b*b*xr-a*a))
+        e0 = ((a-b*xr)*2 - sqrtb2_4ac)/2/(xr-1)
     return e0
     
 def phi_ep(e,p,ab,s1=0.76,s2=0.1821):

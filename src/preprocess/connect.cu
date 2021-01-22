@@ -18,7 +18,7 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
 			Float* __restrict__ extExcRatio,
             Float* __restrict__ synPerCon,
             Float* __restrict__ synPerConFF,
-			Float min_FB_ratio, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, Float p_n_LGNeff) 
+			Float min_FB_ratio, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, Float preset_nLGN) 
 {
     //__shared__ reduced[warpSize];
     Size id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -41,14 +41,16 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
 	}
 
 
+	Float preset_LGN_syn = preset_nLGN*synPerConFF[type];
+	Float preset_Cortical_syn = init_pack.nTypeMat[type]*synPerCon[type];
+	//Float totalExcSyn = preset_LGN_syn + preset_Cortical_syn;
+
 	Float LGN_syn = nLGN_V1[id]*synPerConFF[type];
-	Float Cortical_syn = init_pack.nTypeMat[type]*synPerCon[type];
-	Float presetConstExcSyn = p_n_LGNeff*synPerConFF[type] + Cortical_syn;
     Float ratio;
 	if (init_pack.nTypeMat[type] == 0 || synPerCon[type] == 0) {
 		ratio = 1.0;
 	} else {
-		ratio = (presetConstExcSyn - LGN_syn)/Cortical_syn;
+		ratio = (preset_Cortical_syn - (LGN_syn - preset_LGN_syn))/preset_Cortical_syn;
 	}
     if (ratio < min_FB_ratio) ratio = min_FB_ratio;
 	ExcRatio[id] = ratio;
@@ -163,7 +165,8 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
                           Float* __restrict__ block_y,
                           PosInt* __restrict__ neighborBlockId,
                           Size* __restrict__ nNeighborBlock,
-						  Size nblock, Float max_radius, Size maxNeighborBlock) 
+                          Size* __restrict__ nNearNeighborBlock,
+						  Size nblock, Float radius, Float max_radius, Size maxNeighborBlock) 
 {
     __shared__ PosInt id[warpSize];
     __shared__ Float min[warpSize];
@@ -186,6 +189,7 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
     Size offset = 0;
     if (tid == 0) {
         id[0] = 0;
+        id[1] = 1; // 1 is correct, first self will be assigned
     }
     bid[tid] = -1;
     __syncthreads();
@@ -202,20 +206,29 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
         }
         __syncthreads();
         if (tid == 0) { // rearrange
-            PosInt current_id = id[0];
+			// assign self first
+			neighborBlockId[maxNeighborBlock*blockIdx.x] = blockIdx.x;
+			PosInt outside_id = id[0];
+            PosInt current_id = id[1];
             for (PosInt i=0; i<blockDim.x; i++) {
-                if (bid[i] != -1) {
-                    final_distance[current_id] = distance[i]; 
-                    final_bid[current_id] = bid[i]; 
+                if (bid[i] != -1 && bid[i] != blockIdx.x) {
+					if (distance[i] < radius) {
+						neighborBlockId[maxNeighborBlock*blockIdx.x + current_id] = bid[i];
+                    	current_id++;
+					} else {
+                    	final_distance[outside_id] = distance[i]; 
+                    	final_bid[outside_id] = bid[i]; 
+						outside_id++;
+					}
                     bid[i] = -1; 
-                    current_id++;
-                    if (current_id > maxNeighborBlock) {
+                    if (current_id + outside_id > maxNeighborBlock) {
                         printf("actual nNeighbor = %d > %d (preserved)\n", current_id, maxNeighborBlock);
-                        assert(current_id <= maxNeighborBlock);
+                        assert(current_id + outside_id <= maxNeighborBlock);
                     }
                 }
             }
-            id[0] = current_id;
+            id[0] = outside_id;
+            id[1] = current_id;
         }
         __syncthreads();
         if (iPatch < nPatch) {
@@ -223,8 +236,10 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
         }
     }
     Size nb = id[0];
+    Size nn = id[1];
     if (tid == 0) {
-        nNeighborBlock[blockIdx.x] = nb;
+        nNeighborBlock[blockIdx.x] = nb + id[1];
+        nNearNeighborBlock[blockIdx.x] = nn; 
 	    //printf("%u: %u blocks in total\n", blockIdx.x, nb);
     }
     Float dis;
@@ -237,6 +252,8 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
             }
         */
     }
+	// get everything closer than radius
+	
     // sorting
     for (Size i=0; i<nb;  i++) {
         find_min(min, dis, id, nb);
@@ -256,7 +273,7 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
     }
     //TODO: if nb > blockSize
     if (tid < nb) {
-        neighborBlockId[maxNeighborBlock*blockIdx.x + tid] = local_bid;
+        neighborBlockId[maxNeighborBlock*blockIdx.x + nn + tid] = local_bid;
     }
 	/* DEBUG
         if (blockIdx.x == 2) {
@@ -280,30 +297,44 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
 __global__ 
 void generate_connections(double* __restrict__ pos,
                           Float* __restrict__ preF_type,
+                          Float* __restrict__ gap_preF_type,
                           Float* __restrict__ preS_type,
+                          Float* __restrict__ gap_preS_type,
                           Size* __restrict__ preN_type,
+                          Size* __restrict__ gap_preN_type,
                           PosInt* __restrict__ neighborBlockId,
                           Size* __restrict__ nNeighborBlock,
+                          Size* __restrict__ nNearNeighborBlock,
                           Float* __restrict__ rden,
                           Float* __restrict__ raxn,
                           Float* __restrict__ conMat, //within block connections
                           Float* __restrict__ delayMat,
+                          Float* __restrict__ gapMat,
                           Float* __restrict__ conVec, //for neighbor block connections
                           Float* __restrict__ delayVec, //for neighbor block connections
+                          Float* __restrict__ gapVec,
+                          Float* __restrict__ gapDelayVec,
                           Size* __restrict__ max_N,
                           PosInt* __restrict__ _vecID,
+                          Float* __restrict__ disNeighborP,
+                          Float* __restrict__ gap_disNeighborP,
                           Size* __restrict__ vecID,
                           Size* __restrict__ nVec,
+                          Size* __restrict__ gapVecID,
+                          Size* __restrict__ nGapVec,
                           Size* __restrict__ preTypeConnected,
                           Size* __restrict__ preTypeAvail,
                           Float* __restrict__ preTypeStrSum,
+                          Size* __restrict__ preTypeGapped,
+                          Float* __restrict__ preTypeStrGapped,
                           Size* __restrict__ preType,
                           Float* __restrict__ feature,
                           Float* __restrict__ dden,
                           Float* __restrict__ daxn,
+                          Float* __restrict__ synloc,
                           Size* __restrict__ typeAcc0,
                           curandStateMRG32k3a* __restrict__ state,
-                          Size sum_max_N, PosInt block_offset, Size networkSize, Size maxDistantNeighbor, Size nearNeighborBlock, Size maxNeighborBlock, Size nType, Size nFeature, bool gaussian_profile, bool strictStrength, Float tol) 
+                          Size sum_max_N, Size gap_sum_max_N, PosInt block_offset, Size networkSize, Size mI, Size maxDistantNeighbor, Size gap_maxDistantNeighbor, Size nearNeighborBlock, Size maxNeighborBlock, Size nType, Size nTypeE, Size nTypeI, Size nE, Size nI, Size nFeature, bool gaussian_profile, bool strictStrength, Float tol) 
 {
     // TODO: load with warps but more, e.g., raxn, daxn, preType
     __shared__ double x1[blockSize];
@@ -311,42 +342,64 @@ void generate_connections(double* __restrict__ pos,
     //__shared__ Float ra[blockDim.x];
     Size blockId = blockIdx.x + block_offset;
     Size nn = nNeighborBlock[blockId];
+    Size ni = nNearNeighborBlock[blockId];
     Size offset = blockId*blockDim.x;
     double x0 = pos[offset*2 + threadIdx.x];
     double y0 = pos[offset*2 + threadIdx.x + blockDim.x];
     Size id = offset + threadIdx.x;
+    assert(id < networkSize);
     // number of potential presynaptic connections outsied nearNeighbors, to be stored in vector.
-    Size nb = 0; 
-    if (nn > nearNeighborBlock) {
-        nb = nn - nearNeighborBlock;
-        nn = nearNeighborBlock;// nearNeighbors 
-    } 
-    Float* tempNeighbor;
-    if (nb > 0) {
-        nb *= blockDim.x;
-        tempNeighbor = new Float[nb];
-    }
+    Size nb = nn - ni; 
+    Float* tempNeighbor = disNeighborP + static_cast<size_t>((blockIdx.x*blockDim.x + threadIdx.x)*(maxNeighborBlock-nearNeighborBlock))*blockDim.x;
+    Float* gap_tempNeighbor = gap_disNeighborP;
     Float rd = rden[id];
     Float dd = dden[id];
+	PosInt itype;
+	for (PosInt i=0; i<nType; i++) {
+		if (threadIdx.x < typeAcc0[i+1]) {
+			itype = i;
+			break;
+		}
+	}
+	if (itype >= nTypeE) {
+ 		gap_tempNeighbor = gap_disNeighborP + static_cast<size_t>((blockIdx.x*nI + threadIdx.x-nE)*(maxNeighborBlock-nearNeighborBlock))*nI;
+	}
+	Float* postSynLoc = new Float[nType];
 
-    Size* sumType = new Size[nType]; // avail
+    Size* availType = new Size[nType]; // avail
     Float* sumP = new Float[nType];
+	Size* availInhType;
+	Float* sumInhP;
+	Float* gap_pF;
+	if (itype >= nTypeE) {
+    	sumInhP = new Float[nTypeI];
+    	availInhType = new Size[nTypeI];
+    	gap_pF = new Float[nFeature*nTypeI];
+	}
     Float* pF = new Float[nFeature*nType];
     Float* fV = new Float[nFeature];
     #pragma unroll
     for (PosInt i=0; i<nType; i++) {
-        sumType[i] = 0;
+        availType[i] = 0;
         sumP[i] = 0.0;
+		if (itype >= nTypeE && i >= nTypeE) {
+    		sumInhP[i-nTypeE] = 0.0;
+			availInhType[i-nTypeE] = 0;
+		}
+		postSynLoc[i] = synloc[nType*i + itype];
 	}
     for (PosInt i=0; i<nFeature; i++) {
         fV[i] = feature[i*networkSize + id];
         for (PosInt j=0; j<nType; j++) {
             pF[i*nType + j] = preF_type[(i*nType+j)*networkSize + id];
+			if (itype >= nTypeE && j >= nTypeE) {
+    			gap_pF[i*nTypeI + j-nTypeE] = gap_preF_type[(i*nTypeI+j-nTypeE)*nTypeI + itype-nTypeE];
+			}
         }
     }
     //============= collect p of all ==========
     // withhin block and nearNeighbor
-    for (PosInt in=0; in<nn; in++) {
+    for (PosInt in=0; in<ni; in++) {
         PosInt bid = neighborBlockId[maxNeighborBlock*blockId + in] * blockDim.x; // # neurons in all past blocks 
         x1[threadIdx.x] = pos[bid*2 + threadIdx.x];
         y1[threadIdx.x] = pos[bid*2 + blockDim.x + threadIdx.x];
@@ -361,29 +414,36 @@ void generate_connections(double* __restrict__ pos,
             //type vector, indexed across the network
             Float distance = square_root(x*x + y*y);
 	    	// weight from area
-            Float p = connect(distance, ra, rd, gaussian_profile);
-            PosIntL mid = (static_cast<PosIntL>(blockIdx.x*nearNeighborBlock + in)*blockDim.x + i)*blockDim.x + threadIdx.x; // defined outside, so delayMat has access to it
-                Size ip = preType[ipre];
+            Size ip = preType[ipre];
+            Float p = connect(distance, ra, rd*postSynLoc[ip], gaussian_profile);
+            size_t mid = (static_cast<size_t>(blockIdx.x*nearNeighborBlock + in)*blockDim.x + i)*blockDim.x + threadIdx.x; // defined outside, so delayMat has access to it
             if (p > 0 && id != ipre) { // not self-connected
-                //Size ip = preType[ipre];
-                // id in the conMat [nblock,nearNeighborBlock,blockDim.x,blockDim.x] loop in the second axis, (last dim is the post-id: threadIdx.x, pre-id in the chunk: i)
-                //DEBUG
-                BigSize matSize = static_cast<BigSize>(blockDim.x*blockDim.x)*nearNeighborBlock*gridDim.x;
+                /*
+                size_t matSize = static_cast<size_t>(blockDim.x*blockDim.x)*nearNeighborBlock*gridDim.x;
                 if (mid >= matSize) {
-                    printf("(%ux%ux%ux%u) = %u\n", gridDim.x, nearNeighborBlock, blockDim.x, blockDim.x, matSize);
+                    printf("(%ux%ux%ux%llu) = %u\n", gridDim.x, nearNeighborBlock, blockDim.x, blockDim.x, matSize);
                     assert(mid < matSize);
                 }
-                //
+                */
 	    		// update weight with density of axon dendrites and preference over type
-                //p *= daxn[ipre] * dd;// * preP_type[ip*networkSize + id];
-				p *= daxn[ipre] * dd;
+                p *= daxn[ipre] * dd;// * preP_type[ip*networkSize + id];
+                //
+				if (itype >= nTypeE && ip >= nTypeE) {
+					Float gapP = p;
+            		size_t gid = (static_cast<size_t>(blockIdx.x*nearNeighborBlock + in)*nI + i-nE)*nI + threadIdx.x-nE; // defined outside, so delayMat has access to it
+                	for (Size iFeature = 0; iFeature < nFeature; iFeature++) {
+						gapP *= pref[iFeature](fV[iFeature], feature[iFeature*networkSize + ipre], gap_pF[iFeature*nTypeI + ip-nTypeE]);
+                	}
+					availInhType[ip-nTypeE]++;
+					sumInhP[ip-nTypeE] += gapP;
+					gapMat[gid] = gapP;
+				}
                 for (Size iFeature = 0; iFeature < nFeature; iFeature++) {
-                    //p *= pref[iFeature](fV[iFeature], feature[iFeature*networkSize + ipre], pF[iFeature*nType +ip]);
 					p *= pref[iFeature](fV[iFeature], feature[iFeature*networkSize + ipre], pF[iFeature*nType +ip]);
                 }
                 assert(p >= 0);
 				if (p > 0) {
-                	sumType[ip]++;
+                	availType[ip]++;
                 	sumP[ip] += p;
                 	conMat[mid] = p;
 				}
@@ -394,7 +454,7 @@ void generate_connections(double* __restrict__ pos,
     }
     // the remaining neighbors
     if (nb > 0) {
-        for (Size in=nn; in<nNeighborBlock[blockIdx.x]; in++) {
+        for (Size in=ni; in<nn; in++) {
             Size bid = neighborBlockId[maxNeighborBlock*blockId + in] * blockDim.x;
             x1[threadIdx.x] = pos[bid*2 + threadIdx.x];
             y1[threadIdx.x] = pos[bid*2 + blockDim.x + threadIdx.x];
@@ -407,18 +467,32 @@ void generate_connections(double* __restrict__ pos,
                 double x = x1[i] - x0;
                 double y = y1[i] - y0;
                 Float distance = static_cast<Float>(square_root(x*x + y*y));
-                Float p = connect(distance, ra, rd, gaussian_profile);
-                Size tid = (nn-in)*blockDim.x + i; // only ofr tempNeighbor, which is local, no need to coalease memory
+                Size ip = preType[ipre];
+                Float p = connect(distance, ra, rd*postSynLoc[ip], gaussian_profile);
+                Size tid = (in-ni)*blockDim.x + i; // only ofr tempNeighbor, which is local, no need to coalease memory
                 tempNeighbor[tid] = 0;
+            	size_t gid; 
+				if (itype >= nTypeE && ip >= nTypeE) {
+					gid = (in-ni)*nI + i-nE;
+					gap_tempNeighbor[gid] = 0;
+				}
                 if (p > 0) {
-                    Size ip = preType[ipre];
-                    p *= daxn[ipre] * dd; //* preP_type[ip*networkSize+id];
+                    p *= daxn[ipre] * dd; // * preP_type[ip*networkSize+id];
+					if (itype >= nTypeE && ip >= nTypeE) {
+						Float gapP = p;
+                		for (Size iFeature = 0; iFeature < nFeature; iFeature++) {
+							gapP *= pref[iFeature](fV[iFeature], feature[iFeature*networkSize + ipre], gap_pF[iFeature*nTypeI + ip-nTypeE]);
+                		}
+						availInhType[ip-nTypeE]++;
+						sumInhP[ip-nTypeE] += gapP;
+						gap_tempNeighbor[gid] = gapP;
+					}
                     for (Size iFeature = 0; iFeature < nFeature; iFeature ++) {
                         p *= pref[iFeature](fV[iFeature], feature[iFeature*networkSize + ipre], pF[iFeature*nType + ip]);
                     }
                     assert(p>=0);
 					if (p > 0) {
-                    	sumType[ip]++;
+                    	availType[ip]++;
                     	sumP[ip] += p;
                     	tempNeighbor[tid] = p;
 					}
@@ -427,33 +501,44 @@ void generate_connections(double* __restrict__ pos,
             __syncthreads();
         }
     }
+	delete []postSynLoc;
     delete []pF;
     delete []fV;
     __syncwarp();
     Size* pN = new Size[nType];
+	Size* gap_pN;
+	if (itype >= nTypeE) {
+		delete []gap_pF;
+		gap_pN = new Size[nTypeI];
+	}
     #pragma unroll
     for (Size i=0; i<nType; i++) {
         pN[i] = preN_type[i*networkSize + id];
-        preTypeAvail[i*networkSize + id] = sumType[i];
-		if (sumType[i] < ceiling(pN[i]*tol)) {
-			printf("neuron %u-%u dont have enough type %u neurons to connect to\n", blockIdx.x, threadIdx.x, i);
-			assert(sumType[i] >= ceiling(pN[i]*(1+tol)));
+        preTypeAvail[i*networkSize + id] = availType[i];
+		if (availType[i] <pN[i]) {
+			printf("neuron %u-%u dont have enough type %u neurons to connect to (%u/%u)\n", blockIdx.x, threadIdx.x, i, availType[i], pN[i]);
+			assert(availType[i] >= pN[i]);
+		}
+
+		if (itype >= nTypeE && i >= nTypeE) {
+			gap_pN[i-nTypeE] = gap_preN_type[(i-nTypeE)*nTypeI + itype-nTypeE];
+			if (availInhType[i-nTypeE] < gap_pN[i-nTypeE]) {
+				printf("neuron %u-%u dont have enough type %u inh neurons to make gap junction to (%u/%u)\n", blockIdx.x, threadIdx.x, i-nTypeE, availInhType[i-nTypeE], gap_pN[i-nTypeE]);
+				assert(availInhType[i-nTypeE] >= gap_pN[i-nTypeE]);
+			}
 		}
     }
 	__syncthreads();
     //============= redistribute p of all ==========
-    Float* sumStrType = new Float[nType];
     bool* typeConnected = new bool[nType];
     Float* pS = new Float[nType];
-    Size* nid = new Size[nType];
 	Size _sum_max_N = 0;
 	PosInt** __vecID = new PosInt*[nType];
     #pragma unroll
     for (Size i=0; i<nType; i++) {
-     	__vecID[i] = _vecID + id*sum_max_N + _sum_max_N;
+     	__vecID[i] = _vecID + (blockIdx.x*blockDim.x + threadIdx.x)*sum_max_N + _sum_max_N;
 		_sum_max_N += max_N[i];
         pS[i] = preS_type[i*networkSize + id];
-		nid[i] = 0;
 		typeConnected[i] = false;
 		sumP[i] = pN[i]/sumP[i]; // now is a ratio
     }
@@ -461,18 +546,22 @@ void generate_connections(double* __restrict__ pos,
     curandStateMRG32k3a localState = state[id];
 	Size count = 0;
 	Size connected = false;
+    Size* sumType = new Size[nType];
+    Float* sumStrType = new Float[nType];
+    Size* nid = new Size[nType];
 	while (!connected) {
     	for (Size i=0; i<nType; i++) {
 			if (!typeConnected[i]) {
     	    	sumType[i] = 0;
     	    	sumStrType[i] = 0;
+				nid[i] = 0;
 			}
 		}
-    	for (Size in=0; in<nn; in++) {
+    	for (Size in=0; in<ni; in++) {
     	    PosInt bid = neighborBlockId[maxNeighborBlock*blockId + in] * blockDim.x;
-    	    #pragma unroll
+    	    //#pragma unroll
     	    for (Size i=0; i<blockDim.x; i++) {
-    	        PosIntL mid = (static_cast<PosIntL>(blockIdx.x*nearNeighborBlock + in)*blockDim.x + i)*blockDim.x + threadIdx.x;
+    	        size_t mid = (static_cast<size_t>(blockIdx.x*nearNeighborBlock + in)*blockDim.x + i)*blockDim.x + threadIdx.x;
     	        Size ipre = bid + i;
     	        Size ip = preType[ipre];
 				if (!typeConnected[ip]) {
@@ -498,11 +587,11 @@ void generate_connections(double* __restrict__ pos,
     	    }
     	}
     	if (nb > 0) {
-    	    for (Size in=nn; in<nNeighborBlock[blockIdx.x]; in++) {
-    	        Size bid = neighborBlockId[maxNeighborBlock*blockId + in];
+    	    for (Size in=ni; in<nn; in++) {
+    	        Size bid = neighborBlockId[maxNeighborBlock*blockId + in] * blockDim.x;
     	        #pragma unroll
     	        for (Size i=0; i<blockDim.x; i++) {
-    	            Size tid = (nn-in)*blockDim.x + i;
+    	            Size tid = (in-ni)*blockDim.x + i;
     	            Size ipre = bid + i;
     	            Size ip = preType[ipre];
 					if (!typeConnected[ip]) {
@@ -512,25 +601,26 @@ void generate_connections(double* __restrict__ pos,
     	            	    	p *= sumP[ip];
 								tempNeighbor[tid] = p;
 							}
-    	            	    Float xrand = uniform(&localState);
-    	            	    if (xrand < p) {
-    	            	        Float str = pS[ip];
-    	            	        if (p > 1) {
-    	            	            str = str*p;
-    	            	        }
-    	            	        sumType[ip] ++;
-    	            	        sumStrType[ip] += str;
-    	            	        __vecID[ip][nid[ip]] = tid;
-    	            	        nid[ip]++;
-                				if (nid[ip] > max_N[ip]) {
-                				    printf("set bigger max_N, currently %u\n", max_N[ip]);
-                				    assert(nid[ip] <= max_N[ip]);
-                				}
-    	            	    }
+							if (sumType[ip] + nid[ip] < max_N[ip]) {
+    	            	    	Float xrand = uniform(&localState);
+    	            	    	if (xrand < p)  {
+    	            	    	    Float str = pS[ip];
+    	            	    	    if (p > 1) {
+    	            	    	        str = str*p;
+    	            	    	    }
+    	            	    	    sumType[ip] ++;
+    	            	    	    sumStrType[ip] += str;
+    	            	    	    __vecID[ip][nid[ip]] = tid;
+    	            	    	    nid[ip]++;
+                					//if (nid[ip] >= max_N[ip]) {
+                					//    printf("set bigger max_N[\%u], currently %u\n", ip, max_N[ip]);
+                					//    assert(nid[ip] <= max_N[ip]);
+                					//}
+    	            	    	}
+							}
     	            	}
 					}
     	        }
-				__syncthreads();
     	    }
     	}
 		connected = true;
@@ -542,19 +632,20 @@ void generate_connections(double* __restrict__ pos,
 		}
 		count++;
 		if (count > 100 && !connected) {
-			printf("neuron %u-%u need to make another round(%u) of connection, because of %u/%u, %u/%u\n", blockIdx.x, threadIdx.x, count, sumType[0],pN[0], sumType[1],pN[1]);
+			printf("neuron %u-%u need to make another round(%u) of connection, because of %u/%u (%u)-(%.1f/%), %u/%u (%u)-(%.1f/%)\n", blockIdx.x, threadIdx.x, count, sumType[0],pN[0],availType[0], static_cast<float>(pN[0])/availType[0]*100, sumType[1],pN[1],availType[1], static_cast<float>(pN[1])/availType[1]*100);
+
+			//assert(count <= 100);
 		}
 		/*if (count >= 100) {
 			printf("neuron %u-%u don't have one (or any) of the types of neurons to connect to\n", blockIdx.x, threadIdx.x);
 			assert(count < 100);
 			//connected = true;
 		}*/
-		if (count == 1) {
-    		delete []sumP;
-		}
 	}
 	__syncthreads();
+    delete []sumP;
 	delete []typeConnected;
+	delete []availType;
 	Size total_nid = 0;
 	for (PosInt i=0; i<nType; i++) {
 		total_nid += nid[i];
@@ -581,11 +672,11 @@ void generate_connections(double* __restrict__ pos,
     delete []sumType;
 
     // ======== strictly normalize the strengths ==========
-    for (Size in=0; in<nn; in++) {
+    for (Size in=0; in<ni; in++) {
         Size bid = neighborBlockId[maxNeighborBlock*blockId + in] * blockDim.x;
-        #pragma unroll
+        //#pragma unroll
         for (Size i=0; i<blockDim.x; i++) {
-            PosIntL mid = (static_cast<PosIntL>(blockIdx.x*nearNeighborBlock + in)*blockDim.x + i)*blockDim.x + threadIdx.x;
+            size_t mid = (static_cast<size_t>(blockIdx.x*nearNeighborBlock + in)*blockDim.x + i)*blockDim.x + threadIdx.x;
             Size ip = preType[bid + i];
 			Float str = conMat[mid];
 			if (str <= 0) str = 0;
@@ -602,74 +693,596 @@ void generate_connections(double* __restrict__ pos,
 			}
         }
     }
-    if (total_nid > 0) {
-		PosInt* qid = new PosInt[nType];
-		for (PosInt i=0; i<nType; i++) {
-			qid[i] = 0;
-		}
-    	Size iid = 0;
-        for (Size in=nn; in<nNeighborBlock[blockIdx.x]; in++) {
-            Size bid = neighborBlockId[maxNeighborBlock*blockId + in];
+	PosInt* qid = new PosInt[nType];
+	for (PosInt i=0; i<nType; i++) {
+		qid[i] = 0;
+	}
+    if (nb > 0) {
+        Size iid = 0;
+        for (Size in=ni; in<nn; in++) {
+            Size bid = neighborBlockId[maxNeighborBlock*blockId + in] * blockDim.x;
             x1[threadIdx.x] = pos[bid*2 + threadIdx.x];
             y1[threadIdx.x] = pos[bid*2 + blockDim.x + threadIdx.x];
             __syncthreads();
-			if (iid >= total_nid) {
-				break;
-			}
-            #pragma unroll
-            for (Size i=0; i<blockDim.x; i++) {
-                Size tid = (nn-in)*blockDim.x + i;
-				PosInt ipre = bid + i;
-                Size ip = preType[ipre];
-				if (qid[ip] >= nid[ip]) {
-					i = typeAcc0[ip+1]-1;
-					continue;
-				}
-				if (__vecID[ip][qid[ip]] == tid) {
-					Float p = tempNeighbor[tid];
-					Float str = pS[ip];
-					if (p > 1) str *= p;
-    				if (strictStrength) {
-						str *= ratio[ip];
-					}
-					vecID[maxDistantNeighbor*id + iid] = ipre;
-					conVec[maxDistantNeighbor*id + iid] = str;
-                	Float x = static_cast<Float>(x1[i] - x0);
-                	Float y = static_cast<Float>(y1[i] - y0);
-	    			Float distance = square_root(x*x + y*y);
-                	delayVec[maxDistantNeighbor*id + iid] = distance;
-                	sumStrType[ip] += str;
-                	iid ++;
-					qid[ip]++;
-                	if (iid > maxDistantNeighbor) {
-                	    printf("set bigger maxDistantNeighbor, currently %u\n", maxDistantNeighbor);
-                	    assert(iid <= maxDistantNeighbor);
-                	}
-				}
-				if (iid >= total_nid) {
-					break;
-				}
+	    	if (iid < total_nid) {
+                //#pragma unroll
+                for (Size i=0; i<blockDim.x; i++) {
+                    Size tid = (in-ni)*blockDim.x + i;
+	    	    	PosInt ipre = bid + i;
+                    Size ip = preType[ipre];
+	    	    	if (qid[ip] >= nid[ip]) {
+	    	    		i = typeAcc0[ip+1]-1;
+	    	    		continue;
+	    	    	}
+	    	    	if (__vecID[ip][qid[ip]] == tid) {
+	    	    		Float p = tempNeighbor[tid];
+	    	    		Float str = pS[ip];
+	    	    		if (p > 1) str *= p;
+        	    		if (strictStrength) {
+	    	    			str *= ratio[ip];
+	    	    		}
+	    	    		vecID[maxDistantNeighbor*id + iid] = ipre;
+	    	    		conVec[maxDistantNeighbor*id + iid] = str;
+                    	Float x = static_cast<Float>(x1[i] - x0);
+                    	Float y = static_cast<Float>(y1[i] - y0);
+	    	    		Float distance = square_root(x*x + y*y);
+                    	delayVec[maxDistantNeighbor*id + iid] = distance;
+                    	sumStrType[ip] += str;
+                    	iid ++;
+	    	    		qid[ip]++;
+                    	if (iid > maxDistantNeighbor) {
+                    	    printf("set bigger maxDistantNeighbor, currently %u\n", maxDistantNeighbor);
+                    	    assert(iid <= maxDistantNeighbor);
+                    	}
+	    	    	}
+	    	    	if (iid >= total_nid) {
+	    	    		break;
+	    	    	}
+                }
             }
             __syncthreads();
         }
     }
-    if (nb > 0) {
-        delete []tempNeighbor;
-    }
 	delete []__vecID;
-
+	delete []qid;
     delete []ratio;
     #pragma unroll
     for (Size i=0; i<nType; i++) {
         preTypeStrSum[i*networkSize + id] = sumStrType[i];
-		if (strictStrength) {
-			if (abs(sumStrType[i] - pN[i]*pS[i])/(pN[i]*pS[i]) > 1e-3) {
-				printf("%u-%u-%u: sumStrType[i] = %f,  pN[i]*pS[i] = %f, count = %u, nid = %u\n", blockIdx.x, threadIdx.x, i, sumStrType[i], pN[i]*pS[i], count, nVec[id]);
-				//assert(abs(sumStrType[i] - pN[i]*pS[i])/(pN[i]*pS[i]) <= 1e-3);
-			}
-		}
+		//if (strictStrength) {
+		//	if (abs(sumStrType[i] - pN[i]*pS[i])/(pN[i]*pS[i]) > 1e-3) {
+		//		printf("%u-%u-%u: sumStrType[i] = %f,  pN[i]*pS[i] = %f, count = %u, nid = %u\n", blockIdx.x, threadIdx.x, i, sumStrType[i], pN[i]*pS[i], count, nVec[id]);
+		//		//assert(abs(sumStrType[i] - pN[i]*pS[i])/(pN[i]*pS[i]) <= 1e-3);
+		//	}
+		//}
     }
+    //if (threadIdx.x == 0) {
+        //printf("done#%u\n", blockIdx.x);
+    //}
+	delete []nid;
     delete []sumStrType;
     delete []pN;
     delete []pS;
+
+	// Gap Junction
+    Float* sumInhStrType;
+    Size* sumInhType;
+	Float* gap_pS;
+	Size* gap_nid;
+	PosInt** __gapVecID;
+	_sum_max_N = 0;
+	if (itype >= nTypeE) { // only utilizing a small number of threads
+		typeConnected = new bool[nTypeI];
+		gap_pS = new Float[nTypeI];
+ 		__gapVecID = new PosInt*[nTypeI];
+
+    	for (Size i=0; i<nTypeI; i++) {
+     		__gapVecID[i] = _vecID + (blockIdx.x*nI + threadIdx.x-nE)*gap_sum_max_N + _sum_max_N; // there's empty space between __vecID[i] and __vecID[i+1]
+			_sum_max_N += gap_pN[i];
+        	gap_pS[i] = gap_preS_type[i*nTypeI + itype-nTypeE];
+			typeConnected[i] = false;
+    		sumInhP[i] = gap_pN[i]/sumInhP[i];
+		}
+		Size count = 0;
+		Size connected = false;
+ 		sumInhType = new Size[nTypeI];
+ 		sumInhStrType = new Float[nTypeI];
+    	gap_nid = new Size[nTypeI];
+		while (!connected) {
+    		for (Size i=0; i<nTypeI; i++) {
+				if (!typeConnected[i]) {
+    		    	sumInhType[i] = 0;
+    		    	sumInhStrType[i] = 0;
+					gap_nid[i] = 0;
+				}
+			}
+    		for (Size in=0; in<ni; in++) {
+    		    PosInt bid = neighborBlockId[maxNeighborBlock*blockId + in] * blockDim.x;
+    		    //#pragma unroll
+    		    for (Size i=0; i<nI; i++) {
+            		size_t gid = (static_cast<size_t>(blockIdx.x*nearNeighborBlock + in)*nI + i)*nI + threadIdx.x-nE; // defined outside, so delayMat has access to it
+    		        Size ipre = bid + nE + i;
+    		        Size ip = preType[ipre]-nTypeE;
+					if (!typeConnected[ip]) {
+    		        	Float p = abs(gapMat[gid]);
+    		        	if (p > 0) {
+							if (count == 0) {
+								p *= sumInhP[ip];
+							} 
+    		        	    Float xrand = uniform(&localState);
+    		        	    if (xrand < p) {
+    		        	        Float str = gap_pS[ip];
+    		        	        if (p > 1) {
+    		        	            str = str*p;
+    		        	        }
+    		        	        sumInhType[ip] ++;
+    		        	        sumInhStrType[ip] += str;
+								gapMat[gid] = p;
+    		        	    } else {
+								gapMat[gid] = -p;
+							}
+    		        	} 
+					}
+    		    }
+    		}
+    		if (nb > 0) {
+    		    for (Size in=ni; in<nNeighborBlock[blockId]; in++) {
+    		        Size bid = neighborBlockId[maxNeighborBlock*blockId + in] * blockDim.x;
+    		        #pragma unroll
+    		        for (Size i=0; i<nI; i++) {
+    		            Size tid = (in-ni)*nI + i;
+    		            Size ipre = bid + nE + i;
+    		            Size ip = preType[ipre]-nTypeE;
+						if (!typeConnected[ip]) {
+    		            	Float p = gap_tempNeighbor[tid];
+    		            	if (p > 0) {
+								if (count == 0) {
+    		            	    	p *= sumInhP[ip];
+									gap_tempNeighbor[tid] = p;
+								}
+								if (sumInhType[ip] + gap_nid[ip] < gap_pN[ip]) {
+    		            	    	Float xrand = uniform(&localState);
+    		            	    	if (xrand < p) {
+    		            	    	    Float str = gap_pS[ip];
+    		            	    	    if (p > 1) {
+    		            	    	        str = str*p;
+    		            	    	    }
+    		            	    	    sumInhType[ip] ++;
+    		            	    	    sumInhStrType[ip] += str;
+    		            	    	    __gapVecID[ip][gap_nid[ip]] = tid;
+    		            	    	    gap_nid[ip]++;
+    		            	    	}
+								}
+    		            	}
+						}
+    		        }
+    		    }
+    		}
+			connected = true;
+			for (PosInt i=0;i<nTypeI;i++) {
+				typeConnected[i] = (sumInhType[i] <= ceiling(gap_pN[i]*(1+tol))) && (sumInhType[i] >= flooring(gap_pN[i]*(1-tol)));
+				if (!typeConnected[i]) {
+					connected = false;
+				}
+			}
+			count++;
+			if (count > 100 && !connected) {
+				printf("neuron %u-%u need to make another round(%u) of gap junctions, because of %u/%u (%u)\n", blockIdx.x, threadIdx.x, count, sumInhType[0], gap_pN[0], availInhType[0]);
+				//assert(count <= 100);
+			}
+			/*if (count >= 100) {
+				printf("neuron %u-%u don't have one (or any) of the types of neurons to connect to\n", blockIdx.x, threadIdx.x);
+				assert(count < 100);
+				//connected = true;
+			}*/
+			if (count == 1) {
+    			delete []sumInhP;
+			}
+		}
+	}
+	state[id] = localState;
+	__syncthreads();
+	if (itype >= nTypeE) { // only utilizing a small number of threads
+		delete []typeConnected;
+		delete []availInhType;
+		id = blockId*nI + threadIdx.x-nE;
+		total_nid = 0;
+		for (PosInt i=0; i<nTypeI; i++) {
+			total_nid += gap_nid[i];
+		}
+    	nGapVec[id] = total_nid;
+    	
+    	ratio = new Float[nTypeI];
+    	if (strictStrength) {
+    	    for (Size i=0; i<nTypeI; i++) {
+    	        if (sumInhStrType[i] > 0) {
+    	            ratio[i] = gap_pS[i]*gap_pN[i]/sumInhStrType[i];
+    	        } else {
+    	            ratio[i] = 0;
+    	        }
+    	    }
+    	}
+    	#pragma unroll
+    	for (Size i=0; i<nTypeI; i++) {
+    	    preTypeGapped[i*mI + id] = sumInhType[i];
+			//assert(sumType[i] < round(pN[i]*1.5) && sumType[i] > round(pN[i]*2.f/3.f));
+			assert(sumInhType[i] <= ceiling(gap_pN[i]*(1+tol)) && sumInhType[i] >= flooring(gap_pN[i]*(1-tol)));
+    	    sumInhStrType[i] = 0;
+    	}
+    	delete []sumInhType;
+
+    	// ======== strictly normalize the strengths ==========
+		for (Size in=0; in<ni; in++) {
+    	    Size bid = neighborBlockId[maxNeighborBlock*blockId + in] * blockDim.x;
+    	    //#pragma unroll
+    	    for (Size i=0; i<nI; i++) {
+    	        size_t gid = (static_cast<size_t>(blockIdx.x*nearNeighborBlock + in)*nI + i)*nI + threadIdx.x - nE;
+    	        Size ip = preType[bid + i+nE] - nTypeE;
+				Float str = gapMat[gid];
+				if (str <= 0) str = 0;
+				else {
+					if (str > 1) str *= gap_pS[ip];
+					else str = gap_pS[ip];
+				}
+    			if (strictStrength) {
+    	        	 str *= ratio[ip];
+				}
+				gapMat[gid] = str;
+				if (str > 0) {
+    	        	sumInhStrType[ip] += str;
+				}
+    	    }
+    	}
+		qid = new PosInt[nTypeI];
+		for (PosInt i=0; i<nTypeI; i++) {
+			qid[i] = 0;
+		}
+	}
+    if (nb > 0) {
+        Size iid = 0;
+        for (Size in=ni; in<nn; in++) {
+            Size bid = neighborBlockId[maxNeighborBlock*blockId + in] * blockDim.x;
+			if (threadIdx.x >= nE) {
+            	x1[threadIdx.x-nE] = pos[bid*2 + threadIdx.x];
+            	y1[threadIdx.x-nE] = pos[bid*2 + blockDim.x + threadIdx.x];
+			}
+            __syncthreads();
+	    	if (iid < total_nid && itype >= nTypeE) {
+                //#pragma unroll
+                for (Size i=0; i<nI; i++) {
+                    Size tid = (in-ni)*nI + i;
+	    	    	PosInt ipre = bid + nE + i;
+                    Size ip = preType[ipre] - nTypeE;
+	    	    	if (qid[ip] >= gap_nid[ip]) {
+	    	    		i = typeAcc0[nTypeE+ip+1]-nE-1;
+	    	    		continue;
+	    	    	}
+	    	    	if (__gapVecID[ip][qid[ip]] == tid) {
+	    	    		Float p = gap_tempNeighbor[tid];
+	    	    		Float str = gap_pS[ip];
+	    	    		if (p > 1) str *= p;
+        	    		if (strictStrength) {
+	    	    			str *= ratio[ip];
+	    	    		}
+	    	    		gapVecID[gap_maxDistantNeighbor*id + iid] = ipre;
+	    	    		gapVec[gap_maxDistantNeighbor*id + iid] = str;
+                    	Float x = static_cast<Float>(x1[i] - x0);
+                    	Float y = static_cast<Float>(y1[i] - y0);
+	    	    		Float distance = square_root(x*x + y*y);
+                    	gapDelayVec[gap_maxDistantNeighbor*id + iid] = distance;
+                    	sumInhStrType[ip] += str;
+                    	iid ++;
+	    	    		qid[ip]++;
+                    	if (iid > gap_maxDistantNeighbor) {
+                    	    printf("set bigger gap_maxDistantNeighbor, currently %u\n", gap_maxDistantNeighbor);
+                    	    assert(iid <= gap_maxDistantNeighbor);
+                    	}
+	    	    	}
+	    	    	if (iid >= total_nid) {
+	    	    		break;
+	    	    	}
+                }
+            }
+            __syncthreads();
+        }
+    }
+	if (itype >= nTypeE) { 
+		delete []__gapVecID;
+		delete []qid;
+    	delete []ratio;
+    	#pragma unroll
+    	for (Size i=0; i<nTypeI; i++) {
+    	    preTypeStrGapped[i*mI + id] = sumInhStrType[i];
+			//if (strictStrength) {
+			//	if (abs(sumStrType[i] - pN[i]*pS[i])/(pN[i]*pS[i]) > 1e-3) {
+			//		printf("%u-%u-%u: sumStrType[i] = %f,  pN[i]*pS[i] = %f, count = %u, nid = %u\n", blockIdx.x, threadIdx.x, i, sumStrType[i], pN[i]*pS[i], count, nVec[id]);
+			//		//assert(abs(sumStrType[i] - pN[i]*pS[i])/(pN[i]*pS[i]) <= 1e-3);
+			//	}
+			//}
+    	}
+    	//if (threadIdx.x == 0) {
+    	    //printf("done#%u\n", blockIdx.x);
+    	//}
+		delete []gap_nid;
+    	delete []sumInhStrType;
+    	delete []gap_pN;
+    	delete []gap_pS;
+	}
+}
+
+__global__ // <<< nCluster, nI>>>
+void generate_symmetry(PosInt* __restrict__ clusterID,
+				       PosInt* __restrict__ neighborBlockId,
+					   int* __restrict__ neighborMat,
+					   Float* __restrict__ clusterGapMat,
+					   Size* __restrict__ preTypeGapped,
+					   Float* __restrict__ preTypeStrGapped,
+					   PosInt* __restrict__ preType,
+					   curandStateMRG32k3a* __restrict__ state,
+					   PosInt* __restrict__ i_outstanding,
+					   Float* __restrict__ v_outstanding,
+					   PosInt iblock, Size nblock, Size nearNeighborBlock, Size maxNeighborBlock, Size mI, Size nE, Size nI, Size nTypeE, Size nTypeI)
+{
+	// sum up reciprocal connections
+	PosInt id = iblock*nI + threadIdx.x;
+	size_t home_id = static_cast<size_t>(blockIdx.x*nI*nI);
+	PosInt bid = neighborBlockId[iblock*maxNeighborBlock + clusterID[blockIdx.x]]; 
+	size_t guest_id = static_cast<size_t>(blockIdx.x*nearNeighborBlock + neighborMat[iblock*nblock + bid])*nI*nI;
+	if (threadIdx.x == 0) {
+		printf("home: %u guest %u (%u)\n", iblock,bid,blockIdx.x);	
+		assert(neighborBlockId[bid*maxNeighborBlock + neighborMat[iblock*nblock + bid]] == iblock);
+	}
+	Size n_dir = 0;
+	Size n_reciprocal = 0;
+	Size n_outstanding = 0;
+	PosInt* i_os = i_outstanding + static_cast<size_t>(blockIdx.x*blockDim.x + threadIdx.x)*blockDim.x;
+	Float* v_os = v_outstanding + static_cast<size_t>(blockIdx.x*blockDim.x + threadIdx.x)*blockDim.x;
+	if (iblock == 2 && bid == 0) {
+		assert(false);
+	}
+
+	PosInt pbid = 2;
+	PosInt ptid = 0;
+	PosInt pib = 0;
+	bool debug = true;
+	PosInt q = 0;
+	for (PosInt i=0; i<nI; i++) {
+		//if (i==threadIdx.x && bid == iblock) continue;
+		Float home_v = clusterGapMat[home_id + i*nI + threadIdx.x];
+		Float guest_v = clusterGapMat[guest_id + threadIdx.x*nI + i];
+		// mark home<-guest as positive, guest<-home as negative
+		if (blockIdx.x == pbid && threadIdx.x == ptid && iblock == pib && debug) {
+			if ((home_v > 0 && guest_v <= 0) || (home_v <= 0 && guest_v > 0)) {
+				if (bid != iblock || i > threadIdx.x) { 
+					printf("before: %u<-%u(%.3e), %u<-%u(%.3e)\n", threadIdx.x, i, home_v, i, threadIdx.x, guest_v);
+					q++;
+				}
+			}
+		}
+		if (home_v > 0) {
+			n_dir++;
+			if (guest_v > 0) {
+				n_reciprocal++;
+			} else {
+				if (iblock != bid || i > threadIdx.x) { 
+					i_os[n_outstanding] = i;
+					v_os[n_outstanding] = home_v;
+					n_outstanding++;
+				}
+			}
+		} else {
+			if (guest_v > 0) {
+				if (iblock != bid || i > threadIdx.x) { 
+					i_os[n_outstanding] = i;
+					v_os[n_outstanding] = -guest_v;
+					n_outstanding++;
+				}
+			}
+		}
+	}
+	if (blockIdx.x == pbid && threadIdx.x == ptid && iblock == pib && debug) {
+		printf("n_os = %u\n", n_outstanding);
+		assert(n_outstanding == q);
+		for (PosInt i=0; i<n_outstanding; i++) {
+			printf("%u: %f\n", i_os[i], v_os[i]);
+		}
+	}
+	//if (blockIdx.x == 0) {
+	//__syncthreads();
+	//}
+	//if (blockIdx.x*blockDim.x + threadIdx.x == ) {
+	//	printf(
+	//}
+	if (n_outstanding > 0) {
+		// decide remaining con prob
+		Float prob = static_cast<Float>(n_dir - n_reciprocal)/n_outstanding;
+		if (iblock != bid) {
+			assert(prob <= 1);
+		}
+		//if (blockIdx.x == 5 && threadIdx.x == 56) {
+		//	printf("prob = %f, n_dir = %u, n_reciprocal = %u, n_outstanding = %u\n", prob, n_dir, n_reciprocal, n_outstanding);
+		//}
+    	curandStateMRG32k3a localState = state[iblock*blockSize + nE+threadIdx.x];
+		// make reamining connections
+		Float* deltaStr = new Float[nTypeI];
+		int* nDelta = new int[nTypeI];
+		for (PosInt i=0; i<nTypeI; i++) {
+			deltaStr[i] = 0;
+			nDelta[i] = 0;
+		}
+		Size home_type = preType[iblock*blockSize + threadIdx.x + nE]-nTypeE;
+		for (PosInt i=0; i<n_outstanding; i++) {
+			PosInt gid = bid*nI + i_os[i];
+			PosInt guest_type = preType[bid*blockSize + i_os[i] + nE]-nTypeE;
+			Float xrand = uniform(&localState);
+			if (blockIdx.x == pbid && threadIdx.x == ptid && iblock == pib && debug) {
+				printf("%u-%u: %f\n",i, i_os[i], v_os[i]);
+			}
+
+			Size h_id = iblock*nearNeighborBlock*nI*nI + clusterID[blockIdx.x]*nI*nI + i_os[i]*nI + threadIdx.x;
+			Size g_id = bid*nearNeighborBlock*nI*nI + neighborMat[iblock*nblock + bid]*nI*nI + threadIdx.x*nI + i_os[i];
+
+			if (h_id == 40960 && g_id == 704576) {
+				printf("hitted by %u, %u, %u, %u!\n", bid, iblock, threadIdx.x, i_os[i]);
+			}
+			if (xrand < prob) {
+				if (v_os[i] > 0) { // home->guest
+					//
+					//if (clusterGapMat[home_id + i_os[i]*nI + threadIdx.x] != v_os[i]) {
+					if (debug) {
+						if (blockIdx.x == pbid && threadIdx.x == ptid && iblock == pib) {
+							printf("con guest %i<-%i: %.3e -> %.3e\n", i_os[i], threadIdx.x, clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]], v_os[i]);
+							assert(clusterGapMat[home_id + i_os[i]*nI + threadIdx.x] == v_os[i]);
+							//printf("id = %u, %u c=%f, v= %f\n", blockIdx.x*blockDim.x + threadIdx.x, i, clusterGapMat[home_id + i_os[i]*nI + threadIdx.x], v_os[i]);
+							//assert(iblock == bid);
+						}
+				 	} else {
+						assert(clusterGapMat[home_id + i_os[i]*nI + threadIdx.x] == v_os[i]);
+					}
+					clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]] = v_os[i];	
+					//
+
+					atomicAdd(preTypeGapped + home_type * mI + gid, 1);
+					atomicAdd(preTypeStrGapped + home_type * mI + gid, v_os[i]);
+
+				} else { // guest->home
+					//
+					//if (clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]] != -v_os[i]) {
+					if (debug) {
+						if (blockIdx.x == pbid && threadIdx.x == ptid && iblock == pib) {
+							printf("con home %i<-%i: %.3e -> %.3e\n", threadIdx.x, i_os[i], clusterGapMat[home_id + i_os[i]*nI + threadIdx.x], -v_os[i]);
+							assert(clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]] == -v_os[i]);
+						}
+					} else {
+						assert(clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]] == -v_os[i]);
+					}
+					clusterGapMat[home_id + i_os[i]*nI + threadIdx.x] = -v_os[i];	
+					//if (blockIdx.x == 5 && threadIdx.x == 56) {
+					//	printf("id = %u,, %u c=%f, v= %f\n", blockIdx.x*blockDim.x + threadIdx.x, i, clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]], -v_os[i]);
+					//	assert(iblock == bid);
+					//}
+					//
+					nDelta[guest_type]++;
+					deltaStr[guest_type] -= v_os[i];
+				}
+			} else {
+				if (v_os[i] > 0) {
+					if (debug) {
+						if (blockIdx.x == pbid && threadIdx.x == ptid && iblock == pib) {
+							printf("dis home %i<-%i: %.3e -> 0.0\n", threadIdx.x, i_os[i], clusterGapMat[home_id + i_os[i]*nI + threadIdx.x]);
+							assert(clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]] <= 0);
+						}
+					} else {
+							assert(clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]] <= 0);
+					}
+					clusterGapMat[home_id + i_os[i]*nI + threadIdx.x] = 0;	
+					nDelta[guest_type]--;
+					deltaStr[guest_type] -= v_os[i];
+				} else {
+					if (debug) {
+						if (blockIdx.x == pbid && threadIdx.x == ptid && iblock == pib) {
+							printf("dis guest %i<-%i: %.3e -> 0.0\n", i_os[i], threadIdx.x, clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]]);
+							assert(clusterGapMat[home_id + i_os[i]*nI + threadIdx.x] <= 0);
+						}
+					} else {
+						assert(clusterGapMat[home_id + i_os[i]*nI + threadIdx.x] <= 0);
+					}
+					clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]] = 0;	
+					atomicSub(preTypeGapped + home_type * mI + gid, 1);
+					atomicAdd(preTypeStrGapped + home_type * mI + gid, v_os[i]);// v_os[i] is negative
+					/*
+					if (preTypeStrGapped[home_type * mI + gid] < 0) {
+						printf("str = %f(%f), n = %u\n", preTypeStrGapped[home_type * mI + gid], v_os[i], preTypeGapped[home_type * mI + gid]);
+						//assert(preTypeStrGapped[home_type * mI + gid] >= 0);
+						assert(iblock == bid);
+					}
+					*/
+				}
+			}
+			Float home_v = clusterGapMat[home_id + i_os[i]*nI + threadIdx.x];	
+			Float guest_v = clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]];	
+			//
+			if (home_v > 0) {
+				if (guest_v <= 0) {
+					printf("home_v = %f, guest_v = %f, v_os = %f\n", home_v, guest_v, v_os[i]);
+					assert(guest_v > 0);
+				}
+			} else {
+				if (guest_v > 0) {
+					printf("home_v = %f, guest_v = %f, v_os = %f\n", home_v, guest_v, v_os[i]);
+					assert(guest_v <= 0);
+				}
+			}
+			//
+		}
+		for (PosInt i=0; i<nTypeI; i++) {
+			preTypeGapped[i * mI + id] += nDelta[i];
+			preTypeStrGapped[i * mI + id] += deltaStr[i];
+			/*
+			if (preTypeStrGapped[i * mI + id] < 0) {
+				printf("str = %f(%f), n = %u(%i)\n", preTypeStrGapped[i * mI + id], deltaStr[i], preTypeGapped[i * mI + id], nDelta[i]);
+				//assert(preTypeStrGapped[i * mI + id] >= 0);
+			}*/
+		}
+		delete []deltaStr;
+		delete []nDelta;
+	}
+	
+	if (blockIdx.x == pbid && threadIdx.x == ptid && iblock == pib && debug) {
+		printf("home block %u, guest block %u\n", iblock, bid);
+	}
+	//certify symmetry
+	__syncthreads();
+	for (PosInt i=0; i<nI; i++) {
+		//if (iblock != bid || i > threadIdx.x) { 
+			Float home_v = clusterGapMat[home_id + i*nI + threadIdx.x];
+			Float guest_v = clusterGapMat[guest_id + threadIdx.x*nI + i];
+			if (debug) { 
+				Size h_id = iblock*nearNeighborBlock*nI*nI + clusterID[blockIdx.x]*nI*nI + i*nI + threadIdx.x;
+				Size g_id = bid*nearNeighborBlock*nI*nI + neighborMat[iblock*nblock + bid]*nI*nI + threadIdx.x*nI + i;
+				if (h_id == 40960 && g_id == 704576) {
+					printf("hit by %u, %u, %u, %u!\n", bid, iblock, threadIdx.x, i);
+				}
+				if (blockIdx.x == pbid && threadIdx.x == ptid && iblock == pib) {
+					if ((home_v != 0 && guest_v == 0) ||  (home_v == 0 && guest_v != 0)) {
+						printf("after: %u<-%u(%.3e), %u<-%u(%.3e)\n", threadIdx.x, i, home_v, i, threadIdx.x, guest_v);
+					}
+					if (home_v > 0) {
+						if (guest_v <= 0) {
+							printf("%u-%u, guest_v = %f, home_v =%f\n", blockIdx.x, threadIdx.x, guest_v, home_v);
+							assert(guest_v > 0);
+						}
+					} else {
+						if (guest_v > 0) {
+							printf("%u-%u, guest_v = %f, home_v =%f\n", blockIdx.x, threadIdx.x, guest_v, home_v);
+							assert(guest_v <= 0);
+						}
+					}
+				}
+				if (blockIdx.x == pbid && threadIdx.x == ptid && iblock == pib) {
+					Size h_id = iblock*nearNeighborBlock*nI*nI + clusterID[blockIdx.x]*nI*nI + i*nI + threadIdx.x;
+					Size g_id = bid*nearNeighborBlock*nI*nI + neighborMat[iblock*nblock + bid]*nI*nI + threadIdx.x*nI + i;
+					printf("g%u: %f, %f (%u, %u)\n", i, home_v, guest_v, h_id, g_id);
+
+				}
+				//if (blockIdx.x == pbid && threadIdx.x == 0 && i == 11 && iblock == pib) {
+				//	printf("clear as day: %f, %f\n", guest_v, home_v);
+				//}
+			} else {
+			//
+				if (home_v > 0) {
+					if (guest_v <= 0) {
+						printf("%u:%u-%u, guest_v = %f, home_v =%f\n", iblock, blockIdx.x, threadIdx.x, guest_v, home_v);
+						assert(guest_v > 0);
+					}
+				} else {
+					if (guest_v > 0) {
+						printf("%u:%u-%u, guest_v = %f, home_v =%f\n", iblock, blockIdx.x, threadIdx.x, guest_v, home_v);
+						assert(guest_v <= 0);
+					}
+				}
+			}
+			//
+		//}
+	}
 }

@@ -12,7 +12,6 @@ from sys import stdout
 import warnings
 np.seterr(invalid = 'raise', under = 'ignore', over = 'ignore')
 from LGN_surface import *
-from repel_system import *
 
 posL_file = 'parvo_pos_I5_uniform.bin'
 posR_file = 'parvo_pos_C6_uniform.bin'
