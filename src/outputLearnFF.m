@@ -6,7 +6,7 @@ function outputLearnFF(isuffix, osuffix, mix)
 	st = 2; %0 for temporal, 1 for spatial, 2 for both
 	%iV1 = randi(768,1);
 	rng(1390845)
-	ns = 10;
+	ns = 1;
 	if ~isempty(isuffix)
 	    isuffix = ['_', isuffix];
 	end
@@ -26,6 +26,7 @@ function outputLearnFF(isuffix, osuffix, mix)
 	
 	fid = fopen(fLGN_vpos, 'r');
 	nLGN = fread(fid, 1, 'uint') % # ipsi-lateral LGN 
+	nLGN_I = fread(fid, 1, 'uint') % # ipsi-lateral LGN 
 	doubleOnOff = fread(fid, 1, 'int');
 	fclose(fid);
 	
@@ -65,7 +66,7 @@ function outputLearnFF(isuffix, osuffix, mix)
 	    
 	    if st == 2 || st == 1
 	        fid = fopen(fLGN_vpos, 'r');
-	        fseek(fid, (7+2*nLGN)*4, 0);
+	        fseek(fid, (8+2*nLGN)*4, 0);
 	        LGN_type = fread(fid, nLGN, 'uint');
 	        fclose(fid);
 	        types = unique(LGN_type);
@@ -90,9 +91,9 @@ function outputLearnFF(isuffix, osuffix, mix)
 	        end
 	        fclose(fid);
 	        
-	        f = figure('PaperPosition',[0, 0, nit, (2-mix)]);
-			set(f, 'PaperUnit', 'inches');
 			if doubleOnOff == 0
+	        	f = figure('PaperPosition',[0, 0, nit, (2-mix)]);
+				set(f, 'PaperUnit', 'inches');
 				nLGN_1D = sqrt(double(nLGN))
 	    	    sLGN = reshape(sLGN, [nLGN_1D, nLGN_1D, nit]);
 				gmax = max(abs(sLGN(:)));
@@ -151,6 +152,8 @@ function outputLearnFF(isuffix, osuffix, mix)
 	    	        end
 	    	    end
 			else
+	        	f = figure('PaperPosition',[0, 0, nit, 2]);
+				set(f, 'PaperUnit', 'inches');
 				assert(doubleOnOff == 1);	
 				nLGN_1D = sqrt(double(nLGN/2))
 				sLGN = reshape(sLGN, [nLGN_1D, nLGN_1D*2, nit]);
