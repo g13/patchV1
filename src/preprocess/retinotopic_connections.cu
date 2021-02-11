@@ -123,12 +123,13 @@ vector<vector<Float>> retinotopic_connection(
             if (percentOrNumber) {
                 p_n_LGNeff = -p_n_LGNeff; 
             }
+			Float maxN = max_LGNeff > poolList[i].size()? poolList.size(): max_LGNeff;
             if (SimpleComplex == 0) {
 			    RF->setup_param(m, sfreq[i], phase[i], modAmp_nCon[i], theta[i], a[i], baRatio[i], RefType[i], strictStrength, envelopeSig);
-			    m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen, p_n_LGNeff*1.0, percentOrNumber, max_LGNeff, top_pick);
+			    m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen, p_n_LGNeff*1.0, percentOrNumber, maxN, top_pick);
             } else {
 			    RF->setup_param(m, sfreq[i], phase[i], 1.0, theta[i], a[i], baRatio[i], RefType[i], strictStrength, envelopeSig);
-			    m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen, p_n_LGNeff*modAmp_nCon[i], percentOrNumber, max_LGNeff, top_pick);
+			    m = RF->construct_connection(x, y, iType, poolList[i], strengthList, rGen, p_n_LGNeff*modAmp_nCon[i], percentOrNumber, maxN, top_pick);
             }
 			srList.push_back(strengthList);
 			if (m > 0) { 
@@ -255,11 +256,12 @@ void vf_pool_CUDA( // for each eye
             Size LGN_id = j0 + iPatch*blockDim.x + threadIdx.x;
             sx[threadIdx.x] = x0[LGN_id];
             sy[threadIdx.x] = y0[LGN_id];
-            if (iPatch < nPatch - 1) {
-                nLGN = blockDim.x;
-            } else {
-                nLGN = nRemain;
-            }
+        }
+        // put outside the loop to make sure nLGN is assigned for threads not used to assign shared sx,sy, because they still need to access those shared variable
+        if (iPatch < nPatch - 1) {
+            nLGN = blockDim.x;
+        } else {
+            nLGN = nRemain;
         }
         __syncthreads();
         // check for distance
@@ -270,12 +272,12 @@ void vf_pool_CUDA( // for each eye
                 Float dis = get_distance(sx[iLGN]-V1_x, sy[iLGN]-V1_y);
                 if (dis < r) {
                     PosInt LGN_id = j0 + iPatch*blockDim.x + iLGN;
-                    PosIntL pid = static_cast<PosIntL>(V1_id)*maxLGNperV1pool + iPool;
-                    poolList[pid] = LGN_id;
                     if (LGN_id >= j0+m) {
-                        printf("%u/%u, LGN_id:%u < %u\n", iPatch, nPatch, LGN_id, j0+m); 
+                        printf("%u/%u, LGN_id:%u < j0(%u) + m(%u); nRemain = %u, nLGN = %u\n", iPatch, nPatch, LGN_id, j0, m, nRemain, nLGN); 
                         assert(LGN_id < j0+m);
                     }
+                    PosIntL pid = static_cast<PosIntL>(V1_id)*maxLGNperV1pool + iPool;
+                    poolList[pid] = LGN_id;
                     iPool++;
                     if (iPool > maxLGNperV1pool) {
                         printf("%u/%u, V1_id:%u, dis:%f < r:%f\n", iPatch, nPatch, V1_id, dis, r);
@@ -372,7 +374,7 @@ vector<vector<Size>> retinotopic_vf_pool(
         cout <<  "<<<" << nblock << ", " << blockSize << ">>>\n";
         vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_poolList, d_nPool, 0, nL, 0, mL, seed, LGN_V1_RFratio, maxLGNperV1pool);
         getLastCudaError("vf_pool for the left eye failed");
-
+        cudaDeviceSynchronize();
 		nblock = (n-nL + blockSize-1) / blockSize;
         cout <<  "<<<" << nblock << ", " << blockSize << ">>>\n";
         vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_poolList, d_nPool, nL, n-nL, mL, m-mL, seed, LGN_V1_RFratio, maxLGNperV1pool);
@@ -482,7 +484,7 @@ int main(int argc, char *argv[]) {
 	input_opt.add_options()
 		("p_n_LGNeff", po::value<Float>(&p_n_LGNeff)->default_value(10), "LGN conneciton probability [-1,0], or number of connections [0,n]")
 		("top_pick", po::value<bool>(&top_pick)->default_value(true), "preset number of connection, n, and connect to the neurons with the top n prob")
-		("max_LGNeff", po::value<Float>(&max_LGNeff)->default_value(10), "max realized LGN conneciton probability [-1,0], or number of connections [0,n]")
+		("max_LGNeff", po::value<Float>(&max_LGNeff)->default_value(10), "max realizable number of connections [0,n]")
 		("LGN_V1_RFratio,r", po::value<Float>(&LGN_V1_RFratio)->default_value(1.0), "LGN's contribution to the total RF size")
 		("maxLGNperV1pool,m", po::value<Size>(&maxLGNperV1pool)->default_value(100), "maximum pooling of LGN neurons per V1 neuron")
 		("envelopeSig", po::value<Float>(&envelopeSig)->default_value(1.177), "LGN's pools connection probability envelope sigma on distance")
@@ -691,30 +693,55 @@ int main(int argc, char *argv[]) {
 	vector<Float> baRatio = generate_baRatio(n, rGen);
     cout << "max pool of LGN = " << maxLGNperV1pool << "\n";
     vector<vector<Size>> poolList = retinotopic_vf_pool(cart, cart0, VFposEcc, useCuda, rGen, baRatio, a, LR, nL, mL, m, maxLGNperV1pool, seed, LGN_V1_RFratio);
-    Size minPool = maxLGNperV1pool; 
-    Size maxPool = 0; 
-    Size meanPool = 0; 
-    Size zeroPool = 0;
-    Float zeroR = 0;
-    Float meanR = 0;
+    Size minPool_L = maxLGNperV1pool; 
+    Size maxPool_L = 0; 
+    Float meanPool_L = 0; 
+    Size zeroPool_L = 0;
+
+    Size minPool_R = maxLGNperV1pool; 
+    Size maxPool_R = 0; 
+    Float meanPool_R = 0; 
+    Size zeroPool_R = 0;
+
+    Float rzeroL = 0;
+    Float rmeanL = 0;
+    Float rzeroR = 0;
+    Float rmeanR = 0;
     for (PosInt i=0; i<n; i++) {
         Size iSize = poolList[i].size();
         Float r = a[i]*square_root(baRatio[i]*baRatio[i] + 1);
-        if (iSize > maxPool) maxPool = iSize;
-        if (iSize < minPool) minPool = iSize;
-        if (iSize == 0) {
-            zeroPool++;
-            zeroR += r;
-        }
-        meanR += r;
-        meanPool += iSize;
+		if (LR[i] > 0) {
+        	if (iSize > maxPool_R) maxPool_R = iSize;
+        	if (iSize < minPool_R) minPool_R = iSize;
+        	if (iSize == 0) {
+        	    zeroPool_R++;
+        	    rzeroR += r;
+        	}
+        	rmeanR += r;
+        	meanPool_R += iSize;
+		} else {
+        	if (iSize > maxPool_L) maxPool_L = iSize;
+        	if (iSize < minPool_L) minPool_L = iSize;
+        	if (iSize == 0) {
+        	    zeroPool_L++;
+        	    rzeroL += r;
+        	}
+        	rmeanL += r;
+        	meanPool_L += iSize;
+		}
     }
-    meanPool /= n;
-    zeroR /= zeroPool;
-    meanR /= n;
-    cout << "poolSizes: [" << minPool << ", " << meanPool << ", " << maxPool << " < " << maxLGNperV1pool << "]\n";
-    cout << "among them " << zeroPool << " would have no connection from LGN, whose average radius is " << zeroR << ", compared to population mean " <<  meanR << "\n";
+    meanPool_L /= nL;
+    rzeroL /= zeroPool_L;
+    rmeanL /= nL;
+    meanPool_R /= nL;
+    rzeroR /= zeroPool_R;
+    rmeanR /= nR;
+    cout << "right poolSizes: [" << minPool_R << ", " << meanPool_R << ", " << maxPool_R << " < " << maxLGNperV1pool << "]\n";
+    cout << "among them " << zeroPool_R << " would have no connection from LGN, whose average radius is " << rzeroR << ", compared to population mean " <<  rmeanR << "\n";
     
+    cout << "left poolSizes: [" << minPool_L << ", " << meanPool_L << ", " << maxPool_L << " < " << maxLGNperV1pool << "]\n";
+    cout << "among them " << zeroPool_L << " would have no connection from LGN, whose average radius is " << rzeroL << ", compared to population mean " <<  rmeanL << "\n";
+
 	cout << "poolList and R ready\n";
 
 	vector<RFtype> V1Type(n); // defined in RFtype.h [0..4], RF shapes
@@ -739,6 +766,7 @@ int main(int argc, char *argv[]) {
     } else {
         // discrete portions randomly distributed
         uniform_real_distribution<Float> uniform_01(0,1.0);
+        normal_distribution<Float> norm_01(0,1.0);
 
         vector<Size> nTypes(nRFtype,0);
         assert(V1_RFtypeAccDist.size() == nRFtype  && V1_RFtypeAccDist.back() == 1.0);
@@ -818,18 +846,49 @@ int main(int argc, char *argv[]) {
 		for (PosInt i = 0; i<nblock; i++) {
 			for (PosInt j=0; j<nType; j++) { 
 				Float ratio = pureComplexRatio[j];
-        		auto genModAmp_nCon = [&uniform_01, &rGen, &ratio] () {
-        		    Float rand = uniform_01(rGen);
-					Float v;
-        		    if (rand >= ratio) {
-        		        //v = 1.0;
-        		        v = rand;
-        		    } else {
-        		        v = 0.0;
-        		    }
-        		    return v;
-        		};
-        		generate(modAmp_nCon.begin() + i*blockSize + typeAcc0[j], modAmp_nCon.begin() + i*blockSize + typeAcc0[j+1], genModAmp_nCon);
+				if (SimpleComplex == 0) { // ** else == 1 not implemented
+					// uniformly distribute simple cell's modulation ratio
+        			auto genModAmp_nCon = [&uniform_01, &rGen, &ratio] () {
+        			    Float rand = uniform_01(rGen);
+						Float v;
+        			    if (rand >= ratio) {
+        			        //v = 1.0;
+        			        v = rand;
+        			    } else {
+        			        v = 0.0;
+        			    }
+						//Float v = 1.0;
+        			    return v;
+        			};
+        			generate(modAmp_nCon.begin() + i*blockSize + typeAcc0[j], modAmp_nCon.begin() + i*blockSize + typeAcc0[j+1], genModAmp_nCon);
+				} else {
+        			auto genModAmp_nCon = [&uniform_01, &norm_01, &rGen, &ratio, &max_LGNeff] () {
+        			    Float rand = uniform_01(rGen);
+						Float v;
+        			    if (rand >= ratio) {
+        			        //v = 1.0;
+        			        //v = rand;
+							v = ratio + (1-ratio)/2 + norm_01(rGen)*square_root(0.5*0.5/max_LGNeff);
+        			    } else {
+        			        v = 0.0;
+        			    }
+						if (v>1) v=1;
+						if (v<0) v=0;
+						//Float v = 1.0;
+        			    return v;
+        			};
+        			generate(modAmp_nCon.begin() + i*blockSize + typeAcc0[j], modAmp_nCon.begin() + i*blockSize + typeAcc0[j+1], genModAmp_nCon);
+					// binomially distribute simple cell's modulation ratio over nLGN connections
+					/*
+        			auto genModAmp_nCon = [&norm_01, &rGen, &ratio, &p_n_LGNeff, &max_LGNeff] () {
+						Float std = 
+        			    Float rand = norm_01(rGen)*std + 0.5;
+						Float v;
+        			    return v;
+        			};
+        			generate(modAmp_nCon.begin() + i*blockSize + typeAcc0[j], modAmp_nCon.begin() + i*blockSize + typeAcc0[j+1], genModAmp_nCon);
+					*/
+				}
 			}
 		}
 
@@ -883,10 +942,10 @@ int main(int argc, char *argv[]) {
 	fV1.write((char*)&sfreq[0], n * sizeof(Float));
     fV1.close();
 
-    minPool = maxLGNperV1pool; 
-    maxPool = 0; 
-    meanPool = 0; 
-    zeroPool = 0;
+    Size minPool = maxLGNperV1pool; 
+    Size maxPool = 0; 
+    Float meanPool = 0; 
+    Size zeroPool = 0;
 	Float minSum = max_LGNeff;
 	Float meanSum = 0;
 	Float maxSum = 0;
@@ -919,6 +978,8 @@ int main(int argc, char *argv[]) {
 		fLGN_V1_cfg.write((char*) &max_LGNeff, sizeof(Float));
 		fLGN_V1_cfg.write((char*) &nType, sizeof(Size));
 		fLGN_V1_cfg.write((char*) &typeAccCount[0], nType*sizeof(Size));
+		fLGN_V1_cfg.write((char*) &meanPool, sizeof(Float));
+		fLGN_V1_cfg.write((char*) &meanSum, sizeof(Float));
 		fLGN_V1_cfg.close();
 	}
 

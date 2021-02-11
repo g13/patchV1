@@ -61,6 +61,8 @@ int main(int argc, char **argv) {
     int rebound;
     int learning;
     int iModel;
+    int noDelay;
+    int noFarDelay;
 	Size snapshotInterval;
 	Size nChunk;
 	Size matConcurrency;
@@ -76,6 +78,7 @@ int main(int argc, char **argv) {
     vector<Float> spI0;
     vector<Float> noisyDep;
     vector<Float> tonicDep;
+	vector<Float> minTonicRatio;
     vector<Float> synFailFF;
     vector<Float> synFail;
     // TODO: specify proportion of different types of conductances
@@ -121,15 +124,18 @@ int main(int argc, char **argv) {
     vector<PosInt> preList, postList;
     vector<Float> sList;
 	vector<Float> sRatioLGN;
+	vector<Float> sRatioV1;
+	vector<Float> gapRatio;
 	vector<Size> nTypeHierarchy;
 	vector<Float> fbROI, fbSamplingRate, fbEI_ratio, fbFR;
 	vector<Size> nFBperColumn;
 	Float nsig; // extent of spatial RF sampling in units of std
 	Float tau, mau;
 	Float Itau; // in ms .. cone adaptation at 300ms https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1003289
-    Float sRatioV1;
+	Float tau_noise;
 	Float convolRatio;
 	Float frRatioLGN;
+	Float spontP;
 	Float speedOfThought;
 	PosInt frameRate; // Hz
 	Size nt; // number of steps
@@ -144,10 +150,10 @@ int main(int argc, char **argv) {
 	po::options_description top_opt("top-level configuration");
 	// non-files
 	top_opt.add_options()
-		("dt", po::value<Float>(&dt)->default_value(0.0625), "simulatoin time step in ms") 
+		("dt", po::value<Float>(&dt)->default_value(0.0625), "simulatoin time step in ms")
 		("nChunk,n", po::value<Size>(&nChunk)->default_value(10),"simulation in chunks, empricial")
 		("matConcurrency,n", po::value<Size>(&matConcurrency)->default_value(10),"sum presynaptic inputs from connection matrices in parallel, depends on the availability of device memory")
-		("speedOfThought", po::value<Float>(&speedOfThought)->default_value(1.0), "velocity of conduction, mm/ms") 
+		("speedOfThought", po::value<Float>(&speedOfThought)->default_value(1.0), "velocity of conduction, mm/ms")
 		("nt", po::value<Size>(&nt)->default_value(8000), "total simulatoin time in units of time step")
 		("fbROI", po::value<vector<Float>>(&fbROI), "total simulatoin time in units of time step")
 		("nFBperColumn", po::value<vector<Size>>(&nFBperColumn), "total simulatoin time in units of time step")
@@ -164,9 +170,11 @@ int main(int argc, char **argv) {
 		("mau", po::value<Float>(&mau)->default_value(250.0), "the backward time interval that a magno-LGN temporal RF should cover")
 		("Itau", po::value<Float>(&Itau)->default_value(300.0), "the light intensity adaptation time-scale of a cone")
 		("sRatioLGN", po::value<vector<Float>>(&sRatioLGN), "scale connection strength from LGN in array of size nType")
-		("sRatioV1", po::value<Float>(&sRatioV1)->default_value(1), "scale connection strength from V1")
+		("sRatioV1", po::value<vector<Float>>(&sRatioV1), "scale connection strength from V1, size of 1 or nType,nType]")
+		("gapRatio", po::value<vector<Float>>(&gapRatio), "scale gap junction strength from V1, size of 1 or nTypeI,nTypeI]")
 		("convolRatio", po::value<Float>(&convolRatio)->default_value(1), "scale convol value")
 		("frRatioLGN", po::value<Float>(&frRatioLGN)->default_value(1), "scale LGN firing rate")
+		("spontPercent", po::value<Float>(&spontP)->default_value(0.1), "spontaneous LGN firing rate as a percentage of max mean firing rate")
 		("nKernelSample", po::value<Size>(&nKernelSample)->default_value(500), "number of samples per parvo-temporal kernel")
 		("mKernelSample", po::value<Size>(&mKernelSample)->default_value(500), "number of samples per magno-temporal kernel")
 		("frameRate", po::value<PosInt>(&frameRate)->default_value(120), "frame rate of the input stimulus")
@@ -187,6 +195,8 @@ int main(int argc, char **argv) {
         ("learning", po::value<int>(&learning)->default_value(1), "trip rule learning, from Jennifer, 0 no learning, 1 default learning")
 		("rebound", po::value<int>(&rebound)->default_value(0), "after connection strength hits min or max can they retract") // TODO: replace "continue;" in compute_V 
 		("iModel", po::value<int>(&iModel)->default_value(0), "0: LIF, 1: AdEx")
+		("noDelay", po::value<int>(&noDelay)->default_value(1), "0: distance-dependent spike time. 1: distance-independent spike time")
+		("noFarDelay", po::value<int>(&noFarDelay)->default_value(1), "for farther connections, 0: distance-dependent spike time. 1: distance-independent spike time")
         ("A_LGN", po::value<vector<Float>>(&A_LGN), "array of learning rate for feedforward connections")
         ("A_V1", po::value<vector<Float>>(&A_V1), "array of learning rate for coritcal connections")
         ("A_Q", po::value<vector<Float>>(&A_Q), "array of learning rate ofr inhibitory connecitons")
@@ -222,6 +232,8 @@ int main(int argc, char **argv) {
         ("SCsplit",  po::value<Size>(&SCsplit)->default_value(0), "simple complex split at nLGN > SCsplit (simple)")
 		("noisyDep", po::value<vector<Float>>(&noisyDep), "noisy depolarization borrow from NMC model")
 		("tonicDep", po::value<vector<Float>>(&tonicDep), "tonic depolarization borrow from NMC model")
+		("tau_noise", po::value<Float>(&tau_noise)->default_value(0), "auto-correlation decay time scale of the correlated gaussian noise")
+		("minTonicRatio", po::value<vector<Float>>(&minTonicRatio), "minimum tonic depolarization ratio of size [nType]")
         ("synFailFF",  po::value<vector<Float>>(&synFailFF), "FF synpase failure rate of size nType")
         ("synFail",  po::value<vector<Float>>(&synFail), "synpase failure rate of size [nType, nType]")
         ("manual", po::value<bool>(&manual)->default_value(false), "manually connect neurons, modify on top of conMat")
@@ -260,7 +272,7 @@ int main(int argc, char **argv) {
 	string stimulus_filename, LGN_switch_filename;
 	string V1_RF_filename, V1_feature_filename, V1_pos_filename;
 	string neighborBlock_filename;
-	string V1_vec_filename, V1_delayMat_filename, V1_conMat_filename;
+	string V1_vec_filename, V1_gapVec_filename, V1_delayMat_filename, V1_conMat_filename, V1_gapMat_filename;
 	string LGN_surfaceID_filename;
 	string LGN_filename, LGN_vpos_filename, LGN_V1_s_filename, LGN_V1_ID_filename; // inputs
 	string LGN_fr_filename, outputFrame_filename; // outputs
@@ -283,8 +295,10 @@ int main(int argc, char **argv) {
 		("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file to read spatially predetermined functional features of neurons")
 		("fV1_conMat", po::value<string>(&V1_conMat_filename)->default_value("V1_conMat"), "file that stores V1 to V1 connection within the neighboring blocks")
 		("fV1_delayMat", po::value<string>(&V1_delayMat_filename)->default_value("V1_delayMat"), "file that stores V1 to V1 transmission delay within the neighboring blocks")
+		("fV1_gapMat", po::value<string>(&V1_gapMat_filename)->default_value("V1_gapMat"), "file that stores inhibitory to inhibitory gap junction within the neighboring blocks")
 		("fConStats", po::value<string>(&conStats_filename)->default_value("conStats"),"file that stores connection stats")
-		("fV1_vec", po::value<string>(&V1_vec_filename)->default_value("V1_vec"), "file that stores V1 to V1 connection ID, strength and transmission delay far the neighboring blocks")
+		("fV1_vec", po::value<string>(&V1_vec_filename)->default_value("V1_vec"), "file that stores V1 to V1 connection ID, strength and transmission delay farther than the neighboring blocks")
+		("fV1_gapVec", po::value<string>(&V1_gapVec_filename)->default_value("V1_gapVec"), "file that stores inhibitory to inhibitory gap junction ID, strength farther than the neighboring blocks")
 		("fNeighborBlock", po::value<string>(&neighborBlock_filename)->default_value("neighborBlock"), "file that stores V1 to V1 connection ID, strength and transmission delay far the neighboring blocks")
 		("fV1_RF", po::value<string>(&V1_RF_filename)->default_value("V1_RF"), "file that stores V1 RF properties, (orientation info is in fV1_feature)")
 		("fLGN", po::value<string>(&LGN_filename)->default_value("LGN"),"file that stores all the information of LGN neurons")
@@ -378,6 +392,7 @@ int main(int argc, char **argv) {
 	}
 
 	Size nType;
+	Size nTypeI;
 	vector<Size> typeAccCount;
     vector<Float> synPerConFF;
     vector<Float> synPerCon;
@@ -387,6 +402,7 @@ int main(int argc, char **argv) {
 		return EXIT_FAILURE;
 	} else {
 		fConnectome_cfg.read(reinterpret_cast<char*>(&nType), sizeof(Size));
+		fConnectome_cfg.read(reinterpret_cast<char*>(&nTypeI), sizeof(Size));
 		typeAccCount.assign(nType,0);
 		synPerCon.assign(nType*nType,0);
 		synPerConFF.assign(nType,0);
@@ -396,6 +412,19 @@ int main(int argc, char **argv) {
 
 		fConnectome_cfg.close();
 	}
+	cout << "synPer:\n"; 
+	for (PosInt i =0; i< nType; i++) {
+		for (PosInt j =0; j< nType; j++) {
+			cout << synPerCon[i*nType + j] << ", ";
+		}
+	}
+	cout << "\n";
+	cout << "synPerFF:\n"; 
+	for (PosInt j =0; j< nType; j++) {
+		cout << synPerConFF[j] << ", ";
+	}
+	cout << "\n";
+	
 
 	Size nType0;
     Size nArchType = nTypeHierarchy.size();
@@ -415,12 +444,42 @@ int main(int argc, char **argv) {
 		}
 	}
 
-    Size nE = typeAccCount[nTypeHierarchy[0] - 1];
+	if (nTypeI != nTypeHierarchy[1]) {
+		cout << "connectome nTypeI(" << nTypeI << ") is inconsistent with nTypeI(" << nTypeHierarchy[1] << ") in simulation config\n";
+		return EXIT_FAILURE;
+	}
+	Size nTypeE = nTypeHierarchy[0];
+    Size nE = typeAccCount[nTypeE - 1];
 	Size nI = blockSize-nE;
+	cout << " nE = " << nE << ", nI = " << nI << "\n";
+	cout << " nTypeE = " << nTypeE << ", nTypeI = " << nTypeI << "\n";
+	assert(nTypeE + nTypeI == nType);
 
 	if (nType > max_nType) {
 		cout << "the accumulative distribution of neuronal type <typeAccCount> has size of " << nType << " > " << max_nType << "\n";
 		return EXIT_FAILURE;
+	}
+
+	if (sRatioV1.size() == 1) {
+		for (PosInt i=1; i<nType*nType; i++) {
+			sRatioV1.push_back(sRatioV1[0]);
+		}
+	} else {
+		if (sRatioV1.size() != nType*nType) {
+			cout << "size of sRatioV1 (cortical connection strength) is " << sRatioV1.size() << " != " << nType*nType << "\n";
+			return EXIT_FAILURE;
+		}
+	}
+
+	if (gapRatio.size() == 1) {
+		for (PosInt i=1; i<nTypeI*nTypeI; i++) {
+			gapRatio.push_back(gapRatio[0]);
+		}
+	} else {
+		if (gapRatio.size() != nTypeI*nTypeI) {
+			cout << "size of gapRatio (gap junction strength) is " << gapRatio.size() << " != " << nTypeI*nTypeI << "\n";
+			return EXIT_FAILURE;
+		}
 	}
 
     vector<Size> typeAcc0;
@@ -515,6 +574,11 @@ int main(int argc, char **argv) {
         has_sp0 = true;
     }
 
+	if (noFarDelay && !noDelay) {
+		cout << "delay or no delay is the question!\n";
+		return EXIT_FAILURE;
+	}
+
     if (iModel > 1) {
         cout << "model " << iModel << " is not implemented\n";
         return EXIT_FAILURE;
@@ -538,6 +602,17 @@ int main(int argc, char **argv) {
 	} else {
 		if (noisyDep.size() != nType) {
 			cout << "size of noisy level of the tonic depolarization (noisyDep) is " << noisyDep.size() << " != " << nType << "\n";
+			return EXIT_FAILURE;
+		}
+	}
+
+	if (minTonicRatio.size() == 1) {
+		for (PosInt i=1; i<nType; i++) {
+			minTonicRatio.push_back(minTonicRatio[0]);
+		}
+	} else {
+		if (minTonicRatio.size() != nType) {
+			cout << "size of minimum tonic depolarization Ratio (minTonicRatio) is " << minTonicRatio.size() << " != " << nType << "\n";
 			return EXIT_FAILURE;
 		}
 	}
@@ -780,6 +855,11 @@ int main(int argc, char **argv) {
         }
         if (symQ) { // double the size
             nLearnTypeQ = A_Q.size();
+			for (PosInt i=0; i<nLearnTypeQ; i++) {
+				A_Q[i] *= sRatioV1[1];
+				gmaxQ[i] *= sRatioV1[1];
+				gminQ[i] *= sRatioV1[1];
+			}
             vector<Float> tmpA(A_Q.begin(), A_Q.end());
             vector<Float> tmpTau(tauQ.begin(),tauQ.end());
             vector<Float> tmpGmax(gmaxQ.begin(),gmaxQ.end());
@@ -802,6 +882,11 @@ int main(int argc, char **argv) {
                 return EXIT_FAILURE;
             } else {
                 nLearnTypeQ = static_cast<Size>(tauQ.size())/2;
+				for (PosInt i=0; i<nLearnTypeQ; i++) {
+					A_Q[i] *= sRatioV1[1];
+					gmaxQ[i] *= sRatioV1[1];
+					gminQ[i] *= sRatioV1[1];
+				}
             }
         }
         // learning
@@ -860,70 +945,116 @@ int main(int argc, char **argv) {
 
         if (nLearnTypeE > 0) {
             if (gmaxE.size() > nLearnTypeE) {
-                cout << "array size of gmaxE cannot be bigger than nLearnTypeE\n";
+                cout << "array size of gmaxE cannot be bigger than nLearnTypeE" << nLearnTypeE <<"\n";
                 return EXIT_FAILURE;
             } else {
                 if (gmaxE.size() < nLearnTypeE) {
-                    cout << "fill gmaxE with the same value " << gmaxE.back()<< "\n";
-                    while(gmaxE.size() < nLearnTypeFF) {
-                        gmaxE.push_back(gmaxE.back());
-                    }
+					if (gmaxE.size() > 1) {
+						cout << "gmaxE either have size of 1 or size of" << nLearnTypeE << "\n";
+                		return EXIT_FAILURE;
+					} else {
+                    	cout << "fill gmaxE with the same value " << gmaxE[0]<< "\n";
+                    	while(gmaxE.size() < nLearnTypeE) {
+                    	    gmaxE.push_back(gmaxE[0]);
+                    	}
+					}
                 }
             }
 
             if (gmaxE.size() < gminE.size()) {
-                cout << "array size of gminE cannot be bigger than gmaxE\n";
+                cout << "array size of gminE cannot be bigger than nLearnTypeE" << nLearnTypeE <<"\n";
                 return EXIT_FAILURE;
             } else {
-                if (gmaxE.size() > gminE.size()) {
-                    Float value = gminE.size() == 1? gminE.back(): 0;
-                    cout << "fill gminE with the same value" << value << "\n";
-                    while (gminE.size() < gmaxE.size()) {
-                        gminE.push_back(0);
-                    }
+                if (gminE.size() < nLearnTypeE) {
+					if (gminE.size() > 1) {
+						cout << "gminE either have size of 1 or size of" << nLearnTypeE << "\n";
+                		return EXIT_FAILURE;
+					} else {
+                    	cout << "fill gminE with the same value " << gminE[0]<< "\n";
+                    	while(gminE.size() < nLearnTypeE) {
+                    	    gminE.push_back(gminE[0]);
+                    	}
+					}
                 }
             }
+			for (PosInt i=0; i<nLearnTypeE; i++) {
+				gmaxE[i] *= sRatioV1[0];
+				gminE[i] *= sRatioV1[0];
+			}
         }
 
         if (nLearnTypeFF > 0) {
             if (gmaxLGN.size() > nLearnTypeFF) {
-                cout << "array size of gmaxLGN cannot be bigger than nLearnTypeFF\n";
+                cout << "array size of gmaxLGN cannot be bigger than nLearnTypeFF" << nLearnTypeFF << "\n";
                 return EXIT_FAILURE;
             } else {
                 if (gmaxLGN.size() < nLearnTypeFF) {
-                    cout << "fill gmaxLGN with the same value " << gmaxLGN.back()<< "\n";
-                    while(gmaxLGN.size() < nLearnTypeFF) {
-                        gmaxLGN.push_back(gmaxLGN.back());
-                    }
+					if (gmaxLGN.size() > 1) {
+						cout << "gmaxLGN either have size of 1 or size of" << nLearnTypeFF << "\n";
+                		return EXIT_FAILURE;
+					} else {
+                    	cout << "fill gmaxLGN with the same value " << gmaxLGN[0]<< "\n";
+                    	while(gmaxLGN.size() < nLearnTypeFF) {
+                    	    gmaxLGN.push_back(gmaxLGN[0]);
+                    	}
+					}
                 }
             }
 
             if (gmaxLGN.size() < gminLGN.size()) {
-                cout << "array size of gminLGN cannot be bigger than gmaxLGN\n";
+                cout << "array size of gminLGN cannot be bigger than nLearnTypeFF" << nLearnTypeFF << "\n";
                 return EXIT_FAILURE;
             } else {
-                if (gmaxLGN.size() > gminLGN.size()) {
-                    Float value = gminLGN.size() == 1? gminLGN.back(): 0;
-                    cout << "fill gminLGN with the same value" << value << "\n";
-                    while (gminLGN.size() < gmaxLGN.size()) {
-                        gminLGN.push_back(0);
-                    }
+                if (gminLGN.size() < nLearnTypeFF) {
+					if (gminLGN.size() > 1) {
+						cout << "gminLGN either have size of 1 or size of" << nLearnTypeFF << "\n";
+                		return EXIT_FAILURE;
+					} else {
+                    	cout << "fill gminLGN with the same value " << gminLGN[0]<< "\n";
+                    	while(gminLGN.size() < nLearnTypeFF) {
+                    	    gminLGN.push_back(gminLGN[0]);
+                    	}
+					}
                 }
             }
         }
 
-        if (nLearnTypeFF_E) learnFF_pre<LearnVarShapeFF_E_pre>(lFF_E_pre, &(tauLTP[0]), nLearnTypeFF_E);
-        if (nLearnTypeFF_I) learnFF_pre<LearnVarShapeFF_I_pre>(lFF_I_pre, &(tauLTP[nLearnTypeFF_E]), nLearnTypeFF_I);
-        if (nLearnTypeFF_E) learnFF_post<LearnVarShapeFF_E_post>(lFF_E_post, &(tauLTD[0]), &(tauTrip[0]), tauAvg[0], targetFR[0], &(A_LGN[0]), gmaxLGN[0], gminLGN[0], nLearnTypeFF_E, sRatioLGN[0]);
-        if (nLearnTypeFF_I) learnFF_post<LearnVarShapeFF_I_post>(lFF_I_post, &(tauLTD[nLearnTypeFF_E]), &(tauTrip[nLearnTypeFF_E]), tauAvg[1], targetFR[1], &(A_LGN[nLearnTypeFF_E]), gmaxLGN[nLearnTypeFF_E], gminLGN[nLearnTypeFF_E], nLearnTypeFF_I, sRatioLGN[1]);
+        if (nLearnTypeFF_E) {
+			learnFF_pre<LearnVarShapeFF_E_pre>(lFF_E_pre, &(tauLTP[0]), nLearnTypeFF_E);
+		} else {
+			lFF_E_pre.n = 0;
+		}
+        if (nLearnTypeFF_I) {
+			learnFF_pre<LearnVarShapeFF_I_pre>(lFF_I_pre, &(tauLTP[nLearnTypeFF_E]), nLearnTypeFF_I);
+		} else {
+			lFF_I_pre.n = 0;
+		}
+        if (nLearnTypeFF_E) {
+			learnFF_post<LearnVarShapeFF_E_post>(lFF_E_post, &(tauLTD[0]), &(tauTrip[0]), tauAvg[0], targetFR[0], &(A_LGN[0]), gmaxLGN[0], gminLGN[0], nLearnTypeFF_E, sRatioLGN[0]);
+		} else {
+			lFF_E_post.n = 0;
+		}
+        if (nLearnTypeFF_I) {
+			learnFF_post<LearnVarShapeFF_I_post>(lFF_I_post, &(tauLTD[nLearnTypeFF_E]), &(tauTrip[nLearnTypeFF_E]), tauAvg[1], targetFR[1], &(A_LGN[nLearnTypeFF_E]), gmaxLGN[nLearnTypeFF_E], gminLGN[nLearnTypeFF_E], nLearnTypeFF_I, sRatioLGN[1]);
+		} else {
+			lFF_I_post.n = 0;
+		}
 
         if (nLearnTypeFF_E) printFF_pre<LearnVarShapeFF_E_pre>(lFF_E_pre, 1);
         if (nLearnTypeFF_I) printFF_pre<LearnVarShapeFF_I_pre>(lFF_I_pre, 0);
         if (nLearnTypeFF_E) printFF_post<LearnVarShapeFF_E_post>(lFF_E_post, 1);
         if (nLearnTypeFF_I) printFF_post<LearnVarShapeFF_I_post>(lFF_I_post, 0);
 
-        if (nLearnTypeE) learnE(lE, &(tauLTP[nLearnTypeFF]), &(tauLTD[nLearnTypeFF]), &(tauTrip[nLearnTypeFF]), tauAvg[0], targetFR[0], &(A_V1[0]), gmaxE[0], gminE[0], nLearnTypeE, sRatioV1);
-        if (nLearnTypeQ) learnQ(lQ, &(tauQ[0]), &(A_Q[0]), gmaxQ[0], gminQ[0], nLearnTypeQ, sRatioV1);
+        if (nLearnTypeE) {
+			learnE(lE, &(tauLTP[nLearnTypeFF]), &(tauLTD[nLearnTypeFF]), &(tauTrip[nLearnTypeFF]), tauAvg[0], targetFR[0], &(A_V1[0]), gmaxE[0], gminE[0], nLearnTypeE);
+		} else {
+			lE.n = 0;
+		}
+        if (nLearnTypeQ) {
+			learnQ(lQ, &(tauQ[0]), &(A_Q[0]), gmaxQ[0], gminQ[0], nLearnTypeQ);
+		} else {
+			lQ.n = 0;
+		}
 
         if (nLearnTypeE) printE(lE);
         if (nLearnTypeQ) printQ(lQ);
@@ -1065,6 +1196,8 @@ int main(int argc, char **argv) {
 	} else {
 		fLGN_vpos.read(reinterpret_cast<char*>(&nLGN_I), sizeof(Size));
 		fLGN_vpos.read(reinterpret_cast<char*>(&nLGN_C), sizeof(Size));
+		int tmp;
+		fLGN_vpos.read(reinterpret_cast<char*>(&tmp), sizeof(int));
 		float max_ecc0;
 		fLGN_vpos.read(reinterpret_cast<char*>(&max_ecc0), sizeof(float)); // in rad
 		max_ecc = static_cast<Float>(max_ecc0);
@@ -1209,6 +1342,8 @@ int main(int argc, char **argv) {
 
     cout << "LGN_x: [" << *min_element(LGN_x.begin(), LGN_x.end()) << ", " << *max_element(LGN_x.begin(), LGN_x.end()) << "]\n";
     cout << "LGN_y: [" << *min_element(LGN_y.begin(), LGN_y.end()) << ", " << *max_element(LGN_y.begin(), LGN_y.end()) << "]\n";
+	cout << "LGN_x0 = " << LGN_x0 << "; " << "LGN_xspan = " << LGN_xspan << "\n";
+	cout << "LGN_y0 = " << LGN_y0 << "; " << "LGN_yspan = " << LGN_yspan << "\n";
 
 	fLGN_vpos.read(reinterpret_cast<char*>(&LGNtype[0]), nLGN*sizeof(InputType_t));
 
@@ -1390,8 +1525,21 @@ int main(int argc, char **argv) {
 			return make_pair(mean, std);
 		};
 		//     sigma*sqrt(2)
-		Float acuityC[2] = {0.03f*deg2rad, 0.01f*deg2rad/1.349f}; // interquartile/1.349 = std 
-		Float acuityS[2] = {0.18f*deg2rad, 0.07f*deg2rad/1.349f};
+		Float acuityK = 0.202103;
+		Float logAcuity0 = logrithm(40.0);
+
+		auto getAcuityAtEcc = [&acuityK, &logAcuity0, &deg2rad] (Float ecc, Float acuity[]) {
+			Float cpd = -acuityK * ecc/deg2rad + logAcuity0;
+			cpd = exponential(cpd);
+			acuity[0] = 1.0/cpd/4 * deg2rad; // from cpd to radius of center
+			acuity[1] = acuity[0]/3/1.349;
+		};
+		Float max_acuity = 0;
+		Float min_acuity = 10;
+		Float mean_acuity = 0;
+
+		//Float acuityC[2] = {0.03f*deg2rad, 0.01f*deg2rad/1.349f}; // interquartile/1.349 = std 
+		//Float acuityS[2] = {0.18f*deg2rad, 0.07f*deg2rad/1.349f};
 		Float acuityC_M[2] = {0.06f*deg2rad, 0.02f*deg2rad/1.349f}; // interquartile/1.349 = std 
 		Float acuityS_M[2] = {0.18f*deg2rad, 0.06f*deg2rad/1.349f};
 		Float pTspD[2];
@@ -1402,8 +1550,8 @@ int main(int argc, char **argv) {
         Float c50_distM[2] = {0.25, 0.03}; //
         //Float sharpness_dist[2] = {1.0, 1.0};
         //Float c50_dist[2] = {0.5, 0.03}; //
-		Float spontPercentUL = 0.15; // 0.15
-		Float spontPercent = 0.1; // 0.05
+		Float spontPercentUL = spontP*2/frRatioLGN; // 0.15
+		Float spontPercent = spontP/frRatioLGN; // 0.05
         //============
 	    auto get_excLowBound = [](Float thres) {
 	    	function<bool(Float)> bound = [thres] (Float value) {
@@ -1449,12 +1597,23 @@ int main(int argc, char **argv) {
 		    Float rho_SC = 0.8; // empirical guess
 		    Float rho_SC_comp = sqrt(1.0-rho_SC*rho_SC);
             for (PosInt i=0; i<nLGN; i++) {
+
+				Float acuityC[2] = {};
+				Float acuityS[2] = {};
+				getAcuityAtEcc(LGN_ecc[i], acuityC);
+				acuityS[0] = acuityC[0] * 6;
+				acuityS[1] = acuityC[1] * 6;
+				if (acuityC[0] > max_acuity) max_acuity = acuityC[0];
+				if (acuityC[0] < min_acuity) min_acuity = acuityC[0];
+				mean_acuity += acuityC[0];
+
                 switch (LGNtype[i]) {
 		    		case InputType::MonLoff: case InputType::MoffLon: case InputType::LonMoff: case InputType::LoffMon:
 		                tie(LGN_rw[i], LGN_rw[i+nLGN]) = get_rands_from_correlated_gauss(acuityC, acuityS, rho_SC, rho_SC_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound, smaller);
 		    			break;
                     case InputType::OnOff: case InputType::OffOn:
-		                tie(LGN_rw[i], LGN_rw[i+nLGN]) = get_rands_from_correlated_gauss(acuityC_M, acuityS_M, rho_SC, rho_SC_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound, smaller);
+						acuityC[0] *= 2;
+		                tie(LGN_rw[i], LGN_rw[i+nLGN]) = get_rands_from_correlated_gauss(acuityC, acuityS, rho_SC, rho_SC_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound, smaller);
                         break;
                     default:
 		    			throw("There's no implementation of this type with non-uniform LGN");
@@ -1495,6 +1654,16 @@ int main(int argc, char **argv) {
             // no orientation prefence
             // no surrond origin shift;
             for (PosInt i=0; i<nLGN; i++) {
+
+				Float acuityC[2] = {};
+				Float acuityS[2] = {};
+				getAcuityAtEcc(LGN_ecc[i], acuityC);
+				acuityS[0] = acuityC[0] * 6;
+				acuityS[1] = acuityC[1] * 6;
+				if (acuityC[0] > max_acuity) max_acuity = acuityC[0];
+				if (acuityC[0] < min_acuity) min_acuity = acuityC[0];
+				mean_acuity += acuityC[0];
+
                 switch (LGNtype[i]) {
                     case InputType::MonLoff: case InputType::MoffLon: case InputType::LonMoff: case InputType::LoffMon:
                         LGN_rw[i] = acuityC[0];
@@ -1503,16 +1672,18 @@ int main(int argc, char **argv) {
                         LGN_rh[i+nLGN] = acuityS[0];
                         break;
                     case InputType::OnOff: case InputType::OffOn:
-                        LGN_rw[i] = acuityC_M[0];
-                        LGN_rw[i+nLGN] = acuityS_M[0];
-                        LGN_rh[i] = acuityC_M[0];
-                        LGN_rh[i+nLGN] = acuityS_M[0];
+                        LGN_rw[i] = acuityC[0]*2;
+                        LGN_rw[i+nLGN] = acuityS[0];
+                        LGN_rh[i] = acuityC[0]*2;
+                        LGN_rh[i+nLGN] = acuityS[0];
                         break;
                 }
                 LGN_ecc[i+nLGN] = LGN_ecc[i];
                 LGN_polar[i+nLGN] = LGN_polar[i];
             }
         }
+		cout << "acuity: [" << min_acuity/deg2rad << ", " << mean_acuity/nLGN/deg2rad << ", " << max_acuity/deg2rad << "] deg\n";
+		cout << "ecc: ["<< *min_element(LGN_ecc.begin(), LGN_ecc.begin()+nLGN)/deg2rad << ", " << *max_element(LGN_ecc.begin(), LGN_ecc.begin()+nLGN)/deg2rad << "]\n";
 		for (Size i=0; i<nLGN; i++) {
             if (i==0) {
                 minSecc = LGN_ecc[i+nLGN];
@@ -1638,8 +1809,8 @@ int main(int argc, char **argv) {
 		    		    delay[i] = get_rand_from_gauss(delay_onC, rGen_LGNsetup, nonNegativeBound);
 		    		    delay[i+nLGN] = get_rand_from_gauss(delay_offS, rGen_LGNsetup, nonNegativeBound);
 		    	        // NOTE: proportion between L and M, significantly overlap in cone response curve, is implemented to calculate maxConvol
-		    	        //covariant[i] = 0.53753461391295254; 
-		    	        covariant[i] = 1;
+		    	        covariant[i] = 0.53753461391295254; 
+		    	        //covariant[i] = 1;
                         break;
                     case InputType::MoffLon: case InputType::LoffMon:
                         // off-centers
@@ -1677,8 +1848,8 @@ int main(int argc, char **argv) {
 		    			delay[i] = get_rand_from_gauss(delay_offC, rGen_LGNsetup, nonNegativeBound);
 		    			delay[i+nLGN] = get_rand_from_gauss(delay_onS, rGen_LGNsetup, nonNegativeBound);
 		    	        // NOTE: proportion between L and M, significantly overlap in cone response curve, is implemented to calculate maxConvol
-		    	        //covariant[i] = 0.53753461391295254; 
-		    	        covariant[i] = 1;
+		    	        covariant[i] = 0.53753461391295254; 
+		    	        //covariant[i] = 1;
                         break;
                     /* TODO: magno dist
                     case InputType::OnOff:
@@ -1781,8 +1952,8 @@ int main(int argc, char **argv) {
 		    		    delay[i] = delay_onC[0];
 		    		    delay[i+nLGN] = delay_offS[0];
 		    	        // NOTE: proportion between L and M, significantly overlap in cone response curve, is implemented to calculate maxConvol
-		    	        //covariant[i] = 0.53753461391295254; 
-		    	        covariant[i] = 1;
+		    	        covariant[i] = 0.53753461391295254; 
+		    	        //covariant[i] = 1;
                         break;
                     case InputType::MoffLon: case InputType::LoffMon:
 		    			// off-centers
@@ -1816,14 +1987,14 @@ int main(int argc, char **argv) {
 		    			delay[i] = delay_offC[0];
 		    			delay[i+nLGN] = delay_onS[0];
 		    	        // NOTE: proportion between L and M, significantly overlap in cone response curve, is implemented to calculate maxConvol
-		    	        //covariant[i] = 0.53753461391295254; 
-		    	        covariant[i] = 1.0;
+		    	        covariant[i] = 0.53753461391295254; 
+		    	        //covariant[i] = 1.0;
                         break;
                     case InputType::OnOff: 
 		    			// on-centers
 		    			// k
                         LGN_k[i] = K_onMagno[0];
-                        LGN_k[i+nLGN] = -K_onMagno[0]; // off-surround
+                        LGN_k[i+nLGN] = -K_offMagno[0]; // off-surround
 		    			// centers' tau, n 
 		    			nR[i] = nR_onMagno[0];
 		    			tauR[i] = tauR_onMagno[0];
@@ -1847,7 +2018,7 @@ int main(int argc, char **argv) {
                         // off-centers
 		    			// k
                         LGN_k[i] = -K_offMagno[0];
-                        LGN_k[i+nLGN] = K_offMagno[0]; // on-surround
+                        LGN_k[i+nLGN] = K_onMagno[0]; // on-surround
 
 		    			// centers' tau, n 
 		    			nR[i] = nR_offMagno[0];
@@ -2080,7 +2251,19 @@ int main(int argc, char **argv) {
 	checkCudaErrors(cudaMalloc3DArray(&cuSurfArray, &surfaceDesc, make_cudaExtent(nsx, nsy, (1+3*nLearnTypeFF)), cudaArrayLayered|cudaArraySurfaceLoadStore));
 	size_t LGNspSurfSize = nsx*nsy*(1+3*nLearnTypeFF)*sizeof(Float);
 	usingGMem += LGNspSurfSize;
-	cudaBindSurfaceToArray(LGNspikeSurface, cuSurfArray);
+
+	// Specify surface
+    struct cudaResourceDesc resDesc;
+    memset(&resDesc, 0, sizeof(resDesc));
+    resDesc.resType = cudaResourceTypeArray;
+
+    // Create the surface objects
+    resDesc.res.array.array = cuSurfArray;
+    cudaSurfaceObject_t LGNspikeSurface = 0;
+    cudaCreateSurfaceObject(&LGNspikeSurface, &resDesc);
+
+	//cudaBindSurfaceToArray(LGNspikeSurface, cuSurfArray);
+
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	Size nLGN_block, nLGN_thread; // for LGN_nonlinear
@@ -2126,7 +2309,7 @@ int main(int argc, char **argv) {
 
 	// V1 related memory
 	ifstream fV1_pos;
-	ifstream fV1_conMat, fV1_delayMat, fV1_vec, fNeighborBlock; 
+	ifstream fV1_conMat, fV1_delayMat, fV1_gapMat, fV1_vec, fV1_gapVec, fNeighborBlock; 
 	ifstream fConStats;
 
 	Size nV1, nblock, neuronPerBlock, posDim;
@@ -2220,6 +2403,10 @@ int main(int argc, char **argv) {
 		}
 	}
 	fV1_pos.close();
+
+	Size mI = nI*nblock;
+	Size mE = nE*nblock;
+	cout << " mE = " << mE << ", mI = " << mI << "\n";
 
 	vector<Float> featureValue;
 	if (readFeature) {
@@ -2551,23 +2738,87 @@ int main(int argc, char **argv) {
 			if (nVec[i] > 0) {
 				vector<PosInt> tmp(nVec[i]);
 				fV1_vec.read(reinterpret_cast<char*>(&tmp[0]), nVec[i]*sizeof(PosInt));
-				vecID[i] = tmp;
+				for (PosInt j=0; j<nVec[i]; j++) {
+					vecID[i].push_back(tmp[j]);
+				}
+				assert(vecID[i].size() == nVec[i]);
 
 				vector<float> ftmp(nVec[i]);
 				fV1_vec.read(reinterpret_cast<char*>(&ftmp[0]), nVec[i]*sizeof(float));
 				for (PosInt j=0; j<nVec[i]; j++) {
-					conVec[i][j] = static_cast<Float>(ftmp[j]);
+					PosInt jtype = vecID[i][j] % blockSize < nE? 0: 1;
+					PosInt itype = i % blockSize < nE? 0: 1;
+					conVec[i].push_back(static_cast<Float>(ftmp[j])*sRatioV1[jtype*2+itype]);
 				}
+				assert(conVec[i].size() == nVec[i]);
 
 				fV1_vec.read(reinterpret_cast<char*>(&ftmp[0]), nVec[i]*sizeof(float));
 				for (PosInt j=0; j<nVec[i]; j++) {
-					delayVec[i][j] = static_cast<Float>(ftmp[j]);
+					delayVec[i].push_back(static_cast<Float>(ftmp[j]));
 				}
+				assert(delayVec[i].size() == nVec[i]);
+
                 nFar += nVec[i];
 			}
 		}
 	}
 	fV1_vec.close();
+
+	vector<Size> nGapVec(mI);
+	vector<vector<PosInt>> gapVecID(mI);
+	vector<vector<Float>> gapVec(mI);
+	vector<vector<Float>> gapDelayVec(mI);
+	Float* gapS = new Float[mI];
+	size_t nGapFar = 0;
+	fV1_gapVec.open(V1_gapVec_filename + conV1_suffix, fstream::in | fstream::binary);
+	if (!fV1_gapVec) {
+		cout << "Cannot open or find " << V1_gapVec_filename + conV1_suffix <<" to read inhibitory gap junctions to farther neighbor.\n";
+		return EXIT_FAILURE;
+	} else {
+		fV1_gapVec.read(reinterpret_cast<char*>(&nGapVec[0]), nV1*sizeof(Size));
+		for (PosInt i=0; i<mI; i++) {
+			gapS[i] = 0;
+			if (nGapVec[i] > 0) {
+				vector<PosInt> tmp(nGapVec[i]);
+				fV1_gapVec.read(reinterpret_cast<char*>(&tmp[0]), nGapVec[i]*sizeof(PosInt));
+				for (PosInt j=0; j<nGapVec[i]; j++) {
+					vecID[i].push_back(tmp[j]);
+				}
+				assert(vecID[i].size() == nGapVec[i]);
+
+				vector<float> ftmp(nGapVec[i]);
+				fV1_gapVec.read(reinterpret_cast<char*>(&ftmp[0]), nGapVec[i]*sizeof(float));
+				PosInt itype;
+				for (PosInt q=0; q<nTypeI; q++) {
+					if (i % nI < typeAccCount[q+nTypeE]-nE) {
+						itype = q;
+						break;
+					}
+				}
+				for (PosInt j=0; j<nGapVec[i]; j++) {
+					PosInt jtype;
+					for (PosInt q=0; q<nTypeI; q++) {
+						if (gapVecID[i][j] % blockSize < typeAccCount[q+nTypeE]) {
+							jtype = q;
+							break;
+						}
+					}
+					gapVec[i].push_back(static_cast<Float>(ftmp[j])*gapRatio[jtype*nTypeI+itype]);
+					gapS[i] += gapVec[i][j];
+				}
+				assert(gapVec[i].size() == nGapVec[i]);
+
+				fV1_gapVec.read(reinterpret_cast<char*>(&ftmp[0]), nGapVec[i]*sizeof(float));
+				for (PosInt j=0; j<nGapVec[i]; j++) {
+					gapDelayVec[i].push_back(static_cast<Float>(ftmp[j]));
+				}
+				assert(gapDelayVec[i].size() == nGapVec[i]);
+
+                nGapFar += nGapVec[i];
+			}
+		}
+	}
+	fV1_gapVec.close();
 
     // closer neighbors
 	// overlap multiple chunks of data transfer and computation to increase performance
@@ -2603,8 +2854,77 @@ int main(int argc, char **argv) {
 			return EXIT_FAILURE;
 		}
 	}
+	fV1_gapMat.open(V1_gapMat_filename + conV1_suffix, fstream::in | fstream::binary);
+	if (!fV1_gapMat) {
+		cout << "Cannot open or find " << V1_gapMat_filename + conV1_suffix <<" to read V1 cortical distance matrices.\n";
+		return EXIT_FAILURE;
+	} else {
+		Size tmp;
+		fV1_gapMat.read(reinterpret_cast<char*>(&tmp), sizeof(Size));
+		if (tmp != nearNeighborBlock) {
+			cout << "conMat and gapMat does not match\n";
+			return EXIT_FAILURE;
+		}
+	}
 
-	// pinned pathway for conDelayMat concurrency
+	vector<Size> nNeighborBlock(nblock);
+	vector<Size> nNearNeighborBlock(nblock);
+	vector<vector<PosInt>> allNeighborBlockId(nblock);
+	PosInt *nBlockId = new PosInt[nearNeighborBlock*nblock];
+
+    // neighboring blocks
+	fNeighborBlock.open(neighborBlock_filename + conV1_suffix, fstream::in | fstream::binary);
+	if (!fNeighborBlock) {
+		cout << "Cannot open or find " << neighborBlock_filename + conV1_suffix <<" to read V1 neighbor block info.\n";
+		return EXIT_FAILURE;
+	} else {
+		fNeighborBlock.read(reinterpret_cast<char*>(&nNearNeighborBlock[0]), nblock*sizeof(Size));
+		if (*max_element(nNearNeighborBlock.begin(), nNearNeighborBlock.end()) > nearNeighborBlock) {
+			cout << "conMat nearNeighborBlock not compatible with nNearNeighborBlock\n";
+			return EXIT_FAILURE;
+		}
+		fNeighborBlock.read(reinterpret_cast<char*>(&nNeighborBlock[0]), nblock*sizeof(Size));
+		for (PosInt i=0; i<nblock; i++) {
+			if (nNeighborBlock[i] > 0) {
+				vector<PosInt> tmp(nNeighborBlock[i]);
+				fNeighborBlock.read(reinterpret_cast<char*>(&tmp[0]), nNeighborBlock[i]*sizeof(PosInt));
+				allNeighborBlockId[i] = tmp;
+				memcpy(&nBlockId[i*nearNeighborBlock], &tmp[0], nNearNeighborBlock[i]*sizeof(PosInt));
+			}
+            // assert copy success
+            //cout << "block " << i << " has " << nNeighborBlock[i] << " neighbors:\n";
+            //for (PosInt j=0; j<nNeighborBlock[i]; j++) {
+            //    cout << nBlockId[i*nearNeighborBlock + j];
+            //    if (j < nNeighborBlock[i] - 1) cout << ",";
+            //}
+            //cout << "\n";
+		}
+	}
+
+	Size* d_neighborInfo;
+	size_t neighborInfo_size = nblock*sizeof(Size) + nblock*nearNeighborBlock*sizeof(PosInt) + nV1*sizeof(Size);
+	checkCudaErrors(cudaMalloc((void**)&d_neighborInfo, neighborInfo_size));
+	Size* d_nNearNeighborBlock = d_neighborInfo;
+	Size* d_nNeighborBlock = d_nNearNeighborBlock+ nblock;
+	PosInt* d_neighborBlockId = (PosInt*) (d_nNearNeighborBlock + nblock);
+	Size* d_nVec = (Size*) (d_neighborBlockId + nblock*nearNeighborBlock);
+
+	checkCudaErrors(cudaMemcpy(d_nNearNeighborBlock, &(nNearNeighborBlock[0]), nblock*sizeof(Size), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_nNeighborBlock, &(nNeighborBlock[0]), nblock*sizeof(Size), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_neighborBlockId, nBlockId, nblock*nearNeighborBlock*sizeof(PosInt), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_nVec, &(nVec[0]), nV1*sizeof(Size), cudaMemcpyHostToDevice));
+
+	delete [] nBlockId;
+	usingGMem += neighborInfo_size;
+	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
+
+	Size* d_nGapVec;
+	checkCudaErrors(cudaMalloc((void**)&d_nGapVec, mI*sizeof(Size)));
+	checkCudaErrors(cudaMemcpy(d_nGapVec, &(nGapVec[0]), mI*sizeof(Size), cudaMemcpyHostToDevice));
+	usingGMem += mI*sizeof(Float);
+	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
+
+	// pinned pathway for conDelayGapMat concurrency
 	if (matConcurrency < 2) {
 		matConcurrency = 2;
 		cout << "matConcurrency raised to 2, smaller values not implemented.\n";
@@ -2614,9 +2934,10 @@ int main(int argc, char **argv) {
 		cout << "matConcurrency is reduced to " << nChunk << ", the same as nChunk\n";  
 	}
 	size_t nearBlockSize = static_cast<size_t>(nearNeighborBlock) * blockSize*blockSize;
-	size_t sChunkMatSize = 2*maxChunkSize*nearBlockSize; // 2 for conMat and delayMat
-	size_t rChunkMatSize = 2*remainChunkSize*nearBlockSize;
-	cout << "single chunk of conDelayMat requires at most " << sChunkMatSize*sizeof(float)/1024.0/1024.0 << "Mb, smaller chunks require " << rChunkMatSize*sizeof(float)/1024.0/1024.0 << "Mb\n";
+	size_t gap_nearBlockSize = static_cast<size_t>(nearNeighborBlock) * nI*nI;
+	size_t sChunkMatSize = maxChunkSize*(2*nearBlockSize + gap_nearBlockSize); // 2 for conMat and delayMat
+	size_t rChunkMatSize = remainChunkSize*(2*nearBlockSize + gap_nearBlockSize);
+	cout << "single chunk of conDelayGapMat requires at most " << sChunkMatSize*sizeof(float)/1024.0/1024.0 << "Mb, smaller chunks require " << rChunkMatSize*sizeof(float)/1024.0/1024.0 << "Mb\n";
 	size_t ccChunkMatSize; // # of (c)on(c)urrent chunks
 	if (matConcurrency > iSizeSplit) {
 		ccChunkMatSize = iSizeSplit * sChunkMatSize + (matConcurrency-iSizeSplit) * rChunkMatSize;
@@ -2638,51 +2959,61 @@ int main(int argc, char **argv) {
 	}
 	cout << "matConcurrency of " << matConcurrency << " chunks requires " << ccChunkMatSize*sizeof(float)/1024.0/1024.0 << " Mb, total device gmem = " << deviceProps.totalGlobalMem/1024.0/1024.0 << "Mb\n";
 
-	// pinned conDelayMat on Host
-	float* p_conDelayMat;
-	checkCudaErrors(cudaMallocHost((void**) &p_conDelayMat, ccChunkMatSize*sizeof(float)));
+	// pinned conDelayGapMat on Host
+	float* p_conDelayGapMat;
+	checkCudaErrors(cudaMallocHost((void**) &p_conDelayGapMat, ccChunkMatSize*sizeof(float)));
 
-	// receiving end of pinned conDelayMat on Device
-	float *d_mat; // d_delayMat;
+	// receiving end of pinned conDelayGapMat on Device
+	float *d_mat;
 	checkCudaErrors(cudaMalloc((void**)&d_mat, ccChunkMatSize*sizeof(float)));
-	float **d_conDelayMat = new float*[matConcurrency];
-	d_conDelayMat[0] = d_mat;
+	float **d_conDelayGapMat = new float*[matConcurrency];
+	d_conDelayGapMat[0] = d_mat;
 	for (PosInt i = 1; i<matConcurrency; i++) {
 		size_t matChunkSize;
 		if (i <= iSizeSplit) matChunkSize = sChunkMatSize; // this is the bug, <= is correct
 		else matChunkSize = rChunkMatSize;
-		d_conDelayMat[i] = d_conDelayMat[i-1] + matChunkSize; // may not be filled for iChunk > iSizeSplit
+		d_conDelayGapMat[i] = d_conDelayGapMat[i-1] + matChunkSize; // may not be filled for iChunk > iSizeSplit
 	}
 	usingGMem += ccChunkMatSize*sizeof(float);
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	// reading the two matrices in a intertwined manner
-	size_t matSize = nblock * nearBlockSize; 
+	size_t matSize = nblock * nearBlockSize;
+	size_t gap_matSize = nblock * gap_nearBlockSize;
 	cout << "matSize = " << nblock << "x" << nearNeighborBlock << "x" << blockSize << "x" << blockSize << "x" << sizeof(float) << "=" << matSize * sizeof(float) / 1024.0 / 1024.0 << "Mb\n";
-	float* conDelayMat0;
+	cout << "gap_matSize = " << nblock << "x" << nearNeighborBlock << "x" << nI << "x" << nI << "x" << sizeof(float) << "=" << gap_matSize * sizeof(float) / 1024.0 / 1024.0 << "Mb\n";
+	float* conDelayGapMat0;
     if (matConcurrency < nChunk) {
-        conDelayMat0 = new float[matSize*2];
+        conDelayGapMat0 = new float[matSize*2 + gap_matSize];
     } else {
-        assert(matSize*2 == ccChunkMatSize);
-        conDelayMat0 = p_conDelayMat;
-        cout << nChunk << " == " << matConcurrency << ", entire conMat and delayMat are pinned\n";
+        assert(matSize*2 + gap_matSize == ccChunkMatSize);
+        conDelayGapMat0 = p_conDelayGapMat;
+        cout << nChunk << " == " << matConcurrency << ", entire conMat, delayMat and gapMat are pinned\n";
     }
-	float** conDelayMat = new float*[nChunk];
+	float** conDelayGapMat = new float*[nChunk];
 	float** conMat = new float*[nChunk];
 	float** delayMat = new float*[nChunk];
+	float** gapMat = new float*[nChunk];
 	size_t matOffset = 0;
 	size_t matChunkSize = maxChunkSize*nearBlockSize;
+	size_t gap_matChunkSize = maxChunkSize*gap_nearBlockSize;
 	size_t chunkSize = matChunkSize;
+	size_t gap_chunkSize = gap_matChunkSize;
 	for (PosInt i=0; i<nChunk; i++) {
-		if (i >= iSizeSplit) chunkSize = remainChunkSize*nearBlockSize;
-		conDelayMat[i] = conDelayMat0 + matOffset;
-		conMat[i] = conDelayMat[i];
+		if (i >= iSizeSplit) {
+			chunkSize = remainChunkSize*nearBlockSize;
+			gap_chunkSize = remainChunkSize*gap_nearBlockSize;
+		}
+		conDelayGapMat[i] = conDelayGapMat0 + matOffset;
+		conMat[i] = conDelayGapMat[i];
 		matOffset += chunkSize;
-		delayMat[i] = conDelayMat0 + matOffset;
+		delayMat[i] = conDelayGapMat0 + matOffset;
 		matOffset += chunkSize;
+		gapMat[i] = conDelayGapMat0 + matOffset;
+		matOffset += gap_chunkSize;
 	}
-    assert(matOffset == matSize*2);
-	assert(delayMat[nChunk-1] + chunkSize == conDelayMat0 + matSize*2);
+    assert(matOffset == matSize*2+gap_matSize);
+	assert(gapMat[nChunk-1] + gap_chunkSize == conDelayGapMat0 + matSize*2+ gap_matSize);
     auto findDisConMax = [](float a[], float b[], size_t n) {
         Float max;
         max = static_cast<Float>(a[0]);
@@ -2693,82 +3024,105 @@ int main(int argc, char **argv) {
         }
         return max;
     };
-    auto scaleStrength =[sRatioV1] (float v) {
-        return static_cast<float>(v*sRatioV1);
-    };
+    //auto scaleStrength =[sRatioV1] (float v) {
+    //    return static_cast<float>(v*sRatioV1);
+    //};
 	chunkSize = matChunkSize;
+	gap_chunkSize = gap_matChunkSize;
+	size_t chunkBlockSize = maxChunkSize;
+	size_t iblock = 0;
+	//Size ntmp = 0;
+	//Size ntmp_connected = 0;
 	for (PosInt i=0; i<nChunk; i++) {
-		if (i >= iSizeSplit) chunkSize = remainChunkSize*nearBlockSize;
+		if (i >= iSizeSplit) {
+			chunkSize = remainChunkSize*nearBlockSize;
+			gap_chunkSize = remainChunkSize*gap_nearBlockSize;
+			chunkBlockSize = remainChunkSize;
+		}
 		if (fV1_conMat) fV1_conMat.read(reinterpret_cast<char*>(conMat[i]), chunkSize*sizeof(float));
 		else assert(fV1_conMat);
-        transform(conMat[i], conMat[i]+chunkSize, conMat[i], scaleStrength);
+		for (PosInt j=0; j<chunkBlockSize; j++) {
+			for (PosInt k=0; k<nNearNeighborBlock[iblock+j]; k++) {
+				for (PosInt l=0; l<blockSize; l++) {
+					PosInt id = j*nearNeighborBlock*blockSize*blockSize + k*blockSize*blockSize + l*blockSize;
+					PosInt jtype;
+					for (PosInt q=0;q<nType;q++) {
+						if (l < typeAccCount[q]) {
+							jtype = q;
+							break;
+						}
+					}
+					for (PosInt m=0; m<blockSize; m++) {
+						PosInt itype;
+						for (PosInt q=0;q<nType;q++) {
+							if (m < typeAccCount[q]) {
+								itype = q;
+								break;
+							}
+						}
+        				conMat[i][id + m] *=  sRatioV1[jtype*2 + itype];
+					}
+				}
+			}
+		}
 		if (fV1_delayMat) fV1_delayMat.read(reinterpret_cast<char*>(delayMat[i]), chunkSize*sizeof(float));
 		else assert(fV1_delayMat);
+		/* debug noDelay
+		for (PosInt j=0; j< chunkSize; j++) {
+			delayMat[i][j] = 0;
+		}
+		*/
+		if (fV1_gapMat) fV1_gapMat.read(reinterpret_cast<char*>(gapMat[i]), gap_chunkSize*sizeof(float));
+		else assert(fV1_gapMat);
+		for (PosInt j=0; j<chunkBlockSize; j++) {
+			for (PosInt k=0; k<nNearNeighborBlock[iblock+j]; k++) {
+				for (PosInt l=0; l<nI; l++) {
+					PosInt id = j*nearNeighborBlock*nI*nI + k*nI*nI + l*nI;
+					PosInt jtype;
+					for (PosInt q=0; q<nTypeI; q++) {
+						if (l < typeAccCount[q+nTypeE] - nE) {
+							jtype = q;
+							break;
+						}
+					}
+					for (PosInt m=0; m<nI; m++) {
+						PosInt itype;
+						for (PosInt q=0; q<nTypeI; q++) {
+							if (m % nI < typeAccCount[q+nTypeE] - nE) {
+								itype = q;
+								break;
+							}
+						}
+						//
+						assert(gapMat[i][id+m] >= 0);
+						//if ((iblock+j)*nI + m == 960) {
+						//	ntmp++;
+						//	cout << gapMat[i][id + m] << ", ";
+						//	if (gapMat[i][id+m] > 0) {
+						//		ntmp_connected++;
+						//	}
+						//}//
+        				gapMat[i][id + m] *=  gapRatio[jtype*nTypeI + itype];
+						gapS[(iblock+j)*nI + m] += gapMat[i][id + m];
+					}
+				}
+			}
+		}
+		iblock += chunkBlockSize;
 	}
+
+	Float *d_gapS;
+	checkCudaErrors(cudaMalloc((void**)&d_gapS, sizeof(Float)*mI));
+	checkCudaErrors(cudaMemcpy(d_gapS, gapS, sizeof(Float)*mI, cudaMemcpyHostToDevice));
+	cout << "mean gapS = " << accumulate(gapS, gapS+mI, 0.0)/mI << "\n";
+	//cout << "connected gaps: " << ntmp_connected << "/"<< ntmp << "\n";
+	delete []gapS;
+
 	fV1_conMat.close();
 	fV1_delayMat.close();
-    cout << "conMat and delayMat set\n";
-    if (nChunk == matConcurrency) {
-        checkCudaErrors(cudaMemcpy(d_mat, p_conDelayMat, ccChunkMatSize*sizeof(float), cudaMemcpyHostToDevice));
-        // assert copy success
-        //Float mean, dis;
-        //size_t matOffset = 0;
-        //for (PosInt i=0; i<nChunk; i++) {
-        //    if (i>=iSizeSplit) chunkSize = remainChunkSize;
-        //    else chunkSize = maxChunkSize;
-        //    size_t mChunkSize = chunkSize*nearBlockSize;
-        //    mean = accumulate(p_conDelayMat+matOffset, p_conDelayMat + matOffset + mChunkSize, 0.0)/(chunkSize*blockSize); 
-        //    cout << "mean con: "  << mean << ", ";
-        //    matOffset += mChunkSize;
-        //    dis = accumulate(p_conDelayMat+matOffset, p_conDelayMat + matOffset + mChunkSize, 0.0)/(chunkSize*blockSize); 
-        //    cout << "mean delay: "  << dis << "\n";
-        //    matOffset += mChunkSize;
-        //}
-    }
-
-	vector<Size> nNeighborBlock(nblock);
-	vector<vector<PosInt>> neighborBlockId(nblock);
-	PosInt *nBlockId = new PosInt[nearNeighborBlock*nblock];
-
-    // neighboring blocks
-	fNeighborBlock.open(neighborBlock_filename + conV1_suffix, fstream::in | fstream::binary);
-	if (!fNeighborBlock) {
-		cout << "Cannot open or find " << neighborBlock_filename + conV1_suffix <<" to read V1 neighbor block info.\n";
-		return EXIT_FAILURE;
-	} else {
-		fNeighborBlock.read(reinterpret_cast<char*>(&nNeighborBlock[0]), nblock*sizeof(Size));
-		for (PosInt i=0; i<nblock; i++) {
-			if (nNeighborBlock[i] > 0) {
-				vector<PosInt> tmp(nNeighborBlock[i]);
-				fNeighborBlock.read(reinterpret_cast<char*>(&tmp[0]), nNeighborBlock[i]*sizeof(PosInt));
-				neighborBlockId[i] = tmp;
-				memcpy(&nBlockId[i*nearNeighborBlock], &tmp[0], nNeighborBlock[i]*sizeof(PosInt));
-			}
-            // assert copy success
-            //cout << "block " << i << " has " << nNeighborBlock[i] << " neighbors:\n";
-            //for (PosInt j=0; j<nNeighborBlock[i]; j++) {
-            //    cout << nBlockId[i*nearNeighborBlock + j];
-            //    if (j < nNeighborBlock[i] - 1) cout << ",";
-            //}
-            //cout << "\n";
-		}
-	}
-
-	Size* d_neighborInfo;
-	size_t neighborInfo_size = nblock*sizeof(Size) + nblock*nearNeighborBlock*sizeof(PosInt) + nV1*sizeof(Size);
-	checkCudaErrors(cudaMalloc((void**)&d_neighborInfo, neighborInfo_size));
-	Size* d_nNeighborBlock = d_neighborInfo;
-	PosInt* d_neighborBlockId = (PosInt*) (d_nNeighborBlock + nblock);
-	Size* d_nVec = (Size*) (d_neighborBlockId + nblock*nearNeighborBlock);
-
-	checkCudaErrors(cudaMemcpy(d_nNeighborBlock, &(nNeighborBlock[0]), nblock*sizeof(Size), cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_neighborBlockId, nBlockId, nblock*nearNeighborBlock*sizeof(PosInt), cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_nVec, &(nVec[0]), nV1*sizeof(Size), cudaMemcpyHostToDevice));
-
-	delete [] nBlockId;
-	usingGMem += neighborInfo_size;
-	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
-
+	fV1_gapMat.close();
+    cout << "conMat, delayMat and gapMat set\n";
+	
     if (manual) {
         auto get_dis = [] (double a, double b) {
             Float dis = static_cast<Float>(square_root(a*a + b*b));
@@ -2785,14 +3139,13 @@ int main(int argc, char **argv) {
                     cout << "the number of presynaptic neurons: " << preList.size() << " does not match with the number of connection strengths provided: " << sList.size() << " for the manual connections\n";
                 }
             }
-            nFar += sList.size();
             for (PosInt i = 0; i<postList.size(); i++) {
                 PosInt bid = postList[i]/blockSize;
                 PosInt pre_bid = preList[i]/blockSize;
                 bool blocked = false;
                 PosInt local_bid;
-                for (PosInt ib=0; ib<nNeighborBlock[bid]; ib++) {
-                    if (pre_bid == neighborBlockId[bid][ib]) {
+                for (PosInt ib=0; ib<nNearNeighborBlock[bid]; ib++) {
+                    if (pre_bid == allNeighborBlockId[bid][ib]) {
                         blocked = true;
                         local_bid = ib;
                         break;
@@ -2812,7 +3165,7 @@ int main(int argc, char **argv) {
                     PosIntL mid = static_cast<PosIntL>(bid)*nearNeighborBlock*blockSize*blockSize + static_cast<PosIntL>(local_bid)*blockSize*blockSize + preList[i]*blockSize + postList[i];
                     float old_s = conMat[iChunk][mid];
                     conMat[iChunk][mid] = static_cast<float>(sList[i]);
-                    cout << "changed the connection strength of post-id: " << postList[i] << " from pre-id: "  << preList[i] << " from " << old_s << " to " << sList[i] << ", at a distance of " << delayMat[iChunk][mid] << "mm\n";
+                    cout << "conMat changed the connection strength of post-id: " << postList[i] << " from pre-id: "  << preList[i] << " from " << old_s << " to " << sList[i] << ", at a distance of " << delayMat[iChunk][mid] << "mm\n";
                 } else {
                     bool exist = false;
                     PosInt vid;
@@ -2826,7 +3179,7 @@ int main(int argc, char **argv) {
                     if (exist) {
                         Float old_s = conVec[postList[i]][vid];
                         conVec[postList[i]][vid] = sList[i];
-                        cout << "changed the connection strength of post-id: " << postList[i] << " from pre-id: "  << preList[i] << " from " << old_s << " to " << sList[i] << ", at a distance of " << delayVec[postList[i]][vid] << "mm\n";
+                        cout << "nVec changed the connection strength of post-id: " << postList[i] << " from pre-id: "  << preList[i] << " from " << old_s << " to " << sList[i] << ", at a distance of " << delayVec[postList[i]][vid] << "mm\n";
                     } else {
                         nVec[postList[i]] += 1;
                         vecID[postList[i]].push_back(preList[i]);
@@ -2834,6 +3187,7 @@ int main(int argc, char **argv) {
                         Float distance = get_dis(V1_x[postList[i]]-V1_x[preList[i]], V1_y[postList[i]]-V1_y[preList[i]]);
                         delayVec[postList[i]].push_back(distance);
                         cout << "added connection to post-id: " << postList[i] << " from pre-id: "  << preList[i] << " with strength " << sList[i] << ", at a distance of " << distance << "mm\n";
+						nFar++;
                     }
                 }
             }
@@ -2846,9 +3200,27 @@ int main(int argc, char **argv) {
     }
 	Size trainDepth = static_cast<Size>(ceil((maxDistance/speedOfThought)/dt)) + 1;
 	cout << "spikeTrain retains spikes for " << trainDepth << " time steps for each neuron, calculated from a maximum connection distance " << maxDistance << " mm\n";
+
+    if (nChunk == matConcurrency) {
+        checkCudaErrors(cudaMemcpy(d_mat, p_conDelayGapMat, ccChunkMatSize*sizeof(float), cudaMemcpyHostToDevice));
+        //assert copy success
+        //Float mean, dis;
+        //size_t matOffset = 0;
+        //for (PosInt i=0; i<nChunk; i++) {
+        //    if (i>=iSizeSplit) chunkSize = remainChunkSize;
+        //    else chunkSize = maxChunkSize;
+        //    size_t mChunkSize = chunkSize*nearBlockSize;
+        //    mean = accumulate(p_conDelayGapMat+matOffset, p_conDelayGapMat + matOffset + mChunkSize, 0.0)/(chunkSize*blockSize); 
+        //    cout << "mean con: "  << mean << ", ";
+        //    matOffset += mChunkSize;
+        //    dis = accumulate(p_conDelayGapMat+matOffset, p_conDelayGapMat + matOffset + mChunkSize, 0.0)/(chunkSize*blockSize); 
+        //    cout << "mean delay: "  << dis << "\n";
+        //    matOffset += mChunkSize;
+        //}
+    }
 	delete []conMat;
 	delete []delayMat;
-    
+	delete []gapMat;
     // a spikeTrain container that retains spikes before it reaches the post-synaptic neuron 
     // TODO: learning distant connections 
     vector<vector<vector<Float>>> fSpikeTrain(nV1, vector<vector<Float>>());
@@ -2879,6 +3251,37 @@ int main(int argc, char **argv) {
         assert(accumulate(nVec.begin(), nVec.end(), 0.0) == 0);
     }
     cout << "vector connections set\n";
+	cout << "	nFar = " << nFar << ", nGapFar = " << nGapFar<< "\n";
+
+
+	vector<vector<vector<Float>>> fGapTrain(mI, vector<vector<Float>>());
+    vector<vector<Size>> fGapDepth(mI, vector<Size>());
+    vector<vector<PosInt>> fGapCurrenSlot(mI, vector<PosInt>());
+
+    Float fMaxGapDistance = 0;
+    for (PosInt i=0; i<mI; i++) {
+        vector<vector<Float>> preGapTrain(nGapVec[i], vector<Float>());
+        fGapTrain[i] = preGapTrain;
+        for (PosInt j=0; j<nGapVec[i]; j++) {
+            fGapDepth[i].push_back(static_cast<Size>(ceil((gapDelayVec[i][j]/speedOfThought)/dt))+1);
+            fGapCurrenSlot[i].push_back(0);
+            vector<Float> iPreGapTrain(fGapDepth[i][j], -1.0);
+            fGapTrain[i][j] = iPreGapTrain;
+        }
+        if (nGapVec[i] > 0) {
+            Float current_maxDistance = *max_element(gapDelayVec[i].begin(), gapDelayVec[i].end());
+	        if (fMaxGapDistance < current_maxDistance) {
+                fMaxGapDistance = current_maxDistance;
+            }
+        }
+    }
+    if (fMaxGapDistance > 0) {
+        Size maxGapDepth = static_cast<Size>(ceil((fMaxGapDistance/speedOfThought)/dt));
+	    cout << "fGapTrain retains maximum " << fMaxGapDistance << " time steps for farther gap junctions, calculated from a maximum distance of " << fMaxGapDistance << " mm\n";
+    } else {
+        assert(accumulate(nGapVec.begin(), nGapVec.end(), 0.0) == 0);
+    }
+    cout << "vector gap junctions set\n";
 
 	// pinned memory on CPU for heavy usages on
 	// spikeTraie, voltage, gFF, gE, hE, gI, hI
@@ -2889,7 +3292,8 @@ int main(int argc, char **argv) {
 	size_t wSize = vSize;
 	size_t depSize = vSize;
     size_t ffSize = 2*nV1*ngTypeFF*sizeof(Float);
-	size_t pinnedSize = depSize + trainSize*sizeof(Float) + vSize + ghSize + ffSize;
+	size_t gapSize = mI*sizeof(Float);
+	size_t pinnedSize = depSize + trainSize*sizeof(Float) + vSize + ghSize + ffSize + gapSize;
 	if (iModel == 1) {
 		pinnedSize += wSize;
 	}
@@ -2929,18 +3333,29 @@ int main(int argc, char **argv) {
 		hE[i] = gI[i] + iSize;
 		hI[i] = hE[i] + eSize;
 	}
-    assert(hI[nChunk-1] + iSize == pinnedMem + pinnedSize/sizeof(Float));
+
+	Float **gap = new Float*[nChunk];
+	gap[0] = hI[nChunk-1] + iSize;
+	Size gap_size = maxChunkSize*nI;
+	for (PosInt i = 1; i<nChunk; i++) {
+		if (i >= iSizeSplit) {
+			gap_size = remainChunkSize*nI;
+		}
+		gap[i] = gap[i-1] + gap_size;
+	}
+
+    assert(gap[nChunk-1] + gap_size == pinnedMem + pinnedSize/sizeof(Float));
 
 	// GPU arrays to receive g,h sum from conVec (pinned), FF not needed
-	Float *d_gh;
-	checkCudaErrors(cudaMalloc((void**)&d_gh, ghSize));
+	Float *d_gh_gap;
+	checkCudaErrors(cudaMalloc((void**)&d_gh_gap, ghSize + gapSize));
 	Float **d_gEt = new Float*[nChunk];
 	Float **d_gIt = new Float*[nChunk];
 	Float **d_hEt = new Float*[nChunk];
 	Float **d_hIt = new Float*[nChunk];
 	eSize = maxChunkSize*blockSize*ngTypeE;
 	iSize = maxChunkSize*blockSize*ngTypeI;
-	d_gEt[0] = d_gh;
+	d_gEt[0] = d_gh_gap;
 	d_gIt[0] = d_gEt[0] + eSize;
 	d_hEt[0] = d_gIt[0] + iSize;
 	d_hIt[0] = d_hEt[0] + eSize;
@@ -2954,24 +3369,35 @@ int main(int argc, char **argv) {
 		d_hEt[i] = d_gIt[i] + iSize;
 		d_hIt[i] = d_hEt[i] + eSize;
 	}
-    assert(d_hIt[nChunk-1] + iSize == d_gh + ghSize/sizeof(Float));
-	usingGMem += ghSize;
+
+	Float **d_gapt = new Float*[nChunk];
+	gap_size = maxChunkSize*nI;
+	d_gapt[0] = d_hIt[nChunk - 1] + iSize;
+	for (PosInt i = 1; i<nChunk; i++) {
+		if (i >= iSizeSplit) {
+			gap_size = remainChunkSize*nI;
+		}
+		d_gapt[i] = d_gapt[i-1] + gap_size;
+	}
+
+    assert(d_gapt[nChunk-1] + gap_size == d_gh_gap + (ghSize + gapSize)/sizeof(Float));
+	usingGMem += ghSize + gapSize;
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
-	// v, g (D2H), h (D only)
-	Float *d_vgh;
-	size_t totalSize = vSize + depSize + ghSize + ffSize;
+	// v, g (D2H), h (D only) gap (D2H)
+	Float *d_vgh_gap;
+	size_t totalSize = vSize + depSize + ghSize + ffSize + gapSize;
 	if (iModel == 1) {
 		totalSize += wSize; 
 	}
-	checkCudaErrors(cudaMalloc((void**)&d_vgh, totalSize));
+	checkCudaErrors(cudaMalloc((void**)&d_vgh_gap, totalSize));
 	usingGMem += totalSize;
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	Float *d_depC;
 	Float *d_w;
 	Float *d_v;
-	d_depC = d_vgh;
+	d_depC = d_vgh_gap;
 	if (iModel == 0) {
 		d_v = d_depC + nV1;
 	}
@@ -3001,10 +3427,20 @@ int main(int argc, char **argv) {
 		d_hE[i] = d_gI[i] + iSize;
 		d_hI[i] = d_hE[i] + eSize;
 	}
-    assert(d_hI[nChunk-1] + iSize == d_vgh + totalSize/sizeof(Float));
+
+	Float **d_gap = new Float*[nChunk];
+	gap_size = maxChunkSize*nI;
+	d_gap[0] = d_hI[nChunk - 1] + iSize;
+	for (PosInt i = 1; i<nChunk; i++) {
+		if (i >= iSizeSplit) {
+			gap_size = remainChunkSize*nI;
+		}
+		d_gap[i] = d_gap[i-1] + gap_size;
+	}
+    assert(d_gap[nChunk-1] + gap_size == d_vgh_gap + totalSize/sizeof(Float));
 
     // pass d_gE to kernels
-    Float **dd_gE, **dd_gI, **dd_hE, **dd_hI;
+    Float **dd_gE, **dd_gI, **dd_hE, **dd_hI, **dd_gap;
     checkCudaErrors(cudaMalloc((void**)&dd_gE, nChunk*sizeof(Float*)));
     checkCudaErrors(cudaMemcpy(dd_gE, d_gE, nChunk*sizeof(Float*), cudaMemcpyHostToDevice));
     checkCudaErrors(cudaMalloc((void**)&dd_gI, nChunk*sizeof(Float*)));
@@ -3013,6 +3449,8 @@ int main(int argc, char **argv) {
     checkCudaErrors(cudaMemcpy(dd_hE, d_hE, nChunk*sizeof(Float*), cudaMemcpyHostToDevice));
     checkCudaErrors(cudaMalloc((void**)&dd_hI, nChunk*sizeof(Float*)));
     checkCudaErrors(cudaMemcpy(dd_hI, d_hI, nChunk*sizeof(Float*), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMalloc((void**)&dd_gap, nChunk*sizeof(Float*)));
+    checkCudaErrors(cudaMemcpy(dd_gap, d_gap, nChunk*sizeof(Float*), cudaMemcpyHostToDevice));
     usingGMem += nChunk*sizeof(Float*)*4;
     cout << "conductance setup in chunks\n";
 
@@ -3030,6 +3468,9 @@ int main(int argc, char **argv) {
 
     Float *d_tonicDep;
     checkCudaErrors(cudaMalloc((void**)&d_tonicDep, nV1*sizeof(Float)));
+	Float *last_noise;
+    checkCudaErrors(cudaMalloc((void**)&last_noise, nV1*sizeof(Float)));
+	checkCudaErrors(cudaMemset(last_noise, 0, nV1*sizeof(Float)));
 
     checkCudaErrors(cudaMalloc((void**)&rGenCond, nV1*sizeof(curandStateMRG32k3a)));
     checkCudaErrors(cudaMalloc((void**)&rNoisy, nV1*sizeof(curandStateMRG32k3a)));
@@ -3070,7 +3511,27 @@ int main(int argc, char **argv) {
 		assert(discard == nV1);
     	fConStats.read(reinterpret_cast<char*>(&ExcRatio[0]), nV1*sizeof(float));
 		fConStats.close();
-		Float maxExcRatio = *max_element(ExcRatio.begin(), ExcRatio.end());
+		Float* minExcRatio = new Float[nType];
+		Float* maxExcRatio = new Float[nType];
+		for (PosInt i=0; i<nType; i++) {
+			maxExcRatio[i] = 0;
+			minExcRatio[i] = 1;
+		}
+		for (PosInt i=0; i<nblock; i++) {
+			for (PosInt j=0; j<nType; j++) {
+				Float tmp_max = *max_element(ExcRatio.begin() + i*blockSize + typeAcc0[j], ExcRatio.begin() + i*blockSize + typeAcc0[j+1]);
+				if (tmp_max > maxExcRatio[j]) {
+					maxExcRatio[j] = tmp_max;
+				}
+				Float tmp_min = *min_element(ExcRatio.begin() + i*blockSize + typeAcc0[j], ExcRatio.begin() + i*blockSize + typeAcc0[j+1]);
+				if (tmp_min < minExcRatio[j]) {
+					minExcRatio[j] = tmp_min;
+				}
+			}
+		}
+		for (PosInt j=0; j<nType; j++) {
+			cout << "ExcRatio type " << j << ": [" << minExcRatio[j] << ", " << maxExcRatio[j] << "]\n";
+		}
 		for (PosInt i=0; i<nblock; i++) {
 			PosInt iType = 0;
 			for (PosInt j=0; j<blockSize; j++) {
@@ -3078,13 +3539,17 @@ int main(int argc, char **argv) {
 				if (j == typeAccCount[iType]) {
 					iType++;
 				}
-				iTonicDep[id] = tonicDep[iType]*ExcRatio[id]/maxExcRatio;
+				if (maxExcRatio[iType] > minExcRatio[iType]) {
+					iTonicDep[id] = tonicDep[iType]*(minTonicRatio[iType] + (1-minTonicRatio[iType]) * (ExcRatio[id]-minExcRatio[iType])/(maxExcRatio[iType]-minExcRatio[iType]));
+				} else {
+					iTonicDep[id] = tonicDep[iType];
+				}
 				assert(!std::isnan(ExcRatio[id]));
 				assert(!std::isnan(iTonicDep[id]));
-				assert(iTonicDep[id] >= 0);
-				assert(iTonicDep[id] <= 1);
 			}
 		}
+		delete []minExcRatio;
+		delete []maxExcRatio;
 		checkCudaErrors(cudaMemcpy(d_tonicDep,  &(iTonicDep[0]), nV1*sizeof(Float), cudaMemcpyHostToDevice));
 	}
 
@@ -3117,6 +3582,7 @@ int main(int argc, char **argv) {
 			else cout << ", ";
         }
 	}
+
     Float *d_sp0;
 	checkCudaErrors(cudaMalloc((void**)&d_sp0, nType*2*sizeof(Float)));
 	checkCudaErrors(cudaMemcpy(d_sp0, sp0,  nType*2*sizeof(Float), cudaMemcpyHostToDevice));
@@ -3124,18 +3590,29 @@ int main(int argc, char **argv) {
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 	
 	// for spikeTrain D2H (only output the current slot to file)
-	Float *d_ogh;
-	Size ncond = nV1*(ngTypeE + ngTypeI);
 	
+	Float *d_ogh;
+	Size ncond = (nE*ngTypeE + nI*ngTypeI)*nblock;
+	checkCudaErrors(cudaMalloc((void**)&d_ogh, 2*ncond*sizeof(Float)));
+	checkCudaErrors(cudaMemset(d_ogh, 0, 2*ncond*sizeof(Float)));
+	Float *d_og = d_ogh;
+	Float *d_oh = d_ogh + ncond;
+	Float *ogh = new Float[ncond*2];
+	Float *og = ogh;
+	Float *oh = ogh + ncond;
+    usingGMem += 2*ncond*sizeof(Float);
+	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	Size max_LGNperV1;
 	Float* LGN_V1_s;
-	read_LGN(LGN_V1_s_filename + conLGN_suffix, LGN_V1_s, max_LGNperV1, &(sRatioLGN[0]), &(typeAccCount[0]), nType, learnData_FF, nV1 <= 32); // assign LGN_V1_s and max_LGNperV1
+	read_LGN(LGN_V1_s_filename + conLGN_suffix, LGN_V1_s, max_LGNperV1, &(sRatioLGN[0]), &(typeAccCount[0]), nType, learnData_FF, print_log); // assign LGN_V1_s and max_LGNperV1
 	Float* sLGN;
 	size_t sLGN_size = static_cast<size_t>(max_LGNperV1)*nV1*sizeof(Float);
 	checkCudaErrors(cudaMalloc((void**)&sLGN, sLGN_size));
 	usingGMem += sLGN_size;
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
+	Float tmp = 0.0;
+	cout << "sLGN = [" << *min_element(LGN_V1_s, LGN_V1_s + max_LGNperV1*nV1) << ", " << accumulate(LGN_V1_s, LGN_V1_s + max_LGNperV1*nV1, tmp)/(nV1*max_LGNperV1) << ", " << *max_element(LGN_V1_s, LGN_V1_s + max_LGNperV1*nV1) << "] < " << gmaxLGN[0] * sRatioLGN[0] << "\n";
 
 	checkCudaErrors(cudaMemcpy(sLGN, LGN_V1_s, sLGN_size, cudaMemcpyHostToDevice));
     if (!learnData_FF) { // free memory if not used later
@@ -3158,6 +3635,7 @@ int main(int argc, char **argv) {
         avgLGNperV1 += LGN_V1_ID[i].size();
     }
     avgLGNperV1 /= nV1;
+
 	cout << "maximum LGN per V1: " << max_LGNperV1 << ", " << avgLGNperV1 << " on average\n";
 	size_t surfacePosSize = static_cast<size_t>(2*max_LGNperV1)*nV1*sizeof(int) + nV1*sizeof(Size);
 	char* surfacePos = new char[surfacePosSize];
@@ -3165,7 +3643,7 @@ int main(int argc, char **argv) {
 	Size* nLGNperV1 = (Size*) (surface_xy + 2*max_LGNperV1*nV1);
 	getLGN_V1_surface(sxyID, LGN_V1_ID, surface_xy, nLGNperV1, max_LGNperV1, nLGN);
     cout << "LGN->V1 surface constructed\n";
-
+	
 	// release memory from LGN_V1_ID and sxyID
 	for (PosInt i=0; i<nV1; i++) {
 		vector<PosInt>().swap(LGN_V1_ID[i]);
@@ -3258,11 +3736,13 @@ int main(int argc, char **argv) {
     	    	}
 			}
 			if (use_v0) {
-    			auto vBound = get_excRangeBound(vI, vT[i]);
-    			auto get_v0 = get_rand_from_norm(rGen_initV1, v0[i*2+0], v0[i*2+1], vBound);
+    			//auto get_v0 = get_rand_from_norm(rGen_initV1, v0[i*2+0], v0[i*2+1], vBound);
+		    	auto uniform = uniform_real_distribution<Float>(vR[i], vT[i]);
+    			auto get_v0 = [&rGen_initV1, &uniform]() {
+					return uniform(rGen_initV1);
+				};
     			for (PosInt iblock = 0; iblock < nblock; iblock++) {
 				    generate(h_v0 + iblock*blockSize + typeAcc0[i], h_v0 + iblock*blockSize + typeAcc0[i+1], get_v0);
-    			    assert(h_v0 + iblock*blockSize + typeAcc0[i+1] <= h_v0 + nV1);
     			}
 			} else {
     			for (PosInt iblock = 0; iblock < nblock; iblock++) {
@@ -3319,11 +3799,11 @@ int main(int argc, char **argv) {
 		cout << "gFF0 = ["  << gFFMin << ", " << gFFMean << ", " << gFFMax << "]\n";
 
 		if (iModel == 0) {
-    		checkCudaErrors(cudaMemcpy(d_depC + nV1, v, vSize + ffSize, cudaMemcpyHostToDevice));
+    		checkCudaErrors(cudaMemcpy(d_v, v, vSize + ffSize, cudaMemcpyHostToDevice));
     		cout << "v, gFF...\n"; 
 		} 
 		if (iModel == 1) {
-    		checkCudaErrors(cudaMemcpy(d_depC + nV1, w, wSize + vSize + ffSize, cudaMemcpyHostToDevice));
+    		checkCudaErrors(cudaMemcpy(d_w, w, wSize + vSize + ffSize, cudaMemcpyHostToDevice));
     		cout << "w, v, gFF...\n"; 
 		}
 
@@ -3368,14 +3848,33 @@ int main(int argc, char **argv) {
 
     	checkCudaErrors(cudaMemcpy(d_gE[0], gE[0], ghSize, cudaMemcpyHostToDevice));
     	cout << "gE, gI...\n"; 
+		{ // reinitialize to 0 for summing distant conductance
+    		Size chunkSize = maxChunkSize*blockSize;
+			for (PosInt i = 0; i < nChunk; i++) {
+			    if (i >= iSizeSplit) {
+    		    	chunkSize = remainChunkSize*blockSize;
+				}
+				for (PosInt j = 0; j < chunkSize; j++) {
+					for (PosInt ig = 0; ig < ngTypeE; ig++) {
+						gE[i][ig*chunkSize + j] = 0.0;
+						hE[i][ig*chunkSize + j] = 0.0;
+					}
+					for (PosInt ig = 0; ig < ngTypeI; ig++) {
+						gI[i][ig*chunkSize + j] = 0.0;
+						hI[i][ig*chunkSize + j] = 0.0;
+					}
+				}
+			}
+		}
+
 
 		cout << "mean(gE0) =  " << gEMean/nV1/ngTypeE << "\n";
 		cout << "mean(gI0) =  " << gIMean/nV1/ngTypeI << "\n";
 
-    	rand_spInit<<<nblock, blockSize>>>(tBack, d_spikeTrain, d_v, d_w, d_nLGNperV1, d_sp0, typeAcc, d_vR, d_tRef, d_tau_w, d_a, d_b, rGenCond, rNoisy, seed, nV1, nType, SCsplit, trainDepth, dt, iModel);
+    	rand_spInit<<<nblock, blockSize>>>(tBack, d_spikeTrain, d_og, d_oh, d_v, d_w, d_nLGNperV1, d_sp0, typeAcc, d_vR, d_tRef, d_tau_w, d_a, d_b, rGenCond, rNoisy, seed, nV1, nType, SCsplit, trainDepth, dt, condE, condI, ngTypeE, ngTypeI, nE, nI, noDelay, iModel);
     	checkCudaErrors(cudaDeviceSynchronize());
 
-		//debug
+		/*debug
     		checkCudaErrors(cudaMemcpy(spikeTrain, d_spikeTrain, trainSize*sizeof(Float), cudaMemcpyDeviceToHost));
 			for (PosInt i = 0; i<trainDepth; i++) {
 				for (PosInt j=0; j<nV1; j++) {
@@ -3395,7 +3894,7 @@ int main(int argc, char **argv) {
 					assert(!std::isnan(w[j]));
 				}
 			}
-		//
+		*/
     	cout << "spiking... V1 initialized\n"; 
     	#ifdef CHECK
     	    getLastCudaError("spiking initialized");
@@ -3415,7 +3914,7 @@ int main(int argc, char **argv) {
 				for (PosInt i = 0; i<trainDepth; i++) {
 					for (PosInt j=0; j<nV1; j++) {
 						if (spikeTrain[i*nV1 + j] < 1) {
-							assert(spikeTrain[i*nV1 + j] == 0);
+							assert(spikeTrain[i*nV1 + j] >= 1 || spikeTrain[i*nV1 + j] < *max_element(vThres.begin(), vThres.end()));
 						}
 					}
 				}
@@ -3518,6 +4017,7 @@ int main(int argc, char **argv) {
 		    		fRawData.write((char*) &nt, sizeof(Size));
 		    		fRawData.write((char*) &nV1, sizeof(Size));
                 	fRawData.write((char*) &iModel, sizeof(int));
+		    		fRawData.write((char*) &mI, sizeof(Size));
                 	PosInt iHwrite = static_cast<PosInt>(hWrite);
                 	fRawData.write((char*) &iHwrite, sizeof(PosInt));
 		    		fRawData.write((char*) &ngTypeFF, sizeof(Size));
@@ -3794,15 +4294,32 @@ int main(int argc, char **argv) {
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 	cout << "Using "<< usingGMem/1024.0/1024.0 << " Mb from a total of " << deviceProps.totalGlobalMem/1024.0/1024.0 << " Mb, remaining " << (deviceProps.totalGlobalMem - usingGMem)/1024.0/1024.0 << " Mb\n";
 
+	size_t stackSize = 3 * sizeof(Float) * (max_ngTypeE + max_ngTypeI) + 20*sizeof(Float);
+	cout << "perStackSize = " << stackSize << "bytes.\n";
+	stackSize = 1024;
+	size_t totalHeapSize = stackSize * maxChunkSize*blockSize * deviceProps.multiProcessorCount;
+	cout << "totalHeapSize = " << totalHeapSize/1024/1024 << "Mb.\n";
+
+    checkCudaErrors(cudaDeviceSetLimit(cudaLimitStackSize, stackSize));
+    checkCudaErrors(cudaDeviceSetLimit(cudaLimitMallocHeapSize, totalHeapSize));
+
+
+	cudaTextureObject_t L_retinaInput = 0;
+	cudaTextureObject_t M_retinaInput = 0;
+	cudaTextureObject_t S_retinaInput = 0;
+	init_layer_obj(L_retinaInput, cuArr_L);
+	init_layer_obj(M_retinaInput, cuArr_M);
+	init_layer_obj(S_retinaInput, cuArr_S);
+
 	// set params for layerd texture memory
-	init_layer(L_retinaInput);
-	init_layer(M_retinaInput);
-	init_layer(S_retinaInput);
+	//init_layer(L_retinaInput);
+	//init_layer(M_retinaInput);
+	//init_layer(S_retinaInput);
 
 	// bind texture to cudaArrays
-	checkCudaErrors(cudaBindTextureToArray(L_retinaInput, cuArr_L, channelDesc));
-	checkCudaErrors(cudaBindTextureToArray(M_retinaInput, cuArr_M, channelDesc));
-	checkCudaErrors(cudaBindTextureToArray(S_retinaInput, cuArr_S, channelDesc));
+	//checkCudaErrors(cudaBindTextureToArray(L_retinaInput, cuArr_L, channelDesc));
+	//checkCudaErrors(cudaBindTextureToArray(M_retinaInput, cuArr_M, channelDesc));
+	//checkCudaErrors(cudaBindTextureToArray(S_retinaInput, cuArr_S, channelDesc));
 
 	float* LMS = new float[nPixelPerFrame*sizeof(float)*nChannel]; // memory head
 
@@ -4022,12 +4539,12 @@ int main(int argc, char **argv) {
 	checkCudaErrors(cudaEventCreate(&magnoDone));
 	checkCudaErrors(cudaEventCreate(&learnFF_event));
 
-	cudaEvent_t *gReady1 = new cudaEvent_t[nChunk];
-	cudaEvent_t *gReady2 = new cudaEvent_t[nChunk];
+	cudaEvent_t *gReady = new cudaEvent_t[nChunk];
+	cudaEvent_t *gapReady = new cudaEvent_t[nChunk];
 	cudaEvent_t *matReady = new cudaEvent_t[matConcurrency];
 	for (PosInt i = 0; i < nChunk; i++) {
-		checkCudaErrors(cudaEventCreate(&gReady1[i]));
-		checkCudaErrors(cudaEventCreate(&gReady2[i]));
+		checkCudaErrors(cudaEventCreate(&gReady[i]));
+		checkCudaErrors(cudaEventCreate(&gapReady[i]));
         if (i < matConcurrency) checkCudaErrors(cudaEventCreate(&matReady[i]));
 	}
 	cudaEvent_t *eTmp = new cudaEvent_t[nChunk];
@@ -4045,6 +4562,11 @@ int main(int argc, char **argv) {
 		checkCudaErrors(cudaStreamCreate(&stream[i]));
 	}
 
+	cudaStream_t *gapStream = new cudaStream_t[nChunk];
+	for (PosInt i = 0; i < nChunk; i++) {
+		checkCudaErrors(cudaStreamCreate(&gapStream[i]));
+	}
+
 	cudaStream_t ostream[3];
 	for (PosInt i = 0; i < 3; i++) {
 		checkCudaErrors(cudaStreamCreate(&ostream[i]));
@@ -4058,11 +4580,6 @@ int main(int argc, char **argv) {
     bool farSpiked = false;
 	PosInt currentTimeSlot;
 	Float odt = ot*dt/1000.0;// get interval in sec
-	if (!restore.empty() && !asInit) {
-		cout << "simulation resumes from t = " << it0*dt << "...\n";
-	} else {
-		cout << "simulation starts: \n";
-	}
     int varSlot = 0;
     InputActivation typeStatus;
     PosInt iStatus = 0;
@@ -4080,10 +4597,6 @@ int main(int argc, char **argv) {
 		}
 	}
 	// 	V1
-	size_t r_vghSize = ghSize + ffSize + vSize;
-	if (iModel == 1) {
-		r_vghSize += wSize;
-	}
 	size_t V1_snapShotSize = 2*nV1*sizeof(curandStateMRG32k3a) + nV1*sizeof(Float);
 	// total
 	size_t deviceMemorySize = LGN_snapShotSize + V1_snapShotSize;
@@ -4281,19 +4794,16 @@ int main(int argc, char **argv) {
 					}
 				}
 			}
-			if (iModel == 0) {
-				fSnapshot.read(reinterpret_cast<char*>(v), r_vghSize);
-				checkCudaErrors(cudaMemcpy(d_v, v, r_vghSize, cudaMemcpyHostToDevice));
-				for (PosInt j=0; j<r_vghSize/sizeof(Float); j++) {
-					assert(!std::isnan(v[j]));
-				}
-			} 
 			if (iModel == 1) {
-				fSnapshot.read(reinterpret_cast<char*>(w), r_vghSize);
-				checkCudaErrors(cudaMemcpy(d_w, w, r_vghSize, cudaMemcpyHostToDevice));
-				for (PosInt j=0; j<r_vghSize/sizeof(Float); j++) {
-					assert(!std::isnan(w[j]));
-				}
+				assert(totalSize == vSize + depSize + ghSize + ffSize + gapSize + wSize);
+			}
+			if (iModel == 0) {
+				assert(totalSize == vSize + depSize + ghSize + ffSize + gapSize);
+			}
+			fSnapshot.read(reinterpret_cast<char*>(depC), totalSize);
+			checkCudaErrors(cudaMemcpy(d_depC, depC, totalSize, cudaMemcpyHostToDevice));
+			for (PosInt j=0; j<totalSize/sizeof(Float); j++) {
+				assert(!std::isnan(depC[j]));
 			}
 			fSnapshot.close();
 			cout << "succesfully restored simulation snapshot from " << restore << "\n";
@@ -4307,8 +4817,8 @@ int main(int argc, char **argv) {
     	        //if (matConcurrency > iSizeSplit) initial_size = iSizeSplit * maxChunkSize + (matConcurrency-iSizeSplit)*remainChunkSize;
     	        //else initial_size = matConcurrency*maxChunkSize;
     	        //auto start = chrono::high_resolution_clock::now();
-    	        //memcpy((void*)(p_conDelayMat), (void*) conDelayMat[0], 2*initial_size*nearBlockSize*sizeof(Float));
-    	        memcpy((void*)(p_conDelayMat), (void*) conDelayMat[0], ccChunkMatSize*sizeof(float));
+    	        //memcpy((void*)(p_conDelayGapMat), (void*) conDelayGapMat[0], 2*initial_size*nearBlockSize*sizeof(Float));
+    	        memcpy((void*)(p_conDelayGapMat), (void*) conDelayGapMat[0], ccChunkMatSize*sizeof(float));
     	        //auto end = chrono::high_resolution_clock::now();
     	        //double time_taken = chrono::duration_cast<chrono::nanoseconds>(end-start).count();
     	        //cout << "memcpy of " << 2*initial_size*nearBlockSize*sizeof(Float)/1024.0/1024.0 << " Mb took " << time_taken/1e6 << " ms\n";
@@ -4321,6 +4831,7 @@ int main(int argc, char **argv) {
     	    for (PosInt i = 0; i < nChunk; i++) {
     	        if (i >= iSizeSplit) chunkSize = remainChunkSize;
     	        size_t mChunkSize = chunkSize * nearBlockSize;
+    	        size_t gap_mChunkSize = chunkSize * gap_nearBlockSize;
     	        if (i%matConcurrency == 0) {
     	            p_total += p_offset;
     	            p_offset = 0;
@@ -4334,7 +4845,7 @@ int main(int argc, char **argv) {
     	    
     	                cudaEventSynchronize(matReady[i%matConcurrency]);
     	                //auto start = chrono::high_resolution_clock::now();
-    	                memcpy((void*)(p_conDelayMat + p_offset), (void*) conDelayMat[i], 2*mChunkSize*sizeof(float));
+    	                memcpy((void*)(p_conDelayGapMat + p_offset), (void*) conDelayGapMat[i], (2*mChunkSize+gap_mChunkSize)*sizeof(float));
     	                //auto end = chrono::high_resolution_clock::now();
     	                //double time_taken = chrono::duration_cast<chrono::nanoseconds>(end-start).count();
     	                //cout << "memcpy of " << 2*mChunkSize*sizeof(Float)/1024.0/1024.0 << " Mb took " << time_taken/1e6 << " ms\n";
@@ -4345,9 +4856,9 @@ int main(int argc, char **argv) {
     	        }
     	        if (matConcurrency < nChunk || learnData_V1) {
     	        #ifdef CHECK
-    	            checkCudaErrors(cudaMemcpyAsync(d_conDelayMat[i%matConcurrency], p_conDelayMat + p_offset, 2*mChunkSize*sizeof(float), cudaMemcpyHostToDevice, stream[i%matConcurrency]));
+    	            checkCudaErrors(cudaMemcpyAsync(d_conDelayGapMat[i%matConcurrency], p_conDelayGapMat + p_offset, (2*mChunkSize+gap_mChunkSize)*sizeof(float), cudaMemcpyHostToDevice, stream[i%matConcurrency]));
     	        #else
-    	            cudaMemcpyAsync(d_conDelayMat[i%matConcurrency], p_conDelayMat + p_offset, 2*mChunkSize*sizeof(float), cudaMemcpyHostToDevice, stream[i%matConcurrency]);
+    	            cudaMemcpyAsync(d_conDelayGapMat[i%matConcurrency], p_conDelayGapMat + p_offset, (2*mChunkSize+gap_mChunkSize)*sizeof(float), cudaMemcpyHostToDevice, stream[i%matConcurrency]);
     	        #endif
     	        #ifdef SYNC
     	            checkCudaErrors(cudaDeviceSynchronize());
@@ -4360,31 +4871,30 @@ int main(int argc, char **argv) {
     	                else cout << "after cudamemcpy last recal_G still running\n";
     	            }
     	        */
-    	        float* d_conMat = d_conDelayMat[i%matConcurrency];
+    	        float* d_conMat = d_conDelayGapMat[i%matConcurrency];
     	        float* d_delayMat = d_conMat + mChunkSize;
+				float* d_gapMat = d_delayMat + mChunkSize;
 				if (noDelay) {
-    	        	recal_G_mat<<< chunkSize, blockSize, 0, stream[i%matConcurrency]>>> (
-    	        	        d_ogh,
-							d_ogh + ncond,
-    	        	        d_conMat, d_delayMat,
-    	        	        d_nNeighborBlock+block_offset, d_neighborBlockId + block_offset*nearNeighborBlock,
-    	        	        d_gE[i], d_gI[i], d_hE[i], d_hI[i],
+    	        	recal_G_mat_nd<<< chunkSize, blockSize, 0, stream[i%matConcurrency]>>> (
+							d_spikeTrain + nV1*currentTimeSlot, d_og, d_oh,
+    	        	        d_conMat, d_gapMat,
+    	        	        d_nNearNeighborBlock+block_offset, d_neighborBlockId + block_offset*nearNeighborBlock,
+    	        	        d_gE[i], d_gI[i], d_hE[i], d_hI[i], d_gap[i],
     	        	        vAvgE, vLTP_E, vLTD_E, vTripE, vSTDP_QE, vSTDP_QI, d_pE, d_pI, typeAcc,
-    	        	        rGenCond, d_synFail, d_synPerCon,
+    	        	        rGenCond, d_synFail, d_synPerCon, d_vThres,
     	        	        dt, condE, condI, ngTypeE, ngTypeI,
-    	        	        0, trainDepth,
-    	        	        nearNeighborBlock, nE, nI, nV1, speedOfThought, learning, block_offset, nType, lE, lQ, i);
-				else {
+    	        	        nearNeighborBlock, nE, nI, nV1, learning, block_offset, nType, nTypeE, nTypeI, lE, lQ, i);
+				} else {
     	        	recal_G_mat<<< chunkSize, blockSize, 0, stream[i%matConcurrency]>>> (
     	        	        d_spikeTrain,
-    	        	        d_conMat, d_delayMat,
-    	        	        d_nNeighborBlock+block_offset, d_neighborBlockId + block_offset*nearNeighborBlock,
-    	        	        d_gE[i], d_gI[i], d_hE[i], d_hI[i],
+    	        	        d_conMat, d_delayMat, d_gapMat,
+    	        	        d_nNearNeighborBlock+block_offset, d_neighborBlockId + block_offset*nearNeighborBlock,
+    	        	        d_gE[i], d_gI[i], d_hE[i], d_hI[i], d_gap[i],
     	        	        vAvgE, vLTP_E, vLTD_E, vTripE, vSTDP_QE, vSTDP_QI, d_pE, d_pI, typeAcc,
-    	        	        rGenCond, d_synFail, d_synPerCon,
+    	        	        rGenCond, d_synFail, d_synPerCon, d_vThres,
     	        	        dt, condE, condI, ngTypeE, ngTypeI,
     	        	        0, trainDepth,
-    	        	        nearNeighborBlock, nE, nI, nV1, speedOfThought, learning, block_offset, nType, lE, lQ, i);
+    	        	        nearNeighborBlock, nE, nI, nV1, speedOfThought, learning, block_offset, nType, nTypeE, nTypeI, lE, lQ, i);
 				}
     	    
     	        //cudaEventRecord(eTmp[i], stream[i]);
@@ -4395,12 +4905,13 @@ int main(int argc, char **argv) {
     	        checkCudaErrors(cudaDeviceSynchronize());
     	    #endif
     	        block_offset += chunkSize;
-    	        p_offset += 2*mChunkSize;
+    	        p_offset += (2*mChunkSize + gap_mChunkSize);
     	    }
     	    assert(block_offset == nblock);
-    	    assert(p_total + p_offset == matSize*2);
-    	    for (PosInt i = 0; i < matConcurrency; i++) {
-    	        cudaEventRecord(gReady1[i], stream[i]);
+    	    assert(p_total + p_offset == (matSize*2 + gap_matSize));
+    	    for (PosInt i = 0; i < matConcurrency; i++) { // record the recal_G_mat ready event for sum_G and sum_Gap
+    	        cudaEventRecord(gReady[i], stream[i]);
+    	        cudaEventRecord(gapReady[i], stream[i]);
     	    }
     	    
     	    Size nsp = 0;
@@ -4421,35 +4932,84 @@ int main(int argc, char **argv) {
     	    if (nFar) {
     	    	farSpiked = fill_fSpikeTrain(fSpikeTrain,  spikeTrain + nV1*currentTimeSlot, fCurrenSlot, vecID, nVec, nV1);
 				if (farSpiked) {
+    	    		PosInt block_offset = 0;
     	        	for (PosInt i = 0; i < nChunk; i++) {
     	        	    if (i >= iSizeSplit) chunkSize = remainChunkSize;
     	        	    size_t gChunkSize = chunkSize*blockSize*(ngTypeE+ngTypeI)*sizeof(Float);
     	        	    size_t ghChunkSize = gChunkSize*2;
     	        	    // cpu accumulate conductances from far neighbors
-    	        	    recal_G_vec(
-    	        	            fSpikeTrain, fTrainDepth, fCurrenSlot,
-    	        	            nVec, vecID, conVec, delayVec,
-    	        	            gE[i], gI[i], hE[i], hI[i], &(pE[0]), &(pI[0]), &(typeAccCount[0]),
-    	        	            h_rGenCond, &(synFail[0]), &(synPerCon[0]),
-    	        	            dt, condE, condI, ngTypeE, ngTypeI,
-    	        	            block_offset, nType,
-    	        	            nE, nV1, speedOfThought, chunkSize);
+						if (noFarDelay) {
+		    				recal_G_vec(
+		    						fSpikeTrain, fTrainDepth, fCurrenSlot, og, oh,
+		    						nVec, vecID, conVec, delayVec,
+		    						gE[i], gI[i], hE[i], hI[i], &(pE[0]), &(pI[0]), &(typeAccCount[0]),
+            				        h_rGenCond, &(synFail[0]), &(synPerCon[0]),
+		    						dt, condE, condI, ngTypeE, ngTypeI,
+		    						block_offset, nType,
+		    						nE, nI, nV1, speedOfThought, chunkSize, false); // og, oh are not set, utilize the delay version with 1
+						} else {
+		    				recal_G_vec(
+		    						fSpikeTrain, fTrainDepth, fCurrenSlot, og, oh,
+		    						nVec, vecID, conVec, delayVec,
+		    						gE[i], gI[i], hE[i], hI[i], &(pE[0]), &(pI[0]), &(typeAccCount[0]),
+            				        h_rGenCond, &(synFail[0]), &(synPerCon[0]),
+		    						dt, condE, condI, ngTypeE, ngTypeI,
+		    						block_offset, nType,
+		    						nE, nI, nV1, speedOfThought, chunkSize, noFarDelay);
+						}
     	        	    // g and h
     	        	#ifdef CHECK
     	        	    checkCudaErrors(cudaMemcpyAsync(d_gEt[i], gE[i], ghChunkSize, cudaMemcpyHostToDevice, stream[i])); // size in maxChunk
     	        	#else
     	        	    cudaMemcpyAsync(d_gEt[i], gE[i], ghChunkSize, cudaMemcpyHostToDevice, stream[i]); // size in maxChunk
     	        	#endif
-    	        	    if (i >= matConcurrency) { // otherwise automatically queued in stream
-    	        	        cudaStreamWaitEvent(stream[i], gReady1[i%matConcurrency], 0);
-    	        	    }
-    	        	    sum_G<<<chunkSize, blockSize, 0, stream[i]>>> (d_nVec + block_offset*blockSize, d_gEt[i], d_gE[i], d_gIt[i], d_gI[i], d_hEt[i], d_hE[i], d_hIt[i], d_hI[i], ngTypeE, ngTypeI);
-    	        	    if (i < nChunk-1) {
-    	        	        block_offset += chunkSize;
-    	        	    }
+    	        	    if (i >= matConcurrency) { //wait for recal_G_mat to be ready before sum_G 
+    	        	        cudaStreamWaitEvent(stream[i], gReady[i%matConcurrency], 0);
+    	        	    } // otherwise automatically queued in stream
+		    			sum_G<<<chunkSize, blockSize, 0, stream[i]>>> (d_nVec + block_offset*blockSize, d_gEt[i], d_gE[i], d_gIt[i], d_gI[i], d_hEt[i], d_hE[i], d_hIt[i], d_hI[i], ngTypeE, ngTypeI);
+    	        	    block_offset += chunkSize;
     	        	}
+				} else {
+    				for (PosInt i=0; i<nV1; i++) {
+						if (nVec[i] > 0) {
+							for (PosInt j=0;j<nVec[i];j++) {
+								fCurrenSlot[i][j] = (fCurrenSlot[i][j] + 1)  % fTrainDepth[i][j];
+							}
+						}
+					}
 				}
     	    }
+			if (nGapFar) {
+    	    	fill_fGapTrain(fGapTrain,  spikeTrain + nV1*currentTimeSlot, fGapCurrenSlot, gapVecID, nGapVec, mI);
+    	    	PosInt block_offset = 0;
+    	        for (PosInt i = 0; i < nChunk; i++) {
+    	            if (i >= iSizeSplit) chunkSize = remainChunkSize;
+    	            size_t gapChunkSize = chunkSize*nI*sizeof(Float);
+    	            // cpu accumulate conductances from far neighbors
+					if (noFarDelay) {
+		    			recal_Gap_vec(
+		    					fGapTrain, fGapDepth, fGapCurrenSlot,
+		    					nGapVec, gapVecID, gapVec, gapDelayVec, vThres, gap[i],
+		    					&(typeAccCount[0]),
+		    					dt, block_offset, nType, nTypeE, nI, speedOfThought, chunkSize, false); // og, oh are not set, utilize the delay version with 1
+					} else {
+		    			recal_Gap_vec(
+		    					fGapTrain, fGapDepth, fGapCurrenSlot,
+		    					nGapVec, gapVecID, gapVec, gapDelayVec, vThres, gap[i],
+		    					&(typeAccCount[0]),
+		    					dt, block_offset, nType, nTypeE, nI, speedOfThought, chunkSize, noFarDelay);
+					}
+    	        #ifdef CHECK
+    	            checkCudaErrors(cudaMemcpyAsync(d_gapt[i], gap[i], gapChunkSize, cudaMemcpyHostToDevice, gapStream[i])); // size in maxChunk
+    	        #else
+    	            cudaMemcpyAsync(d_gapt[i], gap[i], gapChunkSize, cudaMemcpyHostToDevice, gapStream[i]); // size in maxChunk
+    	        #endif
+					// wait for the corresponding chunk to finish recal_G_mat before sum_G 
+    	            cudaStreamWaitEvent(gapStream[i], gapReady[i%matConcurrency], 0);
+		    		sum_Gap<<<chunkSize, nI, 0, gapStream[i]>>> (d_nGapVec + block_offset*nI, d_gapt[i], d_gap[i]);
+    	            block_offset += chunkSize;
+    	        }
+			}
     	    checkCudaErrors(cudaDeviceSynchronize());
 			currentTimeSlot ++;
 			currentTimeSlot = currentTimeSlot%trainDepth;
@@ -4480,10 +5040,15 @@ int main(int argc, char **argv) {
 		cout << "pushed input frame to last snapshot\n";
 	}
     //***************************
+	if (!restore.empty() && !asInit) {
+		cout << "simulation resumes from t = " << it0*dt << "...\n";
+	} else {
+		cout << "simulation start: \n";
+	}
 	size_t pSharedSize = sizeof(Float)*2*nSample;
 	if (pSharedSize < sizeof(Float)*2*parvoFrame) pSharedSize = sizeof(Float)*2*parvoFrame;
+	farSpiked = false;
 	for (unsigned int it = 0; it < nt; it++) {
-		farSpiked = false;
 		Float t = it*dt;
 		// next frame comes between (t, t+dt), read and store frame to texture memory
 		if ((it+it0+1)*denorm >= currentFrame*ntPerFrame) {
@@ -4553,6 +5118,7 @@ int main(int argc, char **argv) {
 		    		parvo_SW_storage, parvo_SC_storage, parvo_TW_storage,
 		    		currentConvol, contrast,
 		    		dLGN.coneType, *dLGN.spatial,
+					L_retinaInput, M_retinaInput, S_retinaInput,
 		    		nParvo_I, nMagno_I, nLGN,
 		    		normViewDistance,
 		    		iFrameTail, maxFrame, ntPerFrame, iFramePhaseTail,
@@ -4575,6 +5141,7 @@ int main(int argc, char **argv) {
 		    		magno_SW_storage, magno_SC_storage, magno_TW_storage,
 		    		currentConvol, contrast,
 		    		dLGN.coneType, *dLGN.spatial,
+					L_retinaInput, M_retinaInput, S_retinaInput,
 		    		nParvo_I, nMagno_I, nParvo_C,
 		    		normViewDistance,
 		    		mFrameTail, maxFrame, ntPerFrame, mFramePhaseTail,
@@ -4594,16 +5161,10 @@ int main(int argc, char **argv) {
             if (rawData) {
 			    fRawData.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
 				// debug
-					for (PosInt i = 0; i<trainDepth; i++) {
+					for (PosInt i=0; i<trainDepth; i++) {
 						for (PosInt j=0; j<nV1; j++) {
-							if (spikeTrain[i*nV1 + j] < 1) {
-								if (it > 1) {
-									assert(spikeTrain[i*nV1 + j] == 0);
-								} else {
-									if (spikeTrain[i*nV1 + j] != 0) {
-										cout << i << "-" << j << ": " << spikeTrain[i*nV1 + j] << "\n";
-									}
-								}
+							if (spikeTrain[i*nV1 + j] < 1 && spikeTrain[i*nV1 + j] > *max_element(vThres.begin(), vThres.end())) {
+								assert(spikeTrain[i*nV1 + j] >= 1 || spikeTrain[i*nV1 + j] < *max_element(vThres.begin(), vThres.end()));
 							}
 						}
 						//if (i==0) {
@@ -4677,7 +5238,8 @@ int main(int argc, char **argv) {
 		if (it > 0) {
 			cudaProfilerStart();
 		}
-		LGN_nonlinear<<<nLGN_block, nLGN_thread, 0, mainStream>>>(nLGN, *dLGN.logistic, maxConvol, currentConvol, convolRatio, d_LGN_fr, d_LGN_sInfo, d_sx, d_sy, leftTimeRate, lastNegLogRand, randState, dLGN_type, typeStatus, lVarFFpre, varSlot, lFF_E_pre, lFF_I_pre, nLearnTypeFF, dt, learning, learnData_FF, LGN_switch, getLGN_sp);
+		//cout << "MAX_NLEARNTYPE_FF = " << MAX_NLEARNTYPE_FF << ", nLearnTypeFF = " << nLearnTypeFF << " \n";
+		LGN_nonlinear<<<nLGN_block, nLGN_thread, 0, mainStream>>>(nLGN, *dLGN.logistic, maxConvol, currentConvol, convolRatio, d_LGN_fr, d_LGN_sInfo, d_sx, d_sy, leftTimeRate, lastNegLogRand, randState, dLGN_type, typeStatus, lVarFFpre, LGNspikeSurface, varSlot, lFF_E_pre, lFF_I_pre, nLearnTypeFF, dt, learning, learnData_FF, LGN_switch, getLGN_sp);
 		if (it > 0) {
 			cudaProfilerStop();
 		}
@@ -4689,18 +5251,19 @@ int main(int argc, char **argv) {
         #endif
 		if (it > 0) { // seeking for overlap of data output with LGN input
 			if (it%snapshotInterval != 0) { // else already synchronized
-            	if (nFar) { 
+            	if (nFar && farSpiked) { 
             	    for (PosInt i=0; i<nChunk; i++) {
-	        	        cudaEventSynchronize(gReady2[i]);
+	        	        cudaEventSynchronize(gReady[i]);
             	    }
             	} else {
-	        	    cudaEventSynchronize(gReady2[0]);
+	        	    cudaEventSynchronize(gReady[0]);
             	}
 			}
             if (rawData) {
-		    	// write g to fRawData
-		    	reshape_chunk_and_write(gE[0], fRawData, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, ngTypeE, ngTypeI, nV1, hWrite);
+		    	// write g and gap to fRawData
+		    	reshape_chunk_and_write(gE[0], fRawData, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, ngTypeE, ngTypeI, nV1, mI, hWrite);
 		    }
+			farSpiked = false;
         }
 		if (saveLGN_fr || learnData_FF) {
 		    cudaEventRecord(LGN_ready, mainStream);
@@ -4739,7 +5302,7 @@ int main(int argc, char **argv) {
 		// simulate V1 response
 		//compute_V_collect_spike<max_ngTypeFF, max_ngTypeE, max_ngTypeI> <<<nblock, blockSize, 0, mainStream>>> (
 		compute_V_collect_spike_learnFF<<<nblock, blockSize, 0, mainStream>>> (
-				d_v, d_depC, d_w, d_gFF, d_hFF, dd_gE, dd_gI, dd_hE, dd_hI, // V1 neuron measurements
+				d_v, d_depC, d_w, d_gapS, d_gFF, d_hFF, dd_gE, dd_gI, dd_hE, dd_hI, dd_gap, // V1 neuron measurements
 				d_nLGNperV1, sLGN, LGN_idx, LGN_idy, // LGN->V1 connections
 				tBack, d_spikeTrain, // neuron spiking
                 vLTD_FF_E, vTrip_FF_E, vLTD_FF_I, vTrip_FF_I, // FF excitatory learning vars
@@ -4747,10 +5310,10 @@ int main(int argc, char **argv) {
                 vLTP_E, vLTD_E, vTripE, // E->E learning vars
                 vSTDP_QE, vSTDP_QI, // I->E learning vars
                 d_pFF, d_vR, d_vThres, d_gL, d_C, d_tRef, d_tonicDep, d_vT, d_deltaT, d_tau_w, d_a, d_b, typeAcc, 
-                rGenCond, d_synFailFF, d_synPerConFF, rNoisy, d_noisyDep,
-				currentTimeSlot, trainDepth, max_LGNperV1,
+                rGenCond, d_synFailFF, d_synPerConFF, rNoisy, d_noisyDep, last_noise, d_og, d_oh,
+				tau_noise, currentTimeSlot, trainDepth, max_LGNperV1,
 				ngTypeFF, ngTypeE, ngTypeI, condFF, condE, condI,
-				dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, nE, nI, nV1, learning, varSlot, nType,
+				dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, nE, nI, nV1, learning, varSlot, nType, LGNspikeSurface,
                 lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ, iModel, noDelay); // learning const structs 
         #ifdef CHECK
 		    getLastCudaError("compute_V_collect_spike failed");
@@ -4776,6 +5339,20 @@ int main(int argc, char **argv) {
             #else
 			    cudaMemcpyAsync(targetAddress, d_LGN_sInfo, nLGN*sizeof(Float), cudaMemcpyDeviceToHost, LGN_stream);
             #endif
+
+        	if (getLGN_sp) {
+		    	memcpy((void*)(outputB4V1), (void*) targetAddress, nLGN*sizeof(Float));
+			} else {
+		    	memcpy((void*)(LGN_sInfo), (void*) targetAddress, nLGN*sizeof(Float));
+			}
+			/*
+			cout << "it = " << it << "\n";
+			for (PosInt kk = 0; kk < nLGN; kk++) {
+				cout << targetAddress[kk] << ", ";
+			}
+			cout << "\n";
+			*/
+
             #ifdef SYNC
                 checkCudaErrors(cudaDeviceSynchronize());
             #endif
@@ -4818,6 +5395,13 @@ int main(int argc, char **argv) {
 			Float* targetAddress;
 			if (learnData_FF) targetAddress = outputB4V1;
 			else targetAddress = LGN_sInfo;
+			/*
+			cout << "t = " << it << "\n";
+			for (PosInt kk = 0; kk < nLGN; kk++) {
+				cout << targetAddress[kk] << ", ";
+			}
+			cout << "\n";
+			*/
             fLGN_sp.write((char*) targetAddress, nLGN*sizeof(Float));
         }
 
@@ -4826,8 +5410,8 @@ int main(int argc, char **argv) {
             //if (matConcurrency > iSizeSplit) initial_size = iSizeSplit * maxChunkSize + (matConcurrency-iSizeSplit)*remainChunkSize;
             //else initial_size = matConcurrency*maxChunkSize;
             //auto start = chrono::high_resolution_clock::now();
-		    //memcpy((void*)(p_conDelayMat), (void*) conDelayMat[0], 2*initial_size*nearBlockSize*sizeof(Float));
-		    memcpy((void*)(p_conDelayMat), (void*) conDelayMat[0], ccChunkMatSize*sizeof(float));
+		    //memcpy((void*)(p_conDelayGapMat), (void*) conDelayGapMat[0], 2*initial_size*nearBlockSize*sizeof(Float));
+		    memcpy((void*)(p_conDelayGapMat), (void*) conDelayGapMat[0], ccChunkMatSize*sizeof(float));
             //auto end = chrono::high_resolution_clock::now();
             //double time_taken = chrono::duration_cast<chrono::nanoseconds>(end-start).count();
             //cout << "memcpy of " << 2*initial_size*nearBlockSize*sizeof(Float)/1024.0/1024.0 << " Mb took " << time_taken/1e6 << " ms\n";
@@ -4843,6 +5427,7 @@ int main(int argc, char **argv) {
 		for (PosInt i = 0; i < nChunk; i++) {
 			if (i >= iSizeSplit) chunkSize = remainChunkSize;
 			size_t mChunkSize = chunkSize * nearBlockSize;
+			size_t gap_mChunkSize = chunkSize * gap_nearBlockSize;
             if (i%matConcurrency == 0) {
                 p_total += p_offset;
                 p_offset = 0;
@@ -4856,7 +5441,7 @@ int main(int argc, char **argv) {
 
                     cudaEventSynchronize(matReady[i%matConcurrency]);
                     //auto start = chrono::high_resolution_clock::now();
-		            memcpy((void*)(p_conDelayMat + p_offset), (void*) conDelayMat[i], 2*mChunkSize*sizeof(float));
+		            memcpy((void*)(p_conDelayGapMat + p_offset), (void*) conDelayGapMat[i], (2*mChunkSize+gap_mChunkSize)*sizeof(float));
                     //auto end = chrono::high_resolution_clock::now();
                     //double time_taken = chrono::duration_cast<chrono::nanoseconds>(end-start).count();
                     //cout << "memcpy of " << 2*mChunkSize*sizeof(Float)/1024.0/1024.0 << " Mb took " << time_taken/1e6 << " ms\n";
@@ -4867,9 +5452,9 @@ int main(int argc, char **argv) {
             }
             if (matConcurrency < nChunk || learnData_V1) {
                 #ifdef CHECK
-			        checkCudaErrors(cudaMemcpyAsync(d_conDelayMat[i%matConcurrency], p_conDelayMat + p_offset, 2*mChunkSize*sizeof(float), cudaMemcpyHostToDevice, stream[i%matConcurrency]));
+			        checkCudaErrors(cudaMemcpyAsync(d_conDelayGapMat[i%matConcurrency], p_conDelayGapMat + p_offset, (2*mChunkSize+gap_mChunkSize)*sizeof(float), cudaMemcpyHostToDevice, stream[i%matConcurrency]));
                 #else
-			        cudaMemcpyAsync(d_conDelayMat[i%matConcurrency], p_conDelayMat + p_offset, 2*mChunkSize*sizeof(float), cudaMemcpyHostToDevice, stream[i%matConcurrency]);
+			        cudaMemcpyAsync(d_conDelayGapMat[i%matConcurrency], p_conDelayGapMat + p_offset, (2*mChunkSize+gap_mChunkSize)*sizeof(float), cudaMemcpyHostToDevice, stream[i%matConcurrency]);
                 #endif
                 #ifdef SYNC
                     checkCudaErrors(cudaDeviceSynchronize());
@@ -4881,23 +5466,36 @@ int main(int argc, char **argv) {
                 if (cudaSuccess == cudaEventQuery(eTmp[i-1])) cout << "after cudamemcpy last recal_G already finished\n";
                 else cout << "after cudamemcpy last recal_G still running\n";
             }*/
-			float* d_conMat = d_conDelayMat[i%matConcurrency];
+			float* d_conMat = d_conDelayGapMat[i%matConcurrency];
 			float* d_delayMat = d_conMat + mChunkSize;
+			float* d_gapMat = d_delayMat + mChunkSize;
             if (i < matConcurrency) {
 		        cudaStreamWaitEvent(stream[i%matConcurrency], spReady, 0);
             }
 			//recal_G_mat<max_ngTypeE, max_ngTypeI><<< chunkSize, blockSize, 0, stream[i%matConcurrency]>>> (
 
-			recal_G_mat<<< chunkSize, blockSize, 0, stream[i%matConcurrency]>>> (
-					d_spikeTrain,
-					d_conMat, d_delayMat,
-					d_nNeighborBlock+block_offset, d_neighborBlockId + block_offset*nearNeighborBlock,
-					d_gE[i], d_gI[i], d_hE[i], d_hI[i],
-                    vAvgE, vLTP_E, vLTD_E, vTripE, vSTDP_QE, vSTDP_QI, d_pE, d_pI, typeAcc,
-                    rGenCond, d_synFail, d_synPerCon,
-					dt, condE, condI, ngTypeE, ngTypeI,
-					currentTimeSlot, trainDepth,
-					nearNeighborBlock, nE, nI, nV1, speedOfThought, learning, block_offset, nType, lE, lQ, i);
+            if (noDelay) {
+			    recal_G_mat_nd<<< chunkSize, blockSize, 0, stream[i%matConcurrency]>>> (
+					    d_spikeTrain + nV1*currentTimeSlot, d_og, d_oh,
+			    		d_conMat, d_gapMat,
+			    		d_nNearNeighborBlock+block_offset, d_neighborBlockId + block_offset*nearNeighborBlock,
+			    		d_gE[i], d_gI[i], d_hE[i], d_hI[i], d_gap[i],
+                        vAvgE, vLTP_E, vLTD_E, vTripE, vSTDP_QE, vSTDP_QI, d_pE, d_pI, typeAcc,
+                        rGenCond, d_synFail, d_synPerCon, d_vThres,
+			    		dt, condE, condI, ngTypeE, ngTypeI,
+			    		nearNeighborBlock, nE, nI, nV1, learning, block_offset, nType, nTypeE, nTypeI, lE, lQ, i);
+            } else {
+			    recal_G_mat<<< chunkSize, blockSize, 0, stream[i%matConcurrency]>>> (
+					    d_spikeTrain,
+					    d_conMat, d_delayMat, d_gapMat,
+					    d_nNearNeighborBlock+block_offset, d_neighborBlockId + block_offset*nearNeighborBlock,
+					    d_gE[i], d_gI[i], d_hE[i], d_hI[i], d_gap[i],
+                        vAvgE, vLTP_E, vLTD_E, vTripE, vSTDP_QE, vSTDP_QI, d_pE, d_pI, typeAcc,
+                        rGenCond, d_synFail, d_synPerCon, d_vThres,
+					    dt, condE, condI, ngTypeE, ngTypeI,
+					    currentTimeSlot, trainDepth,
+					    nearNeighborBlock, nE, nI, nV1, speedOfThought, learning, block_offset, nType, nTypeE, nTypeI, lE, lQ, i);
+            }
 
 			//cudaEventRecord(eTmp[i], stream[i]);
             #ifdef CHECK
@@ -4907,28 +5505,29 @@ int main(int argc, char **argv) {
                 checkCudaErrors(cudaDeviceSynchronize());
             #endif
 			block_offset += chunkSize;
-			p_offset += 2*mChunkSize;
+			p_offset += 2*mChunkSize + gap_mChunkSize;
 		}
 		//if (it > 500) {
 		//	cudaProfilerStop();
 		//}
         assert(block_offset == nblock);
-        assert(p_total + p_offset == matSize*2);
+        assert(p_total + p_offset == (2*matSize + gap_matSize));
 		for (PosInt i = 0; i < matConcurrency; i++) {
-			cudaEventRecord(gReady1[i], stream[i]);
+			cudaEventRecord(gReady[i], stream[i]);
+			cudaEventRecord(gapReady[i], gapStream[i]);
         }
-		if (iModel == 0) {
+		if (iModel == 0) { // send depC, v and gFF to host
         	#ifdef CHECK
-        		checkCudaErrors(cudaMemcpyAsync(depC, d_depC, nV1*sizeof(Float)*(2+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream));
+        		checkCudaErrors(cudaMemcpyAsync(depC, d_depC, sizeof(Float)*nV1*(2+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream));
         	#else
-        		cudaMemcpyAsync(depC, d_depC, nV1*sizeof(Float)*(2+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream);
+        		cudaMemcpyAsync(depC, d_depC, sizeof(Float)*nV1*(2+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream);
         	#endif
 		}
 		if (iModel == 1) {
         	#ifdef CHECK
-        		checkCudaErrors(cudaMemcpyAsync(depC, d_depC, nV1*sizeof(Float)*(3+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream));
+        		checkCudaErrors(cudaMemcpyAsync(depC, d_depC, sizeof(Float)*nV1*(3+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream));
         	#else
-        		cudaMemcpyAsync(depC, d_depC, nV1*sizeof(Float)*(3+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream);
+        		cudaMemcpyAsync(depC, d_depC, sizeof(Float)*nV1*(3+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream);
         	#endif
 		}
 		cudaEventRecord(v_gFF_Ready, mainStream);
@@ -4936,7 +5535,6 @@ int main(int argc, char **argv) {
             checkCudaErrors(cudaDeviceSynchronize());
         #endif
 
-		block_offset = 0;
 		chunkSize = maxChunkSize;
 		cudaEventSynchronize(spHostReady);
 
@@ -4956,32 +5554,33 @@ int main(int argc, char **argv) {
             else cout << "no near-neighbor spiking events in the time step\n";
         }
 
-        if (nFar) {
-        	farSpiked = fill_fSpikeTrain(fSpikeTrain,  spikeTrain + nV1*currentTimeSlot, fCurrenSlot, vecID, nVec,nV1);
+        if (nFar) { 
+        	farSpiked = fill_fSpikeTrain(fSpikeTrain,  spikeTrain + nV1*currentTimeSlot, fCurrenSlot, vecID, nVec, nV1);
 			if (farSpiked) {
+				block_offset = 0;
 		    	for (PosInt i = 0; i < nChunk; i++) {
 		    		if (i >= iSizeSplit) chunkSize = remainChunkSize;
 		    		size_t gChunkSize = chunkSize*blockSize*(ngTypeE+ngTypeI)*sizeof(Float);
 		    		size_t ghChunkSize = gChunkSize*2;
 		    		// cpu accumulate conductances from far neighbors
 		    		recal_G_vec(
-		    				fSpikeTrain, fTrainDepth, fCurrenSlot,
+		    				fSpikeTrain, fTrainDepth, fCurrenSlot, og, oh,
 		    				nVec, vecID, conVec, delayVec,
 		    				gE[i], gI[i], hE[i], hI[i], &(pE[0]), &(pI[0]), &(typeAccCount[0]),
             	            h_rGenCond, &(synFail[0]), &(synPerCon[0]),
 		    				dt, condE, condI, ngTypeE, ngTypeI,
 		    				block_offset, nType,
-		    				nE, nV1, speedOfThought, chunkSize);
+		    				nE, nI, nV1, speedOfThought, chunkSize, noFarDelay);
+
 		    		// g and h
             	    #ifdef CHECK
 		    		    checkCudaErrors(cudaMemcpyAsync(d_gEt[i], gE[i], ghChunkSize, cudaMemcpyHostToDevice, stream[i])); // size in maxChunk
             	    #else
 		    		    cudaMemcpyAsync(d_gEt[i], gE[i], ghChunkSize, cudaMemcpyHostToDevice, stream[i]); // size in maxChunk
             	    #endif
-		    		if (i >= matConcurrency) { // otherwise automatically queued in stream
-		    			cudaStreamWaitEvent(stream[i], gReady1[i%matConcurrency], 0);
-		    		}
-		    		//sum_G<max_ngTypeE, max_ngTypeI><<<chunkSize, blockSize, 0, stream[i]>>> (d_nVec + block_offset*blockSize, d_gEt[i], d_gE[i], d_gIt[i], d_gI[i], d_hEt[i], d_hE[i], d_hIt[i], d_hI[i], ngTypeE, ngTypeI);
+		    		if (i >= matConcurrency) { //wait for recal_G_mat to be ready before sum_G 
+		    			cudaStreamWaitEvent(stream[i], gReady[i%matConcurrency], 0);
+		    		} // otherwise automatically queued in stream
 		    		sum_G<<<chunkSize, blockSize, 0, stream[i]>>> (d_nVec + block_offset*blockSize, d_gEt[i], d_gE[i], d_gIt[i], d_gI[i], d_hEt[i], d_hE[i], d_hIt[i], d_hI[i], ngTypeE, ngTypeI);
 		    		// 							  // char*
             	    #ifdef CHECK
@@ -4994,16 +5593,24 @@ int main(int argc, char **argv) {
 		    		if (i < nChunk-1) {
 		    			block_offset += chunkSize;
 		    		}
-		    		cudaEventRecord(gReady2[i], stream[i]);
+		    		cudaEventRecord(gReady[i], stream[i]);
 		    	}
+			} else {
+    			for (PosInt i=0; i<nV1; i++) {
+					if (nVec[i] > 0) {
+						for (PosInt j=0;j<nVec[i];j++) {
+							fCurrenSlot[i][j] = (fCurrenSlot[i][j] + 1)  % fTrainDepth[i][j];
+						}
+					}
+				}
 			}
         }
-		if (!farSpiked) {
+		if (!farSpiked) { // still need to write g, h to file
             if (print_log) {
                 cout << "no spikes from distant neighbor or no distant neighbor exists\n";
             }
-		    for (PosInt i = 0; i < matConcurrency; i++) {
-		    	cudaStreamWaitEvent(stream[0], gReady1[i], 0);
+		    for (PosInt i = 0; i < matConcurrency; i++) { // at least wait for recal_G_mat finishes
+		    	cudaStreamWaitEvent(stream[0], gReady[i], 0);
             }
             #ifdef CHECK
                 if (hWrite) checkCudaErrors(cudaMemcpyAsync(gE[0], d_gE[0], ghSize, cudaMemcpyDeviceToHost, stream[0])); // size in chunk
@@ -5012,11 +5619,54 @@ int main(int argc, char **argv) {
                 if (hWrite) cudaMemcpyAsync(gE[0], d_gE[0], ghSize, cudaMemcpyDeviceToHost, stream[0]); // size in chunk
                 else cudaMemcpyAsync(gE[0], d_gE[0], ghSize/2, cudaMemcpyDeviceToHost, stream[0]); // size in chunk
             #endif
-		    cudaEventRecord(gReady2[0], stream[0]);
+		    cudaEventRecord(gReady[0], stream[0]);
         }
+		if (nGapFar) {
+        	fill_fGapTrain(fGapTrain,  spikeTrain + nV1*currentTimeSlot, fGapCurrenSlot, gapVecID, nGapVec, mI);
+			block_offset = 0;
+		    for (PosInt i = 0; i < nChunk; i++) {
+		    	if (i >= iSizeSplit) chunkSize = remainChunkSize;
+		    	size_t gapChunkSize = chunkSize*nI*sizeof(Float);
+		    	// cpu accumulate gap junction inputs from far neighbors
+		    	recal_Gap_vec(
+						fGapTrain, fGapDepth, fGapCurrenSlot,
+		    			nGapVec, gapVecID, gapVec, gapDelayVec, vThres, gap[i],
+		    			&(typeAccCount[0]),
+						dt, block_offset, nType, nTypeE, nI, speedOfThought, chunkSize, noFarDelay);
+                #ifdef CHECK
+		    	    checkCudaErrors(cudaMemcpyAsync(d_gapt[i], gap[i], gapChunkSize, cudaMemcpyHostToDevice, gapStream[i])); // size in maxChunk
+                #else
+		    	    cudaMemcpyAsync(d_gapt[i], gap[i], gapChunkSize, cudaMemcpyHostToDevice, gapStream[i]); // size in maxChunk
+                #endif
+
+				// wait for the corresponding chunk to finish recal_G_mat before sum_G 
+		    	cudaStreamWaitEvent(gapStream[i], gapReady[i%matConcurrency], 0);
+		    	sum_Gap<<<chunkSize, nI, 0, gapStream[i]>>> (d_nGapVec + block_offset*nI, d_gapt[i], d_gap[i]);
+		    	// 							  // char*
+                #ifdef CHECK
+                    checkCudaErrors(cudaMemcpyAsync(gap[i], d_gap[i], gapChunkSize, cudaMemcpyDeviceToHost, gapStream[i])); // size in chunk
+                #else
+                    cudaMemcpyAsync(gap[i], d_gap[i], gapChunkSize, cudaMemcpyDeviceToHost, gapStream[i]); // size in chunk
+                #endif
+		    	if (i < nChunk-1) {
+		    		block_offset += chunkSize;
+		    	}
+		    	cudaEventRecord(gapReady[i], gapStream[i]);
+		    }
+		} else {
+		    for (PosInt i = 0; i < matConcurrency; i++) { // at least wait for recal_G_mat finishes
+		    	cudaStreamWaitEvent(gapStream[i], gapReady[i%matConcurrency], 0);
+		    } // otherwise automatically queued in stream
+            #ifdef CHECK
+                checkCudaErrors(cudaMemcpyAsync(gap[0], d_gap[0], gapSize, cudaMemcpyDeviceToHost, gapStream[0])); // size in chunk
+            #else
+                cudaMemcpyAsync(gap[0], d_gap[0], gapSize, cudaMemcpyDeviceToHost, gapStream[0]); // size in chunk
+            #endif
+		    cudaEventRecord(gapReady[0], gapStream[0]);
+		}
         if (learnData_FF || (learning && (it+1)%snapshotInterval == 0)) {
 		    for (PosInt i = 0; i < matConcurrency; i++) {
-		        cudaStreamWaitEvent(mainStream, gReady1[i], 0);
+		        cudaStreamWaitEvent(mainStream, gReady[i], 0);
             }
             #ifdef CHECK
 		        checkCudaErrors(cudaMemcpyAsync(lVarFFpost+learnVarFFsize0, learnVar+learnVarFFsize0, learnVarFFsize1*sizeof(Float), cudaMemcpyDeviceToHost, mainStream));
@@ -5188,35 +5838,33 @@ int main(int argc, char **argv) {
 				fSnapshot.write((char*)spikeTrain, trainSize*sizeof(Float));
 				// makesure ready
 			    cudaEventSynchronize(v_gFF_Ready);
-				if (nFar) { 
+				if (nFar && farSpiked) { 
             	    for (PosInt i=0; i<nChunk; i++) {
-	        	        cudaEventSynchronize(gReady2[i]);
+	        	        cudaEventSynchronize(gReady[i]);
             	    }
             	} else {
-	        	    cudaEventSynchronize(gReady2[0]);
+	        	    cudaEventSynchronize(gReady[0]);
             	}
 
 				for (PosInt i = 0; i<trainDepth; i++) {
 					for (PosInt j=0; j<nV1; j++) {
 						assert(!std::isnan(spikeTrain[i*nV1 + j]));
 						if (spikeTrain[i*nV1 + j] < 1) {
-							assert(spikeTrain[i*nV1 + j] == 0);
+							PosInt itype;
+							for (PosInt q=0; q<nType; q++) {
+								if (j % blockSize < typeAccCount[q]) {
+									itype = q;
+									break;
+								}
+							}
+							assert(spikeTrain[i*nV1 + j] < vThres[itype]);
 						}
 					}
 				}
-				if (iModel == 0) {
-					checkCudaErrors(cudaMemcpy(v, d_v, r_vghSize, cudaMemcpyDeviceToHost));
-					fSnapshot.write((char*)v, r_vghSize);
-					for (PosInt j=0; j<r_vghSize/sizeof(Float); j++) {
-						assert(!std::isnan(v[j]));
-					}
-				} 
-				if (iModel == 1) {
-					checkCudaErrors(cudaMemcpy(w, d_w, r_vghSize, cudaMemcpyDeviceToHost));
-					fSnapshot.write((char*)w, r_vghSize);
-					for (PosInt j=0; j<r_vghSize/sizeof(Float); j++) {
-						assert(!std::isnan(w[j]));
-					}
+				checkCudaErrors(cudaMemcpy(depC, d_depC, totalSize, cudaMemcpyDeviceToHost));
+				fSnapshot.write((char*)depC, totalSize);
+				for (PosInt j=0; j<totalSize/sizeof(Float); j++) {
+					assert(!std::isnan(depC[j]));
 				}
 				fSnapshot.close();
 				// remove old snapshotInterval
@@ -5243,12 +5891,12 @@ int main(int argc, char **argv) {
 		/* already by snapshot
         if (nFar) { 
             for (PosInt i=0; i<nChunk; i++) {
-	            cudaEventSynchronize(gReady2[i]);
+	            cudaEventSynchronize(gReady[i]);
             }
         } else {
-	        cudaEventSynchronize(gReady2[0]);
+	        cudaEventSynchronize(gReady[0]);
         }*/
-	    reshape_chunk_and_write(gE[0], fRawData, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, ngTypeE, ngTypeI, nV1, hWrite);
+	    reshape_chunk_and_write(gE[0], fRawData, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, ngTypeE, ngTypeI, nV1, mI, hWrite);
     }
     if (learnData_FF) {
         if (!rawData) {
@@ -5279,6 +5927,8 @@ int main(int argc, char **argv) {
 		fPatchV1_cfg.write((char*) &_vE, sizeof(Float));
 		fPatchV1_cfg.write((char*) &_vI, sizeof(Float));
 		fPatchV1_cfg.write((char*) &nType, sizeof(Size));
+		fPatchV1_cfg.write((char*) &nTypeE, sizeof(Size));
+		fPatchV1_cfg.write((char*) &nTypeI, sizeof(Size));
 		fPatchV1_cfg.write((char*) &(vR[0]), nType*sizeof(Float));
 		fPatchV1_cfg.write((char*) &(vThres[0]), nType*sizeof(Float));
 		fPatchV1_cfg.write((char*) &(gL[0]), nType*sizeof(Float));
@@ -5286,7 +5936,7 @@ int main(int argc, char **argv) {
 		fPatchV1_cfg.write((char*) &(nTypeHierarchy[0]), 2*sizeof(Size));
 		fPatchV1_cfg.write((char*) &(typeAccCount[0]), nType*sizeof(Size));
 		fPatchV1_cfg.write((char*) &(sRatioLGN[0]), nType*sizeof(Float));
-		fPatchV1_cfg.write((char*) &sRatioV1, sizeof(Float));
+		fPatchV1_cfg.write((char*) &(sRatioV1[0]), nType*nType*sizeof(Float));
 		fPatchV1_cfg.write((char*) &frRatioLGN, sizeof(Float));
 		fPatchV1_cfg.write((char*) &convolRatio, sizeof(Float));
 
@@ -5344,22 +5994,28 @@ int main(int argc, char **argv) {
 		delete []d_gI;
 		delete []d_hE;
 		delete []d_hI;
+		delete []d_gap;
 		delete []d_gEt;
 		delete []d_gIt;
 		delete []d_hEt;
 		delete []d_hIt;
+		delete []d_gapt;
 		delete []gE;
 		delete []gI;
 		delete []hE;
 		delete []hI;
-		delete []conDelayMat;
-		delete []d_conDelayMat;
+		delete []gap;
+		delete []conDelayGapMat;
+		delete []d_conDelayGapMat;
 		delete []exact_norm;
 		delete []exact_it;
 		delete []outputFrame;
         delete []h_rGenCond;
+		delete []LMS;
+		delete []ogh;
+		delete []cpu_chunk_V1pos;
         if (matConcurrency < nChunk) {
-            delete []conDelayMat0;
+            delete []conDelayGapMat0;
         }
 
 		checkCudaErrors(cudaEventDestroy(v_gFF_Ready));
@@ -5369,13 +6025,13 @@ int main(int argc, char **argv) {
 		checkCudaErrors(cudaEventDestroy(LGN_ready));
 		checkCudaErrors(cudaEventDestroy(learnFF_event));
 		for (PosInt i=0; i<nChunk; i++) {
-			checkCudaErrors(cudaEventDestroy(gReady1[i]));
-			checkCudaErrors(cudaEventDestroy(gReady2[i]));
+			checkCudaErrors(cudaEventDestroy(gReady[i]));
+			checkCudaErrors(cudaEventDestroy(gapReady[i]));
             if (i < matConcurrency) checkCudaErrors(cudaEventDestroy(matReady[i]));
 			checkCudaErrors(cudaEventDestroy(eTmp[i]));
 		}
-        delete []gReady1;
-        delete []gReady2;
+        delete []gReady;
+        delete []gapReady;
         delete []matReady;
         delete []eTmp;
 
@@ -5389,11 +6045,16 @@ int main(int argc, char **argv) {
 			checkCudaErrors(cudaStreamDestroy(ostream[i]));
 		}
 
+		for (PosInt i=0; i<nChunk; i++) {
+			checkCudaErrors(cudaStreamDestroy(gapStream[i]));
+		}
+		delete []gapStream;
+
         if (getLGN_sp) {
 		    checkCudaErrors(cudaFreeHost(LGN_sInfo));
         }
 		checkCudaErrors(cudaFreeHost(pinnedMem));
-		checkCudaErrors(cudaFreeHost(p_conDelayMat));
+		checkCudaErrors(cudaFreeHost(p_conDelayGapMat));
         if (saveOutputB4V1 || saveLGN_fr || learnData_FF) {
 		    checkCudaErrors(cudaFreeHost(outputB4V1));
         }
@@ -5405,16 +6066,19 @@ int main(int argc, char **argv) {
 		checkCudaErrors(cudaFree(gpu_B4V1));
 		checkCudaErrors(cudaFree(gpu_LGN_gallery));
 		checkCudaErrors(cudaFree(d_mat));
-		checkCudaErrors(cudaFree(d_vgh));
-		checkCudaErrors(cudaFree(d_gh));
+		checkCudaErrors(cudaFree(d_vgh_gap));
+		checkCudaErrors(cudaFree(d_ogh));
+		checkCudaErrors(cudaFree(d_gh_gap));
 		checkCudaErrors(cudaFree(d_spikeTrain));
 		checkCudaErrors(cudaFree(sLGN));
 		checkCudaErrors(cudaFree(d_surfacePos));
 		checkCudaErrors(cudaFree(d_neighborInfo));
+		checkCudaErrors(cudaFree(d_nGapVec));
         checkCudaErrors(cudaFree(dd_gE));
         checkCudaErrors(cudaFree(dd_gI));
         checkCudaErrors(cudaFree(dd_hE));
         checkCudaErrors(cudaFree(dd_hI));
+        checkCudaErrors(cudaFree(dd_gap));
         checkCudaErrors(cudaFree(rGenCond));
         checkCudaErrors(cudaFree(rNoisy));
         checkCudaErrors(cudaFree(d_noisyDep));
@@ -5432,6 +6096,7 @@ int main(int argc, char **argv) {
         checkCudaErrors(cudaFree(d_C));
         checkCudaErrors(cudaFree(d_tRef));
         checkCudaErrors(cudaFree(d_tonicDep));
+        checkCudaErrors(cudaFree(last_noise));
         checkCudaErrors(cudaFree(learnVar));
         if (learnData_FF) {
 		    checkCudaErrors(cudaFreeHost(LGN_V1_s));
@@ -5449,6 +6114,10 @@ int main(int argc, char **argv) {
 		checkCudaErrors(cudaFreeArray(cuArr_M));
 		checkCudaErrors(cudaFreeArray(cuArr_S));
 		checkCudaErrors(cudaFreeArray(cuSurfArray));
+		cudaDestroyTextureObject(L_retinaInput);
+		cudaDestroyTextureObject(M_retinaInput);
+		cudaDestroyTextureObject(S_retinaInput);
+		cudaDestroySurfaceObject(LGNspikeSurface);
 		checkCudaErrors(cudaDeviceSynchronize());
 		cout << "memory trace cleaned\n";
 	}

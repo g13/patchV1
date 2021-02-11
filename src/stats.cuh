@@ -17,7 +17,7 @@ void pixelizeOutput(
 		Size nPerPixel_I, Size nPerPixel_C, Size nPixel_I, Size nPixel, Size n, Float odt
 );
 
-void reshape_chunk_and_write(Float chunk[], std::ofstream &fRawData, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, bool hWrite);
+void reshape_chunk_and_write(Float chunk[], std::ofstream &fRawData, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, Size nGap, bool hWrite);
 
 void getLGN_V1_surface(std::vector<int> &xy, std::vector<std::vector<PosInt>> &LGN_V1_ID, int surface_xy[], Size nLGNperV1[], Size max_LGNperV1, Size nLGN);
 
@@ -36,10 +36,12 @@ std::vector<std::vector<PosInt>> getUnderlyingID(T x[], T y[], Int* pick, Size n
             PosInt id = idx+idy*width;
             if (idx >= width) {
                 std::cout << "x[" << i << "]: " << x[i] << ", width: " << width << ", x0: " << x0 << ", xspan: " << xspan << "\n";
+                std::cout << "idx = " << idx << " < " << width << "\n";
                 assert(idx<width);
             }
             if (idy >= height) {
                 std::cout << "y[" << i << "]: " << y[i] << ", height: " << height << ", y0: " << y0 << ", yspan: " << yspan << "\n";
+                std::cout << "idy = " << idy << " < " << height << "\n";
                 assert(idy<height);
             }
             uid[id].push_back(i+n0);
@@ -81,3 +83,5 @@ void flattenBlock(Size nblock, Size neuronPerBlock, T *pos) {
 }
 
 bool fill_fSpikeTrain(std::vector<std::vector<std::vector<Float>>> &fsp, Float sp[], std::vector<std::vector<PosInt>> &fcs, std::vector<std::vector<PosInt>> &vecID, std::vector<Size> nVec, Size nV1);
+
+void fill_fGapTrain(std::vector<std::vector<std::vector<Float>>> &fv, Float sp[], std::vector<std::vector<PosInt>> &gap_fcs, std::vector<std::vector<PosInt>> &gapVecID, std::vector<Size> nGapVec, Size mI);

@@ -35,9 +35,10 @@ struct AdEx { //Adaptive Exponential IF
 	Float w0, w;
 	Float tau_w, a, b;
 	Float vT, deltaT;
+	Float gapS;
     __device__ 
 	__forceinline__
-	AdEx(Float _w0, Float _tau_w, Float _a, Float _b, Float _v0, Float _tBack, Float _vR, Float _vThres, Float _gL, Float _C, Float _tRef, Float _vT, Float _deltaT, Float dep): v0(_v0), tBack(_tBack), vR(_vR), vThres(_vThres), gL(_gL), C(_C), tRef(_tRef), w0(_w0), tau_w(_tau_w), a(_a), b(_b), vT(_vT), deltaT(_deltaT) {
+	AdEx(Float _w0, Float _tau_w, Float _a, Float _b, Float _v0, Float _tBack, Float _vR, Float _vThres, Float _gL, Float _C, Float _tRef, Float _vT, Float _deltaT, Float _gapS, Float dep): v0(_v0), tBack(_tBack), vR(_vR), vThres(_vThres), gL(_gL), C(_C), tRef(_tRef), w0(_w0), tau_w(_tau_w), a(_a), b(_b), vT(_vT), deltaT(_deltaT), gapS(_gapS) {
 		spikeCount = 0;
 		Float targetV = vR + (vT-vR)*dep;
 		depC = (gL+a)*(targetV - vL) - gL*deltaT*exponential((targetV - vT)/deltaT);
@@ -61,10 +62,7 @@ struct AdEx { //Adaptive Exponential IF
 		Float dTgL = deltaT*gL;
 		Float fk1 = -a0*v0 + b0 + dTgL*exponential((v0-vT)/deltaT) - w0;
 		fk1 *= dt;
-		if (noise != 0) {
-			noise *= square_root(dt)*depC;
-			fk1 += noise;
-		}
+		fk1 += noise;
 		fk1 /= C;
 		Float v1 = v0 + fk1;
 		v = v0 + fk1/2;
@@ -87,23 +85,24 @@ struct AdEx { //Adaptive Exponential IF
 		//Float dv0 = v0-vR;
 		//Float denorm = logrithm((v-vR)/dv0);
     	//tsp = t0 + logrithm((vThres-vR)/dv0)/denorm*dt;
-		Float eT = exponential(-(vThres - v0));
-		Float eV = exponential(-(v - v0));
-		tsp = t0 + (1-eT)/(1-eV)*dt;
+		//Float eT = exponential(-(vThres - v0));
+		//Float eV = exponential(-(v - v0));
+		//tsp = t0 + (1-eT)/(1-eV)*dt;
+		tsp = t0 + (vThres-v0)/(v-v0)*dt;
 	}
 
 	__device__ 
 	__forceinline__
-	void set_p0(Float gE, Float gI) {
-	    a0 = get_a(gE, gI, gL);
-	    b0 = get_b(gE, gI, gL) + depC;
+	void set_p0(Float gE, Float gI, Float gap) {
+	    a0 = get_a(gE, gI, gL) + gapS;
+	    b0 = get_b(gE, gI, gL) + depC + gap;
 	}
 	
 	__device__ 
 	__forceinline__
-	void set_p1(Float gE, Float gI) {
-	    a1 = get_a(gE, gI, gL);
-	    b1 = get_b(gE, gI, gL) + depC;
+	void set_p1(Float gE, Float gI, Float gap) {
+	    a1 = get_a(gE, gI, gL) + gapS;
+	    b1 = get_b(gE, gI, gL) + depC + gap;
 	}
     __device__ 
 	__forceinline__
@@ -125,6 +124,8 @@ struct AdEx { //Adaptive Exponential IF
 __global__ 
 void rand_spInit(Float* __restrict__ tBack,
                  Float* __restrict__ spikeTrain,
+                 Float* __restrict__ og,
+                 Float* __restrict__ oh,
                  Float* __restrict__ v,
                  Float* __restrict__ w,
                  Size* __restrict__ nLGNperV1,
@@ -137,17 +138,25 @@ void rand_spInit(Float* __restrict__ tBack,
                  Float* __restrict__ b,
                  curandStateMRG32k3a* __restrict__ rGenCond,
                  curandStateMRG32k3a* __restrict__ rNoisy,
-                 PosIntL seed, Size networkSize, Size nType, Size SCsplit, Size trainDepth, Float dt, bool iModel);
+                 PosIntL seed, Size networkSize, Size nType, Size SCsplit, Size trainDepth, Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, Size nE, Size nI, int noDelay, bool iModel
+);
 
 
 __global__ void logRand_init(Float *logRand, Float *lTR, int* LGN_idx, int* LGN_idy, curandStateMRG32k3a *state, PosIntL seed, Size n, Size nFF);
 
 void recal_G_vec(
-        std::vector<std::vector<std::vector<Float>>> &spikeTrain, std::vector<std::vector<Size>> &trainDepth, std::vector<std::vector<PosInt>> &currentTimeSlot,
+        std::vector<std::vector<std::vector<Float>>> &spikeTrain, std::vector<std::vector<Size>> &trainDepth, std::vector<std::vector<PosInt>> &currentTimeSlot, Float og[], Float oh[],
         std::vector<Size> &nVec,  std::vector<std::vector<PosInt>> &vecID, std::vector<std::vector<Float>> &conVec, std::vector<std::vector<Float>> &delayVec,
         Float gE[], Float gI[], Float hE[], Float hI[], Float pE[], Float pI[], Size typeAcc[],
         std::default_random_engine *h_rGenCond, Float synFail[], Float synPerCon[],
-        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, Size nType, Size nE, Size nV1, Float speedOfThought, Size chunkSize
+        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, Size nType, Size nE, Size nI, Size nV1, Float speedOfThought, Size chunkSize, bool noFarDelay
+);
+
+void recal_Gap_vec(
+        std::vector<std::vector<std::vector<Float>>> &gapTrain, std::vector<std::vector<Size>> &gapDepth, std::vector<std::vector<PosInt>> &gap_currentTimeSlot,
+        std::vector<Size> &nGapVec, std::vector<std::vector<PosInt>> &gapVecID, std::vector<std::vector<Float>> &gapVec, std::vector<std::vector<Float>> &gapDelayVec,
+		std::vector<Float> &vThres, Float gap[], Size typeAcc[], 
+        Float dt, PosInt block_offset, Size nType, Size nTypeE, Size nI, Float speedOfThought, Size chunkSize, bool noFarDelay
 );
 
 //template<int ntimesFF, int ntimesE, int ntimesI> extern
@@ -156,12 +165,14 @@ void compute_V_collect_spike_learnFF(
         Float* __restrict__ v,
         Float* __restrict__ dep,
         Float* __restrict__ w, // AdEx
+        Float* __restrict__ gapS, // gap junction strength
         Float* __restrict__ gFF, // not in chunks
         Float* __restrict__ hFF,
         Float** __restrict__ gE, // in chunks
         Float** __restrict__ gI,
         Float** __restrict__ hE,
         Float** __restrict__ hI,
+        Float** __restrict__ gap,
         Size* __restrict__ nLGN,
         Float* __restrict__ sLGN,
         int* __restrict__ LGN_idx,
@@ -197,10 +208,14 @@ void compute_V_collect_spike_learnFF(
         Float* __restrict__ synPerConFF,
         curandStateMRG32k3a* __restrict__ rNoisy,
         Float* __restrict__ noisyDep,
-        PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeFF, Size ngTypeE, Size ngTypeI, ConductanceShape condFF, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, int learning, int varSlot, Size nType,
+        Float* __restrict__ last_noise,
+        Float* __restrict__ output_g,
+        Float* __restrict__ output_h,
+        Float tau_noise, PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeFF, Size ngTypeE, Size ngTypeI, ConductanceShape condFF, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, int learning, int varSlot, Size nType,
+		cudaSurfaceObject_t LGNspikeSurface,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
-        LearnVarShapeE learnE, LearnVarShapeQ learnQ, int iModel
+        LearnVarShapeE learnE, LearnVarShapeQ learnQ, int iModel, int noDelay
 );
 
 //template<int ntimesE, int ntimesI> extern
@@ -209,12 +224,14 @@ void recal_G_mat( // <<< nblock[partial], blockSize >>>
         Float* __restrict__ spikeTrain, // [depth, nblock, blockSize]
         float* __restrict__ conMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
         float* __restrict__ delayMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
+        float* __restrict__ gapMat, // [nblock, nearNeighborBlock, nI, nI]
         Size* __restrict__ nNeighborBlock,
         PosInt* __restrict__ neighborBlockId,
         Float* __restrict__ gE, // [ngTypeE, nV1]
         Float* __restrict__ gI, // [ngTypeI, nV1] 
         Float* __restrict__ hE,
         Float* __restrict__ hI,
+        Float* __restrict__ gap, // gap
         Float* __restrict__ vAvgE, //        post, [                       nblock, nE,       2]
         Float* __restrict__ vLTP_E, //        pre, [nLearnTypeE,    depth, nblock, nE,       2]
         Float* __restrict__ vLTD_E, //       post, [nLearnTypeE,           nblock, nE,       2]
@@ -227,7 +244,8 @@ void recal_G_mat( // <<< nblock[partial], blockSize >>>
         curandStateMRG32k3a* __restrict__ rGenCond,
         Float* __restrict__ synFail,
         Float* __restrict__ synPerCon,
-        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nE, Size nI, Size nV1, Float speedOfThought, int learning, PosInt block_offset, Size nType,
+		Float* __restrict__ vThres,
+        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nE, Size nI, Size nV1, Float speedOfThought, int learning, PosInt block_offset, Size nType, Size nTypeE, Size nTypeI,
         LearnVarShapeE lE, LearnVarShapeQ lQ, PosInt iChunk
 );
 
@@ -245,4 +263,44 @@ void sum_G(
         Float* __restrict__ hI,
         Size ngTypeE, Size ngTypeI
 );
+
+__global__
+void sum_Gap(
+        Size* __restrict__ nGapVec, // block_offset accounted for
+        Float* __restrict__ gapt,
+        Float* __restrict__ gap
+);
+
+//template<int ntimesE, int ntimesI> extern
+__global__  
+void recal_G_mat_nd( // <<< nblock[partial], blockSize >>>
+        Float* __restrict__ spikeTrain, // [depth, nblock, blockSize]
+        Float* __restrict__ output_g, // [depth, nblock, blockSize]
+        Float* __restrict__ output_h, // [depth, nblock, blockSize]
+        float* __restrict__ conMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
+        float* __restrict__ gapMat, // [nblock, nearNeighborBlock, nI, nI]
+        Size* __restrict__ nNeighborBlock,
+        PosInt* __restrict__ neighborBlockId,
+        Float* __restrict__ gE, // [ngTypeE, nV1]
+        Float* __restrict__ gI, // [ngTypeI, nV1] 
+        Float* __restrict__ hE,
+        Float* __restrict__ hI,
+        Float* __restrict__ gap, // gap
+        Float* __restrict__ vAvgE, //        post, [                       nblock, nE,       2]
+        Float* __restrict__ vLTP_E, //        pre, [nLearnTypeE,    depth, nblock, nE,       2]
+        Float* __restrict__ vLTD_E, //       post, [nLearnTypeE,           nblock, nE,       2]
+        Float* __restrict__ vTripE, //       post, [nLearnTypeE,           nblock, nE,       2]
+        Float* __restrict__ vSTDP_QE,  //  E post, [nLearnTypeQ,           nblock, nE        2]
+        Float* __restrict__ vSTDP_QI,  //   I pre, [nLearnTypeQ,    depth, nblock, nI,       2]
+        Float* __restrict__ pE,
+        Float* __restrict__ pI,
+        Size* __restrict__ typeAcc,
+        curandStateMRG32k3a* __restrict__ rGenCond,
+        Float* __restrict__ synFail,
+        Float* __restrict__ synPerCon,
+		Float* __restrict__ vThres,
+        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, Size nearNeighborBlock, Size nE, Size nI, Size nV1, int learning, PosInt block_offset, Size nType, Size nTypeE, Size nTypeI,
+        LearnVarShapeE lE, LearnVarShapeQ lQ, PosInt iChunk
+);
+
 #endif

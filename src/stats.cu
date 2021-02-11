@@ -5,8 +5,7 @@ __global__
 void pixelizeOutput(
         Float* __restrict__ fr,
         Float* __restrict__ output,
-        PosInt* __restrict__ pid, 
-		Size* __restrict__ m, // within one pixel
+        PosInt* __restrict__ pid, Size* __restrict__ m, // within one pixel
 		Size nPerPixel_I, Size nPerPixel_C, Size nPixel_I, Size nPixel, Size n, Float odt)
 {
 	PosInt tid = blockDim.x*blockIdx.x + threadIdx.x;
@@ -39,16 +38,16 @@ void pixelizeOutput(
 }
 
 // From nChunks of [chunkSize, ngTypeE+ngTypeI, blockSize] -> [ngTypeE+ngTypeI, nV1], where nV1 = nChunk*chunkSize*blockSize
-void reshape_chunk_and_write(Float chunk[], ofstream &fRawData, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, bool hWrite)
+void reshape_chunk_and_write(Float chunk[], ofstream &fRawData, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, Size nGap, bool hWrite)
 {
     PosIntL offset = 0;
     size_t outputSize;
     Float *flatten;
 
 	if (hWrite) {
-		outputSize = nV1*(nE+nI)*2; // g and h
+		outputSize = nV1*(nE+nI)*2 + nGap; // g and h
 	} else {
-		outputSize = nV1*(nE+nI); // g only
+		outputSize = nV1*(nE+nI) + nGap; // g only
 	}
 	flatten = new Float[outputSize];
     Size chunkSize = maxChunkSize;
@@ -90,6 +89,11 @@ void reshape_chunk_and_write(Float chunk[], ofstream &fRawData, Size maxChunkSiz
 		}
     }
     assert(offset == nV1*(nE+nI)*2);
+
+	Float* gap = flatten + nV1*(nE+nI)*2;
+    for (PosInt i=0; i<nGap; i++) {
+    	gap[i] = chunk[offset+i];
+	}
     fRawData.write((char*) flatten, outputSize*sizeof(Float));
     delete []flatten;
 }
@@ -121,4 +125,12 @@ bool fill_fSpikeTrain(std::vector<std::vector<std::vector<Float>>> &fsp, Float s
         }
     }
     return outsideSpiked;
+}
+
+void fill_fGapTrain(std::vector<std::vector<std::vector<Float>>> &fv, Float sp[], std::vector<std::vector<PosInt>> &gap_fcs, std::vector<std::vector<PosInt>> &gapVecID, std::vector<Size> nGapVec, Size mI) {
+    for (PosInt i=0; i<mI; i++) {
+        for (PosInt j=0; j<nGapVec[i]; j++) {
+            fv[i][j][gap_fcs[i][j]] = sp[gapVecID[i][j]];
+        }
+    }
 }

@@ -1,9 +1,9 @@
 #include "discrete_input_convol.cuh"
 // CANNOT USE EXPRESSION IN (inline seems fine) FUNCTION ARGUMENTS, LEADS TO ZERO!
-extern texture<float, cudaTextureType2DLayered> L_retinaInput;
-extern texture<float, cudaTextureType2DLayered> M_retinaInput;
-extern texture<float, cudaTextureType2DLayered> S_retinaInput;
-extern surface<void, cudaSurfaceType2DLayered> LGNspikeSurface;
+//extern texture<float, cudaTextureType2DLayered> L_retinaInput;
+//extern texture<float, cudaTextureType2DLayered> M_retinaInput;
+//extern texture<float, cudaTextureType2DLayered> S_retinaInput;
+//extern surface<void, cudaSurfaceType2DLayered> LGNspikeSurface;
 
 __device__ 
 __forceinline__ 
@@ -34,21 +34,21 @@ Float temporalKernel(Float tau, Zip_temporal &temp, Float lfac1, Float lfac2) {
 
 __device__ 
 __forceinline__
-Float get_intensity(SmallSize coneType, float x, float y, unsigned int iLayer) {
+Float get_intensity(SmallSize coneType, float x, float y, unsigned int iLayer, cudaTextureObject_t L_retinaInput, cudaTextureObject_t M_retinaInput, cudaTextureObject_t S_retinaInput) {
     Float contrast;
     switch (coneType) {
         case 0:
-            contrast = static_cast<Float>(tex2DLayered(L_retinaInput, x, y, iLayer));
+            contrast = tex2DLayered<Float>(L_retinaInput, x, y, iLayer);
             break;
         case 1:
-            contrast = static_cast<Float>(tex2DLayered(M_retinaInput, x, y, iLayer));
+            contrast = tex2DLayered<Float>(M_retinaInput, x, y, iLayer);
             break;
         case 2:
-            contrast = static_cast<Float>(tex2DLayered(S_retinaInput, x, y, iLayer));
+            contrast = tex2DLayered<Float>(S_retinaInput, x, y, iLayer);
             break;
         case 3: // On-Off only magnocellular excluding S cone
-            contrast = static_cast<Float>(tex2DLayered(L_retinaInput, x, y, iLayer) 
-                                        + tex2DLayered(M_retinaInput, x, y, iLayer))/2.0; 
+            contrast = (tex2DLayered<Float>(L_retinaInput, x, y, iLayer)
+                      + tex2DLayered<Float>(M_retinaInput, x, y, iLayer))/2.0; 
             break;
         case 4: 
 			/* Hunt Lum
@@ -57,9 +57,9 @@ Float get_intensity(SmallSize coneType, float x, float y, unsigned int iLayer) {
                                         + tex2DLayered(S_retinaInput, x, y, iLayer) * (-7.127501e-6);
 			*/
 			// CAT02
-            contrast = static_cast<Float>(tex2DLayered(L_retinaInput, x, y, iLayer) * 0.45436904
-                                        + tex2DLayered(M_retinaInput, x, y, iLayer) * 0.47353315
-                                        + tex2DLayered(S_retinaInput, x, y, iLayer) * 0.0720978);
+            contrast = tex2DLayered<Float>(L_retinaInput, x, y, iLayer) * 0.45436904
+                     + tex2DLayered<Float>(M_retinaInput, x, y, iLayer) * 0.47353315
+                     + tex2DLayered<Float>(S_retinaInput, x, y, iLayer) * 0.0720978;
             break;
         default:
             printf("unrecognized cone type");
@@ -76,6 +76,7 @@ Float get_intensity(SmallSize coneType, float x, float y, unsigned int iLayer) {
 }
 
 
+/*
 __global__ 
 void testTexture(Float L, Float M, Float S) {
     float x = (blockIdx.x*blockDim.x + threadIdx.x+0.5)/(gridDim.x*blockDim.x);
@@ -90,6 +91,7 @@ void testTexture(Float L, Float M, Float S) {
         }
     }
 }
+*/
 // for 2 cone-types LGN only, can be generalized for more cone-types
 // gridSize: (nLGN, nType) blocks for store 1-D nLGN for convol
 // blockSize: spatialSample1D x spatialSample1D (npixel_1D)
@@ -502,12 +504,12 @@ void store_PM(
             y = LR_y0 + (centerEcc * sine(centerPolar) + cx * sino + cy * coso) * normViewDistance;
             // DEBUG visual field and stimulus field not matching
                 if (x<0 || x>1) {
-                    printf("x = %1.15e\n", x);
+                    printf("x = %.3e, %.3f + (%.3e + %.3e) * %.3e\n", x, LR_x0, centerEcc * cosine(centerPolar), cx * coso - cy * sino, normViewDistance);
                     assert(x>=0);
                     assert(x<=1);
                 }
                 if (y<0 || y>1) {
-                    printf("y = %1.15e\n", y);
+                    printf("y = %.3e, %.3f + (%.3e + %.3e) * %.3e\n", x, LR_y0, centerEcc * sine(centerPolar), cx * sino + cy * coso, normViewDistance);
                     assert(y>=0);
                     assert(y<=1);
                 }
@@ -666,6 +668,9 @@ void LGN_convol_parvo(
         Float* __restrict__ contrast,
         SmallSize* __restrict__ coneType,
         Spatial_component &spatial,
+		cudaTextureObject_t L_retinaInput,
+		cudaTextureObject_t M_retinaInput,
+		cudaTextureObject_t S_retinaInput,
 		Size nParvo_L, Size nMagno_L, Size nLGN,
 		Float normViewDistance,
         PosInt currentFrame,
@@ -748,7 +753,7 @@ void LGN_convol_parvo(
         //F_i is the mean of all sampled pixel value of the ith frame in the LGN's RF.
     */
     
-    SmallSize typeS = coneType[nLGN+id];
+    SmallSize typeS = coneType[id+nLGN];
     SmallSize typeC = coneType[id];
 
     Float spatialWeight = SW_storage[tid];
@@ -832,8 +837,9 @@ void LGN_convol_parvo(
         for (Size iFrame = 0; iFrame < nFrame; iFrame++) {
             //Get F_i by reduce - p: in space
 			Float local_I[2];
-            local_I[0] = get_intensity(typeC, x0S, y0S, (currentFrame + iFrame) % maxFrame);
-            local_I[1] = get_intensity(typeS, x0S, y0S, (currentFrame + iFrame) % maxFrame);
+            local_I[0] = get_intensity(typeC, x0S, y0S, (currentFrame + iFrame) % maxFrame, L_retinaInput, M_retinaInput, S_retinaInput);
+            local_I[1] = get_intensity(typeS, x0S, y0S, (currentFrame + iFrame) % maxFrame, L_retinaInput, M_retinaInput, S_retinaInput);
+			//printf("frame %u - (%u,%u), c = %.3e, s = %.3e\n", iFrame, blockIdx.x, threadIdx.x, local_I[0], local_I[1]);
             block_reduce2<Float>(reducedC, reducedS, local_I);
             if (tid == 0) {
                 // __shared__ to (register/local) to __shared__
@@ -841,7 +847,7 @@ void LGN_convol_parvo(
                 nSampleShared[nFrame + iFrame] = reducedS[0]/nSample;  // shared memory now used for spatial mean luminance, F_i
             }
 			if (saveOutputB4V1 && iPatch == nPatch && iFrame == nFrame-1) {
-            	Float local_I = get_intensity(3, x0S, y0S, (currentFrame + iFrame) % maxFrame);
+            	Float local_I = get_intensity(3, x0S, y0S, (currentFrame + iFrame) % maxFrame, L_retinaInput, M_retinaInput, S_retinaInput);
             	block_reduce<Float>(reducedS, local_I);
 				if (tid == 0) {
                     luminance[id] = reducedS[0]/nSample;
@@ -942,7 +948,7 @@ void LGN_convol_parvo(
                 Float local_contrast;
 				Float local_I;
                 // center
-                local_I = get_intensity(typeC, x0C, y0C, frameNow % maxFrame);
+                local_I = get_intensity(typeC, x0C, y0C, frameNow % maxFrame, L_retinaInput, M_retinaInput, S_retinaInput);
 				/*
 				if (saveOutputB4V1 && iPatch == nPatch && iFrame == nFrame-1) {
                 	if (iPatch == 0 && iFrame == nFrame-1) {
@@ -980,7 +986,7 @@ void LGN_convol_parvo(
                 filtered[0] = spatialWeight*local_contrast;
 				
                 // surround 
-                local_I = get_intensity(typeS, x0S, y0S, frameNow % maxFrame);
+                local_I = get_intensity(typeS, x0S, y0S, frameNow % maxFrame, L_retinaInput, M_retinaInput, S_retinaInput);
                 if (meanS > 0) {
                     local_contrast = local_I/meanS - 1.0;
                 } else {
@@ -1129,6 +1135,9 @@ void LGN_convol_magno(
         Float* __restrict__ contrast,
         SmallSize* __restrict__ coneType,
         Spatial_component &spatial,
+		cudaTextureObject_t L_retinaInput,
+		cudaTextureObject_t M_retinaInput,
+		cudaTextureObject_t S_retinaInput,
 		Size nParvo_L, Size nMagno_L, Size nParvo_R,
 		Float normViewDistance,
         PosInt currentFrame,
@@ -1250,7 +1259,7 @@ void LGN_convol_magno(
         //3. For all the new frames
         for (Size iFrame = 0; iFrame < nFrame; iFrame++) {
             //Get F_i by reduce - p: in space
-            Float local_I = get_intensity(3, x0, y0, (currentFrame + iFrame) % maxFrame);
+            Float local_I = get_intensity(3, x0, y0, (currentFrame + iFrame) % maxFrame, L_retinaInput, M_retinaInput, S_retinaInput);
             block_reduce<Float>(reduced, local_I);
             if (tid == 0) {
                 // __shared__ to (register/local) to __shared__
@@ -1282,9 +1291,9 @@ void LGN_convol_magno(
                 mean_I = nSampleShared[iFrame];
                 preFrame = frameNow;
 				
-                //Float local_I = get_intensity(type, x0, y0, frameNow % maxFrame);
+                //Float local_I = get_intensity(type, x0, y0, frameNow % maxFrame, L_retinaInput, M_retinaInput, S_retinaInput);
                 //Float local_contrast;
-                local_I = get_intensity(type, x0, y0, frameNow % maxFrame);
+                local_I = get_intensity(type, x0, y0, frameNow % maxFrame, L_retinaInput, M_retinaInput, S_retinaInput);
                 if (mean_I > 0) {
                     local_contrast = local_I/mean_I - 1.0;
                 } else {
@@ -1407,11 +1416,16 @@ void LGN_nonlinear(
 		InputType_t* __restrict__ LGN_type,
         InputActivation typeStatus,
         Float* __restrict__ lVar,
+		cudaSurfaceObject_t LGNspikeSurface,
         int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning, bool learnData_FF, bool LGN_switch, bool getLGN_sp)
 {
 	unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     bool engaging = id<nLGN;
     unsigned int MASK = __ballot_sync(FULL_MASK, static_cast<int>(engaging));
+    Float var[MAX_NLEARNTYPE_FF];
+	Size nsp;
+	Float sInfo, tsp;
+ 	int x, y;
     if (engaging) {
         Float C50, K, A, B;
         // load in sequence
@@ -1423,8 +1437,10 @@ void LGN_nonlinear(
         if (LGN_switch) {
             type = LGN_type[id];
         }
-        int x = sx[id];
-        int y = sy[id];
+        //int x = sx[id];
+        //int y = sy[id];
+        x = sx[id];
+        y = sy[id];
         curandStateMRG32k3a local_state = state[id];
         //PosInt type = static_cast<PosInt>(LGN_type[id]);
 
@@ -1446,7 +1462,7 @@ void LGN_nonlinear(
             assert(fr >= 0);
         }*/
         LGN_fr[id] = fr;
-        Float var[MAX_NLEARNTYPE_FF];
+        //Float var[MAX_NLEARNTYPE_FF];
         //if (isnan(max) || max == 0 || isnan(current) || isnan(fr)) {
         //    printf("current/max: %1.3e/%1.3e = %1.3e == %1.3e\n", current, max, current/max, fr);
         //}
@@ -1459,9 +1475,11 @@ void LGN_nonlinear(
             }
         }
 
-        Size nsp;
-        Float tsp = get_spike(nsp, lTR, lNL, dt, fr/1000.0, &local_state);
-        Float sInfo = nsp + tsp/dt; // must be float, integer part = #spikes decimals: mean tsp normalized by dt
+        //Size nsp;
+        //Float tsp = get_spike(nsp, lTR, lNL, dt, fr/1000.0, &local_state);
+        //Float sInfo = nsp + tsp/dt; // must be float, integer part = #spikes decimals: mean tsp normalized by dt
+        tsp = get_spike(nsp, lTR, lNL, dt, fr/1000.0, &local_state);
+        sInfo = nsp + tsp/dt; // must be float, integer part = #spikes decimals: mean tsp normalized by dt
 		/* debug for snapshot
 			if (id == 0) {
 				printf("LGN: fr = %f, lTR = %f, lNL = %f, rand = %f\n", fr, lTR, lNL, uniform(&local_state));
@@ -1475,13 +1493,16 @@ void LGN_nonlinear(
             //printf("LGN fired, ");
         }
         leftTimeRate[id] = lTR;
-		//printf("%u: ltr = %lf, lnl = %lf, sInfo = %lf\n", id, lTR, lNL, sInfo);
         state[id] = local_state;
         if (learnData_FF || getLGN_sp) LGN_sInfo[id] = sInfo;
+		//printf("%u: ltr = %lf, lnl = %lf, nsp = %f, sInfo = %lf\n", id, lTR, lNL, nsp, LGN_sInfo[id]);
         // write to surface memory 
 		float sInfof = static_cast<float>(sInfo);
         surf2DLayeredwrite(sInfof, LGNspikeSurface, 4*x, y, 0);
-        if (learning < 4) {
+	}
+	__syncthreads();
+    if (engaging) {
+        if (learning && learning < 4) {
             Float delta_t; // from last_tsp (or start of the time step) to tsp (or end of time step)
             if (sInfo > 0) {
                 delta_t = tsp;

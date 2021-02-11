@@ -17,6 +17,8 @@ def read_cfg(fn):
         vE = np.fromfile(f, prec, 1)[0]
         vI = np.fromfile(f, prec, 1)[0]
         nType = np.fromfile(f, 'u4', 1)[0]
+        nTypeE = np.fromfile(f, 'u4', 1)[0]
+        nTypeI = np.fromfile(f, 'u4', 1)[0]
         vR = np.fromfile(f, prec, nType)
         vThres = np.fromfile(f, prec, nType)
         gL = np.fromfile(f, prec, nType)
@@ -24,17 +26,17 @@ def read_cfg(fn):
         nTypeHierarchy = np.fromfile(f, 'u4', 2)
         typeAcc = np.fromfile(f, 'u4', nType)
         sRatioLGN = np.fromfile(f, prec, nType)
-        sRatioV1 = np.fromfile(f, prec, 1)[0]
+        sRatioV1 = np.fromfile(f, prec, nType*nType)[0]
         frRatioLGN = np.fromfile(f, prec, 1)[0] 
         convolRatio = np.fromfile(f, prec, 1)[0] 
-        mE = typeAcc[nTypeHierarchy[0]-1]
-        mI = typeAcc[-1] - mE
+        nE = typeAcc[nTypeHierarchy[0]-1]
+        nI = typeAcc[-1] - nE
         print(typeAcc)
-        print(f'mE = {mE}, mI = {mI}')
+        print(f'nE = {nE}, nI = {nI}')
         print(f'vL = {vL}, vI = {vI}, vE = {vE}') 
         print(f'vR = {vR}, gL = {gL}, vT = {vT}')
         print(f'sRatioLGN = {sRatioLGN}, sRatioV1 = {sRatioV1}')
-    return prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio
+    return prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI
 
 def readLGN_V1_s0(fn, rnLGN_V1 = False, prec='f4'):
     with open(fn, 'rb') as f:
@@ -97,7 +99,11 @@ def read_conStats(fn, prec='f4'):
         preN = np.fromfile(f, 'u4', nType*networkSize).reshape(nType, networkSize)
         preN_avail = np.fromfile(f, 'u4', nType*networkSize).reshape(nType, networkSize)
         preNS = np.fromfile(f, prec, nType*networkSize).reshape(nType, networkSize)
-    return nType, ExcRatio, preN, preNS, preN_avail
+        nTypeI = np.fromfile(f, 'u4', 1)[0]
+        mI = np.fromfile(f, 'u4', 1)[0]
+        preGapN = np.fromfile(f, 'u4', nTypeI*mI).reshape(nTypeI, mI)
+        preGapNS = np.fromfile(f, prec, nTypeI*mI).reshape(nTypeI, mI)
+    return nType, ExcRatio, preN, preNS, preN_avail, nTypeI, mI, preGapN, preGapNS
 
 def linear_diff(v0, vs):
     return v0-vs
@@ -132,20 +138,22 @@ def readLGN_fr(fn, prec='f4'):
         LGN_fr = np.fromfile(f,prec, count = nt*nLGN).reshape(nt, nLGN)
     return LGN_fr
 
-def readLGN_sp(fn, prec='f4'):
+def readLGN_sp(fn, prec='f4', nstep = 0):
     with open(fn, 'rb') as f:
         dt = np.fromfile(f, prec, count = 1)[0]
         nt = np.fromfile(f, 'u4', count = 1)[0]
+        if nstep == 0 or nstep > nt:
+            nstep = nt
         nLGN = np.fromfile(f, 'u4', count = 1)[0]
-        LGN_sp = np.fromfile(f,prec, count = nt*nLGN).reshape(nt, nLGN)
         LGN_spScatter = np.empty(nLGN, dtype = object) 
         for i in range(nLGN):
             LGN_spScatter[i] = []
-        for it in range(nt):
-            tsp0 = LGN_sp[it,:]
+        for it in range(nstep):
+            tsp0 = np.fromfile(f, prec, count = nLGN)
+            assert(np.sum(tsp0>0) == np.sum(tsp0>=1))
             tsps = tsp0[tsp0 > 0]
             if tsps.size > 0:
-                idxFired = np.nonzero(tsp0)[0]
+                idxFired = np.nonzero(tsp0>1)[0]
                 k = 0
                 for j in idxFired:
                     nsp = np.int(np.floor(tsps[k]))
@@ -283,6 +291,14 @@ def HeatMap(d1, d2, range1, range2, ax, cm, log_scale = False, intPick = True, t
         data = np.log(h.T + 1)
     else:
         data = h.T
+    tc = np.zeros(edge1.size-1)
+    for i in range(edge1.size-1):
+        binned = np.logical_and(d1 <= edge1[i+1], d1 > edge1[i])
+        if not binned.any():
+            tc[i] = np.NAN
+        else:
+            tc[i] = np.mean(d2[binned])
+
     #image = ax.imshow(data, vmin = vmin, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap(cm))
     image = ax.imshow(data, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap(cm))
 
@@ -336,6 +352,7 @@ def HeatMap(d1, d2, range1, range2, ax, cm, log_scale = False, intPick = True, t
         else:
             ax.set_yticklabels([f'{min_value + label * (max_value-min_value):.2e}' for label in tickPick2])
 
+    ax.plot(np.arange(edge1.size - 1), (tc - edge2[0])/(edge2[-1]-edge2[0])*(edge2.size - 1)-0.5, '*-k', lw = 1.0, ms = 1.5)
     return image
 
 def TuningCurves(data, bins, percentile, ax, color, tick, ticklabel):
@@ -352,7 +369,12 @@ def TuningCurves(data, bins, percentile, ax, color, tick, ticklabel):
     ax.plot(x, mid, c = clr.hsv_to_rgb(color))
     lcolor = color
     lcolor[1] *= 0.6
-    ax.fill_between(x, lower, upper, color = clr.hsv_to_rgb(lcolor), ls = ':', alpha = 0.6)
+    ax.fill_between(x, lower, upper, color = clr.hsv_to_rgb(lcolor), ls = '-', alpha = 0.6)
+
+    bottom = np.percentile(binned, 0, axis = 0)
+    top = np.percentile(binned, 100, axis = 0)
+    ax.fill_between(x, bottom, top, color = clr.hsv_to_rgb(lcolor), ls = ':', alpha = 0.3)
+
     ax.set_xticks(tick)
     ax.set_xticklabels(ticklabel)
     ax.set_ylim(bottom = 0)

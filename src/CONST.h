@@ -5,8 +5,8 @@
 //#define vI -2.0f/3.0f
 //#define vL 0.0f
 #define vE 0.0f
-#define vI -80.0f
-#define vL -70.0f
+#define vI -75.0f
+#define vL -65.0f
 #define vPeak 100.0f
 
 #define MAX_NTYPE 2
