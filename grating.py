@@ -110,8 +110,8 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
         a = npixel//2  
     b = npixel  
     if genMovie:
-        #FourCC = cv.VideoWriter_fourcc(*'HFYU')
-        FourCC = cv.VideoWriter_fourcc(*'MP4V')
+        FourCC = cv.VideoWriter_fourcc(*'HFYU')
+        #FourCC = cv.VideoWriter_fourcc(*'MP4V')
         output = cv.VideoWriter(fname+'.avi', FourCC, frameRate, (npixel,npixel), True)
 
     if isinstance(time, (list, tuple, np.ndarray)):
@@ -154,6 +154,13 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
     if not inputLMS: # rgb->bgr
         c1 = c1[::-1]
         c2 = c2[::-1]
+    else:
+        c1_sRGB = apply_sRGB_gamma(np.matmul(LMS2sRGB, c1))
+        c2_sRGB = apply_sRGB_gamma(np.matmul(LMS2sRGB, c2))
+        print(f'crest in sRGB: {c1_sRGB}')
+        print(f'valley in sRGB: {c2_sRGB}')
+        if not (c1_sRGB<=1).all() or not (c1_sRGB>=0).all() or not (c2_sRGB<=1).all() or not (c2_sRGB>=0).all():
+            raise Exception(f'crest and valley in LMS is out of the sRGB space')
     c1 = np.reshape(c1,(1,3))
     c2 = np.reshape(c2,(1,3))
     control = np.zeros(3)
@@ -224,7 +231,7 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
                 _LMS = data.reshape(npixel*npixel,3).T
                 assert((_LMS>=0).all())
                 assert((_LMS<=1).all())
-                _sRGB = np.matmul(LMS2sRGB, _LMS)
+                _sRGB = apply_sRGB_gamma(np.matmul(LMS2sRGB, _LMS))
                 if (_sRGB<0).any() or (_sRGB>1).any():
                     print('sRGB space is not enough to represent the color')
                     print(f'{c1, c2}')
@@ -233,7 +240,7 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
                     _sRGB[pick] = 1
                     pick = _sRGB < 0
                     _sRGB[pick] = 0
-                pixelData = np.round(apply_sRGB_gamma(_sRGB)*255).T.reshape(npixel,npixel,3)[:,:,::-1].astype('uint8')
+                pixelData = np.round(_sRGB*255).T.reshape(npixel,npixel,3)[:,:,::-1].astype('uint8')
                 LMS_seq[it,:,:,:] = _LMS.reshape((3,npixel,npixel))
             else: # input is sRGB
                 pixelData = np.round(data*255).reshape(npixel,npixel,3).astype('uint8')
