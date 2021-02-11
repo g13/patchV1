@@ -1023,17 +1023,23 @@ int main(int argc, char *argv[])
 		for (PosInt j=0; j<nblock; j++) {
 			if (neighborMat[j*nblock + i] >= 0) {
 				clusterID.push_back(neighborMat[j*nblock + i]);
-				neighborMat[j*nblock + i] = -1;
 				nc++;
 			}
 		}
+
 		Size *blockId = neighborBlockId + i*maxNeighborBlock;
+		cout << "cluster " << i << "\n";
+		assert(clusterID[0] == 0);
+		assert(blockId[clusterID[0]] == i);
+
 		if (nc > 0) {
 			PosInt *d_clusterID;
     		checkCudaErrors(cudaMalloc((void**)&d_clusterID, nc*sizeof(PosInt)));
 			checkCudaErrors(cudaMemcpy(d_clusterID, &(clusterID[0]), nc*sizeof(PosInt), cudaMemcpyHostToDevice));
 
-			{ // m
+			checkCudaErrors(cudaMemcpy(d_neighborMat, &(neighborMat[0]), nblock*nblock*sizeof(int), cudaMemcpyHostToDevice));
+
+			/*{ // m
 				PosInt i0 = 0;
 				size_t gap_nNS = nearNeighborBlock*nI*nI;
 				vector<int> neighborMat0(nblock*nblock, -1);
@@ -1058,15 +1064,15 @@ int main(int argc, char *argv[])
 						}
 					}
 				}
-			}
+			}*/
 
 			// make a mem cluster and send to gpu
 			Float* d_clusterGapMat;
     		checkCudaErrors(cudaMalloc((void**)&d_clusterGapMat, gap_neighborMatSize*nc*sizeof(Float)));
-			cout << "uploading " << i << "\n";
+			//cout << "uploading " << i << "\n";
 			for (PosInt j=0; j<nc; j++) {
 				checkCudaErrors(cudaMemcpy(d_clusterGapMat + j*gap_neighborMatSize, gapMat + blockId[clusterID[j]]*gap_neighborMatSize, gap_neighborMatSize*sizeof(Float), cudaMemcpyHostToDevice));
-				cout << j << ":" << gapMat + blockId[clusterID[j]]*gap_neighborMatSize << "to" << d_clusterGapMat + j*gap_neighborMatSize << "\n";
+				//cout << j << ":" << gapMat + blockId[clusterID[j]]*gap_neighborMatSize << "to" << d_clusterGapMat + j*gap_neighborMatSize << "\n";
 			}
 			checkCudaErrors(cudaDeviceSynchronize());
 
@@ -1080,104 +1086,67 @@ int main(int argc, char *argv[])
 					d_preTypeGapped, d_preTypeStrGapped, d_preType, state,
 					i_outstanding, v_outstanding,
 					i, nblock, nearNeighborBlock, maxNeighborBlock, mI, nE, nI, nTypeE, nTypeI);
-			{ // u
-				PosInt i0 = 0;
-				size_t gap_nNS = nearNeighborBlock*nI*nI;
-				vector<int> neighborMat0(nblock*nblock, -1);
-				for (PosInt ii=0; ii<nblock; ii++) {
-					PosInt *blockId0 = neighborBlockId + ii*maxNeighborBlock;
-					Size nn = nNearNeighborBlock[ii];
-					assert(blockId0[0] == ii);
-					for (PosInt j=0; j<nn; j++) {
-						neighborMat0[blockId0[j]*nblock + ii] = j;
+			// unwind the cluster back to cpu
+			checkCudaErrors(cudaDeviceSynchronize());
+			//cout << "downloading " << i << "\n";
+			for (PosInt j=0; j<nc; j++) {
+				checkCudaErrors(cudaMemcpy(gapMat + blockId[clusterID[j]]*gap_neighborMatSize, d_clusterGapMat + j*gap_neighborMatSize, gap_neighborMatSize*sizeof(Float), cudaMemcpyDeviceToHost));
+				//cout << j << ":" << d_clusterGapMat + j*gap_neighborMatSize << "to" <<  gapMat + blockId[clusterID[j]]*gap_neighborMatSize << "\n";
+
+				/*{ // u
+					PosInt i0 = 0;
+					size_t gap_nNS = nearNeighborBlock*nI*nI;
+					vector<int> neighborMat0(nblock*nblock, -1);
+					for (PosInt ii=0; ii<nblock; ii++) {
+						PosInt *blockId0 = neighborBlockId + ii*maxNeighborBlock;
+						Size nn = nNearNeighborBlock[ii];
+						assert(blockId0[0] == ii);
+						for (PosInt jj=0; jj<nn; jj++) {
+							neighborMat0[blockId0[jj]*nblock + ii] = jj;
+						}
 					}
-				}
-				for (PosInt ii=0; ii<nI; ii++) {
-					// postsynaptic
-					for (PosInt in=0; in<nNearNeighborBlock[i0]; in++) {
-						PosInt bid = neighborBlockId[i0*maxNeighborBlock + in];
-						for (PosInt j=0; j<nI; j++) {
-							PosInt h_id = i0*gap_nNS + in*nI*nI + j*nI + ii;
-							PosInt g_id = bid*gap_nNS + neighborMat0[i0*nblock+bid]*nI*nI + ii*nI + j;
-							Float home_v = gapMat[h_id];
-							Float guest_v = gapMat[g_id];
-							if (i0 == 0 && ii == 0 && bid == 2) {
-								cout << i << " u-" <<j << ": " << home_v << ", " << guest_v << "(" << h_id << ", " << g_id << ")\n";
-							//} else {
+					for (PosInt ii=0; ii<nI; ii++) {
+						// postsynaptic
+						for (PosInt in=0; in<nNearNeighborBlock[i0]; in++) {
+							PosInt bid = neighborBlockId[i0*maxNeighborBlock + in];
+							bool pass = true;
+							for (PosInt jj=0; jj<nI; jj++) {
+								PosInt h_id = i0*gap_nNS + in*nI*nI + jj*nI + ii;
+								PosInt g_id = bid*gap_nNS + neighborMat0[i0*nblock+bid]*nI*nI + ii*nI + jj;
+								Float home_v = gapMat[h_id];
+								Float guest_v = gapMat[g_id];
+								if (i0 == 0 && ii == 0 && bid == 2) {
+									cout << blockId[clusterID[j]] << "~" << i << " u-" <<jj << ": " << home_v << ", " << guest_v << "(" << h_id << ", " << g_id << ")\n";
+									if ((home_v > 0  && guest_v <= 0) || (home_v <= 0  && guest_v > 0)) {
+										pass = false;
+									}
+								//} else {
+								}
+							}
+							if (!pass && !(i==0 && j<2)) {
+								cout << i << "-" << blockId[clusterID[j]] << "destroyed gMat\n";
+								return EXIT_FAILURE;
 							}
 						}
 					}
-				}
-			}
-			// unwind the cluster back to cpu
-			cout << "cluster " << clusterID[0] << ", " << i << "\n";
-			assert(clusterID[0] == 0);
-			assert(blockId[clusterID[0]] == i);
-			checkCudaErrors(cudaDeviceSynchronize());
-			cout << "downloading " << i << "\n";
-			for (PosInt j=0; j<nc; j++) {
-				checkCudaErrors(cudaMemcpy(gapMat + blockId[clusterID[j]]*gap_neighborMatSize, d_clusterGapMat + j*gap_neighborMatSize, gap_neighborMatSize*sizeof(Float), cudaMemcpyDeviceToHost));
-				cout << j << ":" << d_clusterGapMat + j*gap_neighborMatSize << "to" <<  gapMat + blockId[clusterID[j]]*gap_neighborMatSize << "\n";
+				}*/
 			}
 			checkCudaErrors(cudaDeviceSynchronize());
     		checkCudaErrors(cudaFree(d_clusterGapMat));
     		checkCudaErrors(cudaFree(d_clusterID));
 
-			{ // n
-				PosInt i0 = 0;
-				size_t gap_nNS = nearNeighborBlock*nI*nI;
-				vector<int> neighborMat0(nblock*nblock, -1);
-				for (PosInt ii=0; ii<nblock; ii++) {
-					PosInt *blockId0 = neighborBlockId + ii*maxNeighborBlock;
-					Size nn = nNearNeighborBlock[ii];
-					assert(blockId0[0] == ii);
-					for (PosInt j=0; j<nn; j++) {
-						neighborMat0[blockId0[j]*nblock + ii] = j;
-					}
-				}
-				for (PosInt ii=0; ii<nI; ii++) {
-					// postsynaptic
-					for (PosInt in=0; in<nNearNeighborBlock[i0]; in++) {
-						PosInt bid = neighborBlockId[i0*maxNeighborBlock + in];
-						bool pass = true;
-						for (PosInt j=0; j<nI; j++) {
-							PosInt h_id = i0*gap_nNS + in*nI*nI + j*nI + ii;
-							PosInt g_id = bid*gap_nNS + neighborMat0[i0*nblock+bid]*nI*nI + ii*nI + j;
-							Float home_v = gapMat[h_id];
-							Float guest_v = gapMat[g_id];
-							if (i0 == 0 && ii == 0 && bid == 2) {
-								cout << i << " n-" <<j << ": " << home_v << ", " << guest_v << "(" << h_id << ", " << g_id << ")\n";
-							//} else {
-								if (home_v > 0) {
-									if (guest_v <= 0) {
-										cout << i0 << ", " << bid << "(" << in << "): " << j << "<->" << ii <<" = " << home_v << " ~ " << guest_v << "\n";
-										pass = false;
-										//assert(guest_v > 0);
-									}
-								} else {
-									if (guest_v > 0) {
-										cout << i0 << ", " << bid << "(" << in << "): " << j << "<->" << ii <<" = " << home_v << " ~ " << guest_v << "\n";
-										pass = false;
-										//assert(guest_v <= 0);
-									}
-								}
-							}
-						}
-						if (!pass) {
-							assert(false);
-						}
-					}
-				}
+			cout << "pair " << i << ": ";
+			for (PosInt j=0; j<nc; j++) {
+				neighborMat[i*nblock + blockId[clusterID[j]]] = -1;
+				neighborMat[blockId[clusterID[j]]*nblock + i] = -1;
+				cout << blockId[clusterID[j]] << ", ";
 			}
+			cout << "\n";
+			clusterID.clear();
+		} else {
+			cout << "no more to change\n";
 		}
 		// update the counterparts in the pairs
-		cout << "pair " << i << ": ";
-		for (PosInt j=0; j<nc; j++) {
-			neighborMat[i*nblock + blockId[clusterID[j]]] = -1;
-			cout << blockId[clusterID[j]] << ", ";
-		}
-		cout << "\n";
-		clusterID.clear();
 	}
 	checkCudaErrors(cudaMemcpy(preTypeGapped, d_preTypeGapped, gap_statSize, cudaMemcpyDeviceToHost)); 	
     checkCudaErrors(cudaFree(i_outstanding));
@@ -1413,31 +1382,28 @@ int main(int argc, char *argv[])
 					for (PosInt j=0; j<nI; j++) {
 						Float home_v = gapMat[ib*gap_nNS + in*nI*nI + j*nI + i];
 						Float guest_v = gapMat[bid*gap_nNS + neighborMat0[ib*nblock+bid]*nI*nI + i*nI + j];
-						if (ib == 0 && i == 0 && bid == 2) {
-							cout << " q" <<j << ": " << home_v << ", " << guest_v << "(" << ib*gap_nNS + in*nI*nI + j*nI + i << ", " << bid*gap_nNS + neighborMat0[ib*nblock+bid]*nI*nI + i*nI + j << ")\n";
-							if (home_v > 0) {
-								for (PosInt k=0; k<nTypeI; k++) {
-									if (j < typeAccCount[k + nTypeE] - nE) {
-										gapMat[ib*gap_nNS + in*nI*nI + j*nI + i] *= ratio[k];
-										break;
-									}
+						if (home_v > 0) {
+							for (PosInt k=0; k<nTypeI; k++) {
+								if (j < typeAccCount[k + nTypeE] - nE) {
+									gapMat[ib*gap_nNS + in*nI*nI + j*nI + i] *= ratio[k];
+									break;
 								}
-								if (guest_v <= 0) {
-									cout << ib << ", " << bid << "(" << in << "): " << j << "<->" << i <<" = " << home_v << " ~ " << guest_v << "\n";
-									pass = false;
-									//assert(guest_v > 0);
-								}
-							} else {
-								if (guest_v > 0) {
-									
-									cout << ib << ", " << bid << "(" << in << "): " << j << "<->" << i <<" = " << home_v << " ~ " << guest_v << "\n";
-									pass = false;
-									//assert(guest_v <= 0);
-								}
+							}
+							if (guest_v <= 0) {
+								cout << ib << ", " << bid << "(" << in << "): " << j << "<->" << i <<" = " << home_v << " ~ " << guest_v << "\n";
+								pass = false;
+								//assert(guest_v > 0);
+							}
+						} else {
+							if (guest_v > 0) {
+								
+								cout << ib << ", " << bid << "(" << in << "): " << j << "<->" << i <<" = " << home_v << " ~ " << guest_v << "\n";
+								pass = false;
+								//assert(guest_v <= 0);
 							}
 						}
 					}
-					if (!pass && ib == 0 && i == 0 && bid == 2) {
+					if (!pass) {
 						assert(pass);
 					}
 				}
@@ -1457,44 +1423,6 @@ int main(int argc, char *argv[])
 
     fV1_gapMat.write((char*)gapMat, static_cast<size_t>(nearNeighborBlock*nI)*nI*nblock*sizeof(Float));
     fV1_gapMat.close();
-	Float gapS = 0.0;
-	Size ntmp = 0;
-	Size ntmp_connected = 0;
-	for (PosInt j=0; j<nblock; j++) {
-		for (PosInt k=0; k<nNearNeighborBlock[j]; k++) {
-			for (PosInt l=0; l<nI; l++) {
-				PosInt id = j*nearNeighborBlock*nI*nI + k*nI*nI + l*nI;
-				PosInt jtype;
-				for (PosInt q=0; q<nTypeI; q++) {
-					if (l % nI < typeAccCount[q+nTypeE] - nE) {
-						jtype = q;
-						break;
-					}
-				}
-				for (PosInt m=0; m<nI; m++) {
-					PosInt itype;
-					for (PosInt q=0; q<nTypeI; q++) {
-						if (m % nI < typeAccCount[q+nTypeE] - nE) {
-							itype = q;
-							break;
-						}
-					}
-					assert(gapMat[id+m] >= 0);
-					if (j*nI + m == 960) {
-						gapS += gapMat[id + m];
-						ntmp++;
-						cout << gapMat[id + m] << ", ";
-						if (gapMat[id+m] > 0) {
-							ntmp_connected++;
-						}
-					}
-				}
-			}
-		}
-	}
-	cout <<"\n";
-	cout << "mean gapS = " << gapS << "\n";
-	cout << "gaps [960] = " << ntmp_connected << "/" << ntmp << "\n";
 	delete []gapMat;
 
     printf("connectivity constructed\n");

@@ -8,15 +8,27 @@ import numpy as np
 from mpl_toolkits.mplot3d import axes3d
 from matplotlib import cm
 from readPatchOutput import *
+from os import path
 
 import sys
 if len(sys.argv) > 1:
     output_suffix = sys.argv[1]
     if len(sys.argv) > 2:
         input_suffix = sys.argv[2]
+        if len(sys.argv) > 3:
+            if sys.argv[3] == 'True' or sys.argv[3] == '1':
+                readNewSpike = True 
+                print('read new spikes')
+            else:
+                readNewSpike = False
+                print('read stored spikes')
+        else:
+            readNewSpike = False
     else:
+        readNewSpike = False
         input_suffix = ""
 else:
+    readNewSpike = False
     output_suffix = ""
     input_suffix = ""
 
@@ -34,8 +46,8 @@ plotStat = True
 nLGN_1D = 16
 nt_ = 4000
 nstep = 4000
-#seed = 1653783
-iLGN = np.array([84,1455,1833,2575])
+seed = 1653783
+#iLGN = np.array([84,1455,1833,2575])
 #iLGN = np.array([6*16+3,7*16+3,8*16+3, 6*16+10,7*16+10,8*16+10])
 #iLGN = np.arange(185133)
 ns = 10
@@ -44,7 +56,7 @@ parameterFn = "patchV1_cfg" +output_suffix + ".bin"
 
 LGN_spFn = "LGN_sp" + output_suffix
 
-prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, = read_cfg(parameterFn)
+prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI = read_cfg(parameterFn)
 print(f'frRatioLGN = {frRatioLGN}, convolRatio = {convolRatio}')
 
 output = "LGN_gallery" + output_suffix + ".bin"
@@ -87,10 +99,6 @@ with open(output, 'rb') as f:
     sharpness = np.fromfile(f, precision, nLGN)
     coneType = np.fromfile(f, 'u4', 2*nLGN).reshape(2,nLGN)
 
-
-if plotResponseSample:
-    LGN_spScatter = readLGN_sp(LGN_spFn + ".bin", prec = prec)
-
 if 'iLGN' not in locals():
     np.random.seed(seed)
     iLGN = np.random.randint(nLGN, size =ns)
@@ -109,7 +117,7 @@ with open(output_fn, 'rb') as f:
         nstep = nt_
     print(f'nstep = {nstep}')
     interstep = nt_//nstep
-    if interstep != nt/nstep:
+    if interstep != nt_/nstep:
         raise Exception(f'nstep: {nstep} is not divisible by nt_: {nt_}')
     tt = np.arange(nstep)*interstep
     t = tt * dt
@@ -136,6 +144,15 @@ with open(output_fn, 'rb') as f:
         contrast[it,:,:] = np.fromfile(f, precision, count = 2*nLGN).reshape(2,nLGN)
 
 if plotResponseSample:
+
+    if readNewSpike or not path.exists(LGN_spFn + '-' + str(nstep) + '.npz'):
+        LGN_spScatter = readLGN_sp(LGN_spFn + '.bin', prec = prec, nstep = nt_)
+        np.savez(LGN_spFn + '-' + str(nt_) + '.npz', LGN_spScatter = LGN_spScatter)
+    else:
+        with np.load(LGN_spFn + '-' + str(nt_) + '.npz', allow_pickle=True) as data:
+            LGN_spScatter = data['LGN_spScatter']
+
+if plotResponseSample:
     fig = plt.figure('LGN', dpi = 600)
     grid = gs.GridSpec(ns, 1, figure = fig, hspace = 0.2)
     for i in range(ns):
@@ -143,11 +160,15 @@ if plotResponseSample:
         ax = fig.add_subplot(grid[i,:])
         ax.plot(t, convol[:,i].T/max_convol[j], 'g', lw = 0.1)
         max_convol_irl = np.max(convol[:,i]*convolRatio)
+        print(f'convolRatio = {convolRatio}')
         print(f'max(convol/max_convol): {max_convol_irl}/{max_convol[j]} = {max_convol_irl/max_convol[j]}')
         ax.plot(t, contrast[:,0,j], ':r', lw = 0.1, label = 'C')
         ax.plot(t, contrast[:,1,j], ':b', lw = 0.1, label = 'S')
         ax.plot(t, luminance[:,i], ':m', lw = 0.1, label = 'lum')
-        ax.plot(LGN_spScatter[j], np.zeros(len(LGN_spScatter[j])), '*g', ms = 1.0)
+        sp0 = np.array(LGN_spScatter[j])
+        print(sp0.size)
+        sp = sp0[sp0 < t[-1]]
+        ax.plot(sp, np.zeros(sp.size), '*g', ms = 1.0)
 
         ax.set_ylim([-1.0,1.0])
         if i == 0:

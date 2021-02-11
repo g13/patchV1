@@ -632,7 +632,7 @@ void generate_connections(double* __restrict__ pos,
 		}
 		count++;
 		if (count > 100 && !connected) {
-			printf("neuron %u-%u need to make another round(%u) of connection, because of %u/%u (%u)-(%.1f/%), %u/%u (%u)-(%.1f/%)\n", blockIdx.x, threadIdx.x, count, sumType[0],pN[0],availType[0], static_cast<float>(pN[0])/availType[0]*100, sumType[1],pN[1],availType[1], static_cast<float>(pN[1])/availType[1]*100);
+			printf("neuron %u-%u need to make another round(%u) of connection, because of %u/%u (%u)-(%.1f%%), %u/%u (%u)-(%.1f%%)\n", blockIdx.x, threadIdx.x, count, sumType[0],pN[0],availType[0], pN[0]/static_cast<float>(availType[0])*100, sumType[1],pN[1],availType[1], pN[1]/static_cast<float>(availType[1])*100);
 
 			//assert(count <= 100);
 		}
@@ -1025,37 +1025,37 @@ void generate_symmetry(PosInt* __restrict__ clusterID,
 {
 	// sum up reciprocal connections
 	PosInt id = iblock*nI + threadIdx.x;
-	size_t home_id = static_cast<size_t>(blockIdx.x*nI*nI);
+	size_t home_id = static_cast<size_t>(clusterID[blockIdx.x]*nI*nI);
 	PosInt bid = neighborBlockId[iblock*maxNeighborBlock + clusterID[blockIdx.x]]; 
-	size_t guest_id = static_cast<size_t>(blockIdx.x*nearNeighborBlock + neighborMat[iblock*nblock + bid])*nI*nI;
-	if (threadIdx.x == 0) {
-		printf("home: %u guest %u (%u)\n", iblock,bid,blockIdx.x);	
-		assert(neighborBlockId[bid*maxNeighborBlock + neighborMat[iblock*nblock + bid]] == iblock);
-	}
+	int nid = neighborMat[iblock*nblock + bid];
+	size_t guest_id = static_cast<size_t>(blockIdx.x*nearNeighborBlock + nid)*nI*nI;
 	Size n_dir = 0;
 	Size n_reciprocal = 0;
 	Size n_outstanding = 0;
 	PosInt* i_os = i_outstanding + static_cast<size_t>(blockIdx.x*blockDim.x + threadIdx.x)*blockDim.x;
 	Float* v_os = v_outstanding + static_cast<size_t>(blockIdx.x*blockDim.x + threadIdx.x)*blockDim.x;
-	if (iblock == 2 && bid == 0) {
-		assert(false);
-	}
-
+	// debuging parameters
 	PosInt pbid = 2;
 	PosInt ptid = 0;
 	PosInt pib = 0;
-	bool debug = true;
-	PosInt q = 0;
+	bool debug = false;
+
 	for (PosInt i=0; i<nI; i++) {
 		//if (i==threadIdx.x && bid == iblock) continue;
+		PosInt local_id = home_id + i*nI + threadIdx.x;
+		assert(local_id < blockDim.x*blockDim.x*nearNeighborBlock);
+
+		local_id = guest_id + threadIdx.x*nI + i;
+		assert(local_id >= blockIdx.x *  blockDim.x * blockDim.x * nearNeighborBlock);
+		assert(local_id < (blockIdx.x+1)*blockDim.x * blockDim.x * nearNeighborBlock);
+
 		Float home_v = clusterGapMat[home_id + i*nI + threadIdx.x];
 		Float guest_v = clusterGapMat[guest_id + threadIdx.x*nI + i];
 		// mark home<-guest as positive, guest<-home as negative
-		if (blockIdx.x == pbid && threadIdx.x == ptid && iblock == pib && debug) {
+		if (clusterID[blockIdx.x] == pbid && threadIdx.x == ptid && iblock == pib && debug) {
 			if ((home_v > 0 && guest_v <= 0) || (home_v <= 0 && guest_v > 0)) {
 				if (bid != iblock || i > threadIdx.x) { 
 					printf("before: %u<-%u(%.3e), %u<-%u(%.3e)\n", threadIdx.x, i, home_v, i, threadIdx.x, guest_v);
-					q++;
 				}
 			}
 		}
@@ -1080,28 +1080,12 @@ void generate_symmetry(PosInt* __restrict__ clusterID,
 			}
 		}
 	}
-	if (blockIdx.x == pbid && threadIdx.x == ptid && iblock == pib && debug) {
-		printf("n_os = %u\n", n_outstanding);
-		assert(n_outstanding == q);
-		for (PosInt i=0; i<n_outstanding; i++) {
-			printf("%u: %f\n", i_os[i], v_os[i]);
-		}
-	}
-	//if (blockIdx.x == 0) {
-	//__syncthreads();
-	//}
-	//if (blockIdx.x*blockDim.x + threadIdx.x == ) {
-	//	printf(
-	//}
 	if (n_outstanding > 0) {
 		// decide remaining con prob
 		Float prob = static_cast<Float>(n_dir - n_reciprocal)/n_outstanding;
 		if (iblock != bid) {
 			assert(prob <= 1);
 		}
-		//if (blockIdx.x == 5 && threadIdx.x == 56) {
-		//	printf("prob = %f, n_dir = %u, n_reciprocal = %u, n_outstanding = %u\n", prob, n_dir, n_reciprocal, n_outstanding);
-		//}
     	curandStateMRG32k3a localState = state[iblock*blockSize + nE+threadIdx.x];
 		// make reamining connections
 		Float* deltaStr = new Float[nTypeI];
@@ -1115,88 +1099,37 @@ void generate_symmetry(PosInt* __restrict__ clusterID,
 			PosInt gid = bid*nI + i_os[i];
 			PosInt guest_type = preType[bid*blockSize + i_os[i] + nE]-nTypeE;
 			Float xrand = uniform(&localState);
-			if (blockIdx.x == pbid && threadIdx.x == ptid && iblock == pib && debug) {
+			if (clusterID[blockIdx.x] == pbid && threadIdx.x == ptid && iblock == pib && debug) {
 				printf("%u-%u: %f\n",i, i_os[i], v_os[i]);
 			}
 
 			Size h_id = iblock*nearNeighborBlock*nI*nI + clusterID[blockIdx.x]*nI*nI + i_os[i]*nI + threadIdx.x;
-			Size g_id = bid*nearNeighborBlock*nI*nI + neighborMat[iblock*nblock + bid]*nI*nI + threadIdx.x*nI + i_os[i];
+			Size g_id = bid*nearNeighborBlock*nI*nI + nid*nI*nI + threadIdx.x*nI + i_os[i];
 
-			if (h_id == 40960 && g_id == 704576) {
-				printf("hitted by %u, %u, %u, %u!\n", bid, iblock, threadIdx.x, i_os[i]);
-			}
 			if (xrand < prob) {
 				if (v_os[i] > 0) { // home->guest
-					//
-					//if (clusterGapMat[home_id + i_os[i]*nI + threadIdx.x] != v_os[i]) {
-					if (debug) {
-						if (blockIdx.x == pbid && threadIdx.x == ptid && iblock == pib) {
-							printf("con guest %i<-%i: %.3e -> %.3e\n", i_os[i], threadIdx.x, clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]], v_os[i]);
-							assert(clusterGapMat[home_id + i_os[i]*nI + threadIdx.x] == v_os[i]);
-							//printf("id = %u, %u c=%f, v= %f\n", blockIdx.x*blockDim.x + threadIdx.x, i, clusterGapMat[home_id + i_os[i]*nI + threadIdx.x], v_os[i]);
-							//assert(iblock == bid);
-						}
-				 	} else {
-						assert(clusterGapMat[home_id + i_os[i]*nI + threadIdx.x] == v_os[i]);
-					}
 					clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]] = v_os[i];	
-					//
 
 					atomicAdd(preTypeGapped + home_type * mI + gid, 1);
 					atomicAdd(preTypeStrGapped + home_type * mI + gid, v_os[i]);
 
 				} else { // guest->home
-					//
-					//if (clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]] != -v_os[i]) {
-					if (debug) {
-						if (blockIdx.x == pbid && threadIdx.x == ptid && iblock == pib) {
-							printf("con home %i<-%i: %.3e -> %.3e\n", threadIdx.x, i_os[i], clusterGapMat[home_id + i_os[i]*nI + threadIdx.x], -v_os[i]);
-							assert(clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]] == -v_os[i]);
-						}
-					} else {
-						assert(clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]] == -v_os[i]);
-					}
 					clusterGapMat[home_id + i_os[i]*nI + threadIdx.x] = -v_os[i];	
-					//if (blockIdx.x == 5 && threadIdx.x == 56) {
-					//	printf("id = %u,, %u c=%f, v= %f\n", blockIdx.x*blockDim.x + threadIdx.x, i, clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]], -v_os[i]);
-					//	assert(iblock == bid);
-					//}
-					//
+
 					nDelta[guest_type]++;
 					deltaStr[guest_type] -= v_os[i];
 				}
 			} else {
 				if (v_os[i] > 0) {
-					if (debug) {
-						if (blockIdx.x == pbid && threadIdx.x == ptid && iblock == pib) {
-							printf("dis home %i<-%i: %.3e -> 0.0\n", threadIdx.x, i_os[i], clusterGapMat[home_id + i_os[i]*nI + threadIdx.x]);
-							assert(clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]] <= 0);
-						}
-					} else {
-							assert(clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]] <= 0);
-					}
 					clusterGapMat[home_id + i_os[i]*nI + threadIdx.x] = 0;	
+
 					nDelta[guest_type]--;
 					deltaStr[guest_type] -= v_os[i];
 				} else {
-					if (debug) {
-						if (blockIdx.x == pbid && threadIdx.x == ptid && iblock == pib) {
-							printf("dis guest %i<-%i: %.3e -> 0.0\n", i_os[i], threadIdx.x, clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]]);
-							assert(clusterGapMat[home_id + i_os[i]*nI + threadIdx.x] <= 0);
-						}
-					} else {
-						assert(clusterGapMat[home_id + i_os[i]*nI + threadIdx.x] <= 0);
-					}
 					clusterGapMat[guest_id + threadIdx.x*nI + i_os[i]] = 0;	
+
 					atomicSub(preTypeGapped + home_type * mI + gid, 1);
 					atomicAdd(preTypeStrGapped + home_type * mI + gid, v_os[i]);// v_os[i] is negative
-					/*
-					if (preTypeStrGapped[home_type * mI + gid] < 0) {
-						printf("str = %f(%f), n = %u\n", preTypeStrGapped[home_type * mI + gid], v_os[i], preTypeGapped[home_type * mI + gid]);
-						//assert(preTypeStrGapped[home_type * mI + gid] >= 0);
-						assert(iblock == bid);
-					}
-					*/
 				}
 			}
 			Float home_v = clusterGapMat[home_id + i_os[i]*nI + threadIdx.x];	
@@ -1218,71 +1151,29 @@ void generate_symmetry(PosInt* __restrict__ clusterID,
 		for (PosInt i=0; i<nTypeI; i++) {
 			preTypeGapped[i * mI + id] += nDelta[i];
 			preTypeStrGapped[i * mI + id] += deltaStr[i];
-			/*
-			if (preTypeStrGapped[i * mI + id] < 0) {
-				printf("str = %f(%f), n = %u(%i)\n", preTypeStrGapped[i * mI + id], deltaStr[i], preTypeGapped[i * mI + id], nDelta[i]);
-				//assert(preTypeStrGapped[i * mI + id] >= 0);
-			}*/
 		}
 		delete []deltaStr;
 		delete []nDelta;
 	}
 	
-	if (blockIdx.x == pbid && threadIdx.x == ptid && iblock == pib && debug) {
+	if (clusterID[blockIdx.x] == pbid && threadIdx.x == ptid && iblock == pib && debug) {
 		printf("home block %u, guest block %u\n", iblock, bid);
 	}
 	//certify symmetry
 	__syncthreads();
 	for (PosInt i=0; i<nI; i++) {
-		//if (iblock != bid || i > threadIdx.x) { 
-			Float home_v = clusterGapMat[home_id + i*nI + threadIdx.x];
-			Float guest_v = clusterGapMat[guest_id + threadIdx.x*nI + i];
-			if (debug) { 
-				Size h_id = iblock*nearNeighborBlock*nI*nI + clusterID[blockIdx.x]*nI*nI + i*nI + threadIdx.x;
-				Size g_id = bid*nearNeighborBlock*nI*nI + neighborMat[iblock*nblock + bid]*nI*nI + threadIdx.x*nI + i;
-				if (h_id == 40960 && g_id == 704576) {
-					printf("hit by %u, %u, %u, %u!\n", bid, iblock, threadIdx.x, i);
-				}
-				if (blockIdx.x == pbid && threadIdx.x == ptid && iblock == pib) {
-					if ((home_v != 0 && guest_v == 0) ||  (home_v == 0 && guest_v != 0)) {
-						printf("after: %u<-%u(%.3e), %u<-%u(%.3e)\n", threadIdx.x, i, home_v, i, threadIdx.x, guest_v);
-					}
-					if (home_v > 0) {
-						if (guest_v <= 0) {
-							printf("%u-%u, guest_v = %f, home_v =%f\n", blockIdx.x, threadIdx.x, guest_v, home_v);
-							assert(guest_v > 0);
-						}
-					} else {
-						if (guest_v > 0) {
-							printf("%u-%u, guest_v = %f, home_v =%f\n", blockIdx.x, threadIdx.x, guest_v, home_v);
-							assert(guest_v <= 0);
-						}
-					}
-				}
-				if (blockIdx.x == pbid && threadIdx.x == ptid && iblock == pib) {
-					Size h_id = iblock*nearNeighborBlock*nI*nI + clusterID[blockIdx.x]*nI*nI + i*nI + threadIdx.x;
-					Size g_id = bid*nearNeighborBlock*nI*nI + neighborMat[iblock*nblock + bid]*nI*nI + threadIdx.x*nI + i;
-					printf("g%u: %f, %f (%u, %u)\n", i, home_v, guest_v, h_id, g_id);
-
-				}
-				//if (blockIdx.x == pbid && threadIdx.x == 0 && i == 11 && iblock == pib) {
-				//	printf("clear as day: %f, %f\n", guest_v, home_v);
-				//}
-			} else {
-			//
-				if (home_v > 0) {
-					if (guest_v <= 0) {
-						printf("%u:%u-%u, guest_v = %f, home_v =%f\n", iblock, blockIdx.x, threadIdx.x, guest_v, home_v);
-						assert(guest_v > 0);
-					}
-				} else {
-					if (guest_v > 0) {
-						printf("%u:%u-%u, guest_v = %f, home_v =%f\n", iblock, blockIdx.x, threadIdx.x, guest_v, home_v);
-						assert(guest_v <= 0);
-					}
-				}
+		Float home_v = clusterGapMat[home_id + i*nI + threadIdx.x];
+		Float guest_v = clusterGapMat[guest_id + threadIdx.x*nI + i];
+		if (home_v > 0) {
+			if (guest_v <= 0) {
+				printf("%u:%u(%u)-%u, guest_v = %f, home_v =%f\n", iblock, clusterID[blockIdx.x], blockIdx.x, threadIdx.x, guest_v, home_v);
+				assert(guest_v > 0);
 			}
-			//
-		//}
+		} else {
+			if (guest_v > 0) {
+				printf("%u:%u(%u)-%u, guest_v = %f, home_v =%f\n", iblock, clusterID[blockIdx.x], blockIdx.x, threadIdx.x, guest_v, home_v);
+				assert(guest_v <= 0);
+			}
+		}
 	}
 }

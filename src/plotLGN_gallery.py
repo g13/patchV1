@@ -134,6 +134,11 @@ def getTF(kC, kS, twC, twS, cov):
     tf = 1000/(2*itw)
     return tf, tw 
 
+def getTF_m(tw):
+    itw = np.abs(np.argmax(tw) - np.argmin(tw))
+    tf = 1000/(2*itw)
+    return tf 
+
 cov_t = np.zeros(nLGN)
 for j in range(nLGN):
     cov_t[j] = covariant[j]
@@ -142,15 +147,27 @@ for j in range(nLGN):
         i = j
         if i >= nMagno_I + nParvo_I:
             i = i - nMagno_I
-        it = np.argmax(tw[i,0,:])
+        it = np.argmax(tw_m[i,0,:])
         cov_t[j] *= tw[i,1,it]/tw[i,0,it]
 
 SF = getSF((LGN_rw[0,:] + LGN_rh[0,:])/2, (LGN_rw[1,:] + LGN_rh[1,:])/2, LGN_k[0,:], LGN_k[1,:], cov_t)
 
 TF = np.zeros(nLGN)
-temporal = np.zeros((tw.shape[2],nLGN))
-for i in range(nLGN):
-    TF[i], temporal[:,i] = getTF(LGN_k[0,i], LGN_k[1,i], tw[i,0,:], tw[i,1,:], covariant[i])
+temporal_m = np.zeros((tw_m.shape[1],nMagno))
+temporal = np.zeros((tw.shape[2],nParvo))
+for j in range(nLGN):
+    if j < nParvo_I or (j >= nMagno_I + nParvo_I and j < nMagno_I + nParvo_I + nParvo_C):
+        i = j
+        if i >= nMagno_I + nParvo_I:
+            i = i - nMagno_I
+        TF[j], temporal[:,i] = getTF(LGN_k[0,j], LGN_k[1,j], tw[i,0,:], tw[i,1,:], covariant[j])
+    else:
+        i = j - nParvo_I
+        if i >= nMagno_I:
+            i = i - nParvo_C
+        TF[j] = getTF_m(tw_m[i,:])
+        temporal_m[:,i] = tw_m[i,:]
+
 
 fig = plt.figure('SF-TF', dpi = 600)
 ax = fig.add_subplot(221)
@@ -161,7 +178,10 @@ ax.hist(TF, bins = 12)
 ax.set_xlabel('TF')
 # need to be adjusted for parvo and magno
 ax = fig.add_subplot(223)
-ax.plot(np.arange(nKernelSample), temporal, lw = 0.2)
+if nParvo > 0:
+    ax.plot(np.arange(nKernelSample), temporal, '-g', lw = 0.2)
+if nMagno > 0:
+    ax.plot(np.arange(mKernelSample), temporal_m, '-b', lw = 0.2)
 ax.set_xlabel('t/ms')
 fig.savefig('SF-TF'+suffix + '.png')
 

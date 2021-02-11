@@ -6,11 +6,19 @@ from mpl_toolkits.mplot3d import axes3d
 import matplotlib.gridspec as gs
 
 import sys
-if len(sys.argv) == 1:
-    suffix0 = ""
-else:
+if len(sys.argv) > 1:
     suffix0 = sys.argv[1]
+    if len(sys.argv) > 2:
+        fdr = sys.argv[2]
+    else:
+        fdr = ""
+else:
+    fdr = ""
+    suffix0 = ""
 
+
+if fdr:
+    fdr = fdr + "/"
 if suffix0:
     suffix = '_' + suffix0
 suffix = suffix + '.bin'
@@ -107,7 +115,7 @@ if plotFrame:
             #plt.Normalize, norm =
             image = ax.imshow(phyV1frame[i,::-1,:], aspect = 'equal', origin = 'lower')
             fig.colorbar(image, ax=ax)
-            fig.savefig(f'phyV1-{i}-' + suffix0 + '.png')
+            fig.savefig(fdr+f'phyV1-{i}-' + suffix0 + '.png')
             plt.close(fig)
         
         if visV1 and plotVisV1:
@@ -115,7 +123,7 @@ if plotFrame:
             ax = fig.add_subplot(111)
             image = ax.imshow(np.hstack((visV1frame[i,0,::-1,:], visV1frame[i,1,::-1,:])), aspect = 'equal', origin = 'lower')
             fig.colorbar(image, ax=ax)
-            fig.savefig(f'visV1-{i}-' + suffix0 + '.png')
+            fig.savefig(fdr+f'visV1-{i}-' + suffix0 + '.png')
             plt.close(fig)
         
         if visLGN and plotVisLGN:
@@ -123,7 +131,7 @@ if plotFrame:
             ax = fig.add_subplot(111)
             image = ax.imshow(np.hstack((visLGNframe[i,0,::-1,:], visLGNframe[i,1,::-1,:])), aspect = 'equal', origin = 'lower')
             fig.colorbar(image, ax=ax)
-            fig.savefig(f'visLGN-{i}-' + suffix0 + '.png')
+            fig.savefig(fdr+f'visLGN-{i}-' + suffix0 + '.png')
             plt.close(fig)
 
 if plotSampleTrace:
@@ -132,22 +140,32 @@ if plotSampleTrace:
         nt = np.fromfile(f, 'u4', count = 1)[0]
         nV1 = np.fromfile(f, 'u4', count = 1)[0]
         print(f'{nt}, {nV1}')
+        iModel = np.fromfile(f, 'i4', 1)[0] 
+        mI = np.fromfile(f, 'u4', 1)[0] 
         hWrite = np.fromfile(f, 'u4', count = 1)[0]
         ngTypeFF = np.fromfile(f, 'u4', count = 1)[0]
         ngTypeE = np.fromfile(f, 'u4', count = 1)[0]
         ngTypeI = np.fromfile(f, 'u4', count = 1)[0]
         print(f'{ngTypeE}, {ngTypeI}')
         spikeTrain = np.zeros((nt,nV1), dtype = 'f4')
+        depC = np.zeros((nt,nV1), dtype = prec)
+        if iModel == 1:
+            w = np.zeros((nt,nV1), dtype = prec)
         v = np.zeros((nt,nV1), dtype = 'f4')
         gFF = np.zeros((nt,ngTypeFF,nV1), dtype = 'f4')
         gE = np.zeros((nt,ngTypeE,nV1), dtype = 'f4')
         gI = np.zeros((nt,ngTypeI,nV1), dtype = 'f4')
+        gapI = np.zeros((nt,ngTypeI,mI), dtype = 'f4')
         if hWrite:
             hFF = np.zeros((nt,ngTypeFF,nV1), dtype = 'f4')
             hE = np.zeros((nt,ngTypeE,nV1), dtype = 'f4')
             hI = np.zeros((nt,ngTypeI,nV1), dtype = 'f4')
         for i in range(nt):
             spikeTrain[i,:] = np.fromfile(f, 'f4', count = nV1) #sInfo: integer(nsp) + decimal(tsp, normalized)
+            depC[i,:] = np.fromfile(f, 'f4', count = nV1)
+            if iModel == 1:
+                w[i,:] = np.fromfile(f, 'f4', count = nV1)
+                
             v[i,:] = np.fromfile(f, 'f4', count = nV1)
             for j in range(ngTypeFF):
                 gFF[i,j,:] = np.fromfile(f, 'f4', count = nV1)
@@ -163,6 +181,9 @@ if plotSampleTrace:
                     hE[i,j,:] = np.fromfile(f, 'f4', count = nV1)
                 for j in range(ngTypeI):
                     hI[i,j,:] = np.fromfile(f, 'f4', count = nV1)
+
+            gapI[i,:] = np.fromfile(f, prec, mI)
+
         print('rawdata read,')
         nsp = spikeTrain.copy()
         nsp[nsp<0] = 0
@@ -210,7 +231,7 @@ if plotSampleTrace:
     ax.hist(np.sum(LGN_fr, axis=0)/nt)
     ax.set_title('LGN_fr')
 
-    fig.savefig('histogram.png')
+    fig.savefig(fdr+'histogram.png')
     
     fig = plt.figure('vgtsp', dpi = 1024)
     np.random.seed(seed)
@@ -258,4 +279,4 @@ if plotSampleTrace:
             #                #ax2.plot(dt*ratio, gFF[it,0,nid]*ratio, '*g', ms = size)
             #                ax2.plot([dt*ratio,dt*ratio], [j/nLGNperV1[nid]*ymax, gFF[it,0,nid]*ratio], '-g', lw = 0.1)
 
-    fig.savefig(f'vgtsp-{i}.png')
+    fig.savefig(fdr+f'vgtsp-{i}.png')
