@@ -37,8 +37,8 @@ echo outputs to $fdr
 
 date
 
-#matlab -r "inputLearnFF;exit;"
-#date
+matlab -r "inputLearnFF;exit;"
+date
 ./patch -c $op_cfg
 date
 pid=""
@@ -46,7 +46,7 @@ python plotLGN_response.py $op $lgn True &
 pid+="${!} "
 python plotV1_response.py $op $lgn $v1 $fdr $TF 0.25 True True & 
 pid+="${!} "
-matlab -r "testLearnFF('$lgn', '$op');outputLearnFF('$lgn', '$op', false);exit;" &
+matlab -r "testLearnFF('$lgn', '$op', '$fdr');outputLearnFF('$lgn', '$op', '$fdr', false);exit;" &
 pid+="${!} "
 wait $pid
 

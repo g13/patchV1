@@ -1,4 +1,4 @@
-function testLearnFF(isuffix, osuffix, iV1)
+function testLearnFF(isuffix, osuffix, fdr, iV1)
 	nt_ = 4000; % choose time steps to plot
 	targetfr = 5
 	nsub = 2 + 2;
@@ -9,6 +9,7 @@ function testLearnFF(isuffix, osuffix, iV1)
 	if ~isempty(osuffix) 
 	    osuffix = ['_', osuffix];
 	end
+	fdr = [fdr, '/'];
 	learnDataFn = ['learnData_FF', osuffix, '.bin']
 	rawDataFn = ['rawData', osuffix, '.bin']
 	LGN_V1_id_fn = ['LGN_V1_idList', isuffix, '.bin']
@@ -296,7 +297,7 @@ function testLearnFF(isuffix, osuffix, iV1)
 	disp([min(nsp_LGN), mean(nsp_LGN), max(nsp_LGN)]./(nt_*dt/1000));
 	
 	f = figure;
-	titl = 'LGNspike_scatter';
+	titl = [fdr, 'LGNspike_scatter'];
 	plot(tsp_LGN, id_LGN, '*k');
 	saveas(f, titl, 'fig');
 	saveas(f, [titl, '.png']);
@@ -403,7 +404,7 @@ function testLearnFF(isuffix, osuffix, iV1)
 	            legend(lines, labels, 'Location', 'northeastoutside');
 	        end
 	    end
-	    titl = ['check-learnFF-', num2str(iV1), EI, osuffix];
+	    titl = [fdr, 'check-learnFF-', num2str(iV1), EI, osuffix];
 	    title(titl)
 	    %%
 	    saveas(f, titl, 'fig');

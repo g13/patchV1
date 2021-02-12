@@ -1,8 +1,9 @@
 % connection strength heatmaps % better to choose from testLearnFF 
-function outputLearnFF(isuffix, osuffix, mix)
-	if nargin < 3
+function outputLearnFF(isuffix, osuffix, fdr, mix)
+	if nargin < 4
 		mix = true;
 	end
+	fdr = [fdr, '/'];
 	st = 2; %0 for temporal, 1 for spatial, 2 for both
 	%iV1 = randi(768,1);
 	rng(1390845)
@@ -127,6 +128,9 @@ function outputLearnFF(isuffix, osuffix, mix)
 	    	            for i = 1:nit
 	    	                subplot(ntype,nit+1,(itype-1)*(nit+1) + i)
 	    	                stmp = sLGN(:,:,i);
+							if i == 1
+								stmp
+							end
 	    	                stmp(LGN_type ~= types(itype)) = 0;
 	    	                stmp = stmp./gmax;
 	    	                stmp(stmp<thres) = 0;
@@ -156,13 +160,13 @@ function outputLearnFF(isuffix, osuffix, mix)
 				set(f, 'PaperUnit', 'inches');
 				assert(doubleOnOff == 1);	
 				nLGN_1D = sqrt(double(nLGN/2))
-				sLGN = reshape(sLGN, [nLGN_1D, nLGN_1D*2, nit]);
+				sLGN = reshape(sLGN, [nLGN_1D*2, nLGN_1D, nit]);
 				gmax = max(abs(sLGN(:)));
 	    	    clims = [0, 1];
 	    	    for itype = 1:ntype
 	    	        for i = 1:nit
 	    	            subplot(ntype,nit+1,(itype-1)*(nit+1) + i)
-	    	            stmp = sLGN(:,itype:2:(nLGN_1D*2),i);
+	    	            stmp = sLGN(itype:2:(nLGN_1D*2),:,i);
 	    	            stmp = stmp./gmax;
 	    	            stmp(stmp<thres) = 0;
 	    	            imagesc(stmp, clims);
@@ -189,11 +193,11 @@ function outputLearnFF(isuffix, osuffix, mix)
 			set(f, 'OuterPosition', [.1, .1, nit+2, 4]);
 			set(f, 'innerPosition', [.1, .1, nit+2, 4]);
 			if mix && doubleOnOff ~= 1
-	        	saveas(f, ['sLGN_V1-',num2str(iV1), osuffix, '-mix'], 'fig');
-	        	saveas(f, ['sLGN_V1-',num2str(iV1), osuffix, '-mix','.png']);
+	        	saveas(f, [fdr,'sLGN_V1-',num2str(iV1), osuffix, '-mix'], 'fig');
+	        	saveas(f, [fdr,'sLGN_V1-',num2str(iV1), osuffix, '-mix','.png']);
 			else
-	        	saveas(f, ['sLGN_V1-',num2str(iV1), osuffix, '-sep'], 'fig');
-	        	saveas(f, ['sLGN_V1-',num2str(iV1), osuffix, '-sep','.png']);
+	        	saveas(f, [fdr,'sLGN_V1-',num2str(iV1), osuffix, '-sep'], 'fig');
+	        	saveas(f, [fdr,'sLGN_V1-',num2str(iV1), osuffix, '-sep','.png']);
 			end
 	    end
 	    if st == 2 || st == 0
@@ -219,7 +223,7 @@ function outputLearnFF(isuffix, osuffix, mix)
 	            tLGN(:,j) = data(:,iV1);
 	        end
 	        fclose(fid);
-	        
+	       	gmax = max(tLGN(:));
 	        qt = int32(floor(linspace(1,nstep,nit)));
 	        f = figure('PaperPosition',[.1 .1 8 6]);
 	    	subplot(1,3,[1,2])
@@ -233,8 +237,8 @@ function outputLearnFF(isuffix, osuffix, mix)
 	        end
 			set(f, 'OuterPosition', [.1, .1, 8, 6]);
 			set(f, 'innerPosition', [.1, .1, 8, 6]);
-	        saveas(f, ['tLGN_V1-',num2str(iV1), osuffix], 'fig');
-	        saveas(f, ['tLGN_V1-',num2str(iV1), osuffix, '.png']);
+	        saveas(f, [fdr, 'tLGN_V1-',num2str(iV1), osuffix], 'fig');
+	        saveas(f, [fdr, 'tLGN_V1-',num2str(iV1), osuffix, '.png']);
 	    end
 	end
 end
