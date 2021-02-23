@@ -26,7 +26,7 @@ def read_cfg(fn):
         nTypeHierarchy = np.fromfile(f, 'u4', 2)
         typeAcc = np.fromfile(f, 'u4', nType)
         sRatioLGN = np.fromfile(f, prec, nType)
-        sRatioV1 = np.fromfile(f, prec, 1)[0]
+        sRatioV1 = np.fromfile(f, prec, nType*nType)[0]
         frRatioLGN = np.fromfile(f, prec, 1)[0] 
         convolRatio = np.fromfile(f, prec, 1)[0] 
         nE = typeAcc[nTypeHierarchy[0]-1]
@@ -138,20 +138,22 @@ def readLGN_fr(fn, prec='f4'):
         LGN_fr = np.fromfile(f,prec, count = nt*nLGN).reshape(nt, nLGN)
     return LGN_fr
 
-def readLGN_sp(fn, prec='f4'):
+def readLGN_sp(fn, prec='f4', nstep = 0):
     with open(fn, 'rb') as f:
         dt = np.fromfile(f, prec, count = 1)[0]
         nt = np.fromfile(f, 'u4', count = 1)[0]
+        if nstep == 0 or nstep > nt:
+            nstep = nt
         nLGN = np.fromfile(f, 'u4', count = 1)[0]
-        LGN_sp = np.fromfile(f,prec, count = nt*nLGN).reshape(nt, nLGN)
         LGN_spScatter = np.empty(nLGN, dtype = object) 
         for i in range(nLGN):
             LGN_spScatter[i] = []
-        for it in range(nt):
-            tsp0 = LGN_sp[it,:]
+        for it in range(nstep):
+            tsp0 = np.fromfile(f, prec, count = nLGN)
+            assert(np.sum(tsp0>0) == np.sum(tsp0>=1))
             tsps = tsp0[tsp0 > 0]
             if tsps.size > 0:
-                idxFired = np.nonzero(tsp0)[0]
+                idxFired = np.nonzero(tsp0>1)[0]
                 k = 0
                 for j in idxFired:
                     nsp = np.int(np.floor(tsps[k]))

@@ -36,10 +36,12 @@ std::vector<std::vector<PosInt>> getUnderlyingID(T x[], T y[], Int* pick, Size n
             PosInt id = idx+idy*width;
             if (idx >= width) {
                 std::cout << "x[" << i << "]: " << x[i] << ", width: " << width << ", x0: " << x0 << ", xspan: " << xspan << "\n";
+                std::cout << "idx = " << idx << " < " << width << "\n";
                 assert(idx<width);
             }
             if (idy >= height) {
                 std::cout << "y[" << i << "]: " << y[i] << ", height: " << height << ", y0: " << y0 << ", yspan: " << yspan << "\n";
+                std::cout << "idy = " << idy << " < " << height << "\n";
                 assert(idy<height);
             }
             uid[id].push_back(i+n0);

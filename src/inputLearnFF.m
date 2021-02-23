@@ -9,13 +9,14 @@ fLGN_surfaceID = ['LGN_surfaceID', suffix, '.bin'];
 fV1_pos = ['V1_pos', suffix, '.bin'];
 fLGN_vpos = ['LGN_vpos', suffix, '.bin'];
 fLGN_switch = ['LGN_switch', suffix, '.bin'];
+fV1_feature = ['V1_feature', suffix, '.bin'];
 
 %parvoMagno = 1 % parvo
 parvoMagno = 2 % magno 
 %parvoMagno = 3 % both, don't use, only for testing purpose
 
 normed = true;
-initialConnectionStrength = 0.01; % also can be changed by ratioLGN in .cfg file
+initialConnectionStrength = 1.0; % also can be changed by ratioLGN in .cfg file
 eiStrength = 0.000;
 ieStrength = 0.000;
 iCS_std = 1.0; % zero std gives single-valued connection strength
@@ -24,21 +25,31 @@ blockSize = 1024;
 mE = 768;
 mI = 256;
 nV1 = nblock*blockSize;
-nLGN_1D = 15;
-double = false;
+nLGN_1D = 6;
+doubleOnOff = 1;
 frameVisV1output = false; % if need framed V1 output, write visual pos to fV1_pos
 
-nStatus = 2;
+t = 24;
+dur = 36/120;
+nStatus = ceil(t/dur);
+peak = 0.0
+spread = 0.0/3;
 status = zeros(6,nStatus);
-status(5,1) = 1;
-status(6,1) = 0;
-status(5,2) = 0;
-status(6,2) = 1;
-%statusDur = [1];
-statusDur = [1/2; 1/2];
+rands = rand(1,nStatus);
+nOnActive = sum(rands >= 0.5);
+nOffActive = nStatus - nOnActive;
 
+%status(5,rands >= 0.5) = 1; % randomly choose to switch on periods
+%status(5,rands < 0.5) = randn([1, nOffActive]) * spread + peak; % residual activeness when switched off
+%status(6,rands < 0.5) = 1;
+%status(6,rands >= 0.5) = randn([1, nOnActive]) * spread + peak; 
+
+status(5:6,:) = 1;
+
+%statusDur = [1];
+statusDur = dur + zeros(nStatus,1);
 nLGN = nLGN_1D*nLGN_1D;
-if double
+if doubleOnOff
     nLGN = nLGN * 2;
 end
 
@@ -56,26 +67,23 @@ for i = 1:nV1
 end
 fclose(fid);
 
-
 fid = fopen(fLGN_surfaceID, 'w'); % format follows patch.cu, search for the same variable name
-if double 
-    [LGN_idx, LGN_idy] = meshgrid(1:2:nLGN_1D*2, 1:2:nLGN_1D*2); % meshgrid gives coordinates of LGN on the surface memory
-    [LGN_idx2, LGN_idy2] = meshgrid(2:2:nLGN_1D*2, 2:2:nLGN_1D*2); % meshgrid gives coordinates of LGN on the surface memory
-    LGN_idx = [LGN_idx'-1, LGN_idx2'-1];
-    LGN_idy = [LGN_idy'-1, LGN_idy2'-1];
+if doubleOnOff
+    [LGN_idx, LGN_idy] = meshgrid(1:nLGN_1D*2, 1:nLGN_1D); % meshgrid gives coordinates of LGN on the surface memory
 else
     [LGN_idx, LGN_idy] = meshgrid(1:nLGN_1D, 1:nLGN_1D); % meshgrid gives coordinates of LGN on the surface memory
-    % tranform the coords into row-first order
-    LGN_idx = LGN_idx'-1; % index start with 0 in c/c++
-    LGN_idy = LGN_idy'-1;
 end
-if double 
+% tranform the coords into row-first order
+LGN_idx = LGN_idx'-1; % index start with 0 in c/c++
+LGN_idy = LGN_idy'-1;
+if doubleOnOff 
     fwrite(fid, 2*nLGN_1D-1, 'uint'); % width - 1, legacy problem, will add 1 after read
-    fwrite(fid, 2*nLGN_1D-1, 'uint'); % height - 1
+    fwrite(fid, nLGN_1D-1, 'uint'); % height - 1
 else
     fwrite(fid, nLGN_1D-1, 'uint'); % width - 1, legacy problem, will add 1 after read
     fwrite(fid, nLGN_1D-1, 'uint'); % height - 1
 end
+assert(prod(size(LGN_idx)) == nLGN);
 fwrite(fid, LGN_idx(:), 'int');
 fwrite(fid, LGN_idy(:), 'int');
 fclose(fid);
@@ -112,7 +120,8 @@ fclose(fid);
 fid = fopen(fLGN_vpos, 'w'); % format follows patch.cu, search for the same variable name
 fwrite(fid, nLGN, 'uint'); % # ipsi-lateral LGN 
 fwrite(fid, 0, 'uint'); % contra-lateral LGN all from one eye
-max_ecc = 0.25;
+fwrite(fid, doubleOnOff, 'int'); % be read by outputLearnFF not used in patch.cu
+max_ecc = 0.1;
 fwrite(fid, max_ecc, 'float');
 % using uniform_retina, thus normalized to the central vision of a single eye
 LGN_pos = zeros(nLGN,2);
@@ -120,15 +129,14 @@ fwrite(fid, -max_ecc, 'float'); % x0
 fwrite(fid, 2*max_ecc, 'float'); % xspan
 fwrite(fid, -max_ecc, 'float'); % y0
 fwrite(fid, 2*max_ecc, 'float'); % yspan
-if double 
-    LGN_idx = [LGN_idx2', LGN_idx2']/2-1;
-    LGN_idy = [LGN_idy2', LGN_idy2']/2-1;
-    LGN_x = (LGN_idx(:)-nLGN_1D/2+0.5)./nLGN_1D.*max_ecc./0.5;
-    LGN_y = (LGN_idy(:)-nLGN_1D/2+0.5)./nLGN_1D.*max_ecc./0.5;
+if doubleOnOff
+	idx = LGN_idx;
+	idx = ceil((idx+1)/2)-1;
+    LGN_x = (idx(:)-nLGN_1D/2+0.5)./nLGN_1D.*max_ecc./0.5;
 else
     LGN_x = (LGN_idx(:)-nLGN_1D/2+0.5)./nLGN_1D.*max_ecc./0.5;
-    LGN_y = (LGN_idy(:)-nLGN_1D/2+0.5)./nLGN_1D.*max_ecc./0.5;
 end
+LGN_y = (LGN_idy(:)-nLGN_1D/2+0.5)./nLGN_1D.*max_ecc./0.5;
 disp([min(LGN_x), max(LGN_x)]);
 disp([min(LGN_y), max(LGN_y)]);
 fwrite(fid, LGN_x, 'float');
@@ -141,10 +149,10 @@ end
 if parvoMagno == 2
     %LGN_type = 3+randi(2,[nLGN,1]); % 4:on center or 5: off center
     %LGN_type = 4+zeros(nLGN,1); % 4:on center or 5: off center
-    if double
-        LGN_type = zeros(nLGN_1D*nLGN_1D, 2);
-        LGN_type(:,1) = 4;
-        LGN_type(:,2) = 5;
+    if doubleOnOff
+        LGN_type = zeros(size(LGN_idx));
+        LGN_type(:,2:2:size(LGN_idx,2)) = 4;
+        LGN_type(:,1:2:size(LGN_idx,2)) = 5;
     else
         type0 = zeros(nLGN_1D, 1);
         type0(1:2:nLGN_1D) = 4;
@@ -169,6 +177,7 @@ if parvoMagno == 3
     LGN_type(1:nParvo) = randi(4,[nParvo,1])-1; %
     LGN_type((nParvo+1):nLGN) = 3 + randi(2,[nMagno,1]); %
 end
+LGN_type
 fwrite(fid, LGN_type, 'uint');
 % in polar form
 LGN_ecc = sqrt(LGN_x.*LGN_x + LGN_y.*LGN_y); %degree
@@ -204,6 +213,9 @@ fV1_delayMat = ['V1_delayMat', suffix, '.bin']; % zeros
 fV1_conMat = ['V1_conMat', suffix, '.bin']; % zeros
 fV1_vec = ['V1_vec', suffix, '.bin']; % zeros
 
+fV1_gapMat = ['V1_gapMat', suffix, '.bin']; % zeros
+fV1_gapVec = ['V1_gapVec', suffix, '.bin']; % zeros
+
 nearNeighborBlock = 1; % self-only
 fid = fopen(fV1_conMat, 'w');
 fwrite(fid, nearNeighborBlock , 'uint');
@@ -223,6 +235,13 @@ conMat(1:mE,(mE+1):blockSize) = conEI;
 conMat((mE+1):blockSize,1:mE) = conIE;
 fwrite(fid, conMat , 'float');
 fclose(fid);
+
+fid = fopen(fV1_gapMat, 'w');
+fwrite(fid, nearNeighborBlock , 'uint');
+gapMat = zeros(mI*nblock,mI*nblock);
+fwrite(fid, gapMat , 'float');
+fclose(fid);
+
 
 fid = fopen(fV1_delayMat, 'w');
 fwrite(fid, nearNeighborBlock , 'uint');
@@ -249,4 +268,38 @@ fclose(fid);
 fid = fopen(fV1_vec, 'w');
 nVec = zeros(nV1,1);
 fwrite(fid, nVec, 'uint');
+fclose(fid);
+
+fid = fopen(fV1_gapVec, 'w');
+nGapVec = zeros(mI*nblock,1);
+fwrite(fid, nGapVec, 'uint');
+fclose(fid);
+
+fConnectome = ['connectome_cfg', suffix, '.bin'];
+fid = fopen(fConnectome, 'w');
+fwrite(fid,2,'uint');
+fwrite(fid,1,'uint');
+fwrite(fid,[mE,mI+mE],'uint');
+fwrite(fid,[5,5,5,5],'float'); % synapse per cortical connection in float!
+fwrite(fid,[10,10],'float'); % synapse per FF connection in float!
+fclose(fid);
+
+fConStats = ['conStats', suffix, '.bin'];
+fid = fopen(fConStats, 'w');
+fwrite(fid,2,'uint');
+fwrite(fid,nV1,'uint');
+fwrite(fid,ones(nV1,1),'float'); %excRatio
+fwrite(fid,zeros(nV1,2),'uint'); %preN
+fwrite(fid,zeros(nV1,2),'uint'); %preAvail
+fwrite(fid,zeros(nV1,2),'float'); %preNS
+fwrite(fid,1,'uint'); %nTypeI
+fwrite(fid,256,'uint'); %mI
+fwrite(fid,zeros(256,1),'uint'); %nGap
+fwrite(fid,zeros(256,1),'float'); %GapS
+fclose(fid);
+
+fid = fopen(fV1_feature, 'w');
+nFeature = 2;
+fwrite(fid,nFeature,'uint');
+fwrite(fid,rand(nV1,nFeature),'float');
 fclose(fid);

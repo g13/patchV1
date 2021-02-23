@@ -1,5 +1,4 @@
 #!/bin/bash
-#SBATCH -p nvidia 
 #SBATCH --gres=gpu:1
 #SBATCH --job-name=plotV1
 #SBATCH --nodes=1
@@ -9,12 +8,13 @@
 #SBATCH -o log/pV1_%J.out
 #SBATCH --mail-user=wd554@nyu.edu
 #SBATCH --mail-type=END
+##SBATCH -p nvidia 
 set -e
 module purge
-module load all
-module load gcc/4.9.3
-module load cuda/9.2
-module load boost/gcc_4.9.3/openmpi_1.10.2/avx2/1.57.0
+module load gcc/10.2.0
+module load cuda/11.1.74
+module load boost/intel/1.74.0
+module list
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
 __conda_setup="$('/home/wd554/local/miniconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"

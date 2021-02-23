@@ -33,9 +33,11 @@ inline void read_LGN(std::string filename, Float* &array, Size &maxList, Float s
 		std::string errMsg{ "Cannot open or find " + filename + "\n" };
 		throw errMsg;
 	}
+	
     Size nList;
     input_file.read(reinterpret_cast<char*>(&nList), sizeof(Size));
     input_file.read(reinterpret_cast<char*>(&maxList), sizeof(Size));
+	std::cout << nList << ", " << maxList << "\n";
     size_t arraySize = nList*maxList;
     if (pinMem) {
         checkCudaErrors(cudaMallocHost((void**) &array, arraySize*sizeof(Float)));
@@ -61,7 +63,7 @@ inline void read_LGN(std::string filename, Float* &array, Size &maxList, Float s
 			array[i*maxList + j] *= s_ratio[type];
 		}
         if (print) {
-            std::cout << i << ": ";
+            std::cout << i << "-" << listSize << ":  ";
             for (PosInt j=0; j<listSize; j++) {
                 std::cout << array[i*maxList + j];
                 if (j == listSize-1) std::cout << "\n";
@@ -83,9 +85,25 @@ inline bool checkGMemUsage(size_t usingGMem, size_t GMemAvail) {
 // the retinal discrete x, y as cone receptors id
 inline void init_layer(texture<float, cudaTextureType2DLayered> &layer) {
 	layer.addressMode[0] = cudaAddressModeBorder;
-	layer.addressMode[1] = cudaAddressModeBorder; 
+	layer.addressMode[1] = cudaAddressModeBorder;
 	layer.filterMode = cudaFilterModeLinear;
 	layer.normalized = true; //accessing coordinates are normalized
+}
+
+inline void init_layer_obj(cudaTextureObject_t &texObj, cudaArray* cuArr) {	
+	struct cudaResourceDesc resDesc;
+	memset(&resDesc, 0, sizeof(resDesc));
+	resDesc.resType = cudaResourceTypeArray;
+    	resDesc.res.array.array = cuArr;
+	struct cudaTextureDesc texDesc;
+	memset(&texDesc, 0, sizeof(texDesc));
+    	texDesc.addressMode[0]   = cudaAddressModeBorder;
+    	texDesc.addressMode[1]   = cudaAddressModeBorder;
+    	texDesc.filterMode       = cudaFilterModeLinear;
+    	texDesc.readMode         = cudaReadModeElementType;
+    	//texDesc.readMode         = cudaReadModeNormalizedFloat;
+    	texDesc.normalizedCoords = true;
+	cudaCreateTextureObject(&texObj, &resDesc, &texDesc, NULL);
 }
 
 void prep_sample(unsigned int iSample, unsigned int width, unsigned int height, float* L, float* M, float* S, cudaArray *dL, cudaArray *dM, cudaArray *dS, unsigned int nSample, cudaMemcpyKind cpyKind) {

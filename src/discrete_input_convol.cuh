@@ -20,8 +20,10 @@
 // block_reduce works fine when block is not fully occupied
 // assuming viewing distance is a single unit length
 
+/*
 __global__ 
 void testTexture(Float L, Float M, Float S);
+*/
     
 
 template<typename T>
@@ -64,6 +66,7 @@ void LGN_nonlinear(
 		InputType_t* __restrict__ LGN_type,
         InputActivation typeStatus,
         Float* __restrict__ lVar,
+		cudaSurfaceObject_t LGNspikeSurface,
         int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning, bool learnData_FF, bool LGN_switch, bool getLGN_sp
 );
 
@@ -110,6 +113,9 @@ void LGN_convol_parvo(
         Float* __restrict__ contrast,
         SmallSize* __restrict__ coneType,
         Spatial_component &spatial,
+		cudaTextureObject_t L_retinaInput,
+		cudaTextureObject_t M_retinaInput,
+		cudaTextureObject_t S_retinaInput,
 		Size nParvo_L, Size nMagno_L, Size nLGN,
 		Float normViewDistance,
         PosInt currentFrame,
@@ -135,6 +141,9 @@ void LGN_convol_magno(
         Float* __restrict__ contrast,
         SmallSize* __restrict__ coneType,
         Spatial_component &spatial,
+		cudaTextureObject_t L_retinaInput,
+		cudaTextureObject_t M_retinaInput,
+		cudaTextureObject_t S_retinaInput,
 		Size nParvo_L, Size nMagno_L, Size nParvo_R,
 		Float normViewDistance,
         PosInt currentFrame,

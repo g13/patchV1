@@ -174,7 +174,7 @@ int main(int argc, char **argv) {
 		("gapRatio", po::value<vector<Float>>(&gapRatio), "scale gap junction strength from V1, size of 1 or nTypeI,nTypeI]")
 		("convolRatio", po::value<Float>(&convolRatio)->default_value(1), "scale convol value")
 		("frRatioLGN", po::value<Float>(&frRatioLGN)->default_value(1), "scale LGN firing rate")
-		("spontPercent", po::value<Float>(&spontP)->default_value(1), "spontaneous LGN firing rate as a percentage of max mean firing rate")
+		("spontPercent", po::value<Float>(&spontP)->default_value(0.1), "spontaneous LGN firing rate as a percentage of max mean firing rate")
 		("nKernelSample", po::value<Size>(&nKernelSample)->default_value(500), "number of samples per parvo-temporal kernel")
 		("mKernelSample", po::value<Size>(&mKernelSample)->default_value(500), "number of samples per magno-temporal kernel")
 		("frameRate", po::value<PosInt>(&frameRate)->default_value(120), "frame rate of the input stimulus")
@@ -412,6 +412,19 @@ int main(int argc, char **argv) {
 
 		fConnectome_cfg.close();
 	}
+	cout << "synPer:\n"; 
+	for (PosInt i =0; i< nType; i++) {
+		for (PosInt j =0; j< nType; j++) {
+			cout << synPerCon[i*nType + j] << ", ";
+		}
+	}
+	cout << "\n";
+	cout << "synPerFF:\n"; 
+	for (PosInt j =0; j< nType; j++) {
+		cout << synPerConFF[j] << ", ";
+	}
+	cout << "\n";
+	
 
 	Size nType0;
     Size nArchType = nTypeHierarchy.size();
@@ -1004,28 +1017,44 @@ int main(int argc, char **argv) {
 					}
                 }
             }
-			for (PosInt i=0; i<nLearnTypeFF_E; i++) {
-				gmaxLGN[i] *= sRatioLGN[0];
-				gminLGN[i] *= sRatioLGN[0];
-			}
-			for (PosInt i=nLearnTypeFF_E; i<nLearnTypeFF; i++) {
-				gmaxLGN[i] *= sRatioLGN[1];
-				gminLGN[i] *= sRatioLGN[1];
-			}
         }
 
-        if (nLearnTypeFF_E) learnFF_pre<LearnVarShapeFF_E_pre>(lFF_E_pre, &(tauLTP[0]), nLearnTypeFF_E);
-        if (nLearnTypeFF_I) learnFF_pre<LearnVarShapeFF_I_pre>(lFF_I_pre, &(tauLTP[nLearnTypeFF_E]), nLearnTypeFF_I);
-        if (nLearnTypeFF_E) learnFF_post<LearnVarShapeFF_E_post>(lFF_E_post, &(tauLTD[0]), &(tauTrip[0]), tauAvg[0], targetFR[0], &(A_LGN[0]), gmaxLGN[0], gminLGN[0], nLearnTypeFF_E, sRatioLGN[0]);
-        if (nLearnTypeFF_I) learnFF_post<LearnVarShapeFF_I_post>(lFF_I_post, &(tauLTD[nLearnTypeFF_E]), &(tauTrip[nLearnTypeFF_E]), tauAvg[1], targetFR[1], &(A_LGN[nLearnTypeFF_E]), gmaxLGN[nLearnTypeFF_E], gminLGN[nLearnTypeFF_E], nLearnTypeFF_I, sRatioLGN[1]);
+        if (nLearnTypeFF_E) {
+			learnFF_pre<LearnVarShapeFF_E_pre>(lFF_E_pre, &(tauLTP[0]), nLearnTypeFF_E);
+		} else {
+			lFF_E_pre.n = 0;
+		}
+        if (nLearnTypeFF_I) {
+			learnFF_pre<LearnVarShapeFF_I_pre>(lFF_I_pre, &(tauLTP[nLearnTypeFF_E]), nLearnTypeFF_I);
+		} else {
+			lFF_I_pre.n = 0;
+		}
+        if (nLearnTypeFF_E) {
+			learnFF_post<LearnVarShapeFF_E_post>(lFF_E_post, &(tauLTD[0]), &(tauTrip[0]), tauAvg[0], targetFR[0], &(A_LGN[0]), gmaxLGN[0], gminLGN[0], nLearnTypeFF_E, sRatioLGN[0]);
+		} else {
+			lFF_E_post.n = 0;
+		}
+        if (nLearnTypeFF_I) {
+			learnFF_post<LearnVarShapeFF_I_post>(lFF_I_post, &(tauLTD[nLearnTypeFF_E]), &(tauTrip[nLearnTypeFF_E]), tauAvg[1], targetFR[1], &(A_LGN[nLearnTypeFF_E]), gmaxLGN[nLearnTypeFF_E], gminLGN[nLearnTypeFF_E], nLearnTypeFF_I, sRatioLGN[1]);
+		} else {
+			lFF_I_post.n = 0;
+		}
 
         if (nLearnTypeFF_E) printFF_pre<LearnVarShapeFF_E_pre>(lFF_E_pre, 1);
         if (nLearnTypeFF_I) printFF_pre<LearnVarShapeFF_I_pre>(lFF_I_pre, 0);
         if (nLearnTypeFF_E) printFF_post<LearnVarShapeFF_E_post>(lFF_E_post, 1);
         if (nLearnTypeFF_I) printFF_post<LearnVarShapeFF_I_post>(lFF_I_post, 0);
 
-        if (nLearnTypeE) learnE(lE, &(tauLTP[nLearnTypeFF]), &(tauLTD[nLearnTypeFF]), &(tauTrip[nLearnTypeFF]), tauAvg[0], targetFR[0], &(A_V1[0]), gmaxE[0], gminE[0], nLearnTypeE);
-        if (nLearnTypeQ) learnQ(lQ, &(tauQ[0]), &(A_Q[0]), gmaxQ[0], gminQ[0], nLearnTypeQ);
+        if (nLearnTypeE) {
+			learnE(lE, &(tauLTP[nLearnTypeFF]), &(tauLTD[nLearnTypeFF]), &(tauTrip[nLearnTypeFF]), tauAvg[0], targetFR[0], &(A_V1[0]), gmaxE[0], gminE[0], nLearnTypeE);
+		} else {
+			lE.n = 0;
+		}
+        if (nLearnTypeQ) {
+			learnQ(lQ, &(tauQ[0]), &(A_Q[0]), gmaxQ[0], gminQ[0], nLearnTypeQ);
+		} else {
+			lQ.n = 0;
+		}
 
         if (nLearnTypeE) printE(lE);
         if (nLearnTypeQ) printQ(lQ);
@@ -1167,6 +1196,8 @@ int main(int argc, char **argv) {
 	} else {
 		fLGN_vpos.read(reinterpret_cast<char*>(&nLGN_I), sizeof(Size));
 		fLGN_vpos.read(reinterpret_cast<char*>(&nLGN_C), sizeof(Size));
+		int tmp;
+		fLGN_vpos.read(reinterpret_cast<char*>(&tmp), sizeof(int));
 		float max_ecc0;
 		fLGN_vpos.read(reinterpret_cast<char*>(&max_ecc0), sizeof(float)); // in rad
 		max_ecc = static_cast<Float>(max_ecc0);
@@ -1311,6 +1342,8 @@ int main(int argc, char **argv) {
 
     cout << "LGN_x: [" << *min_element(LGN_x.begin(), LGN_x.end()) << ", " << *max_element(LGN_x.begin(), LGN_x.end()) << "]\n";
     cout << "LGN_y: [" << *min_element(LGN_y.begin(), LGN_y.end()) << ", " << *max_element(LGN_y.begin(), LGN_y.end()) << "]\n";
+	cout << "LGN_x0 = " << LGN_x0 << "; " << "LGN_xspan = " << LGN_xspan << "\n";
+	cout << "LGN_y0 = " << LGN_y0 << "; " << "LGN_yspan = " << LGN_yspan << "\n";
 
 	fLGN_vpos.read(reinterpret_cast<char*>(&LGNtype[0]), nLGN*sizeof(InputType_t));
 
@@ -1579,7 +1612,8 @@ int main(int argc, char **argv) {
 		                tie(LGN_rw[i], LGN_rw[i+nLGN]) = get_rands_from_correlated_gauss(acuityC, acuityS, rho_SC, rho_SC_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound, smaller);
 		    			break;
                     case InputType::OnOff: case InputType::OffOn:
-		                tie(LGN_rw[i], LGN_rw[i+nLGN]) = get_rands_from_correlated_gauss(acuityC_M, acuityS_M, rho_SC, rho_SC_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound, smaller);
+						acuityC[0] *= 2;
+		                tie(LGN_rw[i], LGN_rw[i+nLGN]) = get_rands_from_correlated_gauss(acuityC, acuityS, rho_SC, rho_SC_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound, smaller);
                         break;
                     default:
 		    			throw("There's no implementation of this type with non-uniform LGN");
@@ -1638,10 +1672,10 @@ int main(int argc, char **argv) {
                         LGN_rh[i+nLGN] = acuityS[0];
                         break;
                     case InputType::OnOff: case InputType::OffOn:
-                        LGN_rw[i] = acuityC_M[0];
-                        LGN_rw[i+nLGN] = acuityS_M[0];
-                        LGN_rh[i] = acuityC_M[0];
-                        LGN_rh[i+nLGN] = acuityS_M[0];
+                        LGN_rw[i] = acuityC[0]*2;
+                        LGN_rw[i+nLGN] = acuityS[0];
+                        LGN_rh[i] = acuityC[0]*2;
+                        LGN_rh[i+nLGN] = acuityS[0];
                         break;
                 }
                 LGN_ecc[i+nLGN] = LGN_ecc[i];
@@ -2217,7 +2251,19 @@ int main(int argc, char **argv) {
 	checkCudaErrors(cudaMalloc3DArray(&cuSurfArray, &surfaceDesc, make_cudaExtent(nsx, nsy, (1+3*nLearnTypeFF)), cudaArrayLayered|cudaArraySurfaceLoadStore));
 	size_t LGNspSurfSize = nsx*nsy*(1+3*nLearnTypeFF)*sizeof(Float);
 	usingGMem += LGNspSurfSize;
-	cudaBindSurfaceToArray(LGNspikeSurface, cuSurfArray);
+
+	// Specify surface
+    struct cudaResourceDesc resDesc;
+    memset(&resDesc, 0, sizeof(resDesc));
+    resDesc.resType = cudaResourceTypeArray;
+
+    // Create the surface objects
+    resDesc.res.array.array = cuSurfArray;
+    cudaSurfaceObject_t LGNspikeSurface = 0;
+    cudaCreateSurfaceObject(&LGNspikeSurface, &resDesc);
+
+	//cudaBindSurfaceToArray(LGNspikeSurface, cuSurfArray);
+
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	Size nLGN_block, nLGN_thread; // for LGN_nonlinear
@@ -3068,7 +3114,7 @@ int main(int argc, char **argv) {
 	Float *d_gapS;
 	checkCudaErrors(cudaMalloc((void**)&d_gapS, sizeof(Float)*mI));
 	checkCudaErrors(cudaMemcpy(d_gapS, gapS, sizeof(Float)*mI, cudaMemcpyHostToDevice));
-	//cout << "mean gapS = " << accumulate(gapS, gapS+mI, 0.0)/mI << "\n";
+	cout << "mean gapS = " << accumulate(gapS, gapS+mI, 0.0)/mI << "\n";
 	//cout << "connected gaps: " << ntmp_connected << "/"<< ntmp << "\n";
 	delete []gapS;
 
@@ -3493,7 +3539,11 @@ int main(int argc, char **argv) {
 				if (j == typeAccCount[iType]) {
 					iType++;
 				}
-				iTonicDep[id] = tonicDep[iType]*(minTonicRatio[iType] + (1-minTonicRatio[iType]) * (ExcRatio[id]-minExcRatio[iType])/(maxExcRatio[iType]-minExcRatio[iType]));
+				if (maxExcRatio[iType] > minExcRatio[iType]) {
+					iTonicDep[id] = tonicDep[iType]*(minTonicRatio[iType] + (1-minTonicRatio[iType]) * (ExcRatio[id]-minExcRatio[iType])/(maxExcRatio[iType]-minExcRatio[iType]));
+				} else {
+					iTonicDep[id] = tonicDep[iType];
+				}
 				assert(!std::isnan(ExcRatio[id]));
 				assert(!std::isnan(iTonicDep[id]));
 			}
@@ -3532,6 +3582,7 @@ int main(int argc, char **argv) {
 			else cout << ", ";
         }
 	}
+
     Float *d_sp0;
 	checkCudaErrors(cudaMalloc((void**)&d_sp0, nType*2*sizeof(Float)));
 	checkCudaErrors(cudaMemcpy(d_sp0, sp0,  nType*2*sizeof(Float), cudaMemcpyHostToDevice));
@@ -3554,12 +3605,14 @@ int main(int argc, char **argv) {
 
 	Size max_LGNperV1;
 	Float* LGN_V1_s;
-	read_LGN(LGN_V1_s_filename + conLGN_suffix, LGN_V1_s, max_LGNperV1, &(sRatioLGN[0]), &(typeAccCount[0]), nType, learnData_FF, nV1 <= 32); // assign LGN_V1_s and max_LGNperV1
+	read_LGN(LGN_V1_s_filename + conLGN_suffix, LGN_V1_s, max_LGNperV1, &(sRatioLGN[0]), &(typeAccCount[0]), nType, learnData_FF, print_log); // assign LGN_V1_s and max_LGNperV1
 	Float* sLGN;
 	size_t sLGN_size = static_cast<size_t>(max_LGNperV1)*nV1*sizeof(Float);
 	checkCudaErrors(cudaMalloc((void**)&sLGN, sLGN_size));
 	usingGMem += sLGN_size;
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
+	Float tmp = 0.0;
+	cout << "sLGN = [" << *min_element(LGN_V1_s, LGN_V1_s + max_LGNperV1*nV1) << ", " << accumulate(LGN_V1_s, LGN_V1_s + max_LGNperV1*nV1, tmp)/(nV1*max_LGNperV1) << ", " << *max_element(LGN_V1_s, LGN_V1_s + max_LGNperV1*nV1) << "] < " << gmaxLGN[0] * sRatioLGN[0] << "\n";
 
 	checkCudaErrors(cudaMemcpy(sLGN, LGN_V1_s, sLGN_size, cudaMemcpyHostToDevice));
     if (!learnData_FF) { // free memory if not used later
@@ -3582,6 +3635,7 @@ int main(int argc, char **argv) {
         avgLGNperV1 += LGN_V1_ID[i].size();
     }
     avgLGNperV1 /= nV1;
+
 	cout << "maximum LGN per V1: " << max_LGNperV1 << ", " << avgLGNperV1 << " on average\n";
 	size_t surfacePosSize = static_cast<size_t>(2*max_LGNperV1)*nV1*sizeof(int) + nV1*sizeof(Size);
 	char* surfacePos = new char[surfacePosSize];
@@ -3682,11 +3736,13 @@ int main(int argc, char **argv) {
     	    	}
 			}
 			if (use_v0) {
-    			auto vBound = get_excRangeBound(vI, vT[i]);
-    			auto get_v0 = get_rand_from_norm(rGen_initV1, v0[i*2+0], v0[i*2+1], vBound);
+    			//auto get_v0 = get_rand_from_norm(rGen_initV1, v0[i*2+0], v0[i*2+1], vBound);
+		    	auto uniform = uniform_real_distribution<Float>(vR[i], vT[i]);
+    			auto get_v0 = [&rGen_initV1, &uniform]() {
+					return uniform(rGen_initV1);
+				};
     			for (PosInt iblock = 0; iblock < nblock; iblock++) {
 				    generate(h_v0 + iblock*blockSize + typeAcc0[i], h_v0 + iblock*blockSize + typeAcc0[i+1], get_v0);
-    			    assert(h_v0 + iblock*blockSize + typeAcc0[i+1] <= h_v0 + nV1);
     			}
 			} else {
     			for (PosInt iblock = 0; iblock < nblock; iblock++) {
@@ -4247,15 +4303,23 @@ int main(int argc, char **argv) {
     checkCudaErrors(cudaDeviceSetLimit(cudaLimitStackSize, stackSize));
     checkCudaErrors(cudaDeviceSetLimit(cudaLimitMallocHeapSize, totalHeapSize));
 
+
+	cudaTextureObject_t L_retinaInput = 0;
+	cudaTextureObject_t M_retinaInput = 0;
+	cudaTextureObject_t S_retinaInput = 0;
+	init_layer_obj(L_retinaInput, cuArr_L);
+	init_layer_obj(M_retinaInput, cuArr_M);
+	init_layer_obj(S_retinaInput, cuArr_S);
+
 	// set params for layerd texture memory
-	init_layer(L_retinaInput);
-	init_layer(M_retinaInput);
-	init_layer(S_retinaInput);
+	//init_layer(L_retinaInput);
+	//init_layer(M_retinaInput);
+	//init_layer(S_retinaInput);
 
 	// bind texture to cudaArrays
-	checkCudaErrors(cudaBindTextureToArray(L_retinaInput, cuArr_L, channelDesc));
-	checkCudaErrors(cudaBindTextureToArray(M_retinaInput, cuArr_M, channelDesc));
-	checkCudaErrors(cudaBindTextureToArray(S_retinaInput, cuArr_S, channelDesc));
+	//checkCudaErrors(cudaBindTextureToArray(L_retinaInput, cuArr_L, channelDesc));
+	//checkCudaErrors(cudaBindTextureToArray(M_retinaInput, cuArr_M, channelDesc));
+	//checkCudaErrors(cudaBindTextureToArray(S_retinaInput, cuArr_S, channelDesc));
 
 	float* LMS = new float[nPixelPerFrame*sizeof(float)*nChannel]; // memory head
 
@@ -5054,6 +5118,7 @@ int main(int argc, char **argv) {
 		    		parvo_SW_storage, parvo_SC_storage, parvo_TW_storage,
 		    		currentConvol, contrast,
 		    		dLGN.coneType, *dLGN.spatial,
+					L_retinaInput, M_retinaInput, S_retinaInput,
 		    		nParvo_I, nMagno_I, nLGN,
 		    		normViewDistance,
 		    		iFrameTail, maxFrame, ntPerFrame, iFramePhaseTail,
@@ -5076,6 +5141,7 @@ int main(int argc, char **argv) {
 		    		magno_SW_storage, magno_SC_storage, magno_TW_storage,
 		    		currentConvol, contrast,
 		    		dLGN.coneType, *dLGN.spatial,
+					L_retinaInput, M_retinaInput, S_retinaInput,
 		    		nParvo_I, nMagno_I, nParvo_C,
 		    		normViewDistance,
 		    		mFrameTail, maxFrame, ntPerFrame, mFramePhaseTail,
@@ -5172,7 +5238,8 @@ int main(int argc, char **argv) {
 		if (it > 0) {
 			cudaProfilerStart();
 		}
-		LGN_nonlinear<<<nLGN_block, nLGN_thread, 0, mainStream>>>(nLGN, *dLGN.logistic, maxConvol, currentConvol, convolRatio, d_LGN_fr, d_LGN_sInfo, d_sx, d_sy, leftTimeRate, lastNegLogRand, randState, dLGN_type, typeStatus, lVarFFpre, varSlot, lFF_E_pre, lFF_I_pre, nLearnTypeFF, dt, learning, learnData_FF, LGN_switch, getLGN_sp);
+		//cout << "MAX_NLEARNTYPE_FF = " << MAX_NLEARNTYPE_FF << ", nLearnTypeFF = " << nLearnTypeFF << " \n";
+		LGN_nonlinear<<<nLGN_block, nLGN_thread, 0, mainStream>>>(nLGN, *dLGN.logistic, maxConvol, currentConvol, convolRatio, d_LGN_fr, d_LGN_sInfo, d_sx, d_sy, leftTimeRate, lastNegLogRand, randState, dLGN_type, typeStatus, lVarFFpre, LGNspikeSurface, varSlot, lFF_E_pre, lFF_I_pre, nLearnTypeFF, dt, learning, learnData_FF, LGN_switch, getLGN_sp);
 		if (it > 0) {
 			cudaProfilerStop();
 		}
@@ -5246,7 +5313,7 @@ int main(int argc, char **argv) {
                 rGenCond, d_synFailFF, d_synPerConFF, rNoisy, d_noisyDep, last_noise, d_og, d_oh,
 				tau_noise, currentTimeSlot, trainDepth, max_LGNperV1,
 				ngTypeFF, ngTypeE, ngTypeI, condFF, condE, condI,
-				dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, nE, nI, nV1, learning, varSlot, nType,
+				dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, nE, nI, nV1, learning, varSlot, nType, LGNspikeSurface,
                 lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ, iModel, noDelay); // learning const structs 
         #ifdef CHECK
 		    getLastCudaError("compute_V_collect_spike failed");
@@ -5272,6 +5339,20 @@ int main(int argc, char **argv) {
             #else
 			    cudaMemcpyAsync(targetAddress, d_LGN_sInfo, nLGN*sizeof(Float), cudaMemcpyDeviceToHost, LGN_stream);
             #endif
+
+        	if (getLGN_sp) {
+		    	memcpy((void*)(outputB4V1), (void*) targetAddress, nLGN*sizeof(Float));
+			} else {
+		    	memcpy((void*)(LGN_sInfo), (void*) targetAddress, nLGN*sizeof(Float));
+			}
+			/*
+			cout << "it = " << it << "\n";
+			for (PosInt kk = 0; kk < nLGN; kk++) {
+				cout << targetAddress[kk] << ", ";
+			}
+			cout << "\n";
+			*/
+
             #ifdef SYNC
                 checkCudaErrors(cudaDeviceSynchronize());
             #endif
@@ -5314,6 +5395,13 @@ int main(int argc, char **argv) {
 			Float* targetAddress;
 			if (learnData_FF) targetAddress = outputB4V1;
 			else targetAddress = LGN_sInfo;
+			/*
+			cout << "t = " << it << "\n";
+			for (PosInt kk = 0; kk < nLGN; kk++) {
+				cout << targetAddress[kk] << ", ";
+			}
+			cout << "\n";
+			*/
             fLGN_sp.write((char*) targetAddress, nLGN*sizeof(Float));
         }
 
@@ -6026,6 +6114,10 @@ int main(int argc, char **argv) {
 		checkCudaErrors(cudaFreeArray(cuArr_M));
 		checkCudaErrors(cudaFreeArray(cuArr_S));
 		checkCudaErrors(cudaFreeArray(cuSurfArray));
+		cudaDestroyTextureObject(L_retinaInput);
+		cudaDestroyTextureObject(M_retinaInput);
+		cudaDestroyTextureObject(S_retinaInput);
+		cudaDestroySurfaceObject(LGNspikeSurface);
 		checkCudaErrors(cudaDeviceSynchronize());
 		cout << "memory trace cleaned\n";
 	}
