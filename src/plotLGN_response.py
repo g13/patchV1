@@ -16,18 +16,25 @@ if len(sys.argv) > 1:
     if len(sys.argv) > 2:
         input_suffix = sys.argv[2]
         if len(sys.argv) > 3:
-            if sys.argv[3] == 'True' or sys.argv[3] == '1':
-                readNewSpike = True 
-                print('read new spikes')
+            fdr = sys.argv[3]
+            if len(sys.argv) > 4:
+                if sys.argv[4] == 'True' or sys.argv[4] == '1':
+                    readNewSpike = True 
+                    print('read new spikes')
+                else:
+                    readNewSpike = False
+                    print('read stored spikes')
             else:
                 readNewSpike = False
-                print('read stored spikes')
         else:
+            fdr = ''
             readNewSpike = False
     else:
+        fdr = ''
         readNewSpike = False
         input_suffix = ""
 else:
+    fdr = ''
     readNewSpike = False
     output_suffix = ""
     input_suffix = ""
@@ -39,13 +46,15 @@ if output_suffix:
     output_suffix = "_" + output_suffix 
 if input_suffix:
     input_suffix = "_" + input_suffix 
+if fdr:
+    fdr = fdr + '/'
 
 plotResponseSample = True
 plotContrastDist = False 
 plotStat = True 
 nLGN_1D = 16
-nt_ = 4000
-nstep = 4000
+nt_ = 10000
+nstep = 10000
 seed = 1653783
 #iLGN = np.array([84,1455,1833,2575])
 #iLGN = np.array([6*16+3,7*16+3,8*16+3, 6*16+10,7*16+10,8*16+10])
@@ -144,7 +153,6 @@ with open(output_fn, 'rb') as f:
         contrast[it,:,:] = np.fromfile(f, precision, count = 2*nLGN).reshape(2,nLGN)
 
 if plotResponseSample:
-
     if readNewSpike or not path.exists(LGN_spFn + '-' + str(nstep) + '.npz'):
         LGN_spScatter = readLGN_sp(LGN_spFn + '.bin', prec = prec, nstep = nt_)
         np.savez(LGN_spFn + '-' + str(nt_) + '.npz', LGN_spScatter = LGN_spScatter)
@@ -184,7 +192,7 @@ if plotResponseSample:
         ix = np.mod(j, nLGN_1D)
         iy = np.int(np.floor(j/nLGN_1D))
         ax2.set_title(f'#{j} {(ix,iy)}, {LGN_type[j]} ' + on_off + f' fr: {np.mean(LGNfr[:,i]):.3f}/{np.max(LGNfr[:,i]):.3f}Hz, {len(LGN_spScatter[j])/t[-1]*1000:.3f}Hz')
-    fig.savefig('lgn-response' + output_suffix + '.png')
+    fig.savefig(fdr+'lgn-response' + output_suffix + '.png')
 
 if plotContrastDist:
     fig = plt.figure('contrast', dpi = 300)
@@ -202,7 +210,7 @@ if plotContrastDist:
     ax.hist(contrast[ind1,1,pick1], color = 'c', bins = 10, alpha = 0.5)
     ax = fig.add_subplot(212)
     ax.hist(frStat/nstep)
-    fig.savefig('lgn-contrast' + output_suffix + '.png')
+    fig.savefig(fdr+'lgn-contrast' + output_suffix + '.png')
 
 if plotStat:
     fig = plt.figure('LGN_activity', dpi = 600)
@@ -222,4 +230,4 @@ if plotStat:
     ax = fig.add_subplot(224)
     ax.hist(np.mean(LGNfr, axis = 0), bins=10)
     ax.set_xlabel('mean fr')
-    fig.savefig('LGN_activity'+output_suffix+'.png')
+    fig.savefig(fdr+'LGN_activity'+output_suffix+'.png')

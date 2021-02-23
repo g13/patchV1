@@ -31,24 +31,26 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, TF, s
     lw = 0.1
     
     plotRpStat = True 
-    #plotRpCorr = True
+    plotRpCorr = True
     plotScatterFF = True
     plotSample = True
+    plotDepC = True # plot depC distribution over orientation
     #plotLGNsCorr = True
     #plotTempMod = True 
     #plotExc_sLGN = True
     #plotLR_rp = True
     
     #plotRpStat = False 
-    plotRpCorr = False 
+    #plotRpCorr = False 
     #plotScatterFF = False
     #plotSample = False
+    #plotDepC = False
     plotLGNsCorr = False 
     plotTempMod = False 
     plotExc_sLGN = False
     plotLR_rp = False 
     
-    #pSample = True
+    pSample = True
     pSpike = True
     pVoltage = True
     pCond = True
@@ -60,7 +62,7 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, TF, s
     pDep = True
     pLog = True 
     
-    pSample = False
+    #pSample = False
     #pSpike = False
     #pVoltage = False
     #pCond = False
@@ -127,13 +129,10 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, TF, s
     LGN_V1_idFn = "LGN_V1_idList" + conLGN_suffix + ".bin"
     
     conStats_Fn = "conStats" + conV1_suffix + ".bin"
-    #featureFn = "V1_feature-micro.bin"
-    #LGN_vposFn = "parvo_merged_float-micro.bin"
-    #pos_file = "V1_allpos-micro.bin"
 
-    featureFn = "V1_feature_lFF.bin"
-    LGN_vposFn = "LGN_vpos_lFF.bin"
-    pos_file = "V1_pos_lFF.bin"
+    featureFn = "V1_feature-micro.bin"
+    LGN_vposFn = "parvo_merged_float-micro.bin"
+    pos_file = "V1_allpos-micro.bin"
     
     spDataFn = "V1_spikes" + _output_suffix
     parameterFn = "patchV1_cfg" +_output_suffix + ".bin"
@@ -258,6 +257,7 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, TF, s
     
     # read spikes
     max_vThres = np.max(vThres)
+    assert(max_vThres < 1)
     if pSpike:
         if not readNewSpike:
             print('loading V1 spike...')
@@ -274,13 +274,13 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, TF, s
                     spScatter[i] = []
                 for it in range(nt):
                     data = np.fromfile(f, prec, nV1)
-                    pick = np.logical_and(data>=max_vThres, data < 1)
+                    pick = np.logical_and(data>max_vThres, data < 1)
                     if np.sum(pick) > 0:
                         print(f'{np.arange(nV1)[pick]} has negative spikes at {data[pick]} + {it*dt}')
                         negativeSpike = True
                     tsps = data[data >= 1]
                     pick = data < 1
-                    assert((data[pick] < max_vThres).all())
+                    assert((data[pick] <= max_vThres).all())
                     if tsps.size > 0:
                         idxFired = np.nonzero(data >= 1)[0]
                         k = 0
@@ -314,7 +314,7 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, TF, s
     if plotSample or pSample:
         if 'sample' not in locals():
             sample = np.random.randint(nV1, size = ns)
-            if False:
+            if True:
                 sample = np.zeros(12, dtype = int)
 
                 pick = epick[nLGN_V1[epick] > np.mean(nLGN_V1[epick])]
@@ -367,7 +367,7 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, TF, s
         print(f'sampling {[(s//blockSize, np.mod(s,blockSize)) for s in sample]}') 
     
     # read voltage and conductances
-    if pVoltage or pCond or plotLGNsCorr or plotSample or (plotTempMod and pCond):
+    if pVoltage or pCond or plotLGNsCorr or plotSample or plotDepC or (plotTempMod and pCond):
         print('reading rawData..')
         gE = np.zeros((ngE,nV1,2))
         gI = np.zeros((ngI,nV1,2))
@@ -1108,6 +1108,31 @@ def plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, TF, s
             fig.savefig(outputfdr+output_suffix + f'V1-sample-{iblock}-{ithread}#{nLGN_V1[iV1]}' + '.png')
             plt.close(fig)
     
+    # plot depC distribution over orientation
+    if plotDepC:
+        fig = plt.figure(f'plotDepC', figsize = (8,4), dpi = 600)
+
+        eSpick = epick[nLGN_V1[epick] > SCsplit]
+        eCpick = epick[nLGN_V1[epick] <= SCsplit]
+        iSpick = ipick[nLGN_V1[ipick] > SCsplit]
+        iCpick = ipick[nLGN_V1[ipick] <= SCsplit]
+
+        target = OP*180/np.pi
+        ytarget = depC[:,0]
+        ax = fig.add_subplot(221)
+        pick =  eSpick
+        image = HeatMap(target[pick], ytarget[pick], OPrange, heatBins, ax, 'Reds', log_scale = pLog, intPick = False, tickPick1 = 5)
+        ax = fig.add_subplot(222)
+        pick =  eCpick
+        image = HeatMap(target[pick], ytarget[pick], OPrange, heatBins, ax, 'Reds', log_scale = pLog, intPick = False, tickPick1 = 5)
+        ax = fig.add_subplot(223)
+        pick =  iSpick
+        image = HeatMap(target[pick], ytarget[pick], OPrange, heatBins, ax, 'Blues', log_scale = pLog, intPick = False, tickPick1 = 5)
+        ax = fig.add_subplot(224)
+        pick =  iCpick
+        image = HeatMap(target[pick], ytarget[pick], OPrange, heatBins, ax, 'Blues', log_scale = pLog, intPick = False, tickPick1 = 5)
+        fig.savefig(outputfdr+output_suffix + 'OPdepC' + '.png')
+
     # statistics
     if plotRpStat:
         fig = plt.figure(f'rpStats', figsize = (8,4), dpi = 600)

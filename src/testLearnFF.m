@@ -1,7 +1,7 @@
 function testLearnFF(isuffix, osuffix, fdr, iV1)
 	nt_ = 4000; % choose time steps to plot
 	targetfr = 5
-	nsub = 2 + 2;
+	nsub = 2 + 3;
 	thres = 0.5;  % as a percent of gmax
 	if ~isempty(isuffix) 
 	    isuffix = ['_', isuffix];
@@ -15,6 +15,7 @@ function testLearnFF(isuffix, osuffix, fdr, iV1)
 	LGN_V1_id_fn = ['LGN_V1_idList', isuffix, '.bin']
 	f_sLGN = ['sLGN', osuffix, '.bin']
 	f_LGNoutput = ['outputB4V1', osuffix, '.bin']
+	fLGN_vpos = ['LGN_vpos', isuffix, '.bin']
 	%%
 	
 	fid = fopen(f_sLGN, 'r');
@@ -146,6 +147,12 @@ function testLearnFF(isuffix, osuffix, fdr, iV1)
 	    disp(['this V1 firing rate ', num2str(nsp(iV1)/(nt_*dt/1000)), 'Hz']);
 	end
 	
+
+	pid = fopen(fLGN_vpos, 'r');
+    fseek(pid, (7+2*nLGN)*4, 0);
+    LGN_type = fread(pid, nLGN, 'uint');
+    fclose(pid);
+
 	% detemine EI
 	iblock = idivide(int32(iV1-1),int32(blockSize));
 	if mod(iV1-1,blockSize) < mE
@@ -319,6 +326,7 @@ function testLearnFF(isuffix, osuffix, fdr, iV1)
 	    %pLGN = [1,2,3]
 	    disp(iLGN(pLGN)');
 	    f = figure;
+		titl = [ 'check-learnFF-', num2str(iV1), EI, osuffix];
 	    it = 1:nt_; % end points, spike times counts from start points, (iAvg as well, for now, TODO)
 	    t = it*dt; 
 	    v1_pick = iV1_sInfo >= 1;
@@ -347,6 +355,7 @@ function testLearnFF(isuffix, osuffix, fdr, iV1)
 	        labels = [labels, 'LGN fr'];
 	        xlim([0,t(end)]);
 	
+			title([titl, ': type-', num2str(LGN_type(iLGN(pLGN(j))))]);
 	        pick = iLGN_sInfo(:,i) > 0;
 	        if sum(pick) > 0
 	            gsp = plot((it(pick)-1+iLGN_sInfo(pick,i)' - floor(iLGN_sInfo(pick,i)'))*dt, zeros(sum(pick),1) + ss(pick), '*g', 'MarkerSize', 2.0);
@@ -404,11 +413,10 @@ function testLearnFF(isuffix, osuffix, fdr, iV1)
 	            legend(lines, labels, 'Location', 'northeastoutside');
 	        end
 	    end
-	    titl = [fdr, 'check-learnFF-', num2str(iV1), EI, osuffix];
-	    title(titl)
+	    
 	    %%
-	    saveas(f, titl, 'fig');
-	    saveas(f, [titl, '.png']) ;
+	    saveas(f, [fdr,titl], 'fig');
+	    saveas(f, [fdr, titl, '.png']) ;
 	end
 	
 	fid = fopen(['LGN_fr', osuffix, '.bin'], 'r');

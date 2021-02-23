@@ -106,7 +106,7 @@ inline void init_layer_obj(cudaTextureObject_t &texObj, cudaArray* cuArr) {
 	cudaCreateTextureObject(&texObj, &resDesc, &texDesc, NULL);
 }
 
-void prep_sample(unsigned int iSample, unsigned int width, unsigned int height, float* L, float* M, float* S, cudaArray *dL, cudaArray *dM, cudaArray *dS, unsigned int nSample, cudaMemcpyKind cpyKind) {
+void prep_sample(unsigned int iSample, unsigned int width, unsigned int height, float* L, float* M, float* S, cudaArray *dL, cudaArray *dM, cudaArray *dS, unsigned int nSample, cudaMemcpyKind cpyKind, int reverse) {
 	// copy the three channels L, M, S of the #iSample frame to the cudaArrays dL, dM and dS
 	cudaMemcpy3DParms params = {0};
 	params.srcPos = make_cudaPos(0, 0, 0);
@@ -115,6 +115,31 @@ void prep_sample(unsigned int iSample, unsigned int width, unsigned int height, 
 	params.extent = make_cudaExtent(width, height, nSample);
 	params.kind = cpyKind;
 
+	if (reverse == 1) {
+		Size nPixel = width*height;
+		//std::cout << "im here\n";
+		float midL = std::accumulate(L, L + nPixel, 0.0)/nPixel;
+		//std::cout << "midL = " << midL << "\n";
+		for (PosInt i=0; i<nPixel; i++) {
+			L[i] = 2*midL - L[i];
+			if (L[i] > 1) L[i] = 1;
+			if (L[i] < 0) L[i] = 0;
+		}
+		float midM = std::accumulate(M, M + nPixel, 0.0)/nPixel;
+		//std::cout << "midM = " << midM << "\n";
+		for (PosInt i=0; i<nPixel; i++) {
+			M[i] = 2*midM - M[i];
+			if (M[i] > 1) M[i] = 1;
+			if (M[i] < 0) M[i] = 0;
+		}
+		float midS = std::accumulate(S, S + nPixel, 0.0)/nPixel;
+		//std::cout << "midS = " << midS << "\n";
+		for (PosInt i=0; i<nPixel; i++) {
+			S[i] = 2*midS - S[i];
+			if (S[i] > 1) S[i] = 1;
+			if (S[i] < 0) S[i] = 0;
+		}
+	}
 	params.srcPtr = make_cudaPitchedPtr(L, width * sizeof(float), width, height);
 	params.dstArray = dL;
 	checkCudaErrors(cudaMemcpy3D(&params));

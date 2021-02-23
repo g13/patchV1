@@ -27,6 +27,7 @@ int main(int argc, char *argv[])
     //vector<Float> targetFR;
     ///Float FF_FB_ratio;
     Float min_FB_ratio;
+    Float C_InhRatio;
     //Float LGN_targetFR;
 	bool gaussian_profile;
     bool strictStrength;
@@ -70,6 +71,7 @@ int main(int argc, char *argv[])
 		("extExcRatio", po::value<vector<Float>>(&extExcRatio), "external cortical excitation ratio to E and I")
 		("extSynRatio", po::value<vector<Float>>(&extSynRatio), "external cortical exc connection #synapse ratio to E and I")
 		("min_FB_ratio", po::value<Float>(&min_FB_ratio), "minimum external cortical excitation ratio")
+		("C_InhRatio", po::value<Float>(&C_InhRatio), "minimum inhibition for complex cells")
 		("minConTol", po::value<Float>(&minConTol), "minimum difference tolerance of the number of preset cortical connections")
         ("sTypeMat", po::value<vector<Float>>(&sTypeMat), "connection strength matrix between neuronal types, size of [nType, nType], nType = sum(nTypeHierarchy), row_id -> postsynaptic, column_id -> presynaptic")
         ("gap_sTypeMat", po::value<vector<Float>>(&gap_sTypeMat), "gap junction strength matrix between inhibitory neuronal types, size of [nTypeI, nTypeI], nTypeI = nTypeHierarchy[1], row_id -> postsynaptic, column_id -> presynaptic")
@@ -745,7 +747,7 @@ int main(int argc, char *argv[])
 	    d_preType,
 		rden, raxn, dden, daxn,
 		//preF_type, preS_type, preN_type, d_LGN_V1_sSum, d_ExcRatio, d_extExcRatio, min_FB_ratio,
-		preF_type, preS_type, preN_type, d_nLGN_V1, d_ExcRatio, d_extExcRatio, d_synPerCon, d_synPerConFF, min_FB_ratio,
+		preF_type, preS_type, preN_type, d_nLGN_V1, d_ExcRatio, d_extExcRatio, d_synPerCon, d_synPerConFF, min_FB_ratio, C_InhRatio,
 		init_pack, seed, networkSize, nType, nArchtype, nFeature, CmoreN, preset_nLGN);
 	getLastCudaError("initialize failed");
 	checkCudaErrors(cudaDeviceSynchronize());
@@ -841,7 +843,7 @@ int main(int argc, char *argv[])
 	checkCudaErrors(cudaMemcpy(conVec, d_conVec, vecSize+statSize, cudaMemcpyDeviceToHost)); 	
 	checkCudaErrors(cudaMemcpy(gapVec, d_gapVec, gap_vecSize+gap_statSize, cudaMemcpyDeviceToHost)); 	
 
-	//===========
+	/*===========
 	{
 		for	(PosInt ib=0; ib<nblock; ib++) {
 			cout << "before block#" << ib << " gap stats in  mean: \n";
@@ -983,7 +985,7 @@ int main(int argc, char *argv[])
     		delete [] preStr;
 		}
 	}
-	//===========
+	//===========*/
 	// initialize neighborMat (-1, no connections, 0<=i<nn) for pair-checking
 	vector<int> neighborMat(nblock*nblock, -1);
 	for (PosInt i=0; i<nblock; i++) {
@@ -1028,7 +1030,7 @@ int main(int argc, char *argv[])
 		}
 
 		Size *blockId = neighborBlockId + i*maxNeighborBlock;
-		cout << "cluster " << i << "\n";
+		//cout << "cluster " << i << "\n";
 		assert(clusterID[0] == 0);
 		assert(blockId[clusterID[0]] == i);
 
@@ -1077,7 +1079,7 @@ int main(int argc, char *argv[])
 			checkCudaErrors(cudaDeviceSynchronize());
 
 			// make symmteric, use original neighborMat
-			cout << "<<<" << nc << " x " << nI << ">>>\n";
+			//cout << "<<<" << nc << " x " << nI << ">>>\n";
 			generate_symmetry<<<nc,nI>>>(
 					d_clusterID,
 					d_neighborBlockId,
@@ -1135,13 +1137,13 @@ int main(int argc, char *argv[])
     		checkCudaErrors(cudaFree(d_clusterGapMat));
     		checkCudaErrors(cudaFree(d_clusterID));
 
-			cout << "pair " << i << ": ";
+			//cout << "pair " << i << ": ";
 			for (PosInt j=0; j<nc; j++) {
 				neighborMat[i*nblock + blockId[clusterID[j]]] = -1;
 				neighborMat[blockId[clusterID[j]]*nblock + i] = -1;
-				cout << blockId[clusterID[j]] << ", ";
+				//cout << blockId[clusterID[j]] << ", ";
 			}
-			cout << "\n";
+			//cout << "\n";
 			clusterID.clear();
 		} else {
 			cout << "no more to change\n";
@@ -1152,7 +1154,7 @@ int main(int argc, char *argv[])
     checkCudaErrors(cudaFree(i_outstanding));
     checkCudaErrors(cudaFree(v_outstanding));
 
-	//===========
+	/*===========
 	for	(PosInt ib=0; ib<nblock; ib++) {
 		cout << "after block#" << ib << " gap stats in  mean: \n";
     	Size* preConn = new Size[nTypeI*nTypeI];
@@ -1292,15 +1294,17 @@ int main(int argc, char *argv[])
     	delete [] preAvail;
     	delete [] preStr;
 	}
-	//===========
+	//===============*/
 
 	cout << "gap mat ready\n";
 	// make reciprocal gap junctions in vectors
+	//cout << "mI = " << mI << "\n";
 	for (PosInt i=0; i<mI; i++) {
 		PosInt itype;
 		for (PosInt k=0; k<nTypeI; k++) {
 			if (i%nI < typeAccCount[k+nTypeE] - nE) itype = k;
 		}
+		PosInt host_tid = i/nI*blockSize + nE + i%nI;
 		for (PosInt j=0; j<nGapVec[i]; j++) {
 			PosInt id = gapVecID[i*gap_maxDistantNeighbor + j];
 			PosInt guest_id = id/blockSize * nI + id%blockSize-nE;
@@ -1318,19 +1322,21 @@ int main(int argc, char *argv[])
 					if (guest_id%nI < typeAccCount[k+nTypeE] - nE) guest_itype = k;
 				}
 				if (nGapVec[i] < gap_maxDistantNeighbor && preTypeGapped[itype*mI + guest_id] < nInhGap[itype*nTypeI + guest_itype]*(1+minConTol)) {
-					gapVecID[guest_id*gap_maxDistantNeighbor + nGapVec[guest_id]] = i;
+					gapVecID[guest_id*gap_maxDistantNeighbor + nGapVec[guest_id]] = host_tid;
 					gapVec[guest_id*gap_maxDistantNeighbor + nGapVec[guest_id]] = gapVec[i*gap_maxDistantNeighbor + j];
 					gapDelayVec[guest_id*gap_maxDistantNeighbor + nGapVec[guest_id]] = gapDelayVec[i*gap_maxDistantNeighbor + j];
 					nGapVec[guest_id]++;
 					preTypeGapped[itype*mI + guest_id]++;
 					preTypeStrGapped[itype*mI + guest_id] += gapVec[i*gap_maxDistantNeighbor + j];
+					//cout << "gapVec[ " << guest_id << "] added 1 gap from  " << gapVecID[guest_id*gap_maxDistantNeighbor + nGapVec[guest_id]-1]  << "\n";
 				} else {
 					preTypeGapped[itype*mI + guest_id]--;
 					preTypeStrGapped[itype*mI + guest_id] -= gapVec[i*gap_maxDistantNeighbor + j];
-					if (j < nGapVec[i]-1) { // advance the array elements by 1
+					//if (j < nGapVec[i]-1) { // advance the array elements by 1
 						PosInt i0 = i*gap_maxDistantNeighbor ;
 						PosInt i1 = i0 + nGapVec[i];
 						i0 += j+1;
+					//cout << "gapVec[ " << i << "] removed 1 gap from  " << gapVecID[i0-1]  << "\n";
 						vector<Float> tmpS(gapVec+i0, gapVec+i1);
 						vector<Float> tmpD(gapDelayVec+i0, gapDelayVec+i1);
 						vector<PosInt> tmpID(gapVecID+i0, gapVecID+i1);
@@ -1339,11 +1345,25 @@ int main(int argc, char *argv[])
 							gapDelayVec[i0-1 + k] = tmpD[k];
 							gapVecID[i0-1 + k] = tmpID[k];
 						}
-					}
+					//}
 					nGapVec[i]--;
 					j--;
 				}
 			}
+		}
+	}
+	for (PosInt i=0; i<mI; i++) {
+		if (nGapVec[i]) {
+			cout << i << "th inh gaps:\n";
+			for (PosInt j=0; j<nGapVec[i]; j++) {
+				cout << gapVecID[i*gap_maxDistantNeighbor+j] << ", ";
+			}
+			cout << "\n";
+			cout << i << "th inh gap dis:\n";
+			for (PosInt j=0; j<nGapVec[i]; j++) {
+				cout << gapDelayVec[i*gap_maxDistantNeighbor+j] << ", ";
+			}
+			cout << "\n";
 		}
 	}
 	cout << "gap vec ready\n";
@@ -1464,7 +1484,7 @@ int main(int argc, char *argv[])
 
     fV1_gapVec.write((char*)nGapVec, mI*sizeof(Size));
     for (Size i=0; i<mI; i++) {
-        fV1_gapVec.write((char*)&(gapVecID[i*gap_maxDistantNeighbor]), nGapVec[i]*sizeof(Size));
+        fV1_gapVec.write((char*)&(gapVecID[i*gap_maxDistantNeighbor]), nGapVec[i]*sizeof(PosInt));
         fV1_gapVec.write((char*)&(gapVec[i*gap_maxDistantNeighbor]), nGapVec[i]*sizeof(Float));
         fV1_gapVec.write((char*)&(gapDelayVec[i*gap_maxDistantNeighbor]), nGapVec[i]*sizeof(Float));
     }

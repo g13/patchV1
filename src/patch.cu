@@ -128,6 +128,7 @@ int main(int argc, char **argv) {
 	vector<Float> gapRatio;
 	vector<Size> nTypeHierarchy;
 	vector<Float> fbROI, fbSamplingRate, fbEI_ratio, fbFR;
+    vector<Float> boostOri;
 	vector<Size> nFBperColumn;
 	Float nsig; // extent of spatial RF sampling in units of std
 	Float tau, mau;
@@ -155,7 +156,8 @@ int main(int argc, char **argv) {
 		("matConcurrency,n", po::value<Size>(&matConcurrency)->default_value(10),"sum presynaptic inputs from connection matrices in parallel, depends on the availability of device memory")
 		("speedOfThought", po::value<Float>(&speedOfThought)->default_value(1.0), "velocity of conduction, mm/ms")
 		("nt", po::value<Size>(&nt)->default_value(8000), "total simulatoin time in units of time step")
-		("fbROI", po::value<vector<Float>>(&fbROI), "total simulatoin time in units of time step")
+		("fbROI", po::value<vector<Float>>(&fbROI), "feedback ROI not implemented")
+		("boostOri", po::value<vector<Float>>(&boostOri), "boosting neurons with orientation preference with defined boostOri, [baseline, mean, std]")
 		("nFBperColumn", po::value<vector<Size>>(&nFBperColumn), "total simulatoin time in units of time step")
 		("fbSamplingRate", po::value<vector<Float>>(&fbSamplingRate), "total simulatoin time in units of time step")
 		("fbEI_ratio", po::value<vector<Float>>(&fbEI_ratio), "total simulatoin time in units of time step")
@@ -322,6 +324,9 @@ int main(int argc, char **argv) {
 	if (vm.count("help")) {
 		cout << cmdline_options << "\n";
 		return EXIT_SUCCESS;
+	}
+	if (ignoreRetinogeniculateDelay) {
+		cout << "ignoreRetinogeniculateDelay = " << ignoreRetinogeniculateDelay << "\n";
 	}
 	string cfg_filename = vm["cfg_file"].as<string>();
 	ifstream cfg_file;
@@ -1196,8 +1201,6 @@ int main(int argc, char **argv) {
 	} else {
 		fLGN_vpos.read(reinterpret_cast<char*>(&nLGN_I), sizeof(Size));
 		fLGN_vpos.read(reinterpret_cast<char*>(&nLGN_C), sizeof(Size));
-		int tmp;
-		fLGN_vpos.read(reinterpret_cast<char*>(&tmp), sizeof(int));
 		float max_ecc0;
 		fLGN_vpos.read(reinterpret_cast<char*>(&max_ecc0), sizeof(float)); // in rad
 		max_ecc = static_cast<Float>(max_ecc0);
@@ -1213,6 +1216,7 @@ int main(int argc, char **argv) {
     vector<Float> LGN_status;
     vector<Float> LGN_sDur;
     vector<Size> LGN_switchIt;
+	vector<int> reverse;
     if (LGN_switch) {
         fLGN_switch.open(LGN_switch_filename + conLGN_suffix, fstream::in | fstream::binary);
         if (!fLGN_switch) {
@@ -1223,6 +1227,7 @@ int main(int argc, char **argv) {
             LGN_status.assign(nStatus*nInputType,0);
             LGN_sDur.assign(nStatus,0.0);
             LGN_switchIt.assign(nStatus,0);
+            reverse.assign(nStatus,0);
 			vector<float> LGN_status0(nInputType*nStatus);
 		    fLGN_switch.read(reinterpret_cast<char*>(&LGN_status0[0]), nInputType*nStatus*sizeof(float));
 			for (PosInt i=0; i<nInputType*nStatus; i++) {
@@ -1237,8 +1242,9 @@ int main(int argc, char **argv) {
 			vector<float>().swap(LGN_status0);
             Float totalDur = accumulate(LGN_sDur.begin(), LGN_sDur.end(), 0.0);
             for (PosInt i = 1; i < nStatus; i++) {
-                LGN_switchIt[i] = static_cast<Size>(std::floor(LGN_sDur[i]/totalDur*nt)) + LGN_switchIt[i-1];
+                LGN_switchIt[i] = static_cast<Size>(std::floor(LGN_sDur[i-1]/totalDur*nt)) + LGN_switchIt[i-1];
             }
+			/*
             cout << "number of status change: " << nStatus << ": " << totalDur << "\n";
             for (PosInt i = 0; i < nStatus; i++) {
                 cout << "starting tstep: " << LGN_switchIt[i] << "\n";
@@ -1247,7 +1253,15 @@ int main(int argc, char **argv) {
                     if (j<nInputType-1) cout << ", ";
                     else  cout << "\n";
                 }
+            } */
+		    fLGN_switch.read(reinterpret_cast<char*>(&reverse[0]), nStatus*sizeof(int));
+			cout << "reverse: ";
+            for (PosInt i = 0; i < nStatus; i++) {
+				cout << reverse[i];
+                if (i < nStatus-1) cout << ", ";
+                else  cout << "\n";
             }
+			fLGN_switch.close();
         }
     }
 
@@ -1616,7 +1630,8 @@ int main(int argc, char **argv) {
 		                tie(LGN_rw[i], LGN_rw[i+nLGN]) = get_rands_from_correlated_gauss(acuityC, acuityS, rho_SC, rho_SC_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound, smaller);
                         break;
                     default:
-		    			throw("There's no implementation of this type with non-uniform LGN");
+		    			cout << "There's no implementation of this type with non-uniform LGN\n";
+						return EXIT_FAILURE;
                 }
             }
             // ry ~ rx circular sub RF, not necessary
@@ -1864,7 +1879,8 @@ int main(int argc, char **argv) {
 		    		    // delay
                     */
 		    	    default:	
-		    			throw("There's no implementation of this type with non-uniform LGN");
+		    			cout << "There's no implementation of this type with non-uniform LGN";
+						return EXIT_FAILURE;
 		    	} 		    			
 		    	// c-s coneType, LGN_props.h
 		    	switch (LGNtype[i]) {
@@ -1880,7 +1896,9 @@ int main(int argc, char **argv) {
 		    			coneType[i] = 3;
 		    			coneType[i+nLGN] = 3;
 		    			break;
-		    		default: throw("There's no implementation of such RF for parvo LGN");
+		    		default: 
+						cout << "There's no implementation of such RF for parvo LGN";
+						return EXIT_FAILURE;
 		    	}
 		    	// non-linearity
 		    	Float spontTmp = exp(log_mean + norm(rGen_LGNsetup) * log_std);
@@ -2040,7 +2058,8 @@ int main(int argc, char **argv) {
 		    	        covariant[i] = 1.0;
                         break;
                     default:
-		    			throw("There's no implementation of such RF for parvo LGN");
+		    			cout << "There's no implementation of such RF for parvo LGN\n";
+						return EXIT_FAILURE;
 		    	}
 		    	// c-s coneType, LGN_props.h
 		    	switch (LGNtype[i]) {
@@ -2056,7 +2075,9 @@ int main(int argc, char **argv) {
 		    			coneType[i] = 3;
 		    			coneType[i+nLGN] = 3;
 		    			break;
-		    		default: throw("There's no implementation of such RF for parvo LGN");
+		    		default:
+						cout << "There's no implementation of such RF (LGNtype[" << i << "]: " << static_cast<unsigned int>(LGNtype[i]) << ") for parvo LGN\n";
+						return EXIT_FAILURE;
 		    	}
 		    	// non-linearity
 		    	spont[i] =  spontPercent;
@@ -2144,7 +2165,7 @@ int main(int argc, char **argv) {
 		fLGN.read(reinterpret_cast<char*>(&covariant[0]), nLGN*sizeof(Float));
 		fLGN.close();	
 	}
-        
+
 	hSpatial_component hSpat(nLGN, 2, LGN_polar, LGN_rw, LGN_ecc, LGN_rh, LGN_orient, LGN_k);
 	hTemporal_component hTemp(nLGN, 2, tauR, tauD, delay, ratio, nR, nD);
 	hStatic_nonlinear hStat(nLGN, spont, c50, sharpness);
@@ -2408,6 +2429,22 @@ int main(int argc, char **argv) {
 	Size mE = nE*nblock;
 	cout << " mE = " << mE << ", mI = " << mI << "\n";
 
+    if (boostOri.size() > 0) {
+        if (boostOri.size() != 3 && boostOri.size() != 3*nType) {
+            cout << "boostOri need 3 x nType elements: [baseline, mean, std] x nType\n";
+            return EXIT_FAILURE; 
+        } else {
+            readFeature = true;
+            if (boostOri.size() == 3 && nType > 1) {
+                for (PosInt i = 1; i < nType; i++) {
+                    boostOri.push_back(boostOri[0]);
+                    boostOri.push_back(boostOri[1]);
+                    boostOri.push_back(boostOri[2]);
+                }
+            }
+        }
+    }
+
 	vector<Float> featureValue;
 	if (readFeature) {
 		fV1_feature.open(V1_feature_filename, ios::in|ios::binary);
@@ -2422,7 +2459,7 @@ int main(int argc, char **argv) {
 		fV1_feature.read(reinterpret_cast<char*>(&featureValue0[0]), sizeof(float)*nFeature*nV1);
 		for (PosInt i=0; i<nV1*nFeature; i++) {
 			featureValue[i] = static_cast<Float>(featureValue0[i]);
-		}
+		} 
 		fV1_feature.close();
 	} 
     
@@ -2775,19 +2812,19 @@ int main(int argc, char **argv) {
 		cout << "Cannot open or find " << V1_gapVec_filename + conV1_suffix <<" to read inhibitory gap junctions to farther neighbor.\n";
 		return EXIT_FAILURE;
 	} else {
-		fV1_gapVec.read(reinterpret_cast<char*>(&nGapVec[0]), nV1*sizeof(Size));
+		fV1_gapVec.read(reinterpret_cast<char*>(&nGapVec[0]), mI*sizeof(Size));
 		for (PosInt i=0; i<mI; i++) {
 			gapS[i] = 0;
 			if (nGapVec[i] > 0) {
 				vector<PosInt> tmp(nGapVec[i]);
 				fV1_gapVec.read(reinterpret_cast<char*>(&tmp[0]), nGapVec[i]*sizeof(PosInt));
 				for (PosInt j=0; j<nGapVec[i]; j++) {
-					vecID[i].push_back(tmp[j]);
+					gapVecID[i].push_back(tmp[j]);
 				}
-				assert(vecID[i].size() == nGapVec[i]);
+				assert(gapVecID[i].size() == nGapVec[i]);
 
-				vector<float> ftmp(nGapVec[i]);
-				fV1_gapVec.read(reinterpret_cast<char*>(&ftmp[0]), nGapVec[i]*sizeof(float));
+				vector<Float> ftmp(nGapVec[i]);
+				fV1_gapVec.read(reinterpret_cast<char*>(&ftmp[0]), nGapVec[i]*sizeof(Float));
 				PosInt itype;
 				for (PosInt q=0; q<nTypeI; q++) {
 					if (i % nI < typeAccCount[q+nTypeE]-nE) {
@@ -2803,20 +2840,36 @@ int main(int argc, char **argv) {
 							break;
 						}
 					}
-					gapVec[i].push_back(static_cast<Float>(ftmp[j])*gapRatio[jtype*nTypeI+itype]);
+					gapVec[i].push_back(ftmp[j]*gapRatio[jtype*nTypeI+itype]);
 					gapS[i] += gapVec[i][j];
 				}
 				assert(gapVec[i].size() == nGapVec[i]);
 
-				fV1_gapVec.read(reinterpret_cast<char*>(&ftmp[0]), nGapVec[i]*sizeof(float));
+				vector<Float> dtmp(nGapVec[i]);
+				fV1_gapVec.read(reinterpret_cast<char*>(&dtmp[0]), nGapVec[i]*sizeof(Float));
 				for (PosInt j=0; j<nGapVec[i]; j++) {
-					gapDelayVec[i].push_back(static_cast<Float>(ftmp[j]));
+					gapDelayVec[i].push_back(dtmp[j]);
 				}
 				assert(gapDelayVec[i].size() == nGapVec[i]);
 
                 nGapFar += nGapVec[i];
 			}
 		}
+		/*
+		for (PosInt i=0; i<mI; i++) {
+			if (nGapVec[i]) {
+				cout << i << "th inh gaps:\n";
+				for (PosInt j=0; j<nGapVec[i]; j++) {
+					cout << gapVecID[i][j] << ", ";
+				}
+				cout << "\n";
+				cout << i << "th inh gap dis:\n";
+				for (PosInt j=0; j<nGapVec[i]; j++) {
+					cout << gapDelayVec[i][j] << ", ";
+				}
+				cout << "\n";
+			}
+		}*/
 	}
 	fV1_gapVec.close();
 
@@ -3116,7 +3169,6 @@ int main(int argc, char **argv) {
 	checkCudaErrors(cudaMemcpy(d_gapS, gapS, sizeof(Float)*mI, cudaMemcpyHostToDevice));
 	cout << "mean gapS = " << accumulate(gapS, gapS+mI, 0.0)/mI << "\n";
 	//cout << "connected gaps: " << ntmp_connected << "/"<< ntmp << "\n";
-	delete []gapS;
 
 	fV1_conMat.close();
 	fV1_delayMat.close();
@@ -3532,6 +3584,13 @@ int main(int argc, char **argv) {
 		for (PosInt j=0; j<nType; j++) {
 			cout << "ExcRatio type " << j << ": [" << minExcRatio[j] << ", " << maxExcRatio[j] << "]\n";
 		}
+        auto get_boost = [&boostOri, &featureValue, &nV1](PosInt i, PosInt iType) {
+            Float dOri = featureValue[nV1 + i] - boostOri[iType*3 + 1];
+            if (dOri > 0.5) dOri = 1-dOri;
+            if (dOri < -0.5) dOri = 1+dOri;
+            Float boost = boostOri[iType*3 + 0] + (1-boostOri[iType*3 + 0]) * exponential(-0.5*power(dOri/boostOri[iType*3 + 2],2));
+            return boost;
+        };
 		for (PosInt i=0; i<nblock; i++) {
 			PosInt iType = 0;
 			for (PosInt j=0; j<blockSize; j++) {
@@ -3539,10 +3598,16 @@ int main(int argc, char **argv) {
 				if (j == typeAccCount[iType]) {
 					iType++;
 				}
+                Float boosted;
+                if (boostOri.size() > 0) {
+                    boosted = get_boost(id, iType);
+                } else {
+                    boosted = 1;
+                }
 				if (maxExcRatio[iType] > minExcRatio[iType]) {
-					iTonicDep[id] = tonicDep[iType]*(minTonicRatio[iType] + (1-minTonicRatio[iType]) * (ExcRatio[id]-minExcRatio[iType])/(maxExcRatio[iType]-minExcRatio[iType]));
+					iTonicDep[id] = tonicDep[iType]*boosted*(minTonicRatio[iType] + (1-minTonicRatio[iType]) * (ExcRatio[id]-minExcRatio[iType])/(maxExcRatio[iType]-minExcRatio[iType]));
 				} else {
-					iTonicDep[id] = tonicDep[iType];
+					iTonicDep[id] = tonicDep[iType]*boosted;
 				}
 				assert(!std::isnan(ExcRatio[id]));
 				assert(!std::isnan(iTonicDep[id]));
@@ -4362,7 +4427,7 @@ int main(int argc, char **argv) {
 		    getLastCudaError("memset failed");
         #endif
 
-		prep_sample(0, width, height, tL, tM, tS, cuArr_L, cuArr_M, cuArr_S, maxFrame, cudaMemcpyDeviceToDevice); // implicit synchronized
+		prep_sample(0, width, height, tL, tM, tS, cuArr_L, cuArr_M, cuArr_S, maxFrame, cudaMemcpyDeviceToDevice, 0); // implicit synchronized
 		/* DEBUG
 		dim3 fb(16,16,1);
 		dim3 fg(16,16,maxFrame);
@@ -4581,8 +4646,11 @@ int main(int argc, char **argv) {
 	PosInt currentTimeSlot;
 	Float odt = ot*dt/1000.0;// get interval in sec
     int varSlot = 0;
-    InputActivation typeStatus;
     PosInt iStatus = 0;
+    InputActivation typeStatus;
+	if (LGN_switch) {
+    	typeStatus.assign(&(LGN_status[0]));
+	}
 	PosIntL oldTimeStamp = 0;
 	PosInt oldFrameHead;
 	//***************************
@@ -5019,6 +5087,8 @@ int main(int argc, char **argv) {
 	}
 	if (iFrameHead > 0) { // if restore from file, forward to iFrameHead
 		PosInt iSample = 0;
+		assert((iFrameHead + frameCycle*maxFrame - 1)*ntPerFrame <= it0);
+		assert((iFrameHead + frameCycle*maxFrame)*ntPerFrame > it0);
 		for (PosInt i=0; i<iFrameHead + frameCycle*maxFrame; i++) {
 			if (fStimulus) {
 				fStimulus.read(reinterpret_cast<char*>(LMS), nChannel*nPixelPerFrame*sizeof(float));
@@ -5034,8 +5104,15 @@ int main(int argc, char **argv) {
 				return EXIT_FAILURE;
 			}
 			//cp to texture mem in device
-			prep_sample(iSample, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, cudaMemcpyHostToDevice);
+			if (LGN_switch) {
+				prep_sample(iSample, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, cudaMemcpyHostToDevice, reverse[iStatus]);
+			} else {
+				prep_sample(iSample, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, cudaMemcpyHostToDevice, 0);
+			}
 			iSample = (iSample+1) % maxFrame;
+			if (i * ntPerFrame == LGN_switchIt[iStatus]) {
+				iStatus++;
+			}
 		}
 		cout << "pushed input frame to last snapshot\n";
 	}
@@ -5068,7 +5145,11 @@ int main(int argc, char **argv) {
 				return EXIT_FAILURE;
 			}
 			//cp to texture mem in device
-			prep_sample(iFrameHead, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, cudaMemcpyHostToDevice);
+			if (LGN_switch) {
+				prep_sample(iFrameHead, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, cudaMemcpyHostToDevice, reverse[iStatus]);
+			} else {
+				prep_sample(iFrameHead, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, cudaMemcpyHostToDevice, 0);
+			}
             #ifdef SYNC
                 checkCudaErrors(cudaDeviceSynchronize());
             #endif
@@ -5224,15 +5305,17 @@ int main(int argc, char **argv) {
 
 		// generate LGN fr with logistic function
         if (LGN_switch) {
-            if (it + it0 == LGN_switchIt[iStatus]) {
+			assert(iStatus < nStatus);
+            if (it + it0 == LGN_switchIt[iStatus+1]) {
+				iStatus++;
                 typeStatus.assign(&(LGN_status[nInputType*iStatus]));
+				/*
                 cout << "status changed at tstep: " << LGN_switchIt[iStatus] << "\n";
                 for (PosInt j=0; j<nInputType; j++) {
                     cout << typeStatus.actPercent[j];
                     if (j<nInputType-1) cout << ", ";
                     else  cout << "\n";
-                }
-                iStatus++;
+                }*/
             }
         }
 		if (it > 0) {
@@ -6098,6 +6181,7 @@ int main(int argc, char **argv) {
         checkCudaErrors(cudaFree(d_tonicDep));
         checkCudaErrors(cudaFree(last_noise));
         checkCudaErrors(cudaFree(learnVar));
+        checkCudaErrors(cudaFree(d_gapS));
         if (learnData_FF) {
 		    checkCudaErrors(cudaFreeHost(LGN_V1_s));
 		    checkCudaErrors(cudaFreeHost(lVarFFpost));
@@ -6121,5 +6205,6 @@ int main(int argc, char **argv) {
 		checkCudaErrors(cudaDeviceSynchronize());
 		cout << "memory trace cleaned\n";
 	}
+	delete [] gapS;
 	return EXIT_SUCCESS;
 }

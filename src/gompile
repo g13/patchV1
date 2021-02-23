@@ -1,8 +1,13 @@
 #!/bin/bash
 module purge
+# Greene modules
 module load gcc/10.2.0
 module load cuda/11.1.74
 module load boost/intel/1.74.0
+# Dalma modules
+#module load gcc/4.9.3
+#module load cuda/9.2
+#module load boost/gcc_4.9.3/openmpi_1.10.2/avx2/1.57.0
 module list
 
 cd preprocess

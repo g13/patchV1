@@ -18,7 +18,7 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
 			Float* __restrict__ extExcRatio,
             Float* __restrict__ synPerCon,
             Float* __restrict__ synPerConFF,
-			Float min_FB_ratio, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, Float preset_nLGN) 
+			Float min_FB_ratio, Float C_InhRatio, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, Float preset_nLGN)
 {
     //__shared__ reduced[warpSize];
     Size id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -46,13 +46,18 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
 	//Float totalExcSyn = preset_LGN_syn + preset_Cortical_syn;
 
 	Float LGN_syn = nLGN_V1[id]*synPerConFF[type];
+    Float inhRatio;
     Float ratio;
 	if (init_pack.nTypeMat[type] == 0 || synPerCon[type] == 0) {
 		ratio = 1.0;
+		inhRatio = 1.0;
 	} else {
 		ratio = (preset_Cortical_syn - (LGN_syn - preset_LGN_syn))/preset_Cortical_syn;
+		inhRatio = LGN_syn/preset_LGN_syn;
 	}
     if (ratio < min_FB_ratio) ratio = min_FB_ratio;
+    if (inhRatio < C_InhRatio) inhRatio = C_InhRatio;
+
 	ExcRatio[id] = ratio;
 	for (PosInt i=0; i<nType; i++) {
 		PosInt tid = i*networkSize+id;
@@ -65,7 +70,13 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
                 preN_type[tid] = preN;
 				excessRatio *= fpreN/preN;
             } else {
-    	        preN_type[tid] = init_pack.nTypeMat[ttid];
+				Float fpreN = init_pack.nTypeMat[ttid]*inhRatio;
+				Size preN = static_cast<Size>(rounding(fpreN));
+    	        preN_type[tid] = preN;
+				excessRatio *= fpreN/preN;
+				//if (blockIdx.x == 0) {
+				//	printf("%u inhratio = %.2f, preN = %u\n", threadIdx.x, inhRatio, preN);
+				//}
             }
     	    preS_type[tid] = init_pack.sTypeMat[ttid]*excessRatio;
         } else {
@@ -74,7 +85,7 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
                 preS_type[tid] = ratio*init_pack.sTypeMat[ttid]*(1-extExcRatio[type]);
             } else {
     	        //preS_type[tid] = (ratio+ LGN_sSum/init_pack.sumType[i*nType+0])*init_pack.sTypeMat[ttid];
-    	        preS_type[tid] = init_pack.sTypeMat[ttid];
+    	        preS_type[tid] = init_pack.sTypeMat[ttid]*inhRatio;
             }
         }
 		//printf("%u-%u-%u: LGN_sSum = %f,  %u*%f = %f\n", blockIdx.x, threadIdx.x, i, LGN_sSum, preN_type[tid], preS_type[tid], preN_type[tid] * preS_type[tid]);

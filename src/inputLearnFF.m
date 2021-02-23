@@ -15,6 +15,8 @@ fV1_feature = ['V1_feature', suffix, '.bin'];
 parvoMagno = 2 % magno 
 %parvoMagno = 3 % both, don't use, only for testing purpose
 
+seed = 1924784
+rng(seed);
 normed = true;
 initialConnectionStrength = 1.0; % also can be changed by ratioLGN in .cfg file
 eiStrength = 0.000;
@@ -25,29 +27,47 @@ blockSize = 1024;
 mE = 768;
 mI = 256;
 nV1 = nblock*blockSize;
-nLGN_1D = 6;
+nLGN_1D = 7;
 doubleOnOff = 1;
 frameVisV1output = false; % if need framed V1 output, write visual pos to fV1_pos
 
-t = 24;
+t = 48; % in sec
 dur = 36/120;
-nStatus = ceil(t/dur);
+nStatus = floor(t/dur);
+rDur = mod(t, dur);
+if rDur > 0
+	nStatus = nStatus+1;
+end
+nStatus
 peak = 0.0
-spread = 0.0/3;
+spread = peak/3;
 status = zeros(6,nStatus);
 rands = rand(1,nStatus);
-nOnActive = sum(rands >= 0.5);
+
+%rands = repmat([0,1], [1, floor(nStatus/2)]);
+%if mod(nStatus,2) == 1
+%    rands = [rands, 1-rands(end)];
+%end
+%rands
+
+pOn = 0.5
+nOnActive = sum(rands >= pOn);
 nOffActive = nStatus - nOnActive;
 
-%status(5,rands >= 0.5) = 1; % randomly choose to switch on periods
-%status(5,rands < 0.5) = randn([1, nOffActive]) * spread + peak; % residual activeness when switched off
-%status(6,rands < 0.5) = 1;
-%status(6,rands >= 0.5) = randn([1, nOnActive]) * spread + peak; 
+status(5,rands >= pOn) = 1; % randomly choose to switch on periods
+status(5,rands < pOn) = randn([1, nOffActive]) * spread + peak; % residual activeness when switched off
+status(6,rands < pOn) = 1;
+status(6,rands >= pOn) = randn([1, nOnActive]) * spread + peak; 
+reverse = zeros(1,nStatus);
+reverse(rands < pOn) = 1
 
-status(5:6,:) = 1;
+%status(5:6,:) = 1;
 
 %statusDur = [1];
 statusDur = dur + zeros(nStatus,1);
+if rDur > 0
+	statusDur(nStatus) = rDur;
+end
 nLGN = nLGN_1D*nLGN_1D;
 if doubleOnOff
     nLGN = nLGN * 2;
@@ -115,12 +135,12 @@ fid = fopen(fLGN_switch, 'w');
 fwrite(fid, nStatus, 'uint'); 
 fwrite(fid, status, 'float'); % activated percentage
 fwrite(fid, statusDur, 'float'); % duration
+fwrite(fid, reverse, 'int');
 fclose(fid);
 
 fid = fopen(fLGN_vpos, 'w'); % format follows patch.cu, search for the same variable name
 fwrite(fid, nLGN, 'uint'); % # ipsi-lateral LGN 
 fwrite(fid, 0, 'uint'); % contra-lateral LGN all from one eye
-fwrite(fid, doubleOnOff, 'int'); % be read by outputLearnFF not used in patch.cu
 max_ecc = 0.1;
 fwrite(fid, max_ecc, 'float');
 % using uniform_retina, thus normalized to the central vision of a single eye
@@ -151,8 +171,8 @@ if parvoMagno == 2
     %LGN_type = 4+zeros(nLGN,1); % 4:on center or 5: off center
     if doubleOnOff
         LGN_type = zeros(size(LGN_idx));
-        LGN_type(:,2:2:size(LGN_idx,2)) = 4;
-        LGN_type(:,1:2:size(LGN_idx,2)) = 5;
+        LGN_type(1:2:size(LGN_idx,1),:) = 4;
+        LGN_type(2:2:size(LGN_idx,1),:) = 5;
     else
         type0 = zeros(nLGN_1D, 1);
         type0(1:2:nLGN_1D) = 4;
@@ -184,6 +204,8 @@ LGN_ecc = sqrt(LGN_x.*LGN_x + LGN_y.*LGN_y); %degree
 LGN_polar = atan2(LGN_y, LGN_x); % [-pi, pi]
 fwrite(fid, LGN_polar, 'float');
 fwrite(fid, LGN_ecc, 'float');
+
+fwrite(fid, doubleOnOff, 'int'); % be read by outputLearnFF not used in patch.cu
 fclose(fid);
 
 if normed

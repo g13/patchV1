@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --gres=gpu:1
-#SBATCH --job-name=plotV1
+#SBATCH --job-name=plotLearn
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=64GB
@@ -19,7 +19,8 @@ module list
 
 TF=13
 fdr=lFF
-op=lFF_orth
+op=lFF_rs3
+#op=lFF_single2
 op_cfg=lFF.cfg
 lgn=lFF
 v1=lFF
@@ -42,11 +43,11 @@ date
 ./patch -c $op_cfg
 date
 pid=""
-python plotLGN_response.py $op $lgn True & 
+python plotLGN_response.py $op $lgn $fdr True & 
 pid+="${!} "
-python plotV1_response.py $op $lgn $v1 $fdr $TF 0.25 True True & 
+python plotV1_response_lFF.py $op $lgn $v1 $fdr $TF 0.25 True True & 
 pid+="${!} "
-matlab -r "testLearnFF('$lgn', '$op', '$fdr');outputLearnFF('$lgn', '$op', '$fdr', false);exit;" &
+matlab -r "testLearnFF('$lgn', '$op', '$fdr');outputLearnFF('$lgn', '$op', '$fdr', true, false);exit;" &
 pid+="${!} "
 wait $pid
 
