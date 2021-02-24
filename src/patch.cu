@@ -3298,7 +3298,7 @@ int main(int argc, char **argv) {
     }
     if (fMaxDistance > 0) {
         Size maxTrainDepth = static_cast<Size>(ceil((fMaxDistance/speedOfThought)/dt));
-	    cout << "fSpikeTrain retains maximum " << fMaxDistance << " time steps for farther connections, calculated from a maximum distance of " << fMaxDistance << " mm\n";
+	    cout << "fSpikeTrain retains maximum " << maxTrainDepth << " time steps for farther connections, calculated from a maximum distance of " << fMaxDistance << " mm\n";
     } else {
         assert(accumulate(nVec.begin(), nVec.end(), 0.0) == 0);
     }
@@ -3329,7 +3329,7 @@ int main(int argc, char **argv) {
     }
     if (fMaxGapDistance > 0) {
         Size maxGapDepth = static_cast<Size>(ceil((fMaxGapDistance/speedOfThought)/dt));
-	    cout << "fGapTrain retains maximum " << fMaxGapDistance << " time steps for farther gap junctions, calculated from a maximum distance of " << fMaxGapDistance << " mm\n";
+	    cout << "fGapTrain retains maximum " << maxGapDepth << " time steps for farther gap junctions, calculated from a maximum distance of " << fMaxGapDistance << " mm\n";
     } else {
         assert(accumulate(nGapVec.begin(), nGapVec.end(), 0.0) == 0);
     }

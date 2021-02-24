@@ -293,7 +293,8 @@ void recal_G_vec(
         	    time2post = it2post*dt - time2post;
         	    assert(time2post>=0);
         	    assert(time2post<dt);
-        	    PosInt k0 = currentTimeSlot[i0+i][j] - it2post + trainDepth[i0+i][j];
+        	    int k0 = currentTimeSlot[i0+i][j] - it2post; 
+				if (k0 < 0) k0 += trainDepth[i0+i][j];
         	    currentTimeSlot[i0+i][j] = (currentTimeSlot[i0+i][j]+1)%trainDepth[i0+i][j];
         	    #pragma unroll 2
         	    for (PosInt k = 0; k < 2; k++) {
@@ -355,7 +356,7 @@ void recal_Gap_vec(
 				PosInt jtype;
     			//#pragma unroll (max_nType)
     			for (PosInt k=nTypeE; k<nType; k++) {
-    			    if (ipre < typeAcc[k]) {
+    			    if (ipre%blockSize < typeAcc[k]) {
     			        jtype = k;
     			        break;
     			    }
@@ -372,7 +373,7 @@ void recal_Gap_vec(
 				PosInt ipre = gapVecID[i0+i][j];
 				PosInt jtype;
     			for (PosInt k=nTypeE; k<nType; k++) {
-    			    if (ipre < typeAcc[k]) {
+    			    if (ipre%blockSize < typeAcc[k]) {
     			        jtype = k;
     			        break;
     			    }
@@ -380,7 +381,8 @@ void recal_Gap_vec(
             	Float time2post = static_cast<Float>(gapDelayVec[i0+i][j])/speedOfThought;
                 PosInt it2post = static_cast<PosInt>(ceiling(time2post/dt));
                 time2post = it2post*dt - time2post;
-                PosInt j0 = gap_currentTimeSlot[i0+i][j] - it2post + gapDepth[i0+i][j];
+                int j0 = gap_currentTimeSlot[i0+i][j] - it2post;
+				if (j0 < 0) j0 += gapDepth[i0+i][j];
 
         		gap_currentTimeSlot[i0+i][j] = (gap_currentTimeSlot[i0+i][j]+1)%gapDepth[i0+i][j];
                 Float v_pre = gapTrain[i0+i][j][j0];
@@ -1263,7 +1265,8 @@ void recal_G_mat(
                 		assert(time2post<dt);
                 	}
 				*/
-                PosInt j0 = currentTimeSlot - it2post + trainDepth;
+                int j0 = currentTimeSlot - it2post;
+				if (j0 < 0) j0 += trainDepth;
                 //|<-   it2post               ->|
                 //|j0                           |currentTimeSlot
                 //|--*--o---|o-*------|---------|---------| thus 2
@@ -1315,7 +1318,8 @@ void recal_G_mat(
                 	Float time2post = static_cast<Float>(delayMat[mid])/speedOfThought;
             	    PosInt it2post = static_cast<PosInt>(ceiling(time2post/dt));
             	    time2post = it2post*dt - time2post;
-            	    PosInt j0 = currentTimeSlot - it2post + trainDepth;
+                	int j0 = currentTimeSlot - it2post;
+					if (j0 < 0) j0 += trainDepth;
             	    Float v_pre = spikeTrain[nV1*(j0%trainDepth) + ipre];
 					v_pre = v_pre > 0? vThres[jtype]: v_pre;
 					gap_s += gap_strength * v_pre;
