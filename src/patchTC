@@ -1,0 +1,37 @@
+#!/bin/bash
+set -e
+
+nOri=6
+TF=8
+fdr=tc-test
+op=tc-s15t8-no_CI
+lgn=b_4_20-micro
+v1=no_CI
+
+v1_cfg=connectome.cfg
+lgn_cfg=LGN_V1.cfg
+
+if [ -d "$fdr" ]
+then
+	echo overwrite contents in $fdr
+else
+	mkdir $fdr	
+fi
+cp $lgn_cfg $v1_cfg $fdr
+
+
+jobList=""
+cp ori.cfg ori_1.cfg
+for ori in {1..6}
+do
+	jobID=`sbatch --export=ALL ori.slurm`
+	jobList="$jobList:${jobID:20}"
+
+	if [ "${ori}" -lt "${nOri}" ]; then
+		cp ori_${ori}.cfg ori_$((ori+1)).cfg
+		vim -s nextOri_cfg.keys ori_$((ori+1)).cfg
+	fi
+	
+done
+
+sbatch --export=ALL --dependency=afterok$jobList plotTC.slurm
