@@ -85,7 +85,7 @@ def generate_random(amp, cSize, c0, fname, time, frameRate = 120, ecc = 2.5, buf
     cv.destroyAllWindows()
     return LMS
 
-def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel, c1, c2, fname, time, phase, sharpness, frameRate = 120, ecc = 2.5, buffer_ecc = 0.25, gtype = 'drifting', neye = 2, bar = False, center = np.pi/2, wing = np.pi/2, inputLMS = False, genMovie = True):
+def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel, c1, c2, fname, time, phase, sharpness, frameRate = 120, ecc = 2.5, buffer_ecc = 0.25, gtype = 'drifting', neye = 2, bar = False, center = np.pi/2, wing = np.pi/2, mask = None, maskData = None, inputLMS = False, genMovie = True):
     """
     spatialFrequency: cycle per degree
     temporalFrequency: Hz
@@ -101,6 +101,7 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
         each has a temporal axis: [-buffer_ecc, ecc], and vertical axis [-ecc-buffer_ecc, ecc+buffer_ecc] in degree
     neye == 1:
         frame from a single visual fields: origin at the center 2(ecc+buffer_ecc) x 2(ecc+buffer_ecc) (width x height)
+    mask replace all masked pixels with the masked value
     """
     if np.mod(npixel,2) != 0:
         raise Exception("need even pixel")
@@ -150,6 +151,29 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
     else:
         sharpness = np.zeros(nseq) + sharpness
 
+    if mask is not None:
+        mask = np.reshape(np.repeat(mask, 3), (nseq, b,a,3))
+        if maskData is None:
+            raise Exception('mask data is not provided')
+        else:
+            if isinstance(maskData, (list, tuple, np.ndarray)):
+                if isinstance(maskData, (list, tuple)):
+                    maskData = np.array(list(maskData))
+
+                if not np.array([i == j for i, j in zip(maskData.shape, (b,a,3))]).all() and len(maskData) != 3:
+                    raise Exception('maskData shape does not match with stimulus size')
+                else:
+                    if np.array([i == j for i, j in zip(maskData.shape, (b,a,3))]).all():
+                        maskData = np.tile(maskData, (nseq, 1))
+                    elif maskData.size == 3:
+                        maskData = np.tile(maskData, (nseq, b, a, 1)) 
+                    else:
+                        raise Exception('maskData takes array of shape (b,a,3) or (3,)')
+            else:
+                raise Exception('maskData takes array of shape (b,a,3) or (3,)')
+
+    print(mask.shape)
+    print(maskData.shape)
     ########### VIDEO encodes as BGR: 
     if not inputLMS: # rgb->bgr
         c1 = c1[::-1]
@@ -171,9 +195,9 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
            control[i] = -1
 
     if neye == 1:
-        X, Y = meshgrid(np.linspace(-1,1,a)*(ecc+buffer_ecc)*np.pi/180, np.linspace(-1,1,b)*(ecc+buffer_ecc)*np.pi/180)
+        X, Y = np.meshgrid(np.linspace(-1,1,a)*(ecc+buffer_ecc)*np.pi/180, np.linspace(-1,1,b)*(ecc+buffer_ecc)*np.pi/180)
     else:
-        X, Y = meshgrid((np.linspace(0,1,a)*(ecc+2*buffer_ecc)-buffer_ecc)*np.pi/180,np.linspace(-1,1,b)*(ecc+2*buffer_ecc)*np.pi/180)
+        X, Y = np.meshgrid((np.linspace(0,1,a)*(ecc+2*buffer_ecc)-buffer_ecc)*np.pi/180,np.linspace(-1,1,b)*(ecc+2*buffer_ecc)*np.pi/180)
 
 
     LMS = np.empty((nseq,), dtype=object)
@@ -217,6 +241,8 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
                 if gtype == 'drifting':
                     data = grating(amp[i], radTF, radSF, direction[i], a, b, c1, c2, control, s, phase[i], t, X, Y, bar, center, wing)
 
+                if mask is not None:
+                    data[mask[i,:,:,:]] = maskData[i, mask[i,:,:,:]]
             else:
                 if gtype == 'rotating':
                     dataL = grating(amp[i], radTF, radSF, direction[i]-dd[it], a, b, c1, c2, control, s, phase[i], t, X, Y, bar, center, wing)
@@ -224,6 +250,13 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
                 if gtype == 'drifting':
                     dataL = grating(amp[i], radTF, radSF, direction[i], a, b, c1, c2, control, s, phase[i], t, X, Y, bar, center, wing)
                     dataR = grating(amp[i], radTF, radSF, direction[i], a, b, c1, c2, control, s, phase[i], t, X, Y, bar, center, wing)
+
+                if mask is not None:
+                    assert(dataL.shape[0] == b)
+                    assert(dataL.shape[1] == a)
+                    assert(dataL.shape[2] == 3)
+                    dataL[mask[i,:,:,:]] = maskData[i, mask[i,:,:,:]]
+                    dataR[mask[i,:,:,:]] = maskData[i, mask[i,:,:,:]]
                 data = np.concatenate((dataL,dataR), axis = 1)
 
             if inputLMS:
@@ -261,6 +294,84 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
         output.release()
         cv.destroyAllWindows()
     return LMS
+
+def generate_circular_mask(npixel, radius, seed, ecc, buffer_ecc, neye, center = None):
+    """
+    a: width of the half image in pixels 
+    b: height of the image in pixels 
+    buffer_ecc: buffering area, to avoid border problems in texture memory accesses
+    neye == 2:
+        frame from 2 visual fields: (ecc+2*buffer_ecc) x 2(ecc+buffer_ecc+buffer_ecc(unused)) (width x height)
+        each has a temporal axis: [-buffer_ecc, ecc], and vertical axis [-ecc-buffer_ecc, ecc+buffer_ecc] in degree
+    neye == 1:
+        frame from a single visual fields: origin at the center 2(ecc+buffer_ecc) x 2(ecc+buffer_ecc) (width x height)
+    mask replace all masked pixels with the masked value
+    """
+    if np.mod(npixel,2) != 0:
+        raise Exception("need even pixel")
+    if neye == 1:
+        a = npixel
+    else:
+        a = npixel//2  
+    b = npixel  
+
+    if isinstance(radius, (list, tuple, np.ndarray)):
+        rm = np.max(radius)
+    else:
+        rm = radius
+    if center is None:
+        np.random.seed(seed)
+        if neye == 1:
+            center = (np.random.rand(2)-0.5)*2*(ecc-rm)
+        else:
+            center = np.random.rand(2)*(ecc-2*rm)
+        print(center)
+
+    if isinstance(center, (list, tuple)):
+        ncenter = len(center)//2
+        center = np.array(list(center))
+    else:
+        ncenter = center.size//2
+    center = np.reshape(center, (ncenter,2))
+
+    if isinstance(radius, (list, tuple, np.ndarray)):
+        if isinstance(radius, (list, tuple)):
+            radius = np.array(list(radius))
+        nseq = radius.size
+
+        if len(center.shape) == 1:
+            center = np.tile(center, (nseq, 1))
+        elif center.shape[0] != nseq:
+            raise Exception('center should have a shape of (nseq, 2), where nseq == radius.size')
+            
+    else:
+        if len(center.shape) == 1:
+            radius = np.array([radius])
+            center = np.array([center])
+        else:
+            nseq = center.shape[0]
+            radius = np.tile(radius, nseq)
+
+
+    if neye == 1:
+        x, y = np.meshgrid(np.linspace(-1,1,a)*(ecc+buffer_ecc), np.linspace(-1,1,b)*(ecc+buffer_ecc))
+    else:
+        x, y = np.meshgrid((np.linspace(0,1,a)*(ecc+2*buffer_ecc)-buffer_ecc), np.linspace(-1,1,b)*(ecc+2*buffer_ecc))
+
+    print(f'xrange {[np.min(x), np.max(x)]}')
+    print(f'yrange {[np.min(y), np.max(y)]}')
+    mask = np.ones((nseq, b, a), dtype = bool)
+    for iseq in range(nseq):
+        nmasked = 0
+        print(f'masking at {center[iseq]} for a radius of {radius[iseq]}')
+        for i in range(a):
+            for j in range(b):
+                if np.linalg.norm([x[j,i] - center[iseq, 0], y[j,i] - center[iseq, 1]]) < radius[iseq]:
+                    mask[iseq, j,i] = False
+                    nmasked = nmasked + 1
+            
+        print(f'{nmasked} ({nmasked/b/a*100:.3f}%) pixel(s) left unmasked')
+    return mask
 
 def adjust_gamma(image, gamma=1.0):
     # build a lookup table mapping the pixel values [0, 255] to
@@ -335,11 +446,6 @@ def randomized(amp, a, b, c0, gtype):
     color[color > 255] = 255
     color[color < 0] = 0
     return color.reshape((b,a,3))/255
-
-def meshgrid(x,y):
-    X = np.tile(x,(len(y),1))
-    Y = np.tile(y,(len(x),1)).T
-    return X, Y
 
 # to check cuda prog output
 def generate_from_float(fname, b, a, nt, cs_transform=LMS2sRGB, frameRate=60, suffix='bin'):
