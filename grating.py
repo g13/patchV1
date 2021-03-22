@@ -172,8 +172,6 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
             else:
                 raise Exception('maskData takes array of shape (b,a,3) or (3,)')
 
-    print(mask.shape)
-    print(maskData.shape)
     ########### VIDEO encodes as BGR: 
     if not inputLMS: # rgb->bgr
         c1 = c1[::-1]
@@ -339,9 +337,9 @@ def generate_circular_mask(npixel, radius, seed, ecc, buffer_ecc, neye, center =
             radius = np.array(list(radius))
         nseq = radius.size
 
-        if len(center.shape) == 1:
+        if ncenter == 1:
             center = np.tile(center, (nseq, 1))
-        elif center.shape[0] != nseq:
+        elif ncenter != nseq:
             raise Exception('center should have a shape of (nseq, 2), where nseq == radius.size')
             
     else:
@@ -351,7 +349,6 @@ def generate_circular_mask(npixel, radius, seed, ecc, buffer_ecc, neye, center =
         else:
             nseq = center.shape[0]
             radius = np.tile(radius, nseq)
-
 
     if neye == 1:
         x, y = np.meshgrid(np.linspace(-1,1,a)*(ecc+buffer_ecc), np.linspace(-1,1,b)*(ecc+buffer_ecc))
