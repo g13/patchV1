@@ -40,11 +40,11 @@ if conV1_suffix:
 if output_suffix:
     _output_suffix = "_" + output_suffix
 if outputfdr:
-    outputfdr = outputfdr+"/"
+    outputfdr = outputfdr + "/"
 
 
-np.random.seed(912111)
-ns = 8
+np.random.seed(212112)
+ns = 5
 mk = ['o', 'd']
 compThres = 1
 #sample = np.array([])
@@ -53,10 +53,10 @@ compThres = 1
 #plotLGNsSize = True
 #plotPos = True
 #plotLGN_V1_sample = True
-#plotConFeature_stats = True 
+plotConFeature_stats = True 
 plotConFeature_preSynTC = True
-#plotConFeature_sample = True
-#plotCon_sample = True
+plotConFeature_sample = True
+plotCon_sample = True
 #plotLGN_V1_ratio = True
 #plotLGNsSum = True
 #plotBlockWiseComplexDist = True
@@ -65,16 +65,16 @@ plotStats = False
 plotLGNsSize = False
 plotPos = False
 plotLGN_V1_sample = False 
-plotConFeature_stats = False
+#plotConFeature_stats = False
 #plotConFeature_preSynTC = False
-plotConFeature_sample = False 
-plotCon_sample = False
+#plotConFeature_sample = False 
+#plotCon_sample = False
 plotLGN_V1_ratio = False
 plotLGNsSum = False
 plotBlockWiseComplexDist = False 
 
 parameterFn = "patchV1_cfg" +_output_suffix + ".bin"
-prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI = read_cfg(parameterFn)
+prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn = read_cfg(parameterFn)
 
 typeAcc = np.hstack((0, typeAcc))
 print(typeAcc)
@@ -110,10 +110,9 @@ with open(pos_file, 'r') as f:
     V1_xspan = coord_span[1]
     V1_y0 = coord_span[2]
     V1_yspan = coord_span[3]
-    print(f'x:{[V1_x0, V1_x0 + V1_xspan]}')
-    print(f'y:{[V1_y0, V1_y0 + V1_yspan]}')
+    print(f'V1_x:{[V1_x0, V1_x0 + V1_xspan]}')
+    print(f'V1_y:{[V1_y0, V1_y0 + V1_yspan]}')
     pos = np.reshape(np.fromfile(f, 'f8', count = networkSize*2), (nblock,2,blockSize))
-
 
 # read block center pos
 with open(blkPos_file, 'rb') as f:
@@ -182,6 +181,9 @@ with open(LGN_vpos_file, 'rb') as f:
     vCoordSpan = np.fromfile(f, 'f4', 4)
     LGN_vpos = np.fromfile(f, 'f4', nLGN*2).reshape(2, nLGN)
     LGN_type = np.fromfile(f, 'u4', nLGN).reshape(nLGN)
+
+    print(f'LGN_x:{[np.min(LGN_vpos[0,:]), np.max(LGN_vpos[0,:])]}')
+    print(f'LGN_y:{[np.min(LGN_vpos[1,:]), np.max(LGN_vpos[1,:])]}')
     
 epick = np.hstack([j*blockSize + np.arange(typeAcc[0],typeAcc[1]) for j in range(nblock)])
 ipick = np.hstack([j*blockSize + np.arange(typeAcc[1],typeAcc[2]) for j in range(nblock)])
@@ -230,11 +232,14 @@ def circular_diff(v0, vs, minv, maxv):
 
 
 if 'sample' not in locals():
-    #sample = np.random.randint(networkSize, size = ns)
-    sample = np.empty(ns, dtype=int)
-    for i in range(ns):
-        sample[i] = np.nonzero(np.logical_and(feature[0,epick] > 0,np.logical_and(feature[1,epick] > i/ns, feature[1,epick] < (i+1)/ns)))[0][0]
-    sample = np.array([(s//mE)*blockSize + np.mod(s,mE) for s in sample])
+    sample = np.zeros(ns*nType, dtype = int)
+    i = 0
+    for iblock in np.random.choice(np.arange(nblock), size = ns, replace = False):
+        for iType in range(nType): 
+            sample[i] = iblock*blockSize + np.random.randint(typeAcc[iType],typeAcc[iType+1])
+            i = i + 1
+    
+    sample[-1] = np.array([5*1024+931])
     print(f'samples: {sample}')
 else:
     ns = sample.size
@@ -406,31 +411,116 @@ if plotStats:
 if plotLGN_V1_sample:
     fig = plt.figure('LGN_V1-sample', dpi = 300)
     grid = gs.GridSpec((ns+3)//4, 4, figure = fig, hspace = 0.2)
-    markers = ('^r', 'vr', '^g', 'vg', '^k', 'vk')
+    markers = ('^r', 'vg', 'og', 'sr', '*k', 'dk')
+    ms = 1.5
     for i in range(ns):
         ax = fig.add_subplot(grid[i//4,np.mod(i,4)])
         iV1 = sample[i]
         iLGN_vpos = LGN_vpos[:,LGN_V1_ID[iV1]]
         iLGN_type = LGN_type[LGN_V1_ID[iV1]]
-        if plotLGNsSize:
-            if nLGN_V1[iV1] > 0:
-                iLGN_ms = LGN_V1_s[iV1]
-                max_s = np.max(iLGN_ms)
-                for j in range(nLGN_V1[iV1]):
-                    ax.plot(iLGN_vpos[0,j], iLGN_vpos[1,j], markers[iLGN_type[j]], ms = iLGN_ms[j]/max_s*1.0)
+        if LR[iV1] > 0:
+            all_pos = LGN_vpos[:,nLGN_I:nLGN]
+            all_type = LGN_type[nLGN_I:nLGN]
         else:
-            for j in range(6):
-                pick = iLGN_type == j
-                ax.plot(iLGN_vpos[0,pick], iLGN_vpos[1,pick], markers[j], ms = 1.0)
+            all_pos = LGN_vpos[:,:nLGN_I]
+            all_type = LGN_type[:nLGN_I]
+
+        if nLGN_V1[iV1] > 0:
+            iLGN_ms = LGN_V1_s[iV1]
+            max_s = np.max(iLGN_ms)
+            min_s = np.min(iLGN_ms)
+            for j in range(len(markers)):
+                pick = all_type == j
+                ax.plot(all_pos[0,pick], all_pos[1,pick], markers[j], ms = min_s/max_s*ms, mec = None, mew = 0, alpha = 0.6)
+            if plotLGNsSize:
+                for j in range(nLGN_V1[iV1]):
+                    ax.plot(iLGN_vpos[0,j], iLGN_vpos[1,j], markers[iLGN_type[j]], ms = iLGN_ms[j]/max_s*ms, mfc = None, mec = 'k', mew = ms/4)
+                x0 = np.average(iLGN_vpos[0,:], weights = iLGN_ms)
+                y0 = np.average(iLGN_vpos[1,:], weights = iLGN_ms)
+            else:
+                for j in range(6):
+                    pick = iLGN_type == j
+                    ax.plot(iLGN_vpos[0,pick], iLGN_vpos[1,pick], markers[j], ms = 1.0, mfc = None, mec = 'k', mew = ms/4)
+                x0 = np.average(iLGN_vpos[0,:])
+                y0 = np.average(iLGN_vpos[1,:])
+
+            orient = (feature[1,iV1] - 0.5)*np.pi + np.pi/2
+            x = np.array([np.min(iLGN_vpos[0,:]), np.max(iLGN_vpos[0,:])])
+            y = np.array([np.min(iLGN_vpos[1,:]), np.max(iLGN_vpos[1,:])])
+
+            ax.set_xlim(left = x[1] - (x[1]-x[0])*1.1, right = x[0] + (x[1]-x[0])*1.1)
+            ax.set_ylim(bottom = y[1] - (y[1]-y[0])*1.1, top = y[0] + (y[1]-y[0])*1.1)
+
+            if np.diff(y)[0] > np.diff(x)[0]:
+                x = (y-y0) / np.tan(orient) + x0
+            else:
+                y = np.tan(orient)*(x-x0) + y0
+
+            ax.plot(x0, y0, '*b')
+            ax.plot(x, y, '-k', label = 'preset')
+            if i == 0:
+                ax.legend()
+
         ax.set_aspect('equal')
+        ax.set_title(f'{orient*180/np.pi:.1f}')
+
     fig.savefig(outputfdr+'LGN_V1-sample'+conLGN_suffix+'.png')
 
 if plotCon_sample:
-    fig = plt.figure('V1_con', dpi = 900)
-    ax = fig.add_subplot(111)
-    ax.plot(pos[:,0,:], pos[:,1,:], ',')
+    red = np.array([0.0, 1, 1])
+    blue = np.array([0.666666, 1, 1])
+    magenta = np.array([0.8333333, 1, 1])
+    green = np.array([0.333333, 1, 0.5])
+    ms1 = 0.16
+    ms2 = 0.04
+    mk1 = '.'
+    mk2 = 's'
+    sat0 = 0.5
+    #sat_pick = 1.0
+
+    pos0 = np.zeros((2,networkSize))
+    pos0[0,:] = pos[:,0,:].reshape(networkSize)
+    pos0[1,:] = pos[:,1,:].reshape(networkSize)
+
+    mSize = 0.1
     for i in sample:
-        color = mpl.colors.hsv_to_rgb([i/networkSize, 1, 1])
+        fig = plt.figure('V1_con-'+f'{i}', dpi = 900)
+        ax = fig.add_subplot(111)
+
+        #ax.plot(pos[:,0,:], pos[:,1,:], ',')
+
+        pick = epick[LR[epick] > 0]
+        nnE = pick.size
+
+        color = np.tile(np.array([0,0,1], dtype = float), (nnE,1))
+        color[:,1] = sat0
+        color[:,0] = feature[1,pick]
+        ax.scatter(pos0[0,pick], pos0[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
+
+        pick = ipick[LR[ipick] > 0]
+        nnI = pick.size
+
+        color = np.tile(np.array([0,0,1], dtype = float), (nnI,1))
+        color[:,1] = sat0
+        color[:,0] = feature[1,pick]
+        ax.scatter(pos0[0,pick], pos0[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
+
+        pick = epick[LR[epick] < 0]
+        nnE = pick.size
+
+        color = np.tile(np.array([0,0,1], dtype = float), (nnE,1))
+        color[:,1] = sat0
+        color[:,0] = feature[1,pick]
+        ax.scatter(pos0[0,pick], pos0[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
+
+        pick = ipick[LR[ipick] < 0]
+        nnI = pick.size
+
+        color = np.tile(np.array([0,0,1], dtype = float), (nnI,1))
+        color[:,1] = sat0
+        color[:,0] = feature[1,pick]
+        ax.scatter(pos0[0,pick], pos0[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
+
         # post
         bid = i//blockSize
         tid = i-blockSize*bid
@@ -438,37 +528,67 @@ if plotCon_sample:
         #for j in range(nearNeighborBlock):
         for j in range(nNearNabaBlk[bid]):
             jbid = nabaBlkId[bid][j]
-            #color = mpl.colors.hsv_to_rgb([j/nearNeighborBlock, 1, 1])
             #left
             if j == 0:
-                marker = '*'
+                marker = 'v'
             else:
                 marker = 's'
             mat_pick = np.logical_and(conMat[bid,j,:,tid]>0, LR[jbid*blockSize:(jbid+1)*blockSize]<0)
-            #print(np.sum(mat_pick == True))
-            ax.plot(pos[jbid,0,mat_pick], pos[jbid,1,mat_pick], marker, c=color, ms = 0.1)
+            matE_pick = mat_pick.copy()
+            matI_pick = mat_pick.copy()
+            matE_pick[typeAcc[nTypeE]:typeAcc[nType]] = False
+            matI_pick[:typeAcc[nTypeE]] = False
+
+            msE_size = conMat[bid,j,matE_pick,tid]
+            msI_size = conMat[bid,j,matI_pick,tid]
+
+            if msE_size.size > 0:
+                print(f'E con strength for sample {i//blockSize}-{np.mod(i,blockSize)} in {j}th block from the left eye: {msE_size}')
+                ax.scatter(pos[jbid,0,matE_pick], pos[jbid,1,matE_pick], s = mSize*msE_size/np.max(msE_size), marker = marker, c = 'r')
+                #ax.plot(pos[jbid,0,matE_pick], pos[jbid,1,matE_pick], marker, mec='r', mfc = None, ms = ms1*1.1)
+            if msI_size.size > 0:
+                print(f'I con strength for sample {i//blockSize}-{np.mod(i,blockSize)} in {j}th block from the left eye: {msI_size}')
+                ax.scatter(pos[jbid,0,matI_pick], pos[jbid,1,matI_pick], s = mSize*msI_size/np.max(msI_size), marker = marker, c = 'b')
+                #ax.plot(pos[jbid,0,matI_pick], pos[jbid,1,matI_pick], marker, mec='b', mfc = None, ms = ms1*1.1)
+
             #right
             if j == 0:
                 marker = 'd'
             else:
                 marker = 'o'
             mat_pick = np.logical_and(conMat[bid,j,:,tid]>0, LR[jbid*blockSize:(jbid+1)*blockSize]>0)
-            #print(np.sum(mat_pick == True))
-            ax.plot(pos[jbid,0,mat_pick], pos[jbid,1,mat_pick], marker, c=color, ms = 0.1)
+            matE_pick = mat_pick.copy()
+            matI_pick = mat_pick.copy()
+            matE_pick[typeAcc[nTypeE]:typeAcc[nType]] = False
+            matI_pick[:typeAcc[nTypeE]] = False
+
+            msE_size = conMat[bid,j,matE_pick,tid]
+            msI_size = conMat[bid,j,matI_pick,tid]
+
+            if msE_size.size > 0:
+                print(f'E con strength for sample {i//blockSize}-{np.mod(i,blockSize)} in {j}th block from the right eye: {msE_size}')
+                ax.scatter(pos[jbid,0,matE_pick], pos[jbid,1,matE_pick], s = mSize*msE_size/np.max(msE_size), marker = marker, c = 'r')
+                #ax.plot(pos[jbid,0,matE_pick], pos[jbid,1,matE_pick], marker, mec='r', mfc = None, ms = ms1*1.1)
+            if msI_size.size > 0:
+                print(f'I con strength for sample {i//blockSize}-{np.mod(i,blockSize)} in {j}th block from the right eye: {msI_size}')
+                ax.scatter(pos[jbid,0,matI_pick], pos[jbid,1,matI_pick], s = mSize*msI_size/np.max(msI_size), marker = marker, c = 'b')
+                #ax.plot(pos[jbid,0,matI_pick], pos[jbid,1,matI_pick], marker, mec='b', mfc = None, ms = ms1*1.1)
+
             
         if nVec[i] > 0:
             # pre outside the block
             L_pick = LR[nVec[i]] < 0
             vbid = vecID[i][L_pick]//blockSize
             vtid = vecID[i][L_pick] - blockSize*vbid
-            ax.plot(pos[vbid,0,vtid], pos[vbid,1,vtid], '<', c=color, ms = 0.1)
+            ax.plot(pos[vbid,0,vtid], pos[vbid,1,vtid], '<', mec='k', mfc = None , ms = ms1*1.1)
             R_pick = LR[nVec[i]] > 0
             vbid = vecID[i][R_pick]//blockSize
             vtid = vecID[i][R_pick] - blockSize*vbid
-            ax.plot(pos[vbid,0,vtid], pos[vbid,1,vtid], '>', c=color, ms = 0.1)
+            ax.plot(pos[vbid,0,vtid], pos[vbid,1,vtid], '>', mec='k', mfc = None, ms = ms2*1.1)
+
         ax.plot(pos[bid,0,tid], pos[bid,1,tid],'*k', ms = 1)
-    ax.set_aspect('equal')
-    fig.savefig(outputfdr+'V1_conSample' + conV1_suffix + '.png')
+        ax.set_aspect('equal')
+        fig.savefig(outputfdr+'V1_conSample-'+f'{bid}-{tid}' + conV1_suffix + '.png')
 
 if plotConFeature_stats:
     feat = ('LR', 'OP', 'CS')
@@ -534,6 +654,8 @@ if plotConFeature_stats:
                     ax = fig.add_subplot(grid[jgrid, igrid])
                     HeatMap(xFeature, mean_std[0,jType,:], ranges[iF], mRanges[jF], ax, cm[jType], log_scale = logScale, intPick = False, tickPick1 = tickPick[iF])
                     ax.set_title(f'mean of {feat[iF]}<-{feat[jF]}, {archType[iType]}<-{archType[jType]}')
+                    ax.set_xlabel(f'{feat[iF]}')
+                    ax.set_ylabel(f'diff {feat[jF]}')
                     ax = fig.add_subplot(grid[jgrid, igrid+1])
                     HeatMap(xFeature, mean_std[1,jType,:], ranges[iF], stdBins[jF], ax, cm[jType], log_scale = logScale, intPick = False, tickPick1 = tickPick[iF])
                     ax.set_title('std')
@@ -617,7 +739,7 @@ if plotConFeature_preSynTC:
     percentile = 25
     logScale = False 
     tick = (np.array([0,2]), np.array([0,0.25,0.5,0.75,1.0])-0.5, np.array([0,1]))
-    ticklabel = np.array([['Ipsi', 'Contra'], [f'{t*180:.0f}' for t in tick[1]], ['C', 'S']])
+    ticklabel = np.array([['Ipsi', 'Contra'], [f'{t*180:.0f}' for t in tick[1]], ['C', 'S']], dtype = object)
     for iType in range(nType):
         fig = plt.figure(f'conFeature_preSynTC-{archType[iType]}', figsize = np.array([nFeature, nType])*4 ,dpi = 300)
         grid = gs.GridSpec(nFeature, nType, figure = fig, hspace = 0.5, wspace = 0.5)

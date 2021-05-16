@@ -19,7 +19,9 @@ if suffix:
 
 
 #iLGN = np.array([0])
-#iLGN = np.array([143, 95, 248, 6, 227])
+#iLGN = np.array([264, 462])
+#iLGN = np.array([267, 11])
+iLGN = np.array([270, 0])
 ns = 1
 precision = 'f4'
 
@@ -147,7 +149,7 @@ for j in range(nLGN):
         i = j
         if i >= nMagno_I + nParvo_I:
             i = i - nMagno_I
-        it = np.argmax(tw_m[i,0,:])
+        it = np.argmax(tw[i,0,:])
         cov_t[j] *= tw[i,1,it]/tw[i,0,it]
 
 SF = getSF((LGN_rw[0,:] + LGN_rh[0,:])/2, (LGN_rw[1,:] + LGN_rh[1,:])/2, LGN_k[0,:], LGN_k[1,:], cov_t)
@@ -254,6 +256,15 @@ for j in iLGN:
         ax1.plot(t, np.flipud(tw_m[i,:]), 'm', lw = 1)
         fig.savefig(f'check_kernel_{j}-m{i}-{LGN_type[i]}' + suffix + '.png')
         print([np.sum(sw_m[i,:]), np.sum(tw_m[i,:])])
+
+markers = ('^r', 'vg', '*g', 'dr', '^k', 'vb')
+fig = plt.figure(f'check_multi-pattern', dpi = 150)
+ax = fig.add_subplot(111, projection = '3d')
+for i in iLGN:
+    ax.plot3D(sc[0,i,0,:], sc[1,i,0,:], sw, markers[LGN_type[i]], ms = 0.1)
+    #ax.plot(sc[0,i,1,:], sc[1,i,1,:], '>r', ms = 0.01)
+fig.savefig('check_multi-pattern' + suffix + '.png')
+
 
 fig = plt.figure('hist', dpi = 600)
 ax = fig.add_subplot(221)

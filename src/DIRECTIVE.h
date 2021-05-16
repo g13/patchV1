@@ -16,7 +16,7 @@
     #define copymsb copysign
 	#define powerb pow
 	#define square_rootb sqrt
-    #define logrithmb log
+    #define logarithmb log
 	#define exponentialb exp 
     #define log_gammab lgamma
 
@@ -41,7 +41,7 @@
     #define copymsb copysignf
 	#define powerb powf
 	#define square_rootb sqrtf
-    #define logrithmb logf
+    #define logarithmb logf
 	#define exponentialb expf
     #define log_gammab lgammaf
 
@@ -68,7 +68,7 @@
     #define copyms copysignf
 	#define power powf
 	#define square_root sqrtf
-    #define logrithm logf
+    #define logarithm logf
 	#define exponential expf
     #define log_gamma lgammaf
 
@@ -93,7 +93,7 @@
     #define copyms copysign
 	#define power pow
 	#define square_root sqrt
-    #define logrithm log
+    #define logarithm log
 	#define exponential exp 
     #define log_gamma lgamma
 

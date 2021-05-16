@@ -1,7 +1,7 @@
 #!/bin/bash
 ##SBATCH -p nvidia 
 ##SBATCH --gres=gpu:1
-#SBATCH -p serial 
+##SBATCH -p serial 
 #SBATCH --nodes=1
 #SBATCH --job-name=surf
 #SBATCH --cpus-per-task=28
@@ -12,24 +12,42 @@
 #SBATCH --mail-type=END
 
 module purge
-# >>> conda initialize >>>
-# !! Contents within this block are managed by 'conda init' !!
-__conda_setup="$('/home/wd554/local/miniconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
-if [ $? -eq 0 ]; then
-    eval "$__conda_setup"
-else
-    if [ -f "/home/wd554/local/miniconda3/etc/profile.d/conda.sh" ]; then
-        . "/home/wd554/local/miniconda3/etc/profile.d/conda.sh"
-    else
-        export PATH="/home/wd554/local/miniconda3/bin:$PATH"
-    fi
-fi
-unset __conda_setup
-conda activate general
-# <<< conda initialize <<<
+# Greene modules
+module load gcc/10.2.0
+module load cuda/11.1.74
+module load boost/intel/1.74.0
+module load matlab/2020b
+# Dalma modules
+#module load gcc/4.9.3
+#module load cuda/9.2
+#module load boost/gcc_4.9.3/openmpi_1.10.2/avx2/1.57.0
+#module load matlab/R2017a
+## >>> conda initialize >>>
+## !! Contents within this block are managed by 'conda init' !!
+#__conda_setup="$('/home/wd554/local/miniconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+#if [ $? -eq 0 ]; then
+#    eval "$__conda_setup"
+#else
+#    if [ -f "/home/wd554/local/miniconda3/etc/profile.d/conda.sh" ]; then
+#        . "/home/wd554/local/miniconda3/etc/profile.d/conda.sh"
+#    else
+#        export PATH="/home/wd554/local/miniconda3/bin:$PATH"
+#    fi
+#fi
+#unset __conda_setup
+#conda activate general
+## <<< conda initialize <<<
 
 date
-python script1.py
-#python getLGNsurface_I.py
+pid=""
+#python script1.py
+#python getLGNsurface_I.py &
+#pid+="${!} "
+#python getLGNsurface_C.py &
+#pid+="${!} "
 #python parallel_repel_system_I.py
+#pid+="${!} "
+python LGN_surfaceGrid.py &
+pid+="${!} "
+wait $pid
 date

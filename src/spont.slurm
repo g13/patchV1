@@ -2,9 +2,9 @@
 #SBATCH --gres=gpu:1
 #SBATCH --job-name=plotV1
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=2
+#SBATCH --cpus-per-task=5
 #SBATCH --mem=64GB
-#SBATCH --time=00:30:00
+#SBATCH --time=01:00:00
 #SBATCH -o log/pV1_%J.out
 #SBATCH --mail-user=wd554@nyu.edu
 #SBATCH --mail-type=END
@@ -23,12 +23,13 @@ module load matlab/2020b
 #module load matlab/R2017a
 module list
 
+plotOnly=false
 TF=8
 fdr=tune-008
-op=spont01
+op=spont0s
 op_cfg=spont0.cfg
 lgn=b_4_20-micro
-v1=const_n
+v1=no_CI0
 
 v1_cfg=connectome.cfg
 lgn_cfg=LGN_V1.cfg
@@ -44,16 +45,24 @@ cp $op_cfg $lgn_cfg $v1_cfg $fdr
 echo using $op_cfg
 echo outputs $op, $lgn and $v1
 
-date
-./patch -c $op_cfg
+if [ "$plotOnly" = false ]
+then
+	date
+	./patch -c $op_cfg
+	readNewSpike=True
+else
+	readNewSpike=False
+fi
 date
 pid=""
-echo python plotLGN_response.py $op $lgn $fdr True
-python plotLGN_response.py $op $lgn $fdr True &
+echo python plotLGN_response.py $op $lgn $fdr $readNewSpike
+python plotLGN_response.py $op $lgn $fdr $readNewSpike &
 pid+="${!} "
-echo python plotV1_response.py $op $lgn $v1 $fdr $TF 0.25 True True
-python plotV1_response.py $op $lgn $v1 $fdr $TF 0.25 True True & 
+echo python plotV1_response.py $op $lgn $v1 $fdr $TF 0.25 True $readNewSpike 
+python plotV1_response.py $op $lgn $v1 $fdr $TF 0.25 True $readNewSpike & 
+#python plotV1_response.py $op $lgn $v1 $fdr $TF 0.25 True $readNewSpike & 
 pid+="${!} "
+#python connections.py $op $lgn $v1 $fdr & 
+#pid+="${!} "
 wait $pid
 date
-#(python plotV1_response.py $op $lgn $v1 test 8 0.25 False True & python plotV1_response.py noDelay $lgn $v1 test 8 0.25 False True) && date

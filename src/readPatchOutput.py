@@ -2,7 +2,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as clr
 
-def read_cfg(fn):
+def read_input_frames(fn):
+    with open(fn) as f:
+        nFrame = np.fromfile(f, 'u4', 1)[0]
+        height = np.fromfile(f, 'u4', 1)[0]
+        width = np.fromfile(f, 'u4', 1)[0]
+        _ = np.fromfile(f, 'f4', 5)
+        frames = np.fromfile(f, 'f4', height*width*nFrame).reshape(nFrame, height, width)
+
+    return nFrame, width, height, frames
+
+def read_cfg(fn, rn = False):
     with open(fn, 'rb') as f:
         sizeofPrec = np.fromfile(f, 'u4', 1)[0]
 
@@ -29,6 +39,13 @@ def read_cfg(fn):
         sRatioV1 = np.fromfile(f, prec, nType*nType)[0]
         frRatioLGN = np.fromfile(f, prec, 1)[0] 
         convolRatio = np.fromfile(f, prec, 1)[0] 
+        frameRate = np.fromfile(f,'u4',1)[0] 
+        inputFn_len = np.fromfile(f,'u4',1)[0] 
+        inputFn = "".join(np.fromfile(f,'a', inputFn_len))
+        print(inputFn)
+        nLGN = np.fromfile(f,'u4',1)[0] 
+        nV1 = np.fromfile(f,'u4',1)[0] 
+
         nE = typeAcc[nTypeHierarchy[0]-1]
         nI = typeAcc[-1] - nE
         print(typeAcc)
@@ -36,7 +53,11 @@ def read_cfg(fn):
         print(f'vL = {vL}, vI = {vI}, vE = {vE}') 
         print(f'vR = {vR}, gL = {gL}, vT = {vT}')
         print(f'sRatioLGN = {sRatioLGN}, sRatioV1 = {sRatioV1}')
-    return prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI
+    if rn:
+        return prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1
+    else:
+        return prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn
+
 
 def readLGN_V1_s0(fn, rnLGN_V1 = False, prec='f4'):
     with open(fn, 'rb') as f:
@@ -231,42 +252,66 @@ def readFrCondV(fn, outputFn, spFn, step0 = 0, step1 = 10000, nstep = 1000, nsmo
     fr = movingAvg2D(fr0, nsmooth)
     return fr, gFF, gE, gI, v, edges[:-1]
 
-def readSpike(fn, spFn, prec = 'f4'):
-    with open(rawDataFn, 'rb') as f:
+def readSpike(fn, spFn, prec, sizeofPrec, vThres):
+    max_vThres = np.max(vThres)
+    assert(max_vThres < 1)
+    with open(fn, 'rb') as f:
         dt = np.fromfile(f, prec, 1)[0] 
         nt = np.fromfile(f, 'u4', 1)[0] 
         nV1 = np.fromfile(f, 'u4', 1)[0] 
+        iModel = np.fromfile(f, 'i4', 1)[0] 
+        mI = np.fromfile(f, 'u4', 1)[0] 
         haveH = np.fromfile(f, 'u4', 1)[0] 
         ngFF = np.fromfile(f, 'u4', 1)[0] 
         ngE = np.fromfile(f, 'u4', 1)[0] 
         ngI = np.fromfile(f, 'u4', 1)[0] 
-
-        spScatter = np.empty(nV1, dtype = object)
-        for i in range(nV1):
-            spScatter[i] = []
-        for it in range(nt):
-            data = np.fromfile(f, prec, nV1)
-            tsps = data[data > 0]
-            if tsps.size > 0:
-                idxFired = np.nonzero(data)[0]
-                k = 0
-                for j in idxFired:
-                    nsp = np.int(np.floor(tsps[k]))
-                    tsp = tsps[k] - nsp
-                    if nsp > 1:
-                        if 1-tsp > 0.5:
-                            dtsp = tsp/nsp
+        print('reading V1 spike...')
+        negativeSpike = False
+        multi_spike = 0
+        with open(rawDataFn, 'rb') as f:
+            f.seek(sizeofPrec+4*8, 1)
+            spScatter = np.empty(nV1, dtype = object)
+            for i in range(nV1):
+                spScatter[i] = []
+            for it in range(nt):
+                data = np.fromfile(f, prec, nV1)
+                pick = np.logical_and(data>max_vThres, data < 1)
+                if np.sum(pick) > 0:
+                    print(f'{np.arange(nV1)[pick]} has negative spikes at {data[pick]} + {it*dt}')
+                    negativeSpike = True
+                tsps = data[data >= 1]
+                pick = data < 1
+                assert((data[pick] <= max_vThres).all())
+                if tsps.size > 0:
+                    idxFired = np.nonzero(data >= 1)[0]
+                    k = 0
+                    for j in idxFired:
+                        nsp = np.int(np.floor(tsps[k]))
+                        tsp = tsps[k] - nsp
+                        if nsp > 1:
+                            #raise Exception(f'{nsp} spikes from {j} at time step {it}, sInfo = {tsps[k]}!')
+                            multi_spike = multi_spike + nsp 
+                            if 1-tsp > 0.5:
+                                dtsp = tsp/nsp
+                            else:
+                                dtsp = (1-tsp)/nsp
+                            tstart = tsp - (nsp//2)*dtsp
+                            for isp in range(nsp):
+                                spScatter[j].append((it + tstart+isp*dtsp)*dt)
                         else:
-                            dtsp = (1-tsp)/nsp
-                        tstart = tsp - (nsp//2)*dtsp
-                        for isp in range(nsp):
-                            spScatter[j].append((it + tstart+isp*dtsp)*dt)
-                    else:
-                        spScatter[j].append((it+tsp)*dt)
-                    k = k + 1
-            f.seek((1+(ngE + ngI + ngFF)*(1+haveH))*nV1*4, 1)
-        np.save(spFn, spScatter)
-    print(f'spikes read from {fn} stored in {spFn}')
+                            spScatter[j].append((it+tsp)*dt)
+                        k = k + 1
+                if iModel == 0:
+                    f.seek(((2+(ngE + ngI + ngFF)*(1+haveH))*nV1 + mI)*sizeofPrec, 1)
+                if iModel == 1:
+                    f.seek(((3+(ngE + ngI + ngFF)*(1+haveH))*nV1 + mI)*sizeofPrec, 1)
+        if negativeSpike:
+            #print('negative spikes exist')
+            raise Exception('negative spikes exist')
+        fr = np.array([np.asarray(x)[np.logical_and(x>=step0*dt, x<(nt_+step0)*dt)].size for x in spScatter])/t_in_sec
+        np.savez(spDataFn, spName = 'spScatter', spScatter = spScatter, fr = fr)
+        print(f'number of multiple spikes in one dt: {multi_spike}')
+        print('V1 spikes acquired')
 
 def HeatMap(d1, d2, range1, range2, ax, cm, log_scale = False, intPick = True, tickPick1 = None, tickPick2 = None):
     if hasattr(range1, "__len__") and hasattr(range2, "__len__"):
@@ -312,9 +357,9 @@ def HeatMap(d1, d2, range1, range2, ax, cm, log_scale = False, intPick = True, t
 
         ax.set_xticks(tickPick1)
         if np.abs(edge1[-1]) > 0.1:
-            ax.set_xticklabels([f'{label:.2f}' for label in edge1[tickPick1]])
+            ax.set_xticklabels([f'{label:.1f}' for label in edge1[tickPick1]])
         else:
-            ax.set_xticklabels([f'{label:.2e}' for label in edge1[tickPick1]])
+            ax.set_xticklabels([f'{label:.1e}' for label in edge1[tickPick1]])
     else:
         if tickPick1 is None or not hasattr(tickPick1, "__len__"):
             tickPick1 = np.linspace(0,1,nTick)
@@ -337,9 +382,9 @@ def HeatMap(d1, d2, range1, range2, ax, cm, log_scale = False, intPick = True, t
 
         ax.set_yticks(tickPick2)
         if np.abs(edge2[-1]) > 0.1:
-            ax.set_yticklabels([f'{label:.2f}' for label in edge2[tickPick2]])
+            ax.set_yticklabels([f'{label:.1f}' for label in edge2[tickPick2]])
         else:
-            ax.set_yticklabels([f'{label:.2e}' for label in edge2[tickPick2]])
+            ax.set_yticklabels([f'{label:.1e}' for label in edge2[tickPick2]])
     else:
         if tickPick2 is None or not hasattr(tickPick2, "__len__"):
             tickPick2 = np.linspace(0,1,nTick)

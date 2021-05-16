@@ -16,10 +16,10 @@ from LGN_surface import *
 #posL_file = 'parvo_pos_I5_uniform.bin'
 #posR_file = 'parvo_pos_C6_uniform.bin'
 #ecc = 2.50 #in deg
-posL_file = 'parvo_pos_I5_uniform-micro.bin'
-posR_file = 'parvo_pos_C6_uniform-micro.bin'
+posL_file = 'parvo_pos_I5-micro.bin'
+posR_file = 'parvo_pos_C6-micro.bin'
 pos_file = posR_file;
-fn = 'LGN_uniformR'
+fn = 'LGN_uniformR-micro'
 ecc = 0.18 #in deg
 
 ndt0 = 50

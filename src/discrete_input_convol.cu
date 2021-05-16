@@ -19,8 +19,8 @@ Float temporalKernel(Float tau, Zip_temporal &temp, Float lfac1, Float lfac2) {
     //Float A1 = power(tau1, temp.nR-1)/temp.tauR;
     //Float A2 = power(tau2, temp.nD-1)/temp.tauD;
 
-    Float A1 = (temp.nR-1) * logrithm(tau1);
-    Float A2 = (temp.nD-1) * logrithm(tau2);
+    Float A1 = (temp.nR-1) * logarithm(tau1);
+    Float A2 = (temp.nD-1) * logarithm(tau2);
 
     //Float tp = AexpTau(A1, tau1 + lfac1) - temp.ratio*AexpTau(A2, tau2 + lfac2);
 
@@ -38,28 +38,28 @@ Float get_intensity(SmallSize coneType, float x, float y, unsigned int iLayer, c
     Float contrast;
     switch (coneType) {
         case 0:
-            contrast = tex2DLayered<Float>(L_retinaInput, x, y, iLayer);
+            contrast = static_cast<Float>(tex2DLayered<float>(L_retinaInput, x, y, iLayer));
             break;
         case 1:
-            contrast = tex2DLayered<Float>(M_retinaInput, x, y, iLayer);
+            contrast = static_cast<Float>(tex2DLayered<float>(M_retinaInput, x, y, iLayer));
             break;
         case 2:
-            contrast = tex2DLayered<Float>(S_retinaInput, x, y, iLayer);
+            contrast = static_cast<Float>(tex2DLayered<float>(S_retinaInput, x, y, iLayer));
             break;
         case 3: // On-Off only magnocellular excluding S cone
-            contrast = (tex2DLayered<Float>(L_retinaInput, x, y, iLayer)
-                      + tex2DLayered<Float>(M_retinaInput, x, y, iLayer))/2.0; 
+            contrast = (static_cast<Float>(tex2DLayered<float>(L_retinaInput, x, y, iLayer))
+                      + static_cast<Float>(tex2DLayered<float>(M_retinaInput, x, y, iLayer)))/2.0; 
             break;
         case 4: 
 			/* Hunt Lum
-            contrast = static_cast<Float>(tex2DLayered(L_retinaInput, x, y, iLayer) * 0.361222
-                                        + tex2DLayered(M_retinaInput, x, y, iLayer) * 0.638804
-                                        + tex2DLayered(S_retinaInput, x, y, iLayer) * (-7.127501e-6);
+            contrast = static_cast<Float>(static_cast<Float>(tex2DLayered(L_retinaInput, x, y, iLayer) * 0.361222
+                                        + static_cast<Float>(tex2DLayered(M_retinaInput, x, y, iLayer) * 0.638804
+                                        + static_cast<Float>(tex2DLayered(S_retinaInput, x, y, iLayer) * (-7.127501e-6);
 			*/
 			// CAT02
-            contrast = tex2DLayered<Float>(L_retinaInput, x, y, iLayer) * 0.45436904
-                     + tex2DLayered<Float>(M_retinaInput, x, y, iLayer) * 0.47353315
-                     + tex2DLayered<Float>(S_retinaInput, x, y, iLayer) * 0.0720978;
+            contrast = static_cast<Float>(tex2DLayered<float>(L_retinaInput, x, y, iLayer)) * 0.45436904
+                     + static_cast<Float>(tex2DLayered<float>(M_retinaInput, x, y, iLayer)) * 0.47353315
+                     + static_cast<Float>(tex2DLayered<float>(S_retinaInput, x, y, iLayer)) * 0.0720978;
             break;
         default:
             printf("unrecognized cone type");
@@ -1387,7 +1387,7 @@ Float get_spike(Size &nsp,
         leftTimeRate += rT;
         return 0.0;
     } else do { // at least one spike during current time step
-        lastNegLogRand = -logrithm(uniform(state));
+        lastNegLogRand = -logarithm(uniform(state));
         next_rT += lastNegLogRand;
         nsp++;
     } while (next_rT <= rT);

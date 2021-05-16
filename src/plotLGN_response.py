@@ -39,7 +39,6 @@ else:
     output_suffix = ""
     input_suffix = ""
 
-precision = 'f4'
 print(output_suffix)
 print(input_suffix)
 if output_suffix:
@@ -65,7 +64,7 @@ parameterFn = "patchV1_cfg" +output_suffix + ".bin"
 
 LGN_spFn = "LGN_sp" + output_suffix
 
-prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI = read_cfg(parameterFn)
+prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn = read_cfg(parameterFn)
 print(f'frRatioLGN = {frRatioLGN}, convolRatio = {convolRatio}')
 
 output = "LGN_gallery" + output_suffix + ".bin"
@@ -85,42 +84,42 @@ with open(output, 'rb') as f:
     nMagno_C = np.fromfile(f, 'u4', 1)[0]
     print(f'parvo:{(nParvo_I, nParvo_C)}, {nType} types, magno: {(nMagno_I, nMagno_C)}, {mType} types')
     nLGN = nParvo + nMagno
-    max_convol = np.fromfile(f, precision, nLGN)
+    max_convol = np.fromfile(f, prec, nLGN)
 
 output = "LGN" + output_suffix + ".bin"
 with open(output, 'rb') as f:
     nLGN = np.fromfile(f, 'u4', 1)[0]
     LGN_type = np.fromfile(f, 'u4', nLGN)
-    LGN_polar = np.fromfile(f, precision, 2*nLGN).reshape(2,nLGN)
-    LGN_ecc = np.fromfile(f, precision, 2*nLGN).reshape(2,nLGN)
-    LGN_rw = np.fromfile(f, precision, 2*nLGN).reshape(2,nLGN)
-    LGN_rh = np.fromfile(f, precision, 2*nLGN).reshape(2,nLGN)
-    LGN_orient = np.fromfile(f, precision, 2*nLGN).reshape(2,nLGN)
-    LGN_k = np.fromfile(f, precision, 2*nLGN).reshape(2,nLGN)
-    LGN_ratio = np.fromfile(f, precision, 2*nLGN).reshape(2,nLGN)
-    tau_R = np.fromfile(f, precision, 2*nLGN).reshape(2,nLGN)
-    tau_D = np.fromfile(f, precision, 2*nLGN).reshape(2,nLGN)
-    nR = np.fromfile(f, precision, 2*nLGN).reshape(2,nLGN)
-    nD = np.fromfile(f, precision, 2*nLGN).reshape(2,nLGN)
-    delay = np.fromfile(f, precision, 2*nLGN).reshape(2,nLGN)
-    spont = np.fromfile(f, precision, nLGN)
-    c50 = np.fromfile(f, precision, nLGN)
-    sharpness = np.fromfile(f, precision, nLGN)
+    LGN_polar = np.fromfile(f, prec, 2*nLGN).reshape(2,nLGN)
+    LGN_ecc = np.fromfile(f, prec, 2*nLGN).reshape(2,nLGN)
+    LGN_rw = np.fromfile(f, prec, 2*nLGN).reshape(2,nLGN)
+    LGN_rh = np.fromfile(f, prec, 2*nLGN).reshape(2,nLGN)
+    LGN_orient = np.fromfile(f, prec, 2*nLGN).reshape(2,nLGN)
+    LGN_k = np.fromfile(f, prec, 2*nLGN).reshape(2,nLGN)
+    LGN_ratio = np.fromfile(f, prec, 2*nLGN).reshape(2,nLGN)
+    tau_R = np.fromfile(f, prec, 2*nLGN).reshape(2,nLGN)
+    tau_D = np.fromfile(f, prec, 2*nLGN).reshape(2,nLGN)
+    nR = np.fromfile(f, prec, 2*nLGN).reshape(2,nLGN)
+    nD = np.fromfile(f, prec, 2*nLGN).reshape(2,nLGN)
+    delay = np.fromfile(f, prec, 2*nLGN).reshape(2,nLGN)
+    spont = np.fromfile(f, prec, nLGN)
+    c50 = np.fromfile(f, prec, nLGN)
+    sharpness = np.fromfile(f, prec, nLGN)
     coneType = np.fromfile(f, 'u4', 2*nLGN).reshape(2,nLGN)
 
 if 'iLGN' not in locals():
     np.random.seed(seed)
     iLGN = np.random.randint(nLGN, size =ns)
-print(iLGN)
 ns = iLGN.size
-print(ns)
+print(f'sample {ns} LGN\'s id:{iLGN}')
 
 output_fn = "outputB4V1" + output_suffix + ".bin"
 with open(output_fn, 'rb') as f:
     nt = np.fromfile(f, 'u4', count = 1)[0]
-    dt = np.fromfile(f, precision, count = 1)[0]
+    dt = np.fromfile(f, prec, count = 1)[0]
     if nt_ > nt:
         nt_ = nt
+    print(f'dt = {dt}')
     print(f'nt_= {nt_}/{nt}')
     if nstep > nt_:
         nstep = nt_
@@ -133,6 +132,7 @@ with open(output_fn, 'rb') as f:
     print(f'interstep = {interstep}')
     print(t[0], t[-1])
     nLGN = np.fromfile(f, 'u4', count = 1)[0]
+    print(f'nLGN = {nLGN}')
     LGNfr  = np.zeros((nstep,ns))
     frStat = np.zeros(nLGN)
     convol  = np.zeros((nstep,ns))
@@ -142,15 +142,15 @@ with open(output_fn, 'rb') as f:
     for it in range(nstep):
         if it > 0:
             f.seek(nLGN*5*4*(interstep-1), 1)
-        data = np.fromfile(f, precision, count = nLGN)
+        data = np.fromfile(f, prec, count = nLGN)
         frStat = frStat + data
         LGNfr[it,:] = data[iLGN]
-        data = np.fromfile(f, precision, count = nLGN)
+        data = np.fromfile(f, prec, count = nLGN)
         convol_total[it,:] = data
         convol[it,:] = data[iLGN]
-        data = np.fromfile(f, precision, count = nLGN)
+        data = np.fromfile(f, prec, count = nLGN)
         luminance[it,:] = data[iLGN]
-        contrast[it,:,:] = np.fromfile(f, precision, count = 2*nLGN).reshape(2,nLGN)
+        contrast[it,:,:] = np.fromfile(f, prec, count = 2*nLGN).reshape(2,nLGN)
 
 if plotResponseSample:
     if readNewSpike or not path.exists(LGN_spFn + '-' + str(nstep) + '.npz'):

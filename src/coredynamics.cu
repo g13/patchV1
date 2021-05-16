@@ -139,7 +139,7 @@ void logRand_init(Float* __restrict__ logRand,
 		curandStateMRG32k3a localState = state[id];
 		curand_init(seed + id, 0, 0, &localState);
 		Float rand = uniform(&localState);
-		logRand[id] = -logrithm(uniform(&localState));
+		logRand[id] = -logarithm(uniform(&localState));
 		state[id] = localState;
 		lTR[id] = 0.0;
         int x = LGN_idx[id];

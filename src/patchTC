@@ -1,15 +1,29 @@
 #!/bin/bash
 set -e
 
+fitTC=True
 nOri=6
 TF=8
-fdr=tc-test
-op=tc-s15t8-no_CI
-lgn=b_4_20-micro
-v1=no_CI
-
-v1_cfg=connectome.cfg
+SF=17
+op=test-s${SF}t${TF}-replay
+fdr=$op
+lgn=b_4_20-test
+v1=replay
+v1_cfg=$v1.cfg
 lgn_cfg=LGN_V1.cfg
+collectMeanDataOnly=False
+
+plotTConly=$1
+echo $plotTConly
+
+if [ "$plotTConly" = True ]; then
+	fitDataReady=$2
+else
+	plotOnly=$2
+	fitDataReady=True
+fi
+
+
 
 if [ -d "$fdr" ]
 then
@@ -21,17 +35,35 @@ cp $lgn_cfg $v1_cfg $fdr
 
 
 jobList=""
-cp ori.cfg ori_1.cfg
-for ori in {1..6}
-do
-	jobID=`sbatch --export=ALL ori.slurm`
-	jobList="$jobList:${jobID:20}"
+export plotOnly
+export nOri
+export TF
+export fdr
+export op
+export lgn
+export v1
+export v1_cfg
+export lgn_cfg
+export fitTC
+export collectMeanDataOnly
+export fitDataReady 
 
-	if [ "${ori}" -lt "${nOri}" ]; then
-		cp ori_${ori}.cfg ori_$((ori+1)).cfg
-		vim -s nextOri_cfg.keys ori_$((ori+1)).cfg
-	fi
+if [ "$plotTConly" = False ]; then
+	cp ori.cfg ${op}-ori_1.cfg
+	for ori in $( seq 1 $nOri )
+	do
+		export ori
+		jobID=`sbatch --export=ALL ori.slurm`
+		jobList="$jobList:${jobID:20}"
 	
-done
-
-sbatch --export=ALL --dependency=afterok$jobList plotTC.slurm
+		if [ "${ori}" -lt "${nOri}" ]; then
+			cp ${op}-ori_${ori}.cfg ${op}-ori_$((ori+1)).cfg
+			vim -s nextOri_cfg.keys ${op}-ori_$((ori+1)).cfg
+		fi
+		
+	done
+	
+	sbatch --export=ALL --dependency=afterok$jobList plotTC.slurm
+else
+	sbatch --export=ALL plotTC.slurm
+fi

@@ -114,12 +114,19 @@ class surface:
                     rpick = np.logical_and(not_rogue, np.logical_and(i == ii, coord[1,:] > 0.5))
                     if np.sum(rpick) > 0:
                         x_min = min(self.pos[0,rpick])
-                        self.pos[0,rpick] = x_min + (self.pos[0,rpick] - x_min) * ((self.x[jj] + self.x[jj+1])/2 - buffer_l - x_min)/(x_max - x_min)
+
+                        if x_max == x_min:
+                            self.pos[0,rpick] = (self.x[jj] + self.x[jj+1])/2 - buffer_l
+                        else:
+                            self.pos[0,rpick] = x_min + (self.pos[0,rpick] - x_min) * ((self.x[jj] + self.x[jj+1])/2 - buffer_l - x_min)/(x_max - x_min)
 
                     rpick = np.logical_and(not_rogue, np.logical_and(i == ii, coord[1,:] <= 0.5))
                     if np.sum(rpick) > 0:
                         x_min = min(self.pos[0,rpick])
-                        self.pos[0,rpick] = x_min + (self.pos[0,rpick] - x_min) * ((self.x[jj] + self.x[jj+1])/2 - buffer_l - x_min)/(x_max - x_min)
+                        if x_max == x_min:
+                            self.pos[0,rpick] = (self.x[jj] + self.x[jj+1])/2 - buffer_l
+                        else:
+                            self.pos[0,rpick] = x_min + (self.pos[0,rpick] - x_min) * ((self.x[jj] + self.x[jj+1])/2 - buffer_l - x_min)/(x_max - x_min)
 
                     #x_max0 = max(self.pos[0,gpick])
                     #assert(x_max0 < (self.x[jj] + self.x[jj+1])/2)

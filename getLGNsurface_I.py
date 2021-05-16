@@ -16,10 +16,10 @@ from LGN_surface import *
 #posL_file = 'parvo_pos_I5_uniform.bin'
 #posR_file = 'parvo_pos_C6_uniform.bin'
 #ecc = 2.50 #in deg
-posL_file = 'parvo_pos_I5_uniform-micro.bin'
-posR_file = 'parvo_pos_C6_uniform-micro.bin'
+posL_file = 'parvo_pos_I5-micro.bin'
+posR_file = 'parvo_pos_C6-micro.bin'
 pos_file = posL_file;
-fn = 'LGN_uniformL'
+fn = 'LGN_uniformL-micro'
 ecc = 0.18 #in deg
 
 ndt0 = 50
@@ -39,8 +39,8 @@ dt = np.hstack((np.tile(dt0,(ndt0,1)).flatten(), np.tile(dt1,(ndt1,1)).flatten()
 shape_file = 'LGN_shape.bin'
 
 
-nx = 51
-ny = 101
+nx = 41
+ny = 81
 
 x = np.linspace(0, ecc, nx)
 dx = x[1]-x[0]
