@@ -21,7 +21,8 @@ Float mapping_rule_CUDA(Float ecc, curandStateMRG32k3a rGen, Float LGN_V1_RFrati
 	// *** set LGN contribution of the total RF size
 	const Float ratio = sqrt(LGN_V1_RFratio / M_PI);
 	// Dow et al., 1981 Fig. 7 TODO: consider generalized extreme value distribution
-	const Float a = 13.32f; //13.32f;
+	//const Float a = 13.32f;
+	const Float a = 6.0;
 	const Float b = 0.037f;
 	const Float mean = a + b * ecc;
 	const Float std = 0.01; //3.0; // it is NOT the scatter in the paper, which means the VF center's scatter around an electrode
@@ -35,6 +36,7 @@ Float mapping_rule_CUDA(Float ecc, curandStateMRG32k3a rGen, Float LGN_V1_RFrati
 			R = curand_normal(&rGen)*std + mean;
 		} while (R < lower_bound);
 	}
-	return ratio*R;
+	//return ratio*R;
+	return ratio*mean;
 }
 #endif

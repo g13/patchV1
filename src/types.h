@@ -4,7 +4,7 @@
 #include <random>
 typedef int Int;
 
-typedef float Float;
+typedef double Float;
 //typedef double Float;
 #define SINGLE_PRECISION
 typedef double Double;

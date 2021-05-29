@@ -1,6 +1,7 @@
 from scipy import integrate
 import numpy as np
 from cmath import *
+import sys
 
 import matplotlib
 matplotlib.use('Agg')
@@ -16,11 +17,16 @@ from LGN_surface import *
 #posL_file = 'parvo_pos_I5_uniform.bin'
 #posR_file = 'parvo_pos_C6_uniform.bin'
 #ecc = 2.50 #in deg
-posL_file = 'parvo_pos_I5_uniform-micro.bin'
-posR_file = 'parvo_pos_C6_uniform-micro.bin'
-pos_file = posR_file;
-fn = 'LGN_uniformR'
-ecc = 0.18 #in deg
+theme = sys.argv[1]
+print(theme)
+posL_file = 'parvo_pos_I5-' + theme + '.bin'
+posR_file = 'parvo_pos_C6-' + theme + '.bin'
+pos_file = posR_file
+fn = 'LGN_uniformR-' + theme
+
+with open(pos_file, 'rb') as f:
+    _ = np.fromfile(f, 'u4', 1)
+    ecc = np.fromfile(f, 'f8', 1)
 
 ndt0 = 50
 ndt1 = 50
@@ -36,8 +42,7 @@ dt0 = np.power(2.0,-np.arange(10,11)).reshape(1,1)
 dt1 = np.power(2.0,-np.arange(10,11)).reshape(1,1)
 dt = np.hstack((np.tile(dt0,(ndt0,1)).flatten(), np.tile(dt1,(ndt1,1)).flatten()))
 
-shape_file = 'LGN_shape.bin'
-
+shape_file = 'LGN_shapeC.bin'
 
 nx = 51
 ny = 101

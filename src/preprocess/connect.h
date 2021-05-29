@@ -136,7 +136,7 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
                            Float* __restrict__ extExcRatio,
                            Float* __restrict__ synPerCon,
                            Float* __restrict__ synPerConFF,
-						   Float min_FB_ratio, Float C_InhRatio, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, Float p_n_LGNeff);
+						   Float min_FB_ratio, Float C_InhRatio, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, bool ClessI, Float p_n_LGNeff);
 
 __global__ 
 __launch_bounds__(blockSize, 1)
@@ -195,7 +195,7 @@ void generate_connections(double* __restrict__ pos,
                           Float* __restrict__ synloc,
                           Size* __restrict__ typeAcc0,
                           curandStateMRG32k3a* __restrict__ state,
-                          Size sum_max_N, Size gap_sum_max_N, PosInt block_offset, Size networkSize, Size mI, Size maxDistantNeighbor, Size gap_maxDistantNeighbor, Size nearNeighborBlock, Size maxNeighborBlock, Size nType, Size nTypeE, Size nTypeI, Size nE, Size nI, Size nFeature, bool gaussian_profile, bool strictStrength, Float tol);
+                          Size sum_max_N, Size gap_sum_max_N, PosInt block_offset, Size networkSize, Size mI, Size maxDistantNeighbor, Size gap_maxDistantNeighbor, Size nearNeighborBlock, Size maxNeighborBlock, Size nType, Size nTypeE, Size nTypeI, Size nE, Size nI, Size nFeature, Float disGauss, bool strictStrength, Float tol);
 
 __global__ 
 __launch_bounds__(blockSize, 1)

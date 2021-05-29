@@ -2,7 +2,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as clr
 
-def read_cfg(fn):
+def read_input_frames(fn):
+    with open(fn) as f:
+        nFrame = np.fromfile(f, 'u4', 1)[0]
+        height = np.fromfile(f, 'u4', 1)[0]
+        width = np.fromfile(f, 'u4', 1)[0]
+        initL, initM, initS = np.fromfile(f, 'f4', 3)
+        print(f'blank frame init values:{[initL, initM, initS]}')
+        _ = np.fromfile(f, 'f4', 2)
+        frames = np.fromfile(f, 'f4', height*width*nFrame*3).reshape(nFrame, 3, height, width)
+
+    return nFrame, width, height, initL, initM, initS, frames
+
+def read_cfg(fn, rn = False):
     with open(fn, 'rb') as f:
         sizeofPrec = np.fromfile(f, 'u4', 1)[0]
 
@@ -29,6 +41,17 @@ def read_cfg(fn):
         sRatioV1 = np.fromfile(f, prec, nType*nType)[0]
         frRatioLGN = np.fromfile(f, prec, 1)[0] 
         convolRatio = np.fromfile(f, prec, 1)[0] 
+        frameRate = np.fromfile(f,'u4',1)[0] 
+        inputFn_len = np.fromfile(f,'u4',1)[0] 
+        print(f'frameRate = {frameRate}')
+        inputFn = np.fromfile(f,f'a{inputFn_len}', 1)[0].decode('UTF-8')
+        print(inputFn)
+        nLGN = np.fromfile(f,'u4',1)[0] 
+        nV1 = np.fromfile(f,'u4',1)[0] 
+        nt = np.fromfile(f,'u4',1)[0] 
+        dt = np.fromfile(f,prec,1)[0] 
+        normViewDistance, L_x0, L_y0, R_x0, R_y0 = np.fromfile(f, prec, 5)
+
         nE = typeAcc[nTypeHierarchy[0]-1]
         nI = typeAcc[-1] - nE
         print(typeAcc)
@@ -36,7 +59,11 @@ def read_cfg(fn):
         print(f'vL = {vL}, vI = {vI}, vE = {vE}') 
         print(f'vR = {vR}, gL = {gL}, vT = {vT}')
         print(f'sRatioLGN = {sRatioLGN}, sRatioV1 = {sRatioV1}')
-    return prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI
+        print(f'nLGN = {nLGN}, nV1 = {nV1}, dt = {dt}, nt = {nt}')
+    if rn:
+        return prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1, nt, dt, normViewDistance, L_x0, L_y0, R_x0, R_y0
+    else:
+        return prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn
 
 def readLGN_V1_s0(fn, rnLGN_V1 = False, prec='f4'):
     with open(fn, 'rb') as f:
@@ -80,7 +107,7 @@ def readLGN_V1_ID(fn, rLGN_V1_ID = True, rnLGN_V1 = True):
         else:
             return LGN_V1_ID
     
-def readLGN_vpos(fn, prec='f4'):
+def readLGN_vpos(fn, return_polar_ecc = False, prec='f4'):
     with open(fn, 'rb') as f:
         nLGN_I = np.fromfile(f, 'u4', 1)[0]
         nLGN_C = np.fromfile(f, 'u4', 1)[0]
@@ -89,7 +116,11 @@ def readLGN_vpos(fn, prec='f4'):
         vCoordSpan = np.fromfile(f, prec, 4)
         LGN_vpos = np.fromfile(f, prec, nLGN*2).reshape(2, nLGN)
         LGN_type = np.fromfile(f, 'u4', nLGN).reshape(nLGN)
-    return nLGN_I, nLGN_C, nLGN, max_ecc, vCoordSpan, LGN_vpos, LGN_type
+        LGN_polar, LGN_ecc = np.fromfile(f, prec, nLGN*2).reshape(2, nLGN)
+    if return_polar_ecc:
+        return nLGN_I, nLGN_C, nLGN, max_ecc, vCoordSpan, LGN_vpos, LGN_type, LGN_polar, LGN_ecc
+    else:
+        return nLGN_I, nLGN_C, nLGN, max_ecc, vCoordSpan, LGN_vpos, LGN_type
 
 def read_conStats(fn, prec='f4'):
     with open(fn, 'rb') as f:
@@ -169,6 +200,8 @@ def readLGN_sp(fn, prec='f4', nstep = 0):
                     else:
                         LGN_spScatter[j].append((it+tsp)*dt)
                     k = k + 1
+        for i in range(nLGN):
+            LGN_spScatter[i] = np.asarray(LGN_spScatter[i])
     return LGN_spScatter 
 
 def movingAvg2D(data, m):
@@ -231,29 +264,43 @@ def readFrCondV(fn, outputFn, spFn, step0 = 0, step1 = 10000, nstep = 1000, nsmo
     fr = movingAvg2D(fr0, nsmooth)
     return fr, gFF, gE, gI, v, edges[:-1]
 
-def readSpike(fn, spFn, prec = 'f4'):
+def readSpike(rawDataFn, spFn, prec, sizeofPrec, vThres):
+    max_vThres = np.max(vThres)
+    assert(max_vThres < 1)
     with open(rawDataFn, 'rb') as f:
         dt = np.fromfile(f, prec, 1)[0] 
         nt = np.fromfile(f, 'u4', 1)[0] 
         nV1 = np.fromfile(f, 'u4', 1)[0] 
+        iModel = np.fromfile(f, 'i4', 1)[0] 
+        mI = np.fromfile(f, 'u4', 1)[0] 
         haveH = np.fromfile(f, 'u4', 1)[0] 
         ngFF = np.fromfile(f, 'u4', 1)[0] 
         ngE = np.fromfile(f, 'u4', 1)[0] 
         ngI = np.fromfile(f, 'u4', 1)[0] 
-
+        print('reading V1 spike...')
+        negativeSpike = False
+        multi_spike = 0
         spScatter = np.empty(nV1, dtype = object)
         for i in range(nV1):
             spScatter[i] = []
         for it in range(nt):
             data = np.fromfile(f, prec, nV1)
-            tsps = data[data > 0]
+            pick = np.logical_and(data>max_vThres, data < 1)
+            if np.sum(pick) > 0:
+                print(f'{np.arange(nV1)[pick]} has negative spikes at {data[pick]} + {it*dt}')
+                negativeSpike = True
+            tsps = data[data >= 1]
+            pick = data < 1
+            assert((data[pick] <= max_vThres).all())
             if tsps.size > 0:
-                idxFired = np.nonzero(data)[0]
+                idxFired = np.nonzero(data >= 1)[0]
                 k = 0
                 for j in idxFired:
                     nsp = np.int(np.floor(tsps[k]))
                     tsp = tsps[k] - nsp
                     if nsp > 1:
+                        #raise Exception(f'{nsp} spikes from {j} at time step {it}, sInfo = {tsps[k]}!')
+                        multi_spike = multi_spike + nsp 
                         if 1-tsp > 0.5:
                             dtsp = tsp/nsp
                         else:
@@ -264,9 +311,19 @@ def readSpike(fn, spFn, prec = 'f4'):
                     else:
                         spScatter[j].append((it+tsp)*dt)
                     k = k + 1
-            f.seek((1+(ngE + ngI + ngFF)*(1+haveH))*nV1*4, 1)
-        np.save(spFn, spScatter)
-    print(f'spikes read from {fn} stored in {spFn}')
+            if iModel == 0:
+                f.seek(((2+(ngE + ngI + ngFF)*(1+haveH))*nV1 + mI)*sizeofPrec, 1)
+            if iModel == 1:
+                f.seek(((3+(ngE + ngI + ngFF)*(1+haveH))*nV1 + mI)*sizeofPrec, 1)
+        if negativeSpike:
+            #print('negative spikes exist')
+            raise Exception('negative spikes exist')
+
+        for i in range(nV1):
+            spScatter[i] = np.array(spScatter[i])
+        np.savez(spFn, spName = 'spScatter', spScatter = spScatter)
+        print(f'number of multiple spikes in one dt: {multi_spike}')
+        return spScatter
 
 def HeatMap(d1, d2, range1, range2, ax, cm, log_scale = False, intPick = True, tickPick1 = None, tickPick2 = None):
     if hasattr(range1, "__len__") and hasattr(range2, "__len__"):
@@ -312,9 +369,9 @@ def HeatMap(d1, d2, range1, range2, ax, cm, log_scale = False, intPick = True, t
 
         ax.set_xticks(tickPick1)
         if np.abs(edge1[-1]) > 0.1:
-            ax.set_xticklabels([f'{label:.2f}' for label in edge1[tickPick1]])
+            ax.set_xticklabels([f'{label:.1f}' for label in edge1[tickPick1]])
         else:
-            ax.set_xticklabels([f'{label:.2e}' for label in edge1[tickPick1]])
+            ax.set_xticklabels([f'{label:.1e}' for label in edge1[tickPick1]])
     else:
         if tickPick1 is None or not hasattr(tickPick1, "__len__"):
             tickPick1 = np.linspace(0,1,nTick)
@@ -337,9 +394,9 @@ def HeatMap(d1, d2, range1, range2, ax, cm, log_scale = False, intPick = True, t
 
         ax.set_yticks(tickPick2)
         if np.abs(edge2[-1]) > 0.1:
-            ax.set_yticklabels([f'{label:.2f}' for label in edge2[tickPick2]])
+            ax.set_yticklabels([f'{label:.1f}' for label in edge2[tickPick2]])
         else:
-            ax.set_yticklabels([f'{label:.2e}' for label in edge2[tickPick2]])
+            ax.set_yticklabels([f'{label:.1e}' for label in edge2[tickPick2]])
     else:
         if tickPick2 is None or not hasattr(tickPick2, "__len__"):
             tickPick2 = np.linspace(0,1,nTick)

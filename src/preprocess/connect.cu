@@ -18,7 +18,7 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
 			Float* __restrict__ extExcRatio,
             Float* __restrict__ synPerCon,
             Float* __restrict__ synPerConFF,
-			Float min_FB_ratio, Float C_InhRatio, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, Float preset_nLGN)
+			Float min_FB_ratio, Float C_InhRatio, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, bool ClessI, Float preset_nLGN)
 {
     //__shared__ reduced[warpSize];
     Size id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -46,14 +46,15 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
 	//Float totalExcSyn = preset_LGN_syn + preset_Cortical_syn;
 
 	Float LGN_syn = nLGN_V1[id]*synPerConFF[type];
-    Float inhRatio;
+    Float inhRatio = 1.0;
     Float ratio;
 	if (init_pack.nTypeMat[type] == 0 || synPerCon[type] == 0) {
 		ratio = 1.0;
-		inhRatio = 1.0;
 	} else {
 		ratio = (preset_Cortical_syn - (LGN_syn - preset_LGN_syn))/preset_Cortical_syn;
-		inhRatio = LGN_syn/preset_LGN_syn;
+		if (ClessI) {
+			inhRatio = LGN_syn/preset_LGN_syn;
+		}
 	}
     if (ratio < min_FB_ratio) ratio = min_FB_ratio;
     if (inhRatio < C_InhRatio) inhRatio = C_InhRatio;
@@ -131,12 +132,15 @@ Float area(Float raxn, Float rden, Float d) {
 // co-occupied area of the presynaptic axons / dendritic area
 __device__ 
 __forceinline__
-Float connect(Float distance, Float raxn, Float rden, bool gaussian_profile) {
+Float connect(Float distance, Float raxn, Float rden, Float disGauss) {
 	Float weight;
-	if (gaussian_profile) {
-		Float spread = raxn*raxn + rden*rden;
-        if (distance < 3*square_root(spread/2)) {
-		    weight = exponential(-distance*distance/spread)/(M_PI*spread);
+	if (disGauss > 0) {
+		// HWHM = sqrt(raxn*raxn + rden*rden)
+		// sigma = HWHM/sqrt(2*ln(2))
+		Float variance = (raxn*raxn + rden*rden)/(2*logarithm(2))*disGauss*disGauss;
+        if (distance < 3*square_root(variance)) {
+		    //weight = exponential(-distance*distance/spread)/(2*M_PI*spread);
+		    weight = exponential(-distance*distance/variance);
         } else {
             weight = 0.0;
         }
@@ -345,7 +349,7 @@ void generate_connections(double* __restrict__ pos,
                           Float* __restrict__ synloc,
                           Size* __restrict__ typeAcc0,
                           curandStateMRG32k3a* __restrict__ state,
-                          Size sum_max_N, Size gap_sum_max_N, PosInt block_offset, Size networkSize, Size mI, Size maxDistantNeighbor, Size gap_maxDistantNeighbor, Size nearNeighborBlock, Size maxNeighborBlock, Size nType, Size nTypeE, Size nTypeI, Size nE, Size nI, Size nFeature, bool gaussian_profile, bool strictStrength, Float tol) 
+                          Size sum_max_N, Size gap_sum_max_N, PosInt block_offset, Size networkSize, Size mI, Size maxDistantNeighbor, Size gap_maxDistantNeighbor, Size nearNeighborBlock, Size maxNeighborBlock, Size nType, Size nTypeE, Size nTypeI, Size nE, Size nI, Size nFeature, Float disGauss, bool strictStrength, Float tol) 
 {
     // TODO: load with warps but more, e.g., raxn, daxn, preType
     __shared__ double x1[blockSize];
@@ -426,7 +430,7 @@ void generate_connections(double* __restrict__ pos,
             Float distance = square_root(x*x + y*y);
 	    	// weight from area
             Size ip = preType[ipre];
-            Float p = connect(distance, ra, rd*postSynLoc[ip], gaussian_profile);
+            Float p = connect(distance, ra, rd*postSynLoc[ip], disGauss);
             size_t mid = (static_cast<size_t>(blockIdx.x*nearNeighborBlock + in)*blockDim.x + i)*blockDim.x + threadIdx.x; // defined outside, so delayMat has access to it
             if (p > 0 && id != ipre) { // not self-connected
                 /*
@@ -479,7 +483,7 @@ void generate_connections(double* __restrict__ pos,
                 double y = y1[i] - y0;
                 Float distance = static_cast<Float>(square_root(x*x + y*y));
                 Size ip = preType[ipre];
-                Float p = connect(distance, ra, rd*postSynLoc[ip], gaussian_profile);
+                Float p = connect(distance, ra, rd*postSynLoc[ip], disGauss);
                 Size tid = (in-ni)*blockDim.x + i; // only ofr tempNeighbor, which is local, no need to coalease memory
                 tempNeighbor[tid] = 0;
             	size_t gid; 

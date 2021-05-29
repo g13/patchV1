@@ -29,12 +29,13 @@ int main(int argc, char *argv[])
     Float min_FB_ratio;
     Float C_InhRatio;
     //Float LGN_targetFR;
-	bool gaussian_profile;
     bool strictStrength;
     bool CmoreN;
+    bool ClessI;
 	Size usingPosDim;
 	Float longRangeROI;
 	Float longRangeCorr;
+	Float disGauss;
 	vector<Float> rDend, rAxon;
 	vector<Float> dDend, dAxon;
     vector<Float> synapticLoc;
@@ -53,7 +54,7 @@ int main(int argc, char *argv[])
 	Float minConTol;
 	po::options_description input_opt("output options");
 	input_opt.add_options()
-        ("DisGauss", po::value<bool>(&gaussian_profile), "if set true, conn. prob. based on distance will follow a 2D gaussian with a variance. of (raxn*raxn + rden*rden)/2, otherwise will based on the overlap of the area specified by raxn and rden")
+        ("DisGauss", po::value<Float>(&disGauss), "if set true, conn. prob. based on distance will follow a 2D gaussian with a variance. of (raxn*raxn + rden*rden)/(2*ln(2))*disGauss, otherwise 0 will based on the overlap of the area specified by raxn and rden")
         ("strictStrength", po::value<bool>(&strictStrength), "strictly match preset summed connection")
         ("CmoreN", po::value<bool>(&CmoreN), "if true complex gets more connections otherwise stronger strength")
         ("rDend", po::value<vector<Float>>(&rDend),  "a vector of dendritic extensions' radius, size of nType ")
@@ -72,6 +73,7 @@ int main(int argc, char *argv[])
 		("extSynRatio", po::value<vector<Float>>(&extSynRatio), "external cortical exc connection #synapse ratio to E and I")
 		("min_FB_ratio", po::value<Float>(&min_FB_ratio), "minimum external cortical excitation ratio")
 		("C_InhRatio", po::value<Float>(&C_InhRatio), "minimum inhibition for complex cells")
+		("ClessI", po::value<bool>(&ClessI), "lesser inhibition for complex cell")
 		("minConTol", po::value<Float>(&minConTol), "minimum difference tolerance of the number of preset cortical connections")
         ("sTypeMat", po::value<vector<Float>>(&sTypeMat), "connection strength matrix between neuronal types, size of [nType, nType], nType = sum(nTypeHierarchy), row_id -> postsynaptic, column_id -> presynaptic")
         ("gap_sTypeMat", po::value<vector<Float>>(&gap_sTypeMat), "gap junction strength matrix between inhibitory neuronal types, size of [nTypeI, nTypeI], nTypeI = nTypeHierarchy[1], row_id -> postsynaptic, column_id -> presynaptic")
@@ -134,7 +136,7 @@ int main(int argc, char *argv[])
     ofstream fBlock_pos, fNeighborBlock;
     ofstream fStats;
 
-	if (gaussian_profile) {
+	if (disGauss > 0) {
 		cout << "Using gaussian profile over distance\n";
 	} else {
 		cout << "probability over distance depends on dendrite and axon overlap\n";
@@ -340,6 +342,9 @@ int main(int argc, char *argv[])
     fV1_feature.read(reinterpret_cast<char*>(&nFeature), sizeof(Size));
 	vector<Float> featureValue(nFeature*networkSize); // [OD, OP, ..]
     fV1_feature.read(reinterpret_cast<char*>(&featureValue[0]), sizeof(Float)*nFeature*networkSize);
+	for (PosInt iF = 0; iF<nFeature; iF++) {
+		cout << iF << "th featureValue range: [" << *min_element(featureValue.begin()+iF*networkSize, featureValue.begin()+(iF+1)*networkSize) << ", " << *max_element(featureValue.begin()+iF*networkSize, featureValue.begin()+(iF+1)*networkSize) << "]\n";
+	}
     for (PosInt i = 0; i<networkSize; i++) {
         featureValue[networkSize+i] = (featureValue[networkSize+i] - 0.5)*M_PI;
     }
@@ -748,7 +753,7 @@ int main(int argc, char *argv[])
 		rden, raxn, dden, daxn,
 		//preF_type, preS_type, preN_type, d_LGN_V1_sSum, d_ExcRatio, d_extExcRatio, min_FB_ratio,
 		preF_type, preS_type, preN_type, d_nLGN_V1, d_ExcRatio, d_extExcRatio, d_synPerCon, d_synPerConFF, min_FB_ratio, C_InhRatio,
-		init_pack, seed, networkSize, nType, nArchtype, nFeature, CmoreN, preset_nLGN);
+		init_pack, seed, networkSize, nType, nArchtype, nFeature, CmoreN, ClessI, preset_nLGN);
 	getLastCudaError("initialize failed");
 	checkCudaErrors(cudaDeviceSynchronize());
     printf("initialzied\n");
@@ -823,7 +828,7 @@ int main(int argc, char *argv[])
 	    	dden, daxn, d_synloc,
 			d_typeAcc0,
 	    	state,
-	    	sum_max_N, gap_sum_max_N, offset, networkSize, mI, maxDistantNeighbor, gap_maxDistantNeighbor, nearNeighborBlock, maxNeighborBlock, nType, nTypeE, nTypeI, nE, nI, nFeature, gaussian_profile, strictStrength, minConTol);
+	    	sum_max_N, gap_sum_max_N, offset, networkSize, mI, maxDistantNeighbor, gap_maxDistantNeighbor, nearNeighborBlock, maxNeighborBlock, nType, nTypeE, nTypeI, nE, nI, nFeature, disGauss, strictStrength, minConTol);
 	    checkCudaErrors(cudaDeviceSynchronize());
 	    getLastCudaError("generate_connections failed");
         //offset += current_nblock*neuronPerBlock;

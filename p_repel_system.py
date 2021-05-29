@@ -5,7 +5,7 @@ from multiprocessing import Process, Pool, Lock, Barrier
 from multiprocessing.sharedctypes import Value, RawArray
 from ctypes import Structure, c_double, c_int, c_uint, c_int32
 #from viztracer import VizTracer
-import pprofile
+#import pprofile
 
 import matplotlib.pyplot as plt
 import matplotlib
@@ -96,9 +96,9 @@ class p_repel_system:
 
     def update_acc_limiting(self, cid, pid, ichop, nchop, b_ratio, lock):
         # no need to copy() pos here no write will happen here
-        if pid == self.printing_id:
-            prof = pprofile.Profile()
-            prof.enable()
+        #if pid == self.printing_id:
+        #    prof = pprofile.Profile()
+        #    prof.enable()
         if self.particle.chop_size[cid] == 0:
             print(f'chop {cid} has zero particle')
             return
@@ -206,9 +206,9 @@ class p_repel_system:
         nint[nint == 0] = 1
         self.particle.interdis[cid][:] = r_min
         #self.particle.interdis[cid][:] = r_max/np.sqrt(nint)
-        if pid == self.printing_id:
-            prof.disable()
-            prof.print_stats()
+        #if pid == self.printing_id:
+        #    prof.disable()
+        #    prof.print_stats()
 
     def update_pos(self, dt, cid, final, lock):
         # limitation on displacement and velocity are needed, but not acceleration

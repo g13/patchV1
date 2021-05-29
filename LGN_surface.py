@@ -17,10 +17,12 @@ k = np.sqrt(140)*0.873145
 class surface:
     def __init__(self, shape_file, pos_file, ecc, k = k, a = 0.635, b = 96.7):
         self.ecc = ecc
-        with open(pos_file,'r') as f:
+        with open(pos_file,'rb') as f:
             self.nLGN = np.fromfile(f,'u4', count=1)[0]
+            _ecc = np.fromfile(f,'f8', count=1)[0]
             self.pos = np.fromfile(f, count = 2*self.nLGN).reshape(2,self.nLGN)
         rmax = np.max(np.sqrt(np.sum(self.pos*self.pos, axis = 0)))
+        assert(_ecc < self.ecc)
         if rmax > self.ecc:
             raise Exception(f'{rmax} > {self.ecc}')
         with open(shape_file,'r') as f:
@@ -114,12 +116,19 @@ class surface:
                     rpick = np.logical_and(not_rogue, np.logical_and(i == ii, coord[1,:] > 0.5))
                     if np.sum(rpick) > 0:
                         x_min = min(self.pos[0,rpick])
-                        self.pos[0,rpick] = x_min + (self.pos[0,rpick] - x_min) * ((self.x[jj] + self.x[jj+1])/2 - buffer_l - x_min)/(x_max - x_min)
+
+                        if x_max == x_min:
+                            self.pos[0,rpick] = (self.x[jj] + self.x[jj+1])/2 - buffer_l
+                        else:
+                            self.pos[0,rpick] = x_min + (self.pos[0,rpick] - x_min) * ((self.x[jj] + self.x[jj+1])/2 - buffer_l - x_min)/(x_max - x_min)
 
                     rpick = np.logical_and(not_rogue, np.logical_and(i == ii, coord[1,:] <= 0.5))
                     if np.sum(rpick) > 0:
                         x_min = min(self.pos[0,rpick])
-                        self.pos[0,rpick] = x_min + (self.pos[0,rpick] - x_min) * ((self.x[jj] + self.x[jj+1])/2 - buffer_l - x_min)/(x_max - x_min)
+                        if x_max == x_min:
+                            self.pos[0,rpick] = (self.x[jj] + self.x[jj+1])/2 - buffer_l
+                        else:
+                            self.pos[0,rpick] = x_min + (self.pos[0,rpick] - x_min) * ((self.x[jj] + self.x[jj+1])/2 - buffer_l - x_min)/(x_max - x_min)
 
                     #x_max0 = max(self.pos[0,gpick])
                     #assert(x_max0 < (self.x[jj] + self.x[jj+1])/2)

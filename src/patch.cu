@@ -65,6 +65,7 @@ int main(int argc, char **argv) {
     int noFarDelay;
 	Size snapshotInterval;
 	Size nChunk;
+    Size nOri;
 	Size matConcurrency;
 	Float phyWidth_scale;
 	Float visWidth_scale;
@@ -129,6 +130,7 @@ int main(int argc, char **argv) {
 	vector<Size> nTypeHierarchy;
 	vector<Float> fbROI, fbSamplingRate, fbEI_ratio, fbFR;
     vector<Float> boostOri;
+    vector<PosInt> iOri;
 	vector<Size> nFBperColumn;
 	Float nsig; // extent of spatial RF sampling in units of std
 	Float tau, mau;
@@ -157,7 +159,9 @@ int main(int argc, char **argv) {
 		("speedOfThought", po::value<Float>(&speedOfThought)->default_value(1.0), "velocity of conduction, mm/ms")
 		("nt", po::value<Size>(&nt)->default_value(8000), "total simulatoin time in units of time step")
 		("fbROI", po::value<vector<Float>>(&fbROI), "feedback ROI not implemented")
-		("boostOri", po::value<vector<Float>>(&boostOri), "boosting neurons with orientation preference with defined boostOri, [baseline, mean, std]")
+		("boostOri", po::value<vector<Float>>(&boostOri), "boosting neurons with orientation preference with defined boostOri, [baseline, std], the mean is set by iOri")
+		("iOri", po::value<vector<PosInt>>(&iOri), "boosting neurons with orientation preference of iOri/nOri*PI")
+		("nOri", po::value<Size>(&nOri), "boosting neurons with orientation preference of iOri/nOri*PI")
 		("nFBperColumn", po::value<vector<Size>>(&nFBperColumn), "total simulatoin time in units of time step")
 		("fbSamplingRate", po::value<vector<Float>>(&fbSamplingRate), "total simulatoin time in units of time step")
 		("fbEI_ratio", po::value<vector<Float>>(&fbEI_ratio), "total simulatoin time in units of time step")
@@ -1149,7 +1153,7 @@ int main(int argc, char **argv) {
 	fStimulus.seekg(sofStimulus);
 	// in each frame
 	// stimulus start from 0 -> ecc
-	/*			
+	/*		flat	
 				left-eye		right-eye
 				1  _______________ ______________
 				^ |b-------------|b-------------| <- buffer(b)  
@@ -1193,7 +1197,7 @@ int main(int argc, char **argv) {
 	Float deg2rad = M_PI/180.0;
 	// Float rad2deg = 180.0/M_PI;
 	Size nLGN_I, nLGN_C, nLGN;
-	Float max_ecc, L_x0, L_y0, R_x0, R_y0, normViewDistance;
+    Float max_ecc, L_x0, L_y0, R_x0, R_y0, normViewDistance;
 	fLGN_vpos.open(LGN_vpos_filename, fstream::in | fstream::binary);
 	if (!fLGN_vpos) {
 		cout << "Cannot open or find " << LGN_vpos_filename <<" to read in LGN properties.\n";
@@ -1210,6 +1214,8 @@ int main(int argc, char **argv) {
 	if (max_ecc > stimulus_range) {
 		cout << "max_ecc: " << max_ecc << "must not be larger than " << stimulus_range << "\n";
         return EXIT_FAILURE;
+	} else {
+		cout << "LGN center visual field pos are within ecc of " << max_ecc << ", while the stimulus ranges in " << stimulus_range << " with a buffer of " << stimulus_buffer << "\n"; 
 	}
     
     Size nStatus;
@@ -1283,7 +1289,7 @@ int main(int argc, char **argv) {
 	    L_y0 = 0.5;
 	    R_x0 = 1.0; // can be arbitrary, no right eye LGN
 	    R_y0 = 1.0;
-	    normViewDistance = normEccMaxStimulus_extent/max_ecc/deg2rad; // since uniform, just a scale
+	    normViewDistance = normEccMaxStimulus_extent/max_ecc/deg2rad; // since flat, just a scale
     }
 
 	cout << nLGN << " LGN neurons, " << nLGN_I << " from the ipsilateral eye, " << nLGN_C << " from the contralateral eye, LGN center positions are within the eccentricity of " << max_ecc << " deg, reaching normalized stimulus radius of " << normEccMaxStimulus_extent << "\n";
@@ -1533,19 +1539,20 @@ int main(int argc, char **argv) {
 		
 		auto tspD_dist = [](Float n, Float tau) {
 			Float tsp = (n-1)*tau;
-			Float stride = n*tau/logrithm(n);
+			Float stride = n*tau/logarithm(n);
 			Float mean = tsp + stride * 1.5;
 			Float std = stride/6.0;
 			return make_pair(mean, std);
 		};
 		//     sigma*sqrt(2)
-		Float acuityK = 0.202103;
-		Float logAcuity0 = logrithm(40.0);
+		Float acuityK = 0.2049795945022049;
+		Float logAcuity0 = 3.6741080244555278;
 
-		auto getAcuityAtEcc = [&acuityK, &logAcuity0, &deg2rad] (Float ecc, Float acuity[]) {
+		Float rsig = 1;
+		auto getAcuityAtEcc = [&rsig, &acuityK, &logAcuity0, &deg2rad] (Float ecc, Float acuity[]) {
 			Float cpd = -acuityK * ecc/deg2rad + logAcuity0;
 			cpd = exponential(cpd);
-			acuity[0] = 1.0/cpd/4 * deg2rad; // from cpd to radius of center
+			acuity[0] = 1.0/cpd/4 * deg2rad/rsig; // from cpd to radius of center
 			acuity[1] = acuity[0]/3/1.349;
 		};
 		Float max_acuity = 0;
@@ -1555,7 +1562,11 @@ int main(int argc, char **argv) {
 		//Float acuityC[2] = {0.03f*deg2rad, 0.01f*deg2rad/1.349f}; // interquartile/1.349 = std 
 		//Float acuityS[2] = {0.18f*deg2rad, 0.07f*deg2rad/1.349f};
 		Float acuityC_M[2] = {0.06f*deg2rad, 0.02f*deg2rad/1.349f}; // interquartile/1.349 = std 
+		acuityC_M[0] /= rsig;
+
 		Float acuityS_M[2] = {0.18f*deg2rad, 0.06f*deg2rad/1.349f};
+		acuityS_M[0] /= rsig;
+
 		Float pTspD[2];
 		Float tspR, tspD;
         Float sharpness_dist[2] = {1.0, 0.1};
@@ -2166,6 +2177,15 @@ int main(int argc, char **argv) {
 		fLGN.close();	
 	}
 
+	Float min_LGNx = *min_element(LGN_x.begin(), LGN_x.end());
+	Float max_LGNx = *max_element(LGN_x.begin(), LGN_x.end());
+	Float min_LGNy = *min_element(LGN_y.begin(), LGN_y.end());
+	Float max_LGNy = *max_element(LGN_y.begin(), LGN_y.end());
+	Float max_LGN_radius = *max_element(LGN_rw.begin()+nLGN, LGN_rw.end());
+
+	cout << "LGN surround nsig x radius occupies " << max_LGN_radius*nsig/deg2rad/max_ecc * normEccMaxStimulus_extent << " of the normalized texture coords' range\n";
+    cout << "the entirety of LGN RFs occupies " << (max_LGNx - min_LGNx + 2*max_LGN_radius*nsig/deg2rad)/max_ecc*normEccMaxStimulus_extent << " in normed texture coords\n";
+
 	hSpatial_component hSpat(nLGN, 2, LGN_polar, LGN_rw, LGN_ecc, LGN_rh, LGN_orient, LGN_k);
 	hTemporal_component hTemp(nLGN, 2, tauR, tauD, delay, ratio, nR, nD);
 	hStatic_nonlinear hStat(nLGN, spont, c50, sharpness);
@@ -2361,7 +2381,7 @@ int main(int argc, char **argv) {
 		fV1_pos.read(reinterpret_cast<char*>(&V1_y0), sizeof(double));
 		fV1_pos.read(reinterpret_cast<char*>(&V1_yspan), sizeof(double));
 		nV1 = nblock * neuronPerBlock;
-		cout << nV1 << " V1 neurons, x:[" << V1_x0 << ", " << V1_x0+V1_xspan << "], y:[" << V1_y0 << ", " << V1_y0 + V1_yspan << "]\n";
+		cout << nV1 << " V1 neurons, x:[" << V1_x0 << ", " << V1_x0+V1_xspan << "], y:[" << V1_y0 << ", " << V1_y0 + V1_yspan << "] mm\n";
 		if (!frameVisV1output) {
 			cpu_chunk_V1pos = new double[nV1*2];
 			fV1_pos.read(reinterpret_cast<char*>(cpu_chunk_V1pos), 2*nV1*sizeof(double));
@@ -2429,21 +2449,49 @@ int main(int argc, char **argv) {
 	Size mE = nE*nblock;
 	cout << " mE = " << mE << ", mI = " << mI << "\n";
 
-    if (boostOri.size() > 0) {
-        if (boostOri.size() != 3 && boostOri.size() != 3*nType) {
-            cout << "boostOri need 3 x nType elements: [baseline, mean, std] x nType\n";
-            return EXIT_FAILURE; 
-        } else {
-            readFeature = true;
-            if (boostOri.size() == 3 && nType > 1) {
-                for (PosInt i = 1; i < nType; i++) {
-                    boostOri.push_back(boostOri[0]);
-                    boostOri.push_back(boostOri[1]);
-                    boostOri.push_back(boostOri[2]);
-                }
-            }
-        }
-    }
+	vector<Float> fOri;
+	if (vm.count("nOri")) {
+    	if (boostOri.size() > 0) {
+			if (iOri.size() == 0) {
+    	        cout << "when boostOri is set, iOri needs to be set.\n";
+    	        return EXIT_FAILURE; 
+			}
+    	    if (boostOri.size() != 2 && boostOri.size() != 2*nType) {
+    	        cout << "boostOri need 2 x nType elements: [baseline, std] x nType.\n";
+    	        return EXIT_FAILURE; 
+    	    } else {
+    	        readFeature = true;
+    	        if (boostOri.size() == 2 && nType > 1) {
+    	            for (PosInt i = 1; i < nType; i++) {
+    	                boostOri.push_back(boostOri[0]);
+    	                boostOri.push_back(boostOri[1]);
+    	            }
+    	        }
+    	    }
+    	} else {
+			if (iOri.size() > 0) {
+    	        cout << "when iOri is set, boostOri needs to be set.\n";
+    	        return EXIT_FAILURE; 
+			}
+		}
+		
+		if (iOri.size() > 0) {
+    	    if (iOri.size() != nType && iOri.size() != 1) {
+    	        cout << "iOri need 1 or nType elements.\n";
+    	        return EXIT_FAILURE; 
+			} else {
+    	        readFeature = true;
+    	        if (iOri.size() == 1 && nType > 1) {
+    	            for (PosInt i = 1; i < nType; i++) {
+    	                iOri.push_back(iOri[0]);
+    	            }
+    	        }
+    	        for (PosInt i = 0; i < nType; i++) {
+					fOri.push_back(mod(static_cast<Float>(iOri[i] % nOri)/nOri + 0.5, 1.0));
+				}
+			}
+		}
+	}
 
 	vector<Float> featureValue;
 	if (readFeature) {
@@ -3584,13 +3632,33 @@ int main(int argc, char **argv) {
 		for (PosInt j=0; j<nType; j++) {
 			cout << "ExcRatio type " << j << ": [" << minExcRatio[j] << ", " << maxExcRatio[j] << "]\n";
 		}
-        auto get_boost = [&boostOri, &featureValue, &nV1](PosInt i, PosInt iType) {
-            Float dOri = featureValue[nV1 + i] - boostOri[iType*3 + 1];
+        auto get_boost = [&boostOri, &featureValue, &nV1, &fOri](PosInt i, PosInt iType) {
+            Float dOri = featureValue[nV1 + i] - fOri[iType];
             if (dOri > 0.5) dOri = 1-dOri;
             if (dOri < -0.5) dOri = 1+dOri;
-            Float boost = boostOri[iType*3 + 0] + (1-boostOri[iType*3 + 0]) * exponential(-0.5*power(dOri/boostOri[iType*3 + 2],2));
+            //Float boost = boostOri[iType*2 + 0] + (1-boostOri[iType*2 + 0]) * exponential(-0.5*power(dOri/boostOri[iType*2 + 1],2)); // normal
+			Float boost;
+			if (boostOri.size() > 0) {
+				Float base = boostOri[iType*2 + 0];
+				Float amplitude = 1-boostOri[iType*2 + 0];
+				Float vonMisesAmp = 1-exponential(-2*boostOri[iType*2 + 1]);
+            	boost = base + amplitude * (exponential(boostOri[iType*2 + 1]*(cosine(dOri*M_PI*2)-1))-1+vonMisesAmp)/vonMisesAmp; // von Mises
+			} else {
+				boost = 1;
+			}
             return boost;
         };
+		vector<Float> dOri(nV1);
+		for (PosInt i = 0; i<nV1; i++) {
+			dOri[i] = abs(featureValue[nV1 + i] - fOri[0]);
+            if (dOri[i] > 0.5) dOri[i] = 1-dOri[i];
+            if (dOri[i] < -0.5) dOri[i] = 1+dOri[i];
+		}
+		Float dOriMean = accumulate(dOri.begin(), dOri.end(), 0.0)/nV1;
+		Float dOriMin = *min_element(dOri.begin(), dOri.end());
+		Float dOriMax = *max_element(dOri.begin(), dOri.end());
+		cout << "|dOri| = ["  << dOriMin << ", " << dOriMean << ", " << dOriMax << "]\n";
+
 		for (PosInt i=0; i<nblock; i++) {
 			PosInt iType = 0;
 			for (PosInt j=0; j<blockSize; j++) {
@@ -3598,12 +3666,8 @@ int main(int argc, char **argv) {
 				if (j == typeAccCount[iType]) {
 					iType++;
 				}
-                Float boosted;
-                if (boostOri.size() > 0) {
-                    boosted = get_boost(id, iType);
-                } else {
-                    boosted = 1;
-                }
+                Float boosted = get_boost(id, iType);
+				assert(boosted <= 1);
 				if (maxExcRatio[iType] > minExcRatio[iType]) {
 					iTonicDep[id] = tonicDep[iType]*boosted*(minTonicRatio[iType] + (1-minTonicRatio[iType]) * (ExcRatio[id]-minExcRatio[iType])/(maxExcRatio[iType]-minExcRatio[iType]));
 				} else {
@@ -3613,9 +3677,14 @@ int main(int argc, char **argv) {
 				assert(!std::isnan(iTonicDep[id]));
 			}
 		}
+
 		delete []minExcRatio;
 		delete []maxExcRatio;
 		checkCudaErrors(cudaMemcpy(d_tonicDep,  &(iTonicDep[0]), nV1*sizeof(Float), cudaMemcpyHostToDevice));
+		Float tonicMean = accumulate(iTonicDep.begin(), iTonicDep.end(), 0.0)/nV1;
+		Float tonicMin = *min_element(iTonicDep.begin(), iTonicDep.end());
+		Float tonicMax = *max_element(iTonicDep.begin(), iTonicDep.end());
+		cout << "tonicDep = ["  << tonicMin << ", " << tonicMean << ", " << tonicMax << "]\n";
 	}
 
     default_random_engine *h_rGenCond = new default_random_engine[nV1];
@@ -5128,7 +5197,7 @@ int main(int argc, char **argv) {
 	for (unsigned int it = 0; it < nt; it++) {
 		Float t = it*dt;
 		// next frame comes between (t, t+dt), read and store frame to texture memory
-		if ((it+it0+1)*denorm >= currentFrame*ntPerFrame) {
+		if ((it+it0+1)*denorm > currentFrame*ntPerFrame) {
 			// back insert frame into texture memory
 			// TODO: realtime video stimulus control
 			if (fStimulus) {
@@ -6022,10 +6091,22 @@ int main(int argc, char **argv) {
 		fPatchV1_cfg.write((char*) &(sRatioV1[0]), nType*nType*sizeof(Float));
 		fPatchV1_cfg.write((char*) &frRatioLGN, sizeof(Float));
 		fPatchV1_cfg.write((char*) &convolRatio, sizeof(Float));
-
-		fPatchV1_cfg.write((char*) &seed, sizeof(PosIntL));	
+		fPatchV1_cfg.write((char*) &frameRate, sizeof(PosInt));
+        Size fn_size=stimulus_filename.size();
+		cout<<"string length = "<< fn_size << ", " << stimulus_filename << ", " << stimulus_filename[9] << "\n";
+        fPatchV1_cfg.write((char*) &fn_size, sizeof(Size));
+        fPatchV1_cfg.write((char*) stimulus_filename.c_str(), fn_size);
 		fPatchV1_cfg.write((char*) &nLGN, sizeof(Size));	
 		fPatchV1_cfg.write((char*) &nV1, sizeof(Size));	
+		fPatchV1_cfg.write((char*) &nt, sizeof(Size));	
+		fPatchV1_cfg.write((char*) &dt, sizeof(Float));	
+		fPatchV1_cfg.write((char*) &normViewDistance, sizeof(Float));
+		fPatchV1_cfg.write((char*) &L_x0, sizeof(Float));
+		fPatchV1_cfg.write((char*) &L_y0, sizeof(Float));
+		fPatchV1_cfg.write((char*) &R_x0, sizeof(Float));
+		fPatchV1_cfg.write((char*) &R_y0, sizeof(Float));
+
+		fPatchV1_cfg.write((char*) &seed, sizeof(PosIntL));	
 		fPatchV1_cfg.write((char*) &nType, sizeof(Size));	
 		fPatchV1_cfg.write((char*) &iModel, sizeof(int));	
 		fPatchV1_cfg.write((char*) &learning, sizeof(int));	
@@ -6041,8 +6122,6 @@ int main(int argc, char **argv) {
 		fPatchV1_cfg.write((char*) &(pFF[0]), ngTypeFF*nType*sizeof(Float));	
 		fPatchV1_cfg.write((char*) &(pE[0]), ngTypeE*nType*sizeof(Float));	
 		fPatchV1_cfg.write((char*) &(pI[0]), ngTypeI*nType*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &frRatioLGN, sizeof(Float));	
-		fPatchV1_cfg.write((char*) &convolRatio, sizeof(Float));	
 		fPatchV1_cfg.write((char*) &(C[0]), nType*sizeof(Float));
 		fPatchV1_cfg.write((char*) &(tRef[0]), nType*sizeof(Float));	
 		fPatchV1_cfg.write((char*) &(a[0]), nType*sizeof(Float));	

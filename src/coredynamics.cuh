@@ -83,8 +83,8 @@ struct AdEx { //Adaptive Exponential IF
 	void compute_spike_time(Float dt, Float t0) {
 		//if (v > vPeak) v = vPeak;
 		//Float dv0 = v0-vR;
-		//Float denorm = logrithm((v-vR)/dv0);
-    	//tsp = t0 + logrithm((vThres-vR)/dv0)/denorm*dt;
+		//Float denorm = logarithm((v-vR)/dv0);
+    	//tsp = t0 + logarithm((vThres-vR)/dv0)/denorm*dt;
 		//Float eT = exponential(-(vThres - v0));
 		//Float eV = exponential(-(v - v0));
 		//tsp = t0 + (1-eT)/(1-eV)*dt;

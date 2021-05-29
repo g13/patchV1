@@ -15,7 +15,7 @@
 
 #define nFunc 2
 
-__device__
+__device__ __host__
 Float ODpref(Float post, Float pre, Float r) { // ocular dominance
     Float p;
     if (post*pre < 0) {
