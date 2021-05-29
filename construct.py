@@ -332,6 +332,7 @@ def generate_pos_3d(lcurve, rcurve, target_area, ly, ry, n, seed):
     while (i < n):
         #irands = np.empty((2,ntmp), dtype='uint32')
         rands = ss.i4_sobol_generate(3, ntmp, skip=skip) 
+        # wait for scipy 1.7.0
 
         x = xmin + (xmax-xmin) * rands[:,0]
         y = ymin + (ymax-ymin) * rands[:,1]

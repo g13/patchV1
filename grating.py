@@ -3,7 +3,7 @@ import cv2 as cv
 import functools
 from ext_signal import *
 #TODO: heterogeneous buffers, to save texture memory
-def generate_random(amp, cSize, c0, fname, time, frameRate = 120, ecc = 2.5, buffer_ecc = 0.25, neye = 2, gtype = 'uniform', seed = None, shift = None, inputLMS = True):
+def generate_random(amp, cSize, c_1, c0, c1, fname, time, frameRate = 120, ecc = 2.5, buffer_ecc = 0.25, neye = 2, gtype = 'uniform', seed = None, shift = None, inputLMS = True):
     """
     buffer_ecc: buffering area, to avoid border problems in texture memory accesses
     neye == 2:
@@ -18,9 +18,11 @@ def generate_random(amp, cSize, c0, fname, time, frameRate = 120, ecc = 2.5, buf
     else:
         npixel = int(round(2*(ecc+2*buffer_ecc)/cSize))
         a = npixel//2
-    b = npixel  
+    b = a*2  
+    npixel = b
     FourCC = cv.VideoWriter_fourcc(*'FFV1')
     output = cv.VideoWriter(fname+'.avi', FourCC, frameRate, (npixel,npixel), True)
+    print(f'frame size: {a}x{b}')
 
     if isinstance(time, (list, tuple, np.ndarray)):
         nseq = len(time)
@@ -32,12 +34,6 @@ def generate_random(amp, cSize, c0, fname, time, frameRate = 120, ecc = 2.5, buf
         assert(len(amp) == nseq)
     else:
         amp = np.zeros(nseq) + amp
-
-    ########### VIDEO encodes as BGR: 
-    # rgb->bgr
-    if not inputLMS:
-        c0 = c0[::-1]
-    c0 = c0.reshape((1,3))
 
     np.random.seed(seed)
     LMS = np.empty((nseq,), dtype=object)
@@ -54,23 +50,43 @@ def generate_random(amp, cSize, c0, fname, time, frameRate = 120, ecc = 2.5, buf
         LMS_seq = np.empty((nstep,)+(3, npixel, npixel), dtype=float)
         for it in range(nstep):
             if neye == 1:
-                data = randomized(amp[i], a, b, c0, gtype)
-
+                #data = randomized(amp[i], a, b, c0, gtype)
+                data = randomStamp(amp[i], a, b, c_1, c0, c1)
             else:
-                dataL = randomized(amp[i], a, b, c0, gtype)
+                #dataL = randomized(amp[i], a, b, c0, gtype)
+                dataL = randomStamp(amp[i], a, b, c_1, c0, c1)
                 if shift is not None:
-                    assert(shift == 0)
-                    # TODO: implement nonzero shift 
-                    dataR = dataL
+                    if shift == 0:
+                        dataR = dataL
+                    else:
+                        raise Exception('only matching stimulus is implemented')
                 else:
-                    dataR = randomized(amp[i], a, b, c0, gtype)
+                    dataR = randomStamp(amp[i], a, b, c_1, c0, c1)
 
                 data = np.concatenate((dataL,dataR), axis = 1)
 
+            if inputLMS:
+                # lms->rgb->bgr
+                _LMS = data.reshape(npixel*npixel,3).T
+                assert((_LMS>=0).all())
+                assert((_LMS<=1).all())
+                _sRGB = apply_sRGB_gamma(np.matmul(LMS2sRGB, _LMS))
+                if (_sRGB<0).any() or (_sRGB>1).any():
+                    print('sRGB space is not enough to represent the color')
+                    print(f'{c1, c2}')
+                    print(f'{np.min(_sRGB, axis = 1), np.max(_sRGB, axis = 1)}')
+                    pick = _sRGB > 1
+                    _sRGB[pick] = 1
+                    pick = _sRGB < 0
+                    _sRGB[pick] = 0
+                pixelData = np.round(_sRGB*255).T.reshape(npixel,npixel,3)[:,:,::-1].astype('uint8')
+                LMS_seq[it,:,:,:] = _LMS.reshape((3,npixel,npixel))
+            else: # input is sRGB
+                pixelData = np.round(data*255).reshape(npixel,npixel,3).astype('uint8')
+                # bgr->rgb->lms
+                LMS_seq[it,:,:,:] = np.matmul(sRGB2LMS, inverse_sRGB_gamma(data[:,:,::-1].reshape((npixel*npixel,3)).T)).reshape((3,npixel,npixel))
+
             #pixelData = np.reshape(np.round(data*255), (npixel,npixel,3)).astype('uint8')
-            pixelData = np.round(apply_sRGB_gamma(np.matmul(LMS2sRGB, data.reshape(npixel*npixel,3).T))*255).reshape(npixel,npixel,3).astype('uint8')
-            # bgr->lms
-            LMS_seq[it,:,:,:] = data[:,:,::-1].reshape((npixel*npixel,3)).T.reshape((3,npixel,npixel))
 
             output.write(pixelData)
             #pixelData = np.reshape(np.round(data*255), (b,a,3))
@@ -265,7 +281,7 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
                 _sRGB = apply_sRGB_gamma(np.matmul(LMS2sRGB, _LMS))
                 if (_sRGB<0).any() or (_sRGB>1).any():
                     print('sRGB space is not enough to represent the color')
-                    print(f'{c1, c2}')
+                    #print(f'{c1, c2}')
                     print(f'{np.min(_sRGB, axis = 1), np.max(_sRGB, axis = 1)}')
                     pick = _sRGB > 1
                     _sRGB[pick] = 1
@@ -444,6 +460,18 @@ def randomized(amp, a, b, c0, gtype):
     color[color < 0] = 0
     return color.reshape((b,a,3))/255
 
+def randomStamp(amp, a, b, c_1, c0, c1):
+    color = np.zeros((b*a,3))
+    #stamp = np.random.choice([0, 1, 2], size = b*a)
+    #color[stamp==0,:] = c_1
+    #color[stamp==1,:] = c0
+    #color[stamp==2,:] = c1
+    stamp = np.random.choice([0, 1], size = b*a)
+    color[stamp==0,:] = c_1
+    color[stamp==1,:] = c1
+    color[color > 255] = 255
+    color[color < 0] = 0
+    return color.reshape((b,a,3))/255
 # to check cuda prog output
 def generate_from_float(fname, b, a, nt, cs_transform=LMS2sRGB, frameRate=60, suffix='bin'):
     with open(fname+'.'+suffix, 'rb') as f:
