@@ -1197,7 +1197,7 @@ int main(int argc, char **argv) {
 	Float deg2rad = M_PI/180.0;
 	// Float rad2deg = 180.0/M_PI;
 	Size nLGN_I, nLGN_C, nLGN;
-	Float max_ecc, L_x0, L_y0, R_x0, R_y0, normViewDistance;
+    Float max_ecc, L_x0, L_y0, R_x0, R_y0, normViewDistance;
 	fLGN_vpos.open(LGN_vpos_filename, fstream::in | fstream::binary);
 	if (!fLGN_vpos) {
 		cout << "Cannot open or find " << LGN_vpos_filename <<" to read in LGN properties.\n";
@@ -1545,8 +1545,8 @@ int main(int argc, char **argv) {
 			return make_pair(mean, std);
 		};
 		//     sigma*sqrt(2)
-		Float acuityK = 0.202103;
-		Float logAcuity0 = logarithm(16); //40
+		Float acuityK = 0.2049795945022049;
+		Float logAcuity0 = 3.6741080244555278;
 
 		Float rsig = 1;
 		auto getAcuityAtEcc = [&rsig, &acuityK, &logAcuity0, &deg2rad] (Float ecc, Float acuity[]) {
@@ -3637,10 +3637,15 @@ int main(int argc, char **argv) {
             if (dOri > 0.5) dOri = 1-dOri;
             if (dOri < -0.5) dOri = 1+dOri;
             //Float boost = boostOri[iType*2 + 0] + (1-boostOri[iType*2 + 0]) * exponential(-0.5*power(dOri/boostOri[iType*2 + 1],2)); // normal
-			Float base = boostOri[iType*2 + 0];
-			Float amplitude = 1-boostOri[iType*2 + 0];
-			Float vonMisesAmp = 1-exponential(-2*boostOri[iType*2 + 1]);
-            Float boost = base + amplitude * (exponential(boostOri[iType*2 + 1]*(cosine(dOri*M_PI*2)-1))-1+vonMisesAmp)/vonMisesAmp; // von Mises
+			Float boost;
+			if (boostOri.size() > 0) {
+				Float base = boostOri[iType*2 + 0];
+				Float amplitude = 1-boostOri[iType*2 + 0];
+				Float vonMisesAmp = 1-exponential(-2*boostOri[iType*2 + 1]);
+            	boost = base + amplitude * (exponential(boostOri[iType*2 + 1]*(cosine(dOri*M_PI*2)-1))-1+vonMisesAmp)/vonMisesAmp; // von Mises
+			} else {
+				boost = 1;
+			}
             return boost;
         };
 		vector<Float> dOri(nV1);
@@ -3661,12 +3666,7 @@ int main(int argc, char **argv) {
 				if (j == typeAccCount[iType]) {
 					iType++;
 				}
-                Float boosted;
-                if (boostOri.size() > 0) {
-                    boosted = get_boost(id, iType);
-                } else {
-                    boosted = 1;
-                }
+                Float boosted = get_boost(id, iType);
 				assert(boosted <= 1);
 				if (maxExcRatio[iType] > minExcRatio[iType]) {
 					iTonicDep[id] = tonicDep[iType]*boosted*(minTonicRatio[iType] + (1-minTonicRatio[iType]) * (ExcRatio[id]-minExcRatio[iType])/(maxExcRatio[iType]-minExcRatio[iType]));
@@ -5197,7 +5197,7 @@ int main(int argc, char **argv) {
 	for (unsigned int it = 0; it < nt; it++) {
 		Float t = it*dt;
 		// next frame comes between (t, t+dt), read and store frame to texture memory
-		if ((it+it0+1)*denorm >= currentFrame*ntPerFrame) {
+		if ((it+it0+1)*denorm > currentFrame*ntPerFrame) {
 			// back insert frame into texture memory
 			// TODO: realtime video stimulus control
 			if (fStimulus) {
@@ -6092,11 +6092,19 @@ int main(int argc, char **argv) {
 		fPatchV1_cfg.write((char*) &frRatioLGN, sizeof(Float));
 		fPatchV1_cfg.write((char*) &convolRatio, sizeof(Float));
 		fPatchV1_cfg.write((char*) &frameRate, sizeof(PosInt));
+        Size fn_size=stimulus_filename.size();
+		cout<<"string length = "<< fn_size << ", " << stimulus_filename << ", " << stimulus_filename[9] << "\n";
+        fPatchV1_cfg.write((char*) &fn_size, sizeof(Size));
+        fPatchV1_cfg.write((char*) stimulus_filename.c_str(), fn_size);
 		fPatchV1_cfg.write((char*) &nLGN, sizeof(Size));	
 		fPatchV1_cfg.write((char*) &nV1, sizeof(Size));	
-        size_t fn_size=stimulus_filename.size();
-        fPatchV1_cfg.write(&fn_size,sizeof(size);
-        fPatchV1_cfg.write(stimulus_filename.c_str(),size);
+		fPatchV1_cfg.write((char*) &nt, sizeof(Size));	
+		fPatchV1_cfg.write((char*) &dt, sizeof(Float));	
+		fPatchV1_cfg.write((char*) &normViewDistance, sizeof(Float));
+		fPatchV1_cfg.write((char*) &L_x0, sizeof(Float));
+		fPatchV1_cfg.write((char*) &L_y0, sizeof(Float));
+		fPatchV1_cfg.write((char*) &R_x0, sizeof(Float));
+		fPatchV1_cfg.write((char*) &R_y0, sizeof(Float));
 
 		fPatchV1_cfg.write((char*) &seed, sizeof(PosIntL));	
 		fPatchV1_cfg.write((char*) &nType, sizeof(Size));	
@@ -6114,8 +6122,6 @@ int main(int argc, char **argv) {
 		fPatchV1_cfg.write((char*) &(pFF[0]), ngTypeFF*nType*sizeof(Float));	
 		fPatchV1_cfg.write((char*) &(pE[0]), ngTypeE*nType*sizeof(Float));	
 		fPatchV1_cfg.write((char*) &(pI[0]), ngTypeI*nType*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &frRatioLGN, sizeof(Float));	
-		fPatchV1_cfg.write((char*) &convolRatio, sizeof(Float));	
 		fPatchV1_cfg.write((char*) &(C[0]), nType*sizeof(Float));
 		fPatchV1_cfg.write((char*) &(tRef[0]), nType*sizeof(Float));	
 		fPatchV1_cfg.write((char*) &(a[0]), nType*sizeof(Float));	

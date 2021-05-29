@@ -264,7 +264,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
     }
     // Full cosine modulation, modulation is on cone and on-off types
     virtual Float modulate(Float x, Float y) {
-        return 0.5 + 0.5 * cos(sfreq*x * M_PI + phase);
+        return 0.5 + 0.5 * cos(sfreq*(x + phase)*M_PI);
 		//assert(abs(x) <= 1.0);
 		//assert(sfreq*x * M_PI + phase > 0 && sfreq*x * M_PI + phase < 2*M_PI);
         // sfreq should be given as a percentage of the width
@@ -583,6 +583,198 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
             nConnected = 0;
 			true_sfreq = 0;
         }
+        return nConnected;
+    }
+
+    virtual Size construct_connection_opt(std::vector<Float> &x, std::vector<Float> &y, std::vector<InputType> &iType, std::vector<Size> &idList, std::vector<Float> &strengthList, RandomEngine &rGen, Size max_nCon, Float conThres, Float zero, Float &true_sfreq, Float vx, Float vy, PosInt iV1) {
+        Size nConnected;
+        if (n > 0) {
+            if (zero > 0) {
+        		std::uniform_real_distribution<Float> uniform(0,1);
+		        prob.reserve(n);
+                // putative RF center
+			    Float cx, cy;
+                std::tie(cx, cy) = average2D<Float>(x, y);
+				//cx = vx;
+				//cy = vy;
+				std::vector<Float> norm_x;
+				std::vector<Float> norm_y; 
+				std::vector<Int> iPick;  // 0 Lon,Moff,On, 1 Loff,Mon,Off
+				std::vector<Float> envelope_value; 
+				std::vector<Size> newList; 
+				std::vector<InputType> newType;
+
+				Int iOnOff;
+				switch (oType) {
+					case OutputType::LonMoff: case OutputType::LonMon: iOnOff = 1;
+   						break;
+					case OutputType::LoffMon: case OutputType::LoffMoff: iOnOff = -1;
+   						break;
+				}
+		        for (Size i=0; i<n; i++) {
+					Float temp_x, temp_y;
+		        	std::tie(temp_x, temp_y) = transform_coord_to_unitRF(x[i], y[i], cx, cy, theta, a);
+
+					Float temp_value = get_envelope(temp_x, temp_y, false);
+                    if (temp_value > 0.5) {
+						norm_x.push_back(temp_x);
+						norm_y.push_back(temp_y);
+						envelope_value.push_back(temp_value);
+   						switch (iType[i]) {
+							case InputType::LonMoff: case InputType::MoffLon: case InputType::OnOff: iPick.push_back(1);
+   								break;
+   							case InputType::LoffMon: case InputType::MonLoff: case InputType::OffOn: iPick.push_back(-1);
+								break;
+							default: throw("There's no implementation of such combination of cone types for center-surround RF");
+   	        			}
+						newList.push_back(idList[i]);
+						newType.push_back(iType[i]);
+					}
+				}
+				// get a LGN cell's position as the phase, randomly chose based on the con prob from their amplitude modulation over VF distance
+				PosInt m = iPick.size();
+                Float phase = iOnOff/2; // iOnOff = 1, positive peak to the left of origin
+		        for (Size i=0; i<m; i++) {
+                    // calc. modulation of prob at coord.
+                    Float modulation = modulate(norm_x[i], norm_y[i]); // sfreq, phase
+                    // calc. cone and position opponency at coord.
+	                Float opponent = check_opponency(newType[i], modulation);
+					Float _prob = get_prob(opponent, modulation, envelope_value[i]);
+					assert(_prob >= 0);
+                    prob.push_back(_prob);
+                }
+                // make connection and update ID and strength list
+                nConnected = connect_opt(newList, strengthList, rGen, max_nCon, iPick, norm_x, norm_y, m, iV1);
+				idList = newList; 
+				idList.shrink_to_fit();
+				true_sfreq = sfreq;
+
+				Float norm_cx, norm_cy;
+                std::tie(norm_cx, norm_cy) = average2D<Float>(norm_x, norm_y);
+				Float center_deviation = square_root(norm_cx* norm_cx + norm_cy*norm_cy);
+				//if (center_deviation > 0.25) {
+				//	std::cout << "c_d = " << center_deviation << "\n";
+				//	std::cout << "from " << n << " to " << m << " to " << norm_x.size() << "\n";
+				//}
+            } else {
+                idList = std::vector<Size>();
+                idList.shrink_to_fit();
+                nConnected = 0;
+				true_sfreq = 0;
+            }
+        }  else {
+            nConnected = 0;
+			true_sfreq = 0;
+        }
+        return nConnected;
+    }
+
+    virtual Size connect_opt(std::vector<Size> &idList, std::vector<Float> &strengthList, RandomEngine &rGen, Size max_nCon, std::vector<Int> &iPick, std::vector<Float> &norm_x, std::vector<Float> &norm_y, Size n, PosInt iV1) {
+		// make connections and normalized strength i.e., if prob > 1 then s = 1 else s = prob
+
+		std::vector<Size> list0;
+		list0.reserve(n);
+		std::vector<Float> strList0;
+		strList0.reserve(n);
+
+		std::vector<Float> xon;
+		std::vector<Float> yon;
+		std::vector<Float> xoff;
+		std::vector<Float> yoff;
+		std::vector<Int> pick2;
+		Int count = 0;
+		Float probSum = 0.0;
+        
+        // get the first one:
+		PosInt i = std::distance(prob.begin(), std::max_element(prob.begin(), prob.end()));
+        list0.push_back(idList[i]);
+		strList0.push_back(prob[i]);
+        prob[i] = 0;
+
+        if (iPick[i] > 0) {
+			xon.push_back(norm_x[i]);
+			yon.push_back(norm_y[i]);
+        } else {
+			xoff.push_back(norm_x[i]);
+			yoff.push_back(norm_y[i]);
+        }
+		pick2.push_back(iPick[i]);
+
+		for (PosInt i = 0; i < n; i++) {
+			list0.push_back(idList[i]);
+			strList0.push_back(prob[i]);
+			count++;
+			pick2.push_back(iPick[i]);
+			probSum += prob[i];
+		}
+		Size m = list0.size();
+
+		// pickout extra LGN cons with equal prob.
+		std::vector<bool> ipick(m, true);
+        std::uniform_real_distribution<Float> uniform(0,1);
+		if (count > max_nCon) {
+			while (count-max_nCon > 0) {
+				PosInt ipicked = static_cast<int>(flooring(uniform(rGen) * m));
+				if (ipick[ipicked]) {
+					ipick[ipicked] = false;
+					count--;
+				}
+			}
+			strengthList.reserve(max_nCon);
+			idList.clear();
+			idList.reserve(max_nCon);
+		} else {
+			strengthList.reserve(count);
+			idList.clear();
+			idList.reserve(count);
+		}
+		// push to output vectors
+		std::vector<Float> cx(2, 0), cy(2, 0);
+		Size n0 = 0;
+		Size n1 = 0;
+		for (PosInt i=0; i<m; i++) {
+			if (ipick[i]) {
+				idList.push_back(list0[i]);
+				strengthList.push_back(strList0[i]);
+				if (pick2[i] > 0) {
+					cx[1] += x[i];
+					cy[1] += y[i];
+					n1++;
+				} else {
+					cx[0] += x[i];
+					cy[0] += y[i];
+					n0++;
+				}
+			}
+		}
+		norm_x.clear();
+		norm_y.clear();
+		norm_x = x;
+		norm_y = y;
+		norm_x.shrink_to_fit();
+		norm_y.shrink_to_fit();
+		Size nConnected = idList.size();
+		assert(n0 + n1 == nConnected);
+		if (n0 > 0 && n1 > 0) {
+			cx[0] /= n0;
+			cy[0] /= n0;
+			cx[1] /= n1;
+			cy[1] /= n1;
+			Float dis = square_root((cx[0] - cx[1]) * (cx[0] - cx[1]) + (cy[0] - cy[1]) * (cy[0] - cy[1]));
+			if (dis >= 2) {
+				std::cout << "dis = " << dis  << "\n";
+				std::cout << " c0 = [" << cx[0] << ", " << cy[0] << "]\n";
+				std::cout << " c1 = [" << cx[1] << ", " << cy[1] << "]\n";
+				//assert(dis < 2);
+			}
+			sfreq = 1/(dis*2/2*2*a);
+		} else {
+			sfreq = 0;
+		}
+		//std::cout << "sfreq = " << sfreq << " from " << nConnected << " LGN cells\n";
+
+		assert(nConnected <= max_nCon);
+
         return nConnected;
     }
 };

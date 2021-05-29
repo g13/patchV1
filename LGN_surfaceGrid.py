@@ -8,6 +8,7 @@ matplotlib.use('Agg')
 
 import matplotlib.pyplot as plt
 from sys import stdout
+import sys
 import warnings
 np.seterr(invalid = 'raise', under = 'ignore', over = 'ignore')
 
@@ -28,9 +29,10 @@ def nPosInRectangle(point, x0, x1, y0, y1, leftInclude = False, bottomInclude = 
 
 exist_data = False 
 dpi = 150
-surfID_fn = 'LGN_surfaceID-micro'
-parallel_fileL = 'LGN_uniformL-micro.bin'
-parallel_fileR = 'LGN_uniformR-micro.bin'
+theme = sys.argv[1]
+surfID_fn = 'LGN_surfaceID-' + theme
+parallel_fileL = 'LGN_uniformL-' + theme + '.bin'
+parallel_fileR = 'LGN_uniformR-' + theme + '.bin'
 
 if exist_data:
     with open(surfID_fn + '.bin', 'rb') as f:

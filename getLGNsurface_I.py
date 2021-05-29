@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from IPython.display import display, Math, Latex
 from patch_geo_func import x_ep, y_ep
 from sys import stdout
+import sys
 import warnings
 np.seterr(invalid = 'raise', under = 'ignore', over = 'ignore')
 from LGN_surface import *
@@ -16,11 +17,17 @@ from LGN_surface import *
 #posL_file = 'parvo_pos_I5_uniform.bin'
 #posR_file = 'parvo_pos_C6_uniform.bin'
 #ecc = 2.50 #in deg
-posL_file = 'parvo_pos_I5-micro.bin'
-posR_file = 'parvo_pos_C6-micro.bin'
+theme = sys.argv[1]
+print(theme)
+posL_file = 'parvo_pos_I5-' + theme + '.bin'
+posR_file = 'parvo_pos_C6-' + theme + '.bin'
 pos_file = posL_file;
-fn = 'LGN_uniformL-micro'
-ecc = 0.18 #in deg
+fn = 'LGN_uniformL-' + theme
+
+with open(pos_file, 'rb') as f:
+    _ = np.fromfile(f, 'u4', 1)
+    ecc = np.fromfile(f, 'f8', 1)
+    
 
 ndt0 = 50
 ndt1 = 50
@@ -36,7 +43,7 @@ dt0 = np.power(2.0,-np.arange(10,11)).reshape(1,1)
 dt1 = np.power(2.0,-np.arange(10,11)).reshape(1,1)
 dt = np.hstack((np.tile(dt0,(ndt0,1)).flatten(), np.tile(dt1,(ndt1,1)).flatten()))
 
-shape_file = 'LGN_shape.bin'
+shape_file = 'LGN_shapeI.bin'
 
 
 nx = 41

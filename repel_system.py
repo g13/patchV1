@@ -220,7 +220,7 @@ class rec_boundary:
                             self.get_acc[i] = self.get_ahv_vec
                         # first vertical then horizontal 
                         else:
-                            if btype[i] is not 3:
+                            if btype[i] != 3:
                                 raise Exception(f'btype: {btype[i]} is not implemented')
                             self.get_acc[i] = self.get_avh_vec
             else:
@@ -240,7 +240,7 @@ class rec_boundary:
                             self.get_acc[i] = self.get_ahv
                         # first vertical then horizontal 
                         else:
-                            if btype[i] is not 3:
+                            if btype[i] != 3:
                                 raise Exception(f'btype: {btype[i]} is not implemented')
                             self.get_acc[i] = self.get_avh
         else:
@@ -262,7 +262,7 @@ class rec_boundary:
                         self.get_r[i] = self.get_rhv
                     # first vertical then horizontal 
                     else:
-                        if btype[i] is not 3:
+                        if btype[i] != 3:
                             raise Exception(f'btype: {btype[i]} is not implemented')
                         self.get_r[i] = self.get_rvh
 

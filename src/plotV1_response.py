@@ -18,14 +18,17 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
     #sample = np.array([1338, 10235])
     SCsplit = 0
     nLGNorF1F0 = True
-    ns = 8
+    ns = 20
     np.random.seed(7329443)
     nt_ = 10000
     nstep = 10000
     step0 = 1000
-    stiOri = np.pi*np.mod(iOri/nOri, 1.0)
+    if nOri > 0:
+        stiOri = np.pi*np.mod(iOri/nOri, 1.0)
+    else:
+        OPstatus = 0
+
     heatBins = 25
-    nOri = 6
     TFbins = 25
     FRbins = 25
     tbinSize = 1
@@ -53,7 +56,6 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
     plotLR_rp = False 
     
     pSample = True
-    pSpike = True
     pVoltage = True
     pCond = True
     pGap = True
@@ -65,7 +67,6 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
     pLog = True 
     
     #pSample = False
-    #pSpike = False
     #pVoltage = False
     #pCond = False
     #pGap = False
@@ -85,7 +86,6 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
         pLR = False
     
     if plotRpStat or plotLR_rp or plotRpCorr:
-        pSpike = True
         pCond = True
     
     if plotRpCorr or plotSample or plotLGNsCorr:
@@ -94,26 +94,24 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
     if plotExc_sLGN:
         pCond = True
     
-    if plotTempMod or plotScatterFF:
-        pSpike = True
-    
     if plotLR_rp:
         pLR = True
         pFeature = True
     
     if plotSample:
         pVoltage = True
-        pSpike = True
         pCond = True
     
     if plotLGNsCorr:
-        pSpike = True
         pCond = True
     
     if pCond:
         pVoltage = True
     # const
-    output_suffix = output_suffix0 + '_' + str(iOri)
+    if nOri > 0:
+        output_suffix = output_suffix0 + '_' + str(iOri)
+    else:
+        output_suffix = output_suffix0
     _output_suffix = "_" + output_suffix
     conLGN_suffix = "_" + conLGN_suffix
     conV1_suffix = "_" + conV1_suffix
@@ -196,10 +194,14 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
             pos = np.zeros((2,networkSize))
             pos[0,:] = _pos[:,0,:].reshape(networkSize)
             pos[1,:] = _pos[:,1,:].reshape(networkSize)
+            vx, vy = np.fromfile(f, 'f8', 2*networkSize).reshape(2,networkSize)
     
     with open(rawDataFn, 'rb') as f:
         dt = np.fromfile(f, prec, 1)[0] 
         nt = np.fromfile(f, 'u4', 1)[0] 
+        if step0 >= nt:
+            step0 = 0
+            print('step0 is too large, set back to 0.')
         if nt_ == 0 or step0 + nt_ >= nt:
             nt_ = nt - step0
         if nstep > nt_:
@@ -215,6 +217,9 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
         ngFF = np.fromfile(f, 'u4', 1)[0] 
         ngE = np.fromfile(f, 'u4', 1)[0] 
         ngI = np.fromfile(f, 'u4', 1)[0] 
+
+    if TF == 0:
+        TF = 1000/(nt_*dt)
     if nt_*dt < 1000/TF:
         TF = 1000/(nt_*dt)
     print(f'TF = {TF}')
@@ -243,9 +248,13 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
         print(f'feature1 range:{[np.min(feature[1,:]), np.max(feature[1,:])]}')
         if usePrefData:
             try:
-                f = open(pref_file, 'rb') 
                 with open(pref_file, 'rb') as f:
-                    OP = np.fromfile(f, 'f8', nV1)
+                    fitted = np.fromfile(f, 'i4', 1)[0]
+                    _nV1 = np.fromfile(f, 'u4', 1)[0]
+                    assert(_nV1 == nV1)
+                    if fitted == 1:
+                        print('using fitted OP')
+                    OP = np.fromfile(f, 'f4', nV1)
                 print(f'read OP from {pref_file}')
             except IOError:
                 print(f'Could not open {pref_file}! no cortical OP available, use preset OP instead.') 
@@ -257,9 +266,13 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
         print(f'OPrange: {[np.min(OP), np.max(OP)]}')
 
         OPrange = np.arange(heatBins+1)/heatBins * 180
-        dOP = np.abs(OP - stiOri)
-        dOP[dOP > np.pi/2] = np.pi - dOP[dOP > np.pi/2]
-        dOri = np.pi/(2*nOri)
+        if nOri > 0:
+            dOP = np.abs(OP - stiOri)
+            dOP[dOP > np.pi/2] = np.pi - dOP[dOP > np.pi/2]
+            dOri = np.pi/(2*nOri)
+        else:
+            dOP = np.zeros(nV1)
+            dOri = 1
         eORpick = epick[dOP[epick] <= dOri]
         iORpick = ipick[dOP[ipick] <= dOri]
     
@@ -273,62 +286,20 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
     print(f't = {t_in_sec}')
     
     # read spikes
-    max_vThres = np.max(vThres)
-    assert(max_vThres < 1)
-    if pSpike:
-        if not readNewSpike:
-            print('loading V1 spike...')
-            with np.load(spDataFn + '.npz', allow_pickle=True) as data:
-                spScatter = data['spScatter']
-                fr = data['fr']
-        else:
-            print('reading V1 spike...')
-            negativeSpike = False
-            multi_spike = 0
-            with open(rawDataFn, 'rb') as f:
-                f.seek(sizeofPrec+4*8, 1)
-                spScatter = np.empty(nV1, dtype = object)
-                for i in range(nV1):
-                    spScatter[i] = []
-                for it in range(nt):
-                    data = np.fromfile(f, prec, nV1)
-                    pick = np.logical_and(data>max_vThres, data < 1)
-                    if np.sum(pick) > 0:
-                        print(f'{np.arange(nV1)[pick]} has negative spikes at {data[pick]} + {it*dt}')
-                        negativeSpike = True
-                    tsps = data[data >= 1]
-                    pick = data < 1
-                    assert((data[pick] <= max_vThres).all())
-                    if tsps.size > 0:
-                        idxFired = np.nonzero(data >= 1)[0]
-                        k = 0
-                        for j in idxFired:
-                            nsp = np.int(np.floor(tsps[k]))
-                            tsp = tsps[k] - nsp
-                            if nsp > 1:
-                                #raise Exception(f'{nsp} spikes from {j} at time step {it}, sInfo = {tsps[k]}!')
-                                multi_spike = multi_spike + nsp 
-                                if 1-tsp > 0.5:
-                                    dtsp = tsp/nsp
-                                else:
-                                    dtsp = (1-tsp)/nsp
-                                tstart = tsp - (nsp//2)*dtsp
-                                for isp in range(nsp):
-                                    spScatter[j].append((it + tstart+isp*dtsp)*dt)
-                            else:
-                                spScatter[j].append((it+tsp)*dt)
-                            k = k + 1
-                    if iModel == 0:
-                        f.seek(((2+(ngE + ngI + ngFF)*(1+haveH))*nV1 + mI)*sizeofPrec, 1)
-                    if iModel == 1:
-                        f.seek(((3+(ngE + ngI + ngFF)*(1+haveH))*nV1 + mI)*sizeofPrec, 1)
-            if negativeSpike:
-                #print('negative spikes exist')
-                raise Exception('negative spikes exist')
-            fr = np.array([np.asarray(x)[np.logical_and(x>=step0*dt, x<(nt_+step0)*dt)].size for x in spScatter])/t_in_sec
-            np.savez(spDataFn, spName = 'spScatter', spScatter = spScatter, fr = fr)
-            print(f'number of multiple spikes in one dt: {multi_spike}')
-        print('V1 spikes acquired')
+    if not readNewSpike:
+        print('loading V1 spike...')
+        with np.load(spDataFn + '.npz', allow_pickle=True) as data:
+            spScatter = data['spScatter']
+    else:
+        spScatter = readSpike(rawDataFn, spDataFn, prec, sizeofPrec, vThres)
+
+    fr = np.array([x[np.logical_and(x>=step0*dt, x<(nt_+step0)*dt)].size for x in spScatter])/t_in_sec
+
+    if nOri == 0:
+        with open('max_fr_' + output_suffix0 + '.bin', 'wb') as f:
+            fr.tofile(f)
+
+    print('V1 spikes acquired')
     
     if plotSample or pSample:
         if 'sample' not in locals():
@@ -344,7 +315,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 sample = np.argsort(sfreq)[-ns:]
                 print(sample)
 
-            if True:
+            if False:
                 sample = np.zeros(12, dtype = int)
 
                 pick = epick[nLGN_V1[epick] > np.mean(nLGN_V1[epick])]
@@ -1045,7 +1016,6 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
             iblock = iV1//blockSize
             ithread = np.mod(iV1, blockSize)
             ax = fig.add_subplot(grid[0,:])
-            #if pSpike:
             tsp0 = np.array(spScatter[iV1])
             tsp = tsp0[np.logical_and(tsp0>=step0*dt, tsp0<(nt_+step0)*dt)]
             itype = np.nonzero(np.mod(iV1, blockSize) < typeAcc)[0][0]
@@ -1165,6 +1135,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 for j in range(6):
                     pick = iLGN_type == j
                     ax.plot(iLGN_vpos[0,pick], iLGN_vpos[1,pick], markers[j], ms = 1.0)
+                ax.plot(vx[iV1], vy[iV1], '*k', ms = 1.0)
                 ax.set_aspect('equal')
             if pSingleLGN:
                 for j in range(nLGN_V1[iV1]):

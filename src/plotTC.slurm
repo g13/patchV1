@@ -33,14 +33,14 @@ else
 	OPstatus=2
 fi
 
-#if [ "$fitTC" = True ]; then
-#
-#	pid=""
-#	for ori in $( seq 1 $nOri )
-#	do
-#		python plotV1_response.py $op $lgn $v1 $fdr $TF $ori $nOri False True False $OPstatus & 
-#		pid+="${!} "
-#	done
-#	wait $pid
-#fi
+if [ "$fitTC" = True ]; then
+
+	pid=""
+	for ori in $( seq 1 $nOri )
+	do
+		python plotV1_response.py $op $lgn $v1 $fdr $TF $ori $nOri False True False $OPstatus & 
+		pid+="${!} "
+	done
+	wait $pid
+fi
 date

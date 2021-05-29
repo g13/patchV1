@@ -186,6 +186,9 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
     iPref = np.mod(feature[1,:] + 0.5, 1.0)*nOri # for ori
 
     max_fr = fr.T.flatten()[iPref_cort + np.arange(nV1)*nOri]
+    with open('max_fr' + output_suffix[:-1] + '.bin', 'wb') as f:
+        max_fr.tofile(f)
+
     if plotSample:
         if sample is None:
             sample = np.random.randint(nV1, size = ns)
@@ -210,6 +213,8 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
     nNoOpt = 0
     noOpt = []
     if fitTC:
+        iPref_cort0 = iPref_cort
+        iPref_cort0_for_ori = iPref_cort_for_ori
         def von_Mises(theta, a, b, s, theta0):
             return b + a * np.exp(s*(np.cos(2*(theta-theta0)) - 1))
 
@@ -222,8 +227,14 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
             fit_b = np.fromfile(f, 'f8', nV1)
             fit_s = np.fromfile(f, 'f8', nV1)
             fit_theta = np.fromfile(f, 'f8', nV1)
+            noOpt = np.fromfile(f, 'u4')
             f.close()
             print('read fitted data from file')
+
+            iPref_cort_for_ori = fit_pref/np.pi*nOri
+            iPref_cort = np.round(iPref_cort_for_ori).astype(int)
+            iPref_cort[iPref_cort == 0] = nOri
+            iPref_cort = iPref_cort - 1
 
         else:
             print(f', fitting')
@@ -342,6 +353,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
             iPref_cort = np.round(iPref_cort_for_ori).astype(int)
             iPref_cort[iPref_cort == 0] = nOri
             iPref_cort = iPref_cort - 1
+            noOpt = np.array(noOpt)
             with open(fit_file, 'wb') as f:
                 fit_max_fr.tofile(f)
                 fit_pref.tofile(f)
@@ -350,12 +362,28 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
                 fit_b.tofile(f)
                 fit_s.tofile(f)
                 fit_theta.tofile(f)
+                noOpt.tofile(f)
 
         with open(pref_file, 'wb') as f:
-            fit_pref.tofile(f)
+            fitted = True
+            np.array([fitted], dtype = 'i4').tofile(f)
+            np.array([nV1], dtype = 'u4').tofile(f)
+            fit_pref.astype('f4').tofile(f)
+            (iPref_cort0_for_ori/nOri*np.pi).astype('f4').tofile(f)
+             
+            
     else:
         with open(pref_file, 'wb') as f:
-            (iPref_cort_for_ori/nOri*np.pi).tofile(f)
+            fitted = False
+            np.array([fitted], dtype = 'i4').tofile(f)
+            np.array([nV1], dtype = 'u4').tofile(f)
+            (iPref_cort_for_ori/nOri*np.pi).astype('f4').tofile(f)
+
+    with open(pref_file, 'ab') as f:
+        (iPref_thal_for_ori/nOri*np.pi).astype('f4').tofile(f)
+        (np.mod(iPref+1,nOri)/nOri*np.pi).astype('f4').tofile(f)
+
+        noOpt = np.array(noOpt)
 
     figPref = plt.figure('pref-hist', figsize = (7,4))
     ax = figPref.add_subplot(231)
@@ -938,8 +966,9 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
 
     if plotSample:
         theta = np.linspace(0, np.pi, 37)
-        #for iV1 in np.unique(np.hstack(sample,np.array(noOpt))):
-        for iV1 in np.array(noOpt):
+        sampleList = np.unique(np.hstack((sample,noOpt)))
+        for iV1 in sampleList:
+        #for iV1 in np.array(noOpt):
             iblock = iV1//blockSize
             ithread = np.mod(iV1, blockSize)
             fig = plt.figure('sampleTC-{iblock}-{ithread}', figsize = (6,4))
@@ -949,7 +978,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
             ax.plot(op, fr[iop,iV1], 'k')
             if fitTC:
                 ax.plot(theta/np.pi*180, von_Mises(theta, fit_a[iV1], fit_b[iV1], fit_s[iV1], fit_theta[iV1]), ':k')
-                ax.set_title(f'a={fit_a[iV1]:.2e}, b={fit_b[iV1]:.2e}, s={fit_s[iV1]:.2f}, {fit_pref[iV1]*180/np.pi:.2f}, {iV1 in noOpt}')
+                ax.set_title(f'a={fit_a[iV1]:.2f}, b={fit_b[iV1]:.2f}, s={fit_s[iV1]:.2f}, {fit_pref[iV1]*180/np.pi:.2f}, {iV1 in noOpt}, {[iPref_cort[iV1], iPref_cort0[iV1]]}')
 
             ax.set_ylim(bottom = 0)
             ax2.plot(op, cFF[iop,:,iV1,0].sum(axis = 1)*gFF_F1F0[iop, iV1], 'g')

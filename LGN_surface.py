@@ -17,10 +17,12 @@ k = np.sqrt(140)*0.873145
 class surface:
     def __init__(self, shape_file, pos_file, ecc, k = k, a = 0.635, b = 96.7):
         self.ecc = ecc
-        with open(pos_file,'r') as f:
+        with open(pos_file,'rb') as f:
             self.nLGN = np.fromfile(f,'u4', count=1)[0]
+            _ecc = np.fromfile(f,'f8', count=1)[0]
             self.pos = np.fromfile(f, count = 2*self.nLGN).reshape(2,self.nLGN)
         rmax = np.max(np.sqrt(np.sum(self.pos*self.pos, axis = 0)))
+        assert(_ecc < self.ecc)
         if rmax > self.ecc:
             raise Exception(f'{rmax} > {self.ecc}')
         with open(shape_file,'r') as f:

@@ -38,16 +38,23 @@ module load matlab/2020b
 #conda activate general
 ## <<< conda initialize <<<
 
+theme=$1
 date
-pid=""
 #python script1.py
-#python getLGNsurface_I.py &
+
+pid=""
+
+#python getLGNsurface_I.py $theme &
 #pid+="${!} "
-#python getLGNsurface_C.py &
+#python getLGNsurface_C.py $theme &
 #pid+="${!} "
+
 #python parallel_repel_system_I.py
 #pid+="${!} "
-python LGN_surfaceGrid.py &
+
+python LGN_surfaceGrid.py $theme &
 pid+="${!} "
+
 wait $pid
+
 date
