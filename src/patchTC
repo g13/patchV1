@@ -4,7 +4,7 @@ set -e
 fitTC=True
 nOri=6
 TF=8
-SF=17
+SF=44
 op=test-s${SF}t${TF}-replay
 fdr=$op
 lgn=b_4_20-test
@@ -20,7 +20,7 @@ if [ "$plotTConly" = True ]; then
 	fitDataReady=$2
 else
 	plotOnly=$2
-	fitDataReady=True
+	fitDataReady=False
 fi
 
 
@@ -53,7 +53,11 @@ if [ "$plotTConly" = False ]; then
 	for ori in $( seq 1 $nOri )
 	do
 		export ori
-		jobID=`sbatch --export=ALL ori.slurm`
+		if [ "$plotOnly" = True ]; then
+			jobID=`sbatch --export=ALL ori_cpu.slurm`
+		else
+			jobID=`sbatch --export=ALL ori_gpu.slurm`
+		fi
 		jobList="$jobList:${jobID:20}"
 	
 		if [ "${ori}" -lt "${nOri}" ]; then

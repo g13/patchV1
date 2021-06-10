@@ -52,10 +52,10 @@ pid+="${!} "
 echo python plotV1_response.py $op $lgn $v1 $fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus
 python plotV1_response.py $op $lgn $v1 $fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus &
 pid+="${!} "
-if [ ${ori} -eq 1 ]; then
-	echo python connections.py ${op}_${ori} $lgn $v1 $fdr
-	python connections.py ${op}_${ori} $lgn $v1 $fdr & 
-	pid+="${!} "
-fi
+#if [ ${ori} -eq 1 ]; then
+#	echo python connections.py ${op}_${ori} $lgn $v1 $fdr
+#	python connections.py ${op}_${ori} $lgn $v1 $fdr & 
+#	pid+="${!} "
+#fi
 wait $pid
 date

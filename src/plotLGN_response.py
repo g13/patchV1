@@ -57,7 +57,7 @@ nstep = 10000
 seed = 1653783
 #iLGN = np.array([84,1455,1833,2575])
 #iLGN = np.array([6*16+3,7*16+3,8*16+3, 6*16+10,7*16+10,8*16+10])
-#iLGN = np.arange(185133)
+iLGN = np.array([0,1,2,3])
 ns = 10
 
 parameterFn = "patchV1_cfg" +output_suffix + ".bin"

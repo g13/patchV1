@@ -11,6 +11,7 @@ from sys import stdout
 from readPatchOutput import *
 sys.path.append(os.path.realpath('..'))
 from ext_signal import apply_sRGB_gamma, LMS2sRGB
+from global_vars import LGN_vposFn, featureFn, V1_allposFn, seed
 
 ns = 10
 tau = 200
@@ -19,16 +20,20 @@ t0 = 10 # where spike > t0 are counted
 plotSnapshots = True
 plotPop = False # calc props from the max deviation RF snapshot 
 tau_pick = tau_step//3 # one of the steps from tau_steps for pop analysis
-seed=1785421
 checkFrame = True
 
-def getAcuityAtEcc(ecc):
-    acuityK = 0.202103;
-    logAcuity0 = np.log(16) #40
+def acuity(ecc): 
+    acuityK = 0.2049795945022049
+    logAcuity0 = 3.6741080244555278
+    cpd = -acuityK*ecc + logAcuity0
+    cpd = np.exp(cpd)
+    return 1.0/cpd/4
+
+def getAcuityAtEcc(ecc, deg = True):
+    if not deg:
+        ecc = ecc/np.pi*180
     rsig = 1
-    cpd = -acuityK * ecc/np.pi*180 + logAcuity0;
-    cpd = np.exp(cpd);
-    acuityC = 1.0/cpd/4 /180*np.pi/rsig; # from cpd to radius of center
+    acuityC = acuity(ecc)/180*np.pi/rsig; # from cpd to radius of center
     acuityS = acuityC*6
     return acuityC, acuityS
 
@@ -201,10 +206,6 @@ def plotSta(isuffix, output_suffix, conLGN_suffix, output_fdr, nf, hasOP = False
 
     print(parameterFn)
 
-    featureFn = "V1_feature-micro.bin"
-    LGN_vposFn = "parvo_float-micro.bin"
-    V1_posFn = 'V1_allpos-micro.bin'
-
     prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1, nstep, dt, normViewDistance, L_x0, L_y0, R_x0, R_y0 = read_cfg(parameterFn, True)
 
     LGN_V1_ID, nLGN_V1 = readLGN_V1_ID(LGN_V1_idFn)
@@ -214,7 +215,7 @@ def plotSta(isuffix, output_suffix, conLGN_suffix, output_fdr, nf, hasOP = False
         featureType = np.array([0,1])
         feature, rangeFeature, minFeature, maxFeature = readFeature(featureFn, nV1, featureType)
         LR = feature[0,:]
-        with open(V1_posFn, 'rb' ) as f:
+        with open(V1_allposFn, 'rb' ) as f:
             nblock, neuronPerBlock, posDim = np.fromfile(f, 'u4', 3)
             _ = np.fromfile(f, 'f8', 4)
             nV1 = nblock * neuronPerBlock

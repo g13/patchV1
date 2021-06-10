@@ -1283,7 +1283,7 @@ int main(int argc, char **argv) {
 	    R_y0 = 0.5;
 	    normViewDistance = normEccMaxStimulus_extent/tan(max_ecc*deg2rad);
     } else {
-	    Float stimulus_extent = 2*stimulus_range + 2*stimulus_buffer;
+	    Float stimulus_extent = 2*(stimulus_range + stimulus_buffer);
         normEccMaxStimulus_extent = max_ecc/stimulus_extent; // origin at center, just the ecc at VF center, its surround can be much bigger, normalized for texture coordinates
 	    L_x0 = 0.5;
 	    L_y0 = 0.5;
