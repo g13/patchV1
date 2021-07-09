@@ -57,7 +57,7 @@ nstep = 10000
 seed = 1653783
 #iLGN = np.array([84,1455,1833,2575])
 #iLGN = np.array([6*16+3,7*16+3,8*16+3, 6*16+10,7*16+10,8*16+10])
-iLGN = np.array([0,1,2,3])
+#iLGN = np.array([0,1,2,3])
 ns = 10
 
 parameterFn = "patchV1_cfg" +output_suffix + ".bin"
@@ -168,22 +168,21 @@ if plotResponseSample:
         ax = fig.add_subplot(grid[i,:])
         ax.plot(t, convol[:,i].T/max_convol[j], 'g', lw = 0.1)
         max_convol_irl = np.max(convol[:,i]*convolRatio)
-        print(f'convolRatio = {convolRatio}')
-        print(f'max(convol/max_convol): {max_convol_irl}/{max_convol[j]} = {max_convol_irl/max_convol[j]}')
+        print(f'convolRatio = {convolRatio:.3f}')
+        print(f'max(convol/max_convol): {max_convol_irl:.3f}/{max_convol[j]:.3f} = {max_convol_irl/max_convol[j]:.3f}')
         ax.plot(t, contrast[:,0,j], ':r', lw = 0.1, label = 'C')
         ax.plot(t, contrast[:,1,j], ':b', lw = 0.1, label = 'S')
         ax.plot(t, luminance[:,i], ':m', lw = 0.1, label = 'lum')
         sp0 = np.array(LGN_spScatter[j])
-        print(sp0.size)
+        print(f'{sp0.size} spikes')
         sp = sp0[sp0 < t[-1]]
         ax.plot(sp, np.zeros(sp.size), '*g', ms = 1.0)
 
         ax.set_ylim([-1.0,1.0])
-        if i == 0:
-            ax.legend()
         ax2 = ax.twinx()
         ax2.plot(t, LGNfr[:,i], 'k', lw = 0.1)
-        ax2.legend()
+        if i == 0:
+            ax.legend()
         ax2.set_ylim(bottom = 0)
         if LGN_k[0,j] > 0:
             on_off = 'on'

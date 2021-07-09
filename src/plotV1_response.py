@@ -20,7 +20,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
     #sample = np.array([1338, 10235])
     SCsplit = 0
     nLGNorF1F0 = True
-    ns = 20
+    ns = 10
     np.random.seed(seed)
     nt_ = 10000
     nstep = 10000
@@ -37,9 +37,9 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
     nsmooth = 0
     lw = 0.1
     
-    #plotRpStat = True 
-    #plotRpCorr = True
-    #plotScatterFF = True
+    plotRpStat = True 
+    plotRpCorr = True
+    plotScatterFF = True
     plotSample = True
     #plotDepC = True # plot depC distribution over orientation
     #plotLGNsCorr = True
@@ -47,9 +47,9 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
     #plotExc_sLGN = True
     #plotLR_rp = True
     
-    plotRpStat = False 
-    plotRpCorr = False 
-    plotScatterFF = False
+    #plotRpStat = False 
+    #plotRpCorr = False 
+    #plotScatterFF = False
     #plotSample = False
     plotDepC = False
     plotLGNsCorr = False 
@@ -249,6 +249,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
         featureType = np.array([0,1])
         feature, rangeFeature, minFeature, maxFeature = readFeature(featureFn, nV1, featureType)
         LR = feature[0,:]
+        print(f'feature0 range:{[np.min(feature[0,:]), np.max(feature[0,:])]}')
         print(f'feature1 range:{[np.min(feature[1,:]), np.max(feature[1,:])]}')
         if usePrefData:
             try:
@@ -267,6 +268,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 OP = np.mod(feature[1,:] + 0.5, 1.0)*np.pi
 
         else:
+            print(f'using preset OP')
             OP = np.mod(feature[1,:] + 0.5, 1.0)*np.pi
         print(f'OPrange: {[np.min(OP), np.max(OP)]}')
 
@@ -1462,37 +1464,49 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
     
         target = gFF_F1F0
         ax = fig.add_subplot(grid[1,0])
-        pick = epick[np.logical_and(nLGN_V1[epick]>0,gFF_F0_0[epick])]
-        active = np.sum(fr[pick]>0)/np.sum(nLGN_V1[epick]>0)
-        image = HeatMap(target[pick], fr[pick], F1F0range, heatBins, ax, 'Reds', log_scale = pLog, intPick = False, tickPick1 = 5)
-        ax.set_title(f'active simple {active*100:.3f}%')
+        pick = epick[np.logical_and(nLGN_V1[epick]>SCsplit,gFF_F0_0[epick])]
+        if np.sum(nLGN_V1[epick]>SCsplit) > 0:
+            active = np.sum(fr[pick]>0)/np.sum(nLGN_V1[epick]>SCsplit)
+            image = HeatMap(target[pick], fr[pick], F1F0range, heatBins, ax, 'Reds', log_scale = pLog, intPick = False, tickPick1 = 5)
+            ax.set_title(f'active simpleE {active*100:.3f}%')
+        else:
+            ax.set_title('no active simpleE')
         ax.set_xlabel('gFF_F1/F0')
         ax.set_ylabel('ExcS FR')
     
         ax = fig.add_subplot(grid[1,1])
-        pick = ipick[np.logical_and(nLGN_V1[ipick]>0,gFF_F0_0[ipick])]
-        active = np.sum(fr[pick]>0)/np.sum(nLGN_V1[ipick]>0)
-        image = HeatMap(target[pick], fr[pick], F1F0range, heatBins, ax, 'Blues', log_scale = pLog, intPick = False, tickPick1 = 5)
+        pick = ipick[np.logical_and(nLGN_V1[ipick]>SCsplit,gFF_F0_0[ipick])]
+        if np.sum(nLGN_V1[ipick]>SCsplit) > 0:
+            active = np.sum(fr[pick]>0)/np.sum(nLGN_V1[ipick]>SCsplit)
+            image = HeatMap(target[pick], fr[pick], F1F0range, heatBins, ax, 'Blues', log_scale = pLog, intPick = False, tickPick1 = 5)
+            ax.set_title(f'active simpleI {active*100:.3f}%')
+        else:
+            ax.set_title('no active simpleI')
         ax.set_xlabel('gFF_F1/F0')
         ax.set_ylabel('InhS FR')
-        ax.set_title(f'active simple {active*100:.3f}%')
     
         target = np.sum(gE[:,:,0], axis = 0)
         ax = fig.add_subplot(grid[1,2])
-        pick = epick[nLGN_V1[epick]==0]
-        active = np.sum(fr[pick]>0)/np.sum(nLGN_V1[epick]==0)
-        image = HeatMap(target[pick], fr[pick], heatBins, heatBins, ax, 'Reds', log_scale = pLog)
+        pick = epick[nLGN_V1[epick]<=SCsplit]
+        if np.sum(nLGN_V1[epick]<=SCsplit) > 0:
+            active = np.sum(fr[pick]>0)/np.sum(nLGN_V1[epick]<=SCsplit)
+            image = HeatMap(target[pick], fr[pick], heatBins, heatBins, ax, 'Reds', log_scale = pLog)
+            ax.set_title(f'active complexE {active*100:.3f}%')
+        else:
+            ax.set_title('no ative complexE')
         ax.set_xlabel('gE')
         ax.set_ylabel('ExcC FR')
-        ax.set_title(f'active complex {active*100:.3f}%')
     
         ax = fig.add_subplot(grid[1,3])
-        pick = ipick[nLGN_V1[ipick]==0]
-        active = np.sum(fr[pick]>0)/np.sum(nLGN_V1[ipick]==0)
-        image = HeatMap(target[pick], fr[pick], heatBins, heatBins, ax, 'Blues', log_scale = pLog)
+        pick = ipick[nLGN_V1[ipick]>=SCsplit]
+        if np.sum(nLGN_V1[ipick]>=SCsplit) > 0:
+            active = np.sum(fr[pick]>0)/np.sum(nLGN_V1[ipick]>=SCsplit)
+            image = HeatMap(target[pick], fr[pick], heatBins, heatBins, ax, 'Blues', log_scale = pLog)
+            ax.set_title(f'active complexI {active*100:.3f}%')
+        else:
+            ax.set_title(f'no active complexI')
         ax.set_xlabel('gE')
         ax.set_ylabel('InhC FR')
-        ax.set_title(f'active complex {active*100:.3f}%')
     
         target = np.sum(gFF[:,:,0], axis = 0)
         ax = fig.add_subplot(grid[1,4])
@@ -1750,7 +1764,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
 
-                color[:,0] = (OP[pick]-np.pi/2)/np.pi
+                color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
                 ax11.scatter(pos[0,pick], pos[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
@@ -1765,7 +1779,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
 
-                color[:,0] = (OP[pick]-np.pi/2)/np.pi
+                color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
                 ax11.scatter(pos[0,pick], pos[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
@@ -1809,7 +1823,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
 
-                color[:,0] = (OP[pick]-np.pi/2)/np.pi
+                color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
                 ax11.scatter(pos[0,pick], pos[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
@@ -1824,7 +1838,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
 
-                color[:,0] = (OP[pick]-np.pi/2)/np.pi
+                color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
                 ax11.scatter(pos[0,pick], pos[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
@@ -1867,7 +1881,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
 
-                color[:,0] = (OP[pick]-np.pi/2)/np.pi
+                color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
                 ax12.scatter(pos[0,pick], pos[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
@@ -1882,7 +1896,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
 
-                color[:,0] = (OP[pick]-np.pi/2)/np.pi
+                color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
                 ax12.scatter(pos[0,pick], pos[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
@@ -1925,7 +1939,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
 
-                color[:,0] = (OP[pick]-np.pi/2)/np.pi
+                color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
                 ax12.scatter(pos[0,pick], pos[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
@@ -1940,7 +1954,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
 
-                color[:,0] = (OP[pick]-np.pi/2)/np.pi
+                color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
                 ax12.scatter(pos[0,pick], pos[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
@@ -2068,7 +2082,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
 
-                color[:,0] = (OP[pick]-np.pi/2)/np.pi
+                color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
                 ax11.scatter(pos[0,pick], pos[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
@@ -2083,7 +2097,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
 
-                color[:,0] = (OP[pick]-np.pi/2)/np.pi
+                color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
                 ax11.scatter(pos[0,pick], pos[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
@@ -2210,7 +2224,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
 
-                color[:,0] = (OP[pick]-np.pi/2)/np.pi
+                color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
                 ax11.scatter(pos[0,pick], pos[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
@@ -2225,7 +2239,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
                 
-                color[:,0] = (OP[pick]-np.pi/2)/np.pi
+                color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
                 ax11.scatter(pos[0,pick], pos[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
@@ -2349,7 +2363,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
 
-                color[:,0] = (OP[pick]-np.pi/2)/np.pi
+                color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
                 ax12.scatter(pos[0,pick], pos[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
@@ -2364,7 +2378,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
 
-                color[:,0] = (OP[pick]-np.pi/2)/np.pi
+                color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
                 ax12.scatter(pos[0,pick], pos[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
@@ -2489,7 +2503,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
 
-                color[:,0] = (OP[pick]-np.pi/2)/np.pi
+                color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
                 ax12.scatter(pos[0,pick], pos[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
@@ -2504,7 +2518,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
 
-                color[:,0] = (OP[pick]-np.pi/2)/np.pi
+                color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
                 ax12.scatter(pos[0,pick], pos[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)

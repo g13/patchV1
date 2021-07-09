@@ -31,9 +31,11 @@ np.random.seed(1324)
 ns = 50
 sample = np.random.randint(nV1, size = ns)
 #sample = np.argpartition(-nLGN_V1, ns)[:ns]
-#sample[-1] = 14*1024+153
+#sample = np.array([14*1024+347])
+#sample = np.array([14*1024+347])
+#sample = np.array([12992])
 #sample = np.array([49663, 21036, 49532, 49166, 50083, 49851, 21478, 49497, 49705, 49567])
-#ns = sample.size
+ns = sample.size
 
 featureType = np.array([0,1])
 feature, rangeFeature, minFeature, maxFeature = readFeature(featureFn, nV1, featureType)
@@ -92,6 +94,11 @@ with open(V1_allposFn, 'r') as f:
     print(f'vy:{[V1_vy0, V1_vy0 + V1_vyspan]}')
     vx, vy = np.fromfile(f, 'f8', 2*networkSize).reshape(2,networkSize)
 
+fig = plt.figure(f'LGN-V1_freq', dpi = 300)
+ax = fig.add_subplot(111)
+sf_pick = nLGN_V1>0
+ax.hist(RFfreq[sf_pick]/(2*a[sf_pick]), bins = 15)
+fig.savefig(outputfdr + f'LGN-V1_freq.png')
 
 fig = plt.figure(f'nLGN-V1', dpi = 300)
 ax = fig.add_subplot(111)

@@ -4,7 +4,7 @@ set -e
 fitTC=True
 nOri=6
 TF=8
-SF=44
+SF=39
 op=test-s${SF}t${TF}-replay
 fdr=$op
 lgn=b_4_20-test

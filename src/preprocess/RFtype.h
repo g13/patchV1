@@ -51,14 +51,6 @@ struct InputActivation {
     }
 };
 
-Float acuity(Float ecc) {
-    Float k = 0.20498;
-    Float log_cpd0 = 3.67411;
-    Float cpd = exponential(-k*ecc + log_cpd0);
-    Float acuity = 1.0/cpd/4.0;
-    return acuity;
-}
-
 enum class InputType: PosInt { // LGN
     // center-surround
     LonMoff = 0, // parvocellular
@@ -649,8 +641,10 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         std::vector<std::vector<PosInt>> onComponent;
         std::vector<std::vector<PosInt>> offComponent;
         bool pInfo = false;
-        //if (iV1 == 49*1024 + 946) {
-        if (iV1 == 49*1024 + 946 || iV1 == 4*1024 + 675) {
+        //if (iV1 == 3*1024 + 744) {
+        //if (iV1 == 49*1024 + 946 || iV1 == 4*1024 + 675) {
+        if (iV1 == 1183) {
+        //if (iV1 ==  5460 || iV1 == 3816) {
             pInfo = true;
             //pInfo = false;
         }
@@ -670,6 +664,10 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         Float min_tan = tangent(ori_tol);
 
         // try multiple on
+        std::vector<Float> phaseOn; 
+        std::vector<Float> disOnY; 
+        std::vector<Float> meanOnY; 
+        std::vector<Size> nExtraOn; 
         Size non = ion.size();
         if (pInfo) {
             std::cout << iV1 << " have " << non << " red LGNs\n";
@@ -679,10 +677,10 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         }
 		for (PosInt i = 0; i < non; i++) {
             for (PosInt j = i+1; j < non; j++) {
-                if (abs((xon[i]-xon[j])/(yon[i]-yon[j])) < min_tan && abs(yon[i] - yon[j]) < dmax*disLGN) {
+                if (abs((xon[i]-xon[j])/(yon[i]-yon[j])) < min_tan && abs(yon[i] - yon[j]) < disLGN) {
                     bool newComp = true;
                     if (pInfo) {
-                        printf("picked: %i, %i (%.4f, %.4f) /< %.4f", i, j, xon[i]-xon[j], yon[i]-yon[j], min_tan);
+                        printf("picked: %i, %i (%.4f, %.4f)", i, j, xon[i]-xon[j], yon[i]-yon[j]);
                     }
                     for (PosInt ic=0; ic<onComponent.size(); ic++) {
                         bool new_j = true;
@@ -695,8 +693,15 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                                 new_j = false;
                             }
                         }
-                        if (new_j && !newComp) {
-                            onComponent[ic].push_back(j);
+                        if (!newComp) {
+                            disOnY[ic] += abs(yon[i] - yon[j]);
+                            if (new_j) {
+                                onComponent[ic].push_back(j);
+                                phaseOn[ic] += xon[j];
+                                meanOnY[ic] += yon[j];
+                            } else {
+                                nExtraOn[ic]++;
+                            }
                         }
                         if (pInfo) {
                             if (!newComp) {
@@ -711,6 +716,10 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                         onComponent.push_back(std::vector<PosInt>());
                         onComponent.back().push_back(i);
                         onComponent.back().push_back(j);
+                        phaseOn.push_back(xon[i] + xon[j]);
+                        meanOnY.push_back(yon[i] + yon[j]);
+                        disOnY.push_back(abs(yon[i] - yon[j]));
+                        nExtraOn.push_back(0);
                         if (pInfo) {
                             printf(" for component %i\n", onComponent.size()-1);
                         }
@@ -727,35 +736,33 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
             anyLGN += 1;
         }
         Float minPhaseVar = 1;
-        std::vector<Float> phaseOn(m); 
-        std::vector<Float> onVar(m); 
-        std::vector<Float> meanOnY(m); 
-        PosInt ionC = 0;
+        PosInt ionC;
         for (PosInt i=0; i<m; i++) {
             Size nC = onComponent[i].size();
-            Float mean = 0;
-            for (PosInt j=0; j<nC; j++) {
-                mean += xon[onComponent[i][j]];
-                meanOnY[i] += yon[onComponent[i][j]];
-            }
-            mean /= nC;
-            phaseOn[i] = mean;
+            phaseOn[i] /= nC;
             meanOnY[i] /= nC;
+            disOnY[i] /= nC-1 + nExtraOn[i];
             Float var_x = 0;
             for (PosInt j=0; j<nC; j++) {
-                var_x += power(xon[onComponent[i][j]] - mean,2);
+                var_x += power(xon[onComponent[i][j]] - phaseOn[i],2);
             }
             var_x /= onComponent[i].size();
-            onVar[i] = var_x;
             if (var_x < minPhaseVar) {
                 minPhaseVar = var_x;
                 ionC = i;
             }
         }
-        if (pInfo) {
-            printf(" component %i is chosen\n", ionC);
+        if (m > 0) {
+            if (pInfo) {
+                printf("on component %i is chosen\n", ionC);
+            }
         }
 
+        // try multiple on
+        std::vector<Float> phaseOff; 
+        std::vector<Float> meanOffY; 
+        std::vector<Float> disOffY; 
+        std::vector<Size> nExtraOff; 
         Size noff = ioff.size();
         if (pInfo) {
             std::cout << iV1 << " have " << noff << " green LGNs\n";
@@ -765,7 +772,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         }
 		for (PosInt i = 0; i < noff; i++) {
             for (PosInt j = i+1; j < noff; j++) {
-                if (abs((xoff[i]-xoff[j])/(yoff[i]-yoff[j])) < min_tan && abs(yoff[i] - yoff[j]) < dmax*disLGN) {
+                if (abs((xoff[i]-xoff[j])/(yoff[i]-yoff[j])) < min_tan && abs(yoff[i] - yoff[j]) < disLGN) {
                     bool newComp = true;
                     if (pInfo) {
                         printf("picked: %i, %i (%.4f, %.4f) ", i, j, xoff[i]-xoff[j], yoff[i]-yoff[j]);
@@ -781,8 +788,15 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                                 new_j = false;
                             }
                         }
-                        if (new_j && !newComp) {
-                            offComponent[ic].push_back(j);
+                        if (!newComp) {
+                            disOffY[ic] += abs(yoff[i] - yoff[j]);
+                            if (new_j) {
+                                offComponent[ic].push_back(j);
+                                phaseOff[ic] += xoff[j];
+                                meanOffY[ic] += yoff[j];
+                            } else {
+                                nExtraOff[ic]++;
+                            }
                         }
                         if (pInfo) {
                             if (!newComp) {
@@ -797,6 +811,10 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                         offComponent.push_back(std::vector<PosInt>());
                         offComponent.back().push_back(i);
                         offComponent.back().push_back(j);
+                        phaseOff.push_back(xoff[i] + xoff[j]);
+                        meanOffY.push_back(yoff[i] + yoff[j]);
+                        disOffY.push_back(abs(yoff[i] - yoff[j]));
+                        nExtraOff.push_back(0);
                         if (pInfo) {
                             printf(" for component %i\n", offComponent.size()-1);
                         }
@@ -813,40 +831,35 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
             anyLGN += 2;
         }
         minPhaseVar = 1;
-        std::vector<Float> phaseOff(m); 
-        std::vector<Float> offVar(m); 
-        std::vector<Float> meanOffY(m); 
-        PosInt ioffC = 0;
+        PosInt ioffC;
         for (PosInt i=0; i<m; i++) {
             Size nC = offComponent[i].size();
-            Float mean = 0;
-            for (PosInt j=0; j<nC; j++) {
-                mean += xoff[offComponent[i][j]];
-                meanOffY[i] += yoff[offComponent[i][j]];
-            }
-            phaseOff[i] = mean/nC;
+            phaseOff[i] /= nC;
             meanOffY[i] /= nC;
+            disOffY[i] /= nC-1 + nExtraOff[i];
             Float var_x = 0;
             for (PosInt j=0; j<offComponent[i].size(); j++) {
-                var_x += power(offComponent[i][j] - mean,2);
+                var_x += power(xoff[offComponent[i][j]] - phaseOff[i],2);
             }
             var_x /= offComponent[i].size();
-            offVar[i] = var_x;
             if (var_x < minPhaseVar) {
                 minPhaseVar = var_x;
                 ioffC = i;
             }
         }
-        if (pInfo) {
-            printf(" off component %i is chosen\n", ioffC);
+        if (m > 0) {
+            if (pInfo) {
+                printf(" off component %i is chosen\n", ioffC);
+            }
         }
+
 		bool try_again = true;
 		while (try_again) {
 			switch (anyLGN) {
         	    case 0: {// two LGN 
 					try_again = false;
         	        if (pInfo) {
-        	            std::cout << "no components recruited, try pairs...";
+        	            std::cout << "try pairs...";
         	        }
         	        PosInt kon, koff;
         	        for (PosInt i = 0; i < non; i++) {
@@ -864,13 +877,20 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         	        }
         	        if (anyLGN) {
         	            onComponent.push_back(std::vector<PosInt>());
-        	            onComponent[0].push_back(kon);
-        	            offComponent.push_back(std::vector<PosInt>());
-        	            offComponent[0].push_back(koff);
+                        ionC = onComponent.size()-1;
+        	            onComponent[ionC].push_back(kon);
         	            phaseOn.push_back(xon[kon]);
+                        if (ionC != phaseOn.size() - 1) {
+                            printf("ionC = %i, size of phaseOn: %i, size of onComponent%i\n", ionC, phaseOn.size(), onComponent.size());
+                            assert(ionC == phaseOn.size() - 1);
+                        }
+
+        	            offComponent.push_back(std::vector<PosInt>());
+                        ioffC = offComponent.size()-1;
+        	            offComponent[ioffC].push_back(koff);
         	            phaseOff.push_back(xoff[koff]);
         	            if (pInfo) {
-        	                std::cout << "succeeded\n";
+        	                std::cout << "succeeded with pair (" << kon << ", " << koff << ")\n";
         	            }
         	        } else {
         	            if (pInfo) {
@@ -880,7 +900,6 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         	    }
         	    break;
         	    case 1: {// on components only, get one off LGN
-					try_again = false;
         	        int imin = -1;
         	        Float rangeOnY[2] = {100, 0};
         	        for (PosInt i=0; i<onComponent[ionC].size(); i++) {
@@ -892,12 +911,13 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         	                rangeOnY[0] = temp_y;
         	            }
         	        }
-        	        Float centerDis = (rangeOnY[1] - rangeOnY[0]) * (1 + min_tan);
+        	        Float centerDis = (rangeOnY[1] - rangeOnY[0]) * (1 + min_tan)/2;
         	        if (pInfo) {
         	            std::cout << "centerDis = " << centerDis << "\n";
         	        }
         	        for (PosInt i=0; i<noff; i++) {
-        	            if (abs(xoff[i] - phaseOn[ionC]) >= disLGN && abs(xoff[i] - phaseOn[ionC]) < dmax*disLGN) {
+                        Float dx = abs(xoff[i] - phaseOn[ionC]);
+        	            if (dx >= disLGN && dx < dmax*disLGN && dx > disOnY[ionC]) {
         	                Float cD = abs(2*yoff[i] - (rangeOnY[0] + rangeOnY[1]));
         	                if (pInfo) {
         	                    std::cout << i << "th off LGN cD = " << cD << "\n";
@@ -920,15 +940,16 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         	            if (pInfo) {
         	                std::cout << " chose " << imin << " th off LGN\n";
         	            }
+					    try_again = false;
         	        } else {
         	            if (pInfo) {
-        	                std::cout << " other off LGNs dropped for range\n";
+        	                std::cout << " all other off LGNs dropped for range, try two LGN next before falling back on using only the " << ionC << "th on component.\n";
         	            }
+                        anyLGN = 0;
         	        }
         	    }
         	    break;
         	    case 2: {// off components only, get one on LGN
-					try_again = false;
         	        if (pInfo) {
         	            std::cout << "try find one on LGN\n";
         	        }
@@ -943,12 +964,13 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         	                rangeOffY[0] = temp_y;
         	            }
         	        }
-        	        Float centerDis = (rangeOffY[1] - rangeOffY[0]) * (1 + min_tan);
+        	        Float centerDis = (rangeOffY[1] - rangeOffY[0]) * (1 + min_tan)/2;
         	        if (pInfo) {
         	            std::cout << "centerDis = " << centerDis << "\n";
         	        }
         	        for (PosInt i=0; i<non; i++) {
-        	            if (abs(xon[i] - phaseOff[ioffC]) >= disLGN && abs(xon[i] - phaseOff[ioffC]) < dmax*disLGN) {
+                        Float dx = abs(xon[i] - phaseOff[ioffC]);
+        	            if (dx >= disLGN && dx < dmax*disLGN && dx > disOffY[ioffC]) {
         	                Float cD = abs(2*yon[i] - (rangeOffY[0] + rangeOffY[1]));
         	                if (pInfo) {
         	                    std::cout << i << "th on LGN cD = " << cD << "\n";
@@ -971,36 +993,36 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         	            if (pInfo) {
         	                std::cout << " chose " << imin << " th on LGN\n";
         	            }
+                        try_again = false;
         	        } else {
         	            if (pInfo) {
-        	                std::cout << " other on LGNs dropped for range\n";
+        	                std::cout << " all other on LGNs dropped for range, try two LGN next before falling back on using only the" << ioffC << "th off component.\n";
         	            }
+                        anyLGN = 0;
         	        }
         	    }
         	    break;
         	    case 3: {// on and off components
         	        Float minDisY = disLGN;
         	        if (pInfo) {
-        	            std::cout << " pick on components\n";
-        	            std::cout << " minDis square = " << minDisY << "\n";
+        	            std::cout << " pick pairs of on and off components\n";
         	        }
 					bool nopair = true;
         	        for (PosInt i=0; i<onComponent.size(); i++) {
         	            for (PosInt j=0; j<offComponent.size(); j++) {
-        	                if (abs(phaseOn[i] - phaseOff[j]) >= disLGN && abs(phaseOn[i] - phaseOff[j]) < dmax*disLGN) {
-        	                    Float disY = abs(meanOnY[i] - meanOffY[j]);
-        	                    if (pInfo) {
-        	                        std::cout << "pair: " << i << "th on and " << j << "th off has y-distance = " << disY << "\n";
-        	                    }
+                            Float dx = abs(phaseOn[i] - phaseOff[j]);
+        	                Float dydx_ratio = std::max(disOnY[i], disOffY[j])/dx;
+        	                if (dx >= disLGN && dx < dmax*disLGN && dydx_ratio < 1) {
+                                Float disY = abs(meanOnY[i] - meanOffY[j]);
         	                    if (disY < minDisY) {
-        	                        minDisY = disY;
+                                    minDisY = disY;
         	                        ionC = i;
         	                        ioffC = j;
 									nopair = false;
         	                    }
         	                } else {
         	                    if (pInfo) {
-        	                        std::cout << "pair: " << i << "th on and " << j << "th off is dropped for disLGN\n";
+        	                        std::cout << "pair: " << i << "th on and " << j << "th off is droppped, dy:dx = " << dydx_ratio << ", dx = " << dx << "\n";
         	                    }
         	                }
         	            }
@@ -1054,12 +1076,14 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                     }
                 }
                 phase = -norm_x[j];
+                sfreq = 1/(2*disLGN);
                 added.push_back(j);
                 anyLGN = 5;
                 j = idList[j];
                 idList.clear();
 			    idList.push_back(j);
             } else {
+                sfreq = 0;
                 idList.clear();
             }
         } else {
@@ -1086,14 +1110,18 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 
             if (offComponent.size() > 0 && onComponent.size() > 0) {
                 sfreq = 1/abs(phaseOn[ionC] - phaseOff[ioffC]);
-                assert(sfreq <= 1/disLGN); 
-                assert(sfreq > 1/dmax/disLGN);
+                if (sfreq > 1/disLGN) {
+                    std::cout << sfreq << " = 1/(" << phaseOn[ionC] << " - " << phaseOff[ioffC] << ")\n";
+                    assert(sfreq <= 1/disLGN);
+                }
+                assert(sfreq > 1/std::max(dmax,2.0f)/disLGN);
                 if (iOnOff > 0) {
                     phase = -phaseOn[ionC];
                 } else {
                     phase = -phaseOff[ioffC];
                 }
             } else {
+                sfreq = 1/(2*disLGN);
                 if (onComponent.size() > 0) {
                     oType = OutputType::LonMoff;
                     phase = -phaseOn[ionC];

@@ -38,6 +38,14 @@ void LR2original(vector<T> &seqByLR, vector<T> &original, vector<Int> LR, Size n
     assert(seqByLR.size() == original.size());
 }
 
+Float get_acuity(Float ecc) {
+    Float k = 0.20498;
+    Float log_cpd0 = 3.67411;
+    Float cpd = exponential(-k*ecc + log_cpd0);
+    Float acuity = 1.0/cpd/4.0;
+    return acuity;
+}
+
 vector<vector<Float>> retinotopic_connection(
         vector<vector<Size>> &poolList,
         RandomEngine &rGen,
@@ -132,7 +140,7 @@ vector<vector<Float>> retinotopic_connection(
 				Float qfreq;
 				RF->setup_param(m, sfreq[i], phase[i], 1.0, theta[i], a[i], baRatio[i], RefType[i], strictStrength, envelopeSig);
 				//m = RF->construct_connection_thres(x, y, iType, poolList[i], strengthList, rGen, maxN, conThres, modAmp_nCon[i], qfreq, cart.first[i], cart.second[i], i);
-				m = RF->construct_connection_opt(x, y, iType, poolList[i], strengthList, modAmp_nCon[i], qfreq, cart.first[i], cart.second[i], i, ori_tol, acuity(ecc[i])/a[i]*disLGN);
+				m = RF->construct_connection_opt(x, y, iType, poolList[i], strengthList, modAmp_nCon[i], qfreq, cart.first[i], cart.second[i], i, ori_tol, get_acuity(ecc[i])/a[i]*disLGN);
 				sfreq[i] = qfreq;
 			} else {
             	if (SimpleComplex == 0) {
@@ -1039,7 +1047,7 @@ int main(int argc, char *argv[]) {
     cout << "std SF suggested after connection: " << square_root(sfreq2 - mean_sfreq*mean_sfreq) << " cpd\n";
 
     Size nonZeroMinPool = maxLGNperV1pool; 
-    Size nonZeroMeanPool = 0; 
+    Float nonZeroMeanPool = 0; 
     Size nonZeroMaxPool = 0;
 
     Size minPool = maxLGNperV1pool; 
