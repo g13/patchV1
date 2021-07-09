@@ -22,7 +22,6 @@
 #include "stats.cuh"
 #include "util/util.h"
 #include "util/po.h"
-#include "preprocess/RFtype.h"
 #include "global.h"
 #include "MACRO.h"
 
@@ -106,7 +105,7 @@ inline void init_layer_obj(cudaTextureObject_t &texObj, cudaArray* cuArr) {
 	cudaCreateTextureObject(&texObj, &resDesc, &texDesc, NULL);
 }
 
-void prep_sample(unsigned int iSample, unsigned int width, unsigned int height, float* L, float* M, float* S, cudaArray *dL, cudaArray *dM, cudaArray *dS, unsigned int nSample, cudaMemcpyKind cpyKind, int reverse) {
+void prep_sample(unsigned int iSample, unsigned int width, unsigned int height, float* L, float* M, float* S, cudaArray *dL, cudaArray *dM, cudaArray *dS, unsigned int nSample, float midL, float midM, float midS, cudaMemcpyKind cpyKind, int reverse) {
 	// copy the three channels L, M, S of the #iSample frame to the cudaArrays dL, dM and dS
 	cudaMemcpy3DParms params = {0};
 	params.srcPos = make_cudaPos(0, 0, 0);
@@ -117,9 +116,6 @@ void prep_sample(unsigned int iSample, unsigned int width, unsigned int height, 
 
 	if (reverse == 1) {
 		Size nPixel = width*height;
-		//std::cout << "im here\n";
-		float midL = std::accumulate(L, L + nPixel, 0.0)/nPixel;
-		//std::cout << "midL = " << midL << "\n";
 		for (PosInt i=0; i<nPixel; i++) {
 			L[i] = 2*midL - L[i];
 			if (L[i] > 1) L[i] = 1;

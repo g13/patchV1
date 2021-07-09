@@ -17,13 +17,22 @@ module load boost/intel/1.74.0
 module load matlab/2020b
 module list
 
-TF=13
-fdr=lFF
-op=lFF_rs3
-#op=lFF_single2
+readNewSpike=True
+TF=8
+fdr=mouse_lFF
+#op=single_lFF_s
+op=lFF_s3
 op_cfg=lFF.cfg
 lgn=lFF
 v1=lFF
+usePrefData=False
+collectMeanDataOnly=False
+OPstatus=1
+LGN_switch=true
+seed=1924784
+
+ori=0
+nOri=0
 
 if [ -d "$fdr" ]
 then
@@ -38,20 +47,37 @@ echo outputs to $fdr
 
 date
 
-matlab -r "inputLearnFF;exit;"
+matlab -r "inputLearnFF('$lgn', $seed);exit;"
 date
 ./patch -c $op_cfg
 date
+
 pid=""
-python plotLGN_response.py $op $lgn $fdr True & 
+echo python plotLGN_response.py $op $lgn $fdr $readNewSpike & 
+python plotLGN_response.py $op $lgn $fdr $readNewSpike & 
 pid+="${!} "
-python plotV1_response_lFF.py $op $lgn $v1 $fdr $TF 0.25 True True & 
+echo plotV1_response_lFF.py $op $lgn $v1 $fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus & 
+python plotV1_response_lFF.py $op $lgn $v1 $fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus & 
 pid+="${!} "
-matlab -r "testLearnFF('$lgn', '$op', '$fdr');outputLearnFF('$lgn', '$op', '$fdr', true, false);exit;" &
+echo matlab -r "testLearnFF('$lgn', '$op', '$fdr');outputLearnFF('$lgn', '$op', '$fdr', $LGN_switch, false);exit;" &
+matlab -r "testLearnFF('$lgn', '$op', '$fdr');outputLearnFF('$lgn', '$op', '$fdr', $LGN_switch, false);exit;" &
 pid+="${!} "
-wait $pid
 
 #python patchOutput.py $op $fdr &
 #pid+="${!} "
+
+wait $pid
+
+#isuffix=0
+#echo python getReceptiveField_lFF.py collecting $op $lgn $fdr $isuffix 1
+#python getReceptiveField_lFF.py collecting $op $lgn $fdr $isuffix 1
+#echo python getReceptiveField_lFF.py plotting $isuffix $op $lgn $fdr $nOri $isuffix
+#python getReceptiveField_lFF.py plotting $isuffix $op $lgn $fdr $nOri $isuffix
+#
+#isuffix=1
+#echo python getReceptiveField_lFF.py collecting $op $lgn $fdr $isuffix 1
+#python getReceptiveField_lFF.py collecting $op $lgn $fdr $isuffix 1
+#echo python getReceptiveField_lFF.py plotting $isuffix $op $lgn $fdr $nOri $isuffix
+#python getReceptiveField_lFF.py plotting $isuffix $op $lgn $fdr $nOri $isuffix
 
 date

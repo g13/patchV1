@@ -1,5 +1,4 @@
 #!/bin/bash
-#SBATCH --gres=gpu:1
 #SBATCH --job-name=plotV1
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=5
@@ -27,17 +26,9 @@ op_cfg=${op}-ori_${ori}.cfg
 
 cp $op_cfg $fdr
 
-date
-if [ "$plotOnly" = False ]; then
-	./patch -c $op_cfg
-	date
-	readNewSpike=True
-	usePrefData=False
-else
-	readNewSpike=False
-	usePrefData=True
-	collectMeanDataOnly=False
-fi
+readNewSpike=True
+usePrefData=False
+collectMeanDataOnly=False
 
 if [ "$fitTC" = True ]; then
 	OPstatus=0
@@ -45,6 +36,7 @@ else
 	OPstatus=1
 fi
 
+date
 pid=""
 echo python plotLGN_response.py ${op}_${ori} $lgn $fdr $readNewSpike
 python plotLGN_response.py ${op}_${ori} $lgn $fdr $readNewSpike &
@@ -52,10 +44,10 @@ pid+="${!} "
 echo python plotV1_response.py $op $lgn $v1 $fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus
 python plotV1_response.py $op $lgn $v1 $fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus &
 pid+="${!} "
-if [ ${ori} -eq 1 ]; then
-	echo python connections.py ${op}_${ori} $lgn $v1 $fdr
-	python connections.py ${op}_${ori} $lgn $v1 $fdr & 
-	pid+="${!} "
-fi
+#if [ ${ori} -eq 1 ]; then
+#	echo python connections.py ${op}_${ori} $lgn $v1 $fdr
+#	python connections.py ${op}_${ori} $lgn $v1 $fdr & 
+#	pid+="${!} "
+#fi
 wait $pid
 date

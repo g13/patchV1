@@ -14,6 +14,7 @@ import matplotlib.colors as clr
 from matplotlib import cm
 import sys
 from readPatchOutput import *
+from global_vars import LGN_vposFn, featureFn, seed
 #import multiprocessing as mp
 np.seterr(invalid = 'raise')
 
@@ -26,7 +27,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
     conV1_suffix = "_" + conV1_suffix
 
     fr_thres = 1
-    ns = 100
+    ns = 20
     ndpref = 10
     SCsplit = 0
     heatBins = 25
@@ -49,23 +50,15 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
 
     LGN_V1_ID_file = 'LGN_V1_idList'+conLGN_suffix+'.bin'
     LGN_V1_s_file = 'LGN_V1_sList'+conLGN_suffix+'.bin'
-    #LGN_vpos_file = 'parvo_merged_float-micro.bin'
-    LGN_vpos_file = 'parvo_float-micro.bin'
 
     pref_file = 'cort_pref' + output_suffix[:-1] + '.bin'
     fit_file = 'fit_data' + output_suffix[:-1] + '.bin'
 
-    featureFn = "V1_feature-micro.bin"
     parameterFn = "patchV1_cfg" +output_suffix + "1.bin"
 
-
-    with open(LGN_V1_ID_file, 'rb') as f:
-        nList = np.fromfile(f,'u4',1)[0]
-        LGN_V1_ID = np.empty(nList, dtype = object)
-        nLGN_V1 = np.zeros(nList, dtype = int)
-        for i in range(nList):
-            nLGN_V1[i] = np.fromfile(f, 'u4', 1)[0]
-            LGN_V1_ID[i] = np.fromfile(f, 'u4', nLGN_V1[i])
+    LGN_V1_s = readLGN_V1_s0(LGN_V1_s_file)
+    LGN_V1_ID, nLGN_V1 = readLGN_V1_ID(LGN_V1_ID_file)
+    nLGN_I, nLGN_C, nLGN, max_ecc, vCoordSpan, LGN_vpos, LGN_type = readLGN_vpos(LGN_vposFn)
 
     nV1_0 = nLGN_V1.size
     
@@ -135,30 +128,9 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
     iSpick = ipick[nLGN_V1[ipick] > SCsplit]
     iCpick = ipick[nLGN_V1[ipick] <= SCsplit]
 
-    with open(LGN_V1_s_file, 'rb') as f:
-        LGN_V1_s = np.empty(nList, dtype = object)
-        nList = np.fromfile(f, 'u4', 1)[0]
-        maxList = np.fromfile(f, 'u4', 1)[0]
-        for i in range(nList):
-            listSize = np.fromfile(f, 'u4', 1)[0]
-            assert(nLGN_V1[i] == listSize)
-            assert(listSize <= maxList)
-            LGN_V1_s[i] = np.fromfile(f, 'f4', listSize)
-
-    with open(LGN_vpos_file, 'rb') as f:
-        nLGN_I = np.fromfile(f, 'u4', 1)[0]
-        nLGN_C = np.fromfile(f, 'u4', 1)[0]
-        nLGN = nLGN_I + nLGN_C
-        max_ecc = np.fromfile(f, 'f4', 1)[0]
-        vCoordSpan = np.fromfile(f, 'f4', 4)
-        LGN_vpos = np.fromfile(f, 'f4', nLGN*2).reshape(2, nLGN)
-        LGN_type = np.fromfile(f, 'u4', nLGN).reshape(nLGN)
-
-    iop = np.arange(nOri)
     op = np.arange(nOri)/nOri*180
     opEdges = (np.arange(nOri+1)-0.5)/nOri*180
     op = np.append(op, 180)
-    iop = np.append(iop, 0)
     opEdges = np.append(opEdges, 180*(1+0.5/nOri))
     print(opEdges)
 
@@ -184,6 +156,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
     print(min(LR), max(LR))
     #iPref = np.mod(np.round(feature[1,:]*nOri), nOri)
     iPref = np.mod(feature[1,:] + 0.5, 1.0)*nOri # for ori
+    print(f'iPref: {[np.min(iPref), np.max(iPref)]}')
 
     max_fr = fr.T.flatten()[iPref_cort + np.arange(nV1)*nOri]
     with open('max_fr' + output_suffix[:-1] + '.bin', 'wb') as f:
@@ -191,6 +164,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
 
     if plotSample:
         if sample is None:
+            np.random.seed(seed)
             sample = np.random.randint(nV1, size = ns)
             if False:
                 sample = np.zeros(9, dtype = int)
@@ -226,7 +200,6 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
             fit_a = np.fromfile(f, 'f8', nV1)
             fit_b = np.fromfile(f, 'f8', nV1)
             fit_s = np.fromfile(f, 'f8', nV1)
-            fit_theta = np.fromfile(f, 'f8', nV1)
             noOpt = np.fromfile(f, 'u4')
             f.close()
             print('read fitted data from file')
@@ -245,7 +218,6 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
             fit_a = np.zeros(nV1)
             fit_b = np.zeros(nV1)
             fit_s = np.zeros(nV1)
-            fit_theta = np.zeros(nV1)
             # von Mises fit: b + a * exp(s*(cos(theta-theta0)-1)), 
             def von_Mises0(theta, a, s, theta0):
                 return a * np.exp(s*(np.cos(2*(theta-theta0)) - 1))
@@ -264,7 +236,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
 
                 # a = (max - min)/(1-exp(-2))
                 # b = max-a
-            theta = np.arange(nOri)/nOri*np.pi
+            theta = (np.arange(nOri)+1)/nOri*np.pi
             for i in range(nV1):
                 q = fr[:,i]
                 max_q = np.max(q)
@@ -341,7 +313,6 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
                 fit_a[i] = a
                 fit_b[i] = b
                 fit_s[i] = s
-                fit_theta[i] = fit_pref[i]
                 fit_max_fr[i] = a + b
 
                 if np.mod(i+1,nV1//100) == 0 or i == nV1-1:
@@ -350,6 +321,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
             print(f'{nNoOpt/nV1*100:.2f}% of the neurons has no optimal fit for a tuning curve')
 
             iPref_cort_for_ori = fit_pref/np.pi*nOri
+            print(f'fit_pref: {[np.min(fit_pref), np.max(fit_pref)]}')
             iPref_cort = np.round(iPref_cort_for_ori).astype(int)
             iPref_cort[iPref_cort == 0] = nOri
             iPref_cort = iPref_cort - 1
@@ -361,7 +333,6 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
                 fit_a.tofile(f)
                 fit_b.tofile(f)
                 fit_s.tofile(f)
-                fit_theta.tofile(f)
                 noOpt.tofile(f)
 
         with open(pref_file, 'wb') as f:
@@ -370,8 +341,6 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
             np.array([nV1], dtype = 'u4').tofile(f)
             fit_pref.astype('f4').tofile(f)
             (iPref_cort0_for_ori/nOri*np.pi).astype('f4').tofile(f)
-             
-            
     else:
         with open(pref_file, 'wb') as f:
             fitted = False
@@ -383,7 +352,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
         (iPref_thal_for_ori/nOri*np.pi).astype('f4').tofile(f)
         (np.mod(iPref+1,nOri)/nOri*np.pi).astype('f4').tofile(f)
 
-        noOpt = np.array(noOpt)
+        noOpt = np.array(noOpt, dtype = 'i4')
 
     figPref = plt.figure('pref-hist', figsize = (7,4))
     ax = figPref.add_subplot(231)
@@ -430,15 +399,17 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
 
     ax.set_xlabel('delta pref preset vs Thal.')
 
-    spick = np.concatenate((eSpick,iSpick))
+    spick = np.concatenate((eSpick[nLGN_V1[eSpick]>1],iSpick[nLGN_V1[iSpick]>1]))
     dPref = iPref_thal_for_ori[spick]-iPref[spick]
     pick = dPref > nOri//2
     dPref[pick] = nOri - dPref[pick]
     pick = dPref < -nOri//2
     dPref[pick] = nOri + dPref[pick]
-    dprefMax_pick = spick[np.absolute(dPref) == np.max(np.absolute(dPref))]
+    dprefMax_pick = spick[np.argpartition(-np.absolute(dPref), ndpref)[:ndpref]]
 
-    dprefMin_pick = spick[np.absolute(dPref) == np.min(np.absolute(dPref))]
+    dprefMin_pick = spick[np.argpartition(np.absolute(dPref), ndpref)[:ndpref]]
+
+    #dprefMin_pick = spick[np.absolute(dPref) == np.min(np.absolute(dPref))]
 
     ax = figPref.add_subplot(235)
 
@@ -524,17 +495,12 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
 
     markers = ['^r', 'vg', 'og', 'sr', '*k', 'dk']
     ms = 1.5
-    if ndpref > dprefMax_pick.size:
-        ndprefMax = dprefMax_pick.size
-    else:
-        ndprefMax = ndpref
-    randseq = np.random.permutation(dprefMax_pick.size)
 
-    print(f'prefMax iV1: {dprefMax_pick[randseq[:ndprefMax]]}')
+    print(f'prefMax iV1: {dprefMax_pick}')
     fig = plt.figure('thal_set-prefMax', dpi = 300)
-    grid = gs.GridSpec((ndprefMax+3)//4, 4, figure = fig, hspace = 0.2)
+    grid = gs.GridSpec((ndpref+3)//4, 4, figure = fig, hspace = 0.2)
     i = 0
-    for iV1 in dprefMax_pick[randseq[:ndprefMax]]:
+    for iV1 in dprefMax_pick:
         ax = fig.add_subplot(grid[i//4,np.mod(i,4)])
         iLGN_vpos = LGN_vpos[:,LGN_V1_ID[iV1]]
         iLGN_type = LGN_type[LGN_V1_ID[iV1]]
@@ -605,15 +571,10 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
         i = i+1
     fig.savefig(outputfdr+'thal_set-prefMax'+conLGN_suffix + output_suffix[:-1] +'.png')
 
-    if ndpref > dprefMin_pick.size:
-        ndprefMin = dprefMin_pick.size
-    else:
-        ndprefMin = ndpref
-
     fig = plt.figure('thal_set-prefMin', dpi = 300)
-    grid = gs.GridSpec((ndprefMin+3)//4, 4, figure = fig, hspace = 0.2)
+    grid = gs.GridSpec((ndpref+3)//4, 4, figure = fig, hspace = 0.2)
     i = 0
-    for iV1 in dprefMin_pick[:ndprefMin]:
+    for iV1 in dprefMin_pick:
         ax = fig.add_subplot(grid[i//4,np.mod(i,4)])
         iLGN_vpos = LGN_vpos[:,LGN_V1_ID[iV1]]
         iLGN_type = LGN_type[LGN_V1_ID[iV1]]
@@ -966,7 +927,10 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
 
     if plotSample:
         theta = np.linspace(0, np.pi, 37)
-        sampleList = np.unique(np.hstack((sample,noOpt)))
+        itheta = np.arange(nOri)
+        itheta = np.insert(itheta, 0, nOri-1)
+        #sampleList = np.unique(np.hstack((sample,noOpt))).astype('i4')
+        sampleList = sample
         for iV1 in sampleList:
         #for iV1 in np.array(noOpt):
             iblock = iV1//blockSize
@@ -975,30 +939,30 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
             grid = gs.GridSpec(2, 5, figure = fig, hspace = 0.3, wspace = 0.3)
             ax = fig.add_subplot(grid[:,:2]) # fr, cE, cI, depC
             ax2 = ax.twinx()
-            ax.plot(op, fr[iop,iV1], 'k')
+            ax.plot(op, fr[itheta,iV1], 'k')
             if fitTC:
-                ax.plot(theta/np.pi*180, von_Mises(theta, fit_a[iV1], fit_b[iV1], fit_s[iV1], fit_theta[iV1]), ':k')
+                ax.plot(theta/np.pi*180, von_Mises(theta, fit_a[iV1], fit_b[iV1], fit_s[iV1], fit_pref[iV1]), ':k')
                 ax.set_title(f'a={fit_a[iV1]:.2f}, b={fit_b[iV1]:.2f}, s={fit_s[iV1]:.2f}, {fit_pref[iV1]*180/np.pi:.2f}, {iV1 in noOpt}, {[iPref_cort[iV1], iPref_cort0[iV1]]}')
 
             ax.set_ylim(bottom = 0)
-            ax2.plot(op, cFF[iop,:,iV1,0].sum(axis = 1)*gFF_F1F0[iop, iV1], 'g')
+            ax2.plot(op, cFF[itheta,:,iV1,0].sum(axis = 1)*gFF_F1F0[itheta, iV1], 'g')
             ax2.plot(op, np.zeros(op.size), ':y')
-            ax2.plot(op, cE[iop,:,iV1,0].sum(axis = 1), 'r')
-            ax2.plot(op, cI[iop,:,iV1,0].sum(axis = 1), 'b')
+            ax2.plot(op, cE[itheta,:,iV1,0].sum(axis = 1), 'r')
+            ax2.plot(op, cI[itheta,:,iV1,0].sum(axis = 1), 'b')
             ax.set_xlabel('orientation')
             ax.set_ylabel('fr')
             ax2.set_ylabel('current')
 
             ax = fig.add_subplot(grid[:,3:]) # gE, gI, gapI
             if nLGN_V1[iV1] > 0:
-                ax.plot(op, gFF[iop,:,iV1,0].sum(axis = 1)*gFF_F1F0[iop, iV1], 'g')
-            ax.plot(op, gE[iop,:,iV1,0].sum(axis = 1), 'r')
-            ax.plot(op, gI[iop,:,iV1,0].sum(axis = 1), 'b')
+                ax.plot(op, gFF[itheta,:,iV1,0].sum(axis = 1)*gFF_F1F0[itheta, iV1], 'g')
+            ax.plot(op, gE[itheta,:,iV1,0].sum(axis = 1), 'r')
+            ax.plot(op, gI[itheta,:,iV1,0].sum(axis = 1), 'b')
             ax.set_xlabel('orientation')
             ax.set_ylabel('conductance')
             if ithread < mI:
                 iI = iblock*mI + ithread - mE
-                ax.plot(op, cGap[iop, iI, 0], 'c')
+                ax.plot(op, cGap[itheta, iI, 0], 'c')
 
             fig.savefig(outputfdr+ f'sampleTC-{iblock}-{ithread}#{nLGN_V1[iV1]}' +output_suffix[:-1]+ '.png', dpi = 300)
             plt.close(fig)

@@ -1,5 +1,5 @@
 function testLearnFF(isuffix, osuffix, fdr, iV1)
-	nt_ = 4000; % choose time steps to plot
+	nt_ = 0; % choose time steps to plot
 	targetfr = 5
 	nsub = 2 + 3;
 	thres = 0.5;  % as a percent of gmax
@@ -46,8 +46,11 @@ function testLearnFF(isuffix, osuffix, fdr, iV1)
 	nLearnTypeFF_I = fread(fid, 1, 'uint')
 	nLearnTypeFF = nLearnTypeFF_I + nLearnTypeFF_E;
 	size_t = int64(10*4);
+	if nt_ == 0
+		nt_ = 1000
+	end
 	if nt_ > nt
-	    nt_ = nt;
+	    nt_ = nt
 	end
 	disp(['plotting time: ', num2str(dt*nt_)]);
 	assert(max_LGNperV1 > 0);
@@ -342,9 +345,11 @@ function testLearnFF(isuffix, osuffix, fdr, iV1)
 	        gl = plot(t, igFF, ':g');
 	        lines = [lines, gl];
 	        labels = [labels, 'LGN cond'];
-	        xlim([0,t(end)]);
+	        xlim([0, t(end)]);
 	        max_igFF = max(igFF);
-	        ylim([0,max_igFF*1.1]);
+			if max_igFF > 0
+				ylim([0, max_igFF*1.1]);
+			end
 	        ss = sLGN(:,i)/gmax*max_igFF;
 	        gs = plot(t, ss, '-b');
 	        lines = [lines, gs];

@@ -54,6 +54,7 @@ int main(int argc, char **argv) {
     bool flat_retina;
     bool uniform_LGN;
     bool LGN_switch;
+    bool reverseInput;
     bool getLGN_sp;
 	bool delPrevSnapshot;
 	bool asInit;
@@ -161,7 +162,7 @@ int main(int argc, char **argv) {
 		("fbROI", po::value<vector<Float>>(&fbROI), "feedback ROI not implemented")
 		("boostOri", po::value<vector<Float>>(&boostOri), "boosting neurons with orientation preference with defined boostOri, [baseline, std], the mean is set by iOri")
 		("iOri", po::value<vector<PosInt>>(&iOri), "boosting neurons with orientation preference of iOri/nOri*PI")
-		("nOri", po::value<Size>(&nOri), "boosting neurons with orientation preference of iOri/nOri*PI")
+		("nOri", po::value<Size>(&nOri)->default_value(0), "boosting neurons with orientation preference of iOri/nOri*PI")
 		("nFBperColumn", po::value<vector<Size>>(&nFBperColumn), "total simulatoin time in units of time step")
 		("fbSamplingRate", po::value<vector<Float>>(&fbSamplingRate), "total simulatoin time in units of time step")
 		("fbEI_ratio", po::value<vector<Float>>(&fbEI_ratio), "total simulatoin time in units of time step")
@@ -259,9 +260,10 @@ int main(int argc, char **argv) {
 		("saveLGN_gallery", po::value<bool>(&saveLGN_gallery)->default_value(true), "check convolution kernels and maximum convolution values, write data to disk, specify filename through LGN_gallery_filename")
 		("saveOutputB4V1", po::value<bool>(&saveOutputB4V1)->default_value(true), "check adapted luminance values, write data to disk, specify filename through outputB4V1_filename")
 		("ignoreRetinogeniculateDelay", po::value<bool>(&ignoreRetinogeniculateDelay)->default_value(true), "ignore the delay")
-		("flat_retina", po::value<bool>(&flat_retina)->default_value(false), "flat retina to flat stimulus, no special transformations")
+		("flat_retina", po::value<bool>(&flat_retina)->default_value(false), "flat retina means cyclop,  flat stimulus and no special transformations")
 		("uniform_LGN", po::value<bool>(&uniform_LGN)->default_value(false), "uniform LGN properties within cell type")
 		("LGN_switch", po::value<bool>(&LGN_switch)->default_value(false), "control LGN activation during retinal waves, make sure LGN_switch file is ready")
+		("reverseInput", po::value<bool>(&reverseInput)->default_value(false), "control input On-Off reverse")
 		("getLGN_sp", po::value<bool>(&getLGN_sp)->default_value(false), "if write LGN spikes to file")
 		("delPrevSnapshot", po::value<bool>(&delPrevSnapshot)->default_value(true), "delete old snapshot")
 		("asInit", po::value<bool>(&asInit)->default_value(true), "use snapshot for initialization not to resume previous simulation")
@@ -1106,8 +1108,9 @@ int main(int argc, char **argv) {
 		cout << "magno tau: " << mRetrace << " in #dt should be divisible by mKernelSample: " << mKernelSample << ".\n"; 
 		return EXIT_FAILURE;
 	}
+    cout << "parvo tau = " << nRetrace << " dt, magno tau = " << mRetrace << "\n";
 
-	// from the retina facing out
+	// from the retina facing outk
 	ifstream fStimulus, fLGN_switch; // ext. inputs
 	ifstream fV1_RF, fV1_feature; // V1 related
 	ifstream fLGN_vpos; // LGN VF pos 
@@ -1147,6 +1150,22 @@ int main(int argc, char **argv) {
 	fStimulus.read(reinterpret_cast<char*>(&domain[0]), 2 * sizeof(float));
 	stimulus_buffer = static_cast<Float>(domain[0]);
 	stimulus_range = static_cast<Float>(domain[1]);
+	cout << "ecc = " << stimulus_range << ", buffer = " << stimulus_buffer << "\n";
+
+    PosInt neye;
+	fStimulus.read(reinterpret_cast<char*>(&neye), sizeof(PosInt));
+	cout << "neye = " << neye << "\n";
+    if (neye == 1) {
+        if (!flat_retina) {
+            cout << "non-flat retina shall receive two eye stimulus, not yet compatible with the single eye stimulus\n";
+            return EXIT_FAILURE;
+        }
+    } else {
+        if (flat_retina) {
+            cout << "flat retina shall receive one eye stimulus, not yet compatible with the binocular stimulus\n";
+            return EXIT_FAILURE;
+        }
+    }
 	streampos sofStimulus = fStimulus.tellg();
 	fStimulus.seekg(0, fStimulus.end);
 	streampos eofStimulus = fStimulus.tellg();
@@ -1212,7 +1231,7 @@ int main(int argc, char **argv) {
 	nLGN = nLGN_I + nLGN_C;
     Float normEccMaxStimulus_extent;
 	if (max_ecc > stimulus_range) {
-		cout << "max_ecc: " << max_ecc << "must not be larger than " << stimulus_range << "\n";
+		cout << "max_ecc: " << max_ecc << " must not be larger than " << stimulus_range << "\n";
         return EXIT_FAILURE;
 	} else {
 		cout << "LGN center visual field pos are within ecc of " << max_ecc << ", while the stimulus ranges in " << stimulus_range << " with a buffer of " << stimulus_buffer << "\n"; 
@@ -1223,10 +1242,10 @@ int main(int argc, char **argv) {
     vector<Float> LGN_sDur;
     vector<Size> LGN_switchIt;
 	vector<int> reverse;
-    if (LGN_switch) {
+    if (LGN_switch || reverseInput) {
         fLGN_switch.open(LGN_switch_filename + conLGN_suffix, fstream::in | fstream::binary);
         if (!fLGN_switch) {
-		    cout << "Cannot open or find " << LGN_switch_filename + conLGN_suffix <<" to read in LGN properties.\n";
+		    cout << "Cannot open or find " << LGN_switch_filename + conLGN_suffix <<" to read in LGN switch settings.\n";
 		    return EXIT_FAILURE;
         } else {
             fLGN_switch.read(reinterpret_cast<char*>(&nStatus), sizeof(Size));
@@ -1242,24 +1261,15 @@ int main(int argc, char **argv) {
 			vector<float> LGN_sDur0(nStatus);
 		    fLGN_switch.read(reinterpret_cast<char*>(&LGN_sDur0[0]), nStatus*sizeof(float));
 			for (PosInt i=0; i<nStatus; i++) {
-				LGN_sDur[i] = static_cast<Float>(LGN_sDur0[i]);
+				LGN_sDur[i] = static_cast<Float>(LGN_sDur0[i])*1000;
 			}
 			vector<float>().swap(LGN_sDur0);
 			vector<float>().swap(LGN_status0);
             Float totalDur = accumulate(LGN_sDur.begin(), LGN_sDur.end(), 0.0);
-            for (PosInt i = 1; i < nStatus; i++) {
-                LGN_switchIt[i] = static_cast<Size>(std::floor(LGN_sDur[i-1]/totalDur*nt)) + LGN_switchIt[i-1];
-            }
-			/*
-            cout << "number of status change: " << nStatus << ": " << totalDur << "\n";
             for (PosInt i = 0; i < nStatus; i++) {
-                cout << "starting tstep: " << LGN_switchIt[i] << "\n";
-                for (PosInt j=0; j<nInputType; j++) {
-                    cout << LGN_status[i*nInputType + j] << "; " << LGN_sDur[i];
-                    if (j<nInputType-1) cout << ", ";
-                    else  cout << "\n";
-                }
-            } */
+                LGN_switchIt[i] = static_cast<Size>(std::round(LGN_sDur[i]/dt));
+            }
+			
 		    fLGN_switch.read(reinterpret_cast<char*>(&reverse[0]), nStatus*sizeof(int));
 			cout << "reverse: ";
             for (PosInt i = 0; i < nStatus; i++) {
@@ -1283,7 +1293,7 @@ int main(int argc, char **argv) {
 	    R_y0 = 0.5;
 	    normViewDistance = normEccMaxStimulus_extent/tan(max_ecc*deg2rad);
     } else {
-	    Float stimulus_extent = 2*stimulus_range + 2*stimulus_buffer;
+	    Float stimulus_extent = 2*(stimulus_range + stimulus_buffer);
         normEccMaxStimulus_extent = max_ecc/stimulus_extent; // origin at center, just the ecc at VF center, its surround can be much bigger, normalized for texture coordinates
 	    L_x0 = 0.5;
 	    L_y0 = 0.5;
@@ -1429,16 +1439,20 @@ int main(int argc, char **argv) {
         // Magno-cellular have no sustain response, std is arbitarily set
         Float K_onMagno[2] = {60.0f * frRatioLGN, 0.1f};
         Float ratio_onMagno[2] = {1.0f, 0.1f};
-        Float tauR_onMagno[2] = {1.5f, 0.1f};
-        Float tauD_onMagno[2] = {4.5f, 0.1f};
+        //Float tauR_onMagno[2] = {1.5f, 0.1f}; // Macaque, 8Hz
+        //Float tauD_onMagno[2] = {4.5f, 0.1f};
+        Float tauR_onMagno[2] = {4.8f, 0.1f}; // Mouse, 4Hz
+        Float tauD_onMagno[2] = {13.0f, 0.1f};
         Float nR_onMagno[2] = {19.0f, 0.1f};
         Float nD_onMagno[2] = {9.5f, 0.1f};
         Float delay_onMagno[2] = {14.0f, 0.1f};
 
         Float K_offMagno[2] = {60.0f * frRatioLGN, 0.1f};
         Float ratio_offMagno[2] = {1.0f, 0.1f};
-        Float tauR_offMagno[2] = {1.5f, 0.1f};
-        Float tauD_offMagno[2] = {4.5f, 0.1f};
+        //Float tauR_onMagno[2] = {1.5f, 0.1f}; // Macaque, 8Hz
+        //Float tauD_onMagno[2] = {4.5f, 0.1f};
+        Float tauR_offMagno[2] = {4.8f, 0.1f}; // Mouse, 4Hz
+        Float tauD_offMagno[2] = {13.0f, 0.1f};
         Float nR_offMagno[2] = {19.0f, 0.1f};
         Float nD_offMagno[2] = {9.5f, 0.1f};
         Float delay_offMagno[2] = {14.0f, 0.1f};
@@ -1559,12 +1573,9 @@ int main(int argc, char **argv) {
 		Float min_acuity = 10;
 		Float mean_acuity = 0;
 
-		//Float acuityC[2] = {0.03f*deg2rad, 0.01f*deg2rad/1.349f}; // interquartile/1.349 = std 
-		//Float acuityS[2] = {0.18f*deg2rad, 0.07f*deg2rad/1.349f};
-		Float acuityC_M[2] = {0.06f*deg2rad, 0.02f*deg2rad/1.349f}; // interquartile/1.349 = std 
+		Float acuityC_M[2] = {6.0f*deg2rad, 0.6f*deg2rad/1.349f}; // interquartile/1.349 = std 
 		acuityC_M[0] /= rsig;
-
-		Float acuityS_M[2] = {0.18f*deg2rad, 0.06f*deg2rad/1.349f};
+		Float acuityS_M[2] = {18.0f*deg2rad, 1.8f*deg2rad/1.349f};
 		acuityS_M[0] /= rsig;
 
 		Float pTspD[2];
@@ -1637,8 +1648,7 @@ int main(int argc, char **argv) {
 		                tie(LGN_rw[i], LGN_rw[i+nLGN]) = get_rands_from_correlated_gauss(acuityC, acuityS, rho_SC, rho_SC_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound, smaller);
 		    			break;
                     case InputType::OnOff: case InputType::OffOn:
-						acuityC[0] *= 2;
-		                tie(LGN_rw[i], LGN_rw[i+nLGN]) = get_rands_from_correlated_gauss(acuityC, acuityS, rho_SC, rho_SC_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound, smaller);
+		                tie(LGN_rw[i], LGN_rw[i+nLGN]) = get_rands_from_correlated_gauss(acuityC_M, acuityS_M, rho_SC, rho_SC_comp, rGen_LGNsetup, rGen_LGNsetup, positiveBound, positiveBound, smaller);
                         break;
                     default:
 		    			cout << "There's no implementation of this type with non-uniform LGN\n";
@@ -1698,10 +1708,10 @@ int main(int argc, char **argv) {
                         LGN_rh[i+nLGN] = acuityS[0];
                         break;
                     case InputType::OnOff: case InputType::OffOn:
-                        LGN_rw[i] = acuityC[0]*2;
-                        LGN_rw[i+nLGN] = acuityS[0];
-                        LGN_rh[i] = acuityC[0]*2;
-                        LGN_rh[i+nLGN] = acuityS[0];
+                        LGN_rw[i] = acuityC_M[0];
+                        LGN_rw[i+nLGN] = acuityS_M[0];
+                        LGN_rh[i] = acuityC_M[0];
+                        LGN_rh[i+nLGN] = acuityS_M[0];
                         break;
                 }
                 LGN_ecc[i+nLGN] = LGN_ecc[i];
@@ -2450,7 +2460,7 @@ int main(int argc, char **argv) {
 	cout << " mE = " << mE << ", mI = " << mI << "\n";
 
 	vector<Float> fOri;
-	if (vm.count("nOri")) {
+	if (nOri > 0) {
     	if (boostOri.size() > 0) {
 			if (iOri.size() == 0) {
     	        cout << "when boostOri is set, iOri needs to be set.\n";
@@ -2491,25 +2501,47 @@ int main(int argc, char **argv) {
 				}
 			}
 		}
-	}
+	} else {
+        for (PosInt i = 0; i < nType; i++) {
+            if (boostOri[i*2 + 1] != 0) {
+                cout << "nOri is not set or is zero, boostOri[" << i*2 + 1 << "] (the std of von Mises) should be 0\n";
+                if (tonicDep[i] == 0) {
+                    boostOri[i*2 + 1] = 0;
+                } else {
+                    return EXIT_FAILURE;
+                }
+            }
+		    fOri.push_back(0);
+		}
+    }
 
 	vector<Float> featureValue;
 	if (readFeature) {
 		fV1_feature.open(V1_feature_filename, ios::in|ios::binary);
 		if (!fV1_feature) {
-			cout << "failed to open pos file:" << V1_feature_filename << "\n";
+			cout << "failed to open feature file:" << V1_feature_filename << "\n";
 			return EXIT_FAILURE;
 		}
 		Size nFeature;
 		fV1_feature.read(reinterpret_cast<char*>(&nFeature), sizeof(Size));
-		featureValue.resize(nFeature*nV1); // [OD, OP, ..]
 		vector<float> featureValue0(nFeature*nV1);
 		fV1_feature.read(reinterpret_cast<char*>(&featureValue0[0]), sizeof(float)*nFeature*nV1);
 		for (PosInt i=0; i<nV1*nFeature; i++) {
-			featureValue[i] = static_cast<Float>(featureValue0[i]);
+			featureValue.push_back(featureValue0[i]);
 		} 
 		fV1_feature.close();
-	} 
+	} else {
+        if (nOri > 0) {
+            cout << "if readFeature is not set, nOri should be 0.\n";
+            return EXIT_FAILURE;
+        }
+        for (PosInt i = 0; i < nType; i++) {
+            if (boostOri[i*2 + 1] != 0 ) {
+                cout << "if readFeature is not set, boostOri[" << i*2 + 1 << "] (the std of von Mises) should be 0.\n";
+                return EXIT_FAILURE;
+            }
+		}
+    }
     
 	// stats: frames, rawdata
 	// cortical and LGN surface
@@ -3632,13 +3664,13 @@ int main(int argc, char **argv) {
 		for (PosInt j=0; j<nType; j++) {
 			cout << "ExcRatio type " << j << ": [" << minExcRatio[j] << ", " << maxExcRatio[j] << "]\n";
 		}
-        auto get_boost = [&boostOri, &featureValue, &nV1, &fOri](PosInt i, PosInt iType) {
-            Float dOri = featureValue[nV1 + i] - fOri[iType];
-            if (dOri > 0.5) dOri = 1-dOri;
-            if (dOri < -0.5) dOri = 1+dOri;
-            //Float boost = boostOri[iType*2 + 0] + (1-boostOri[iType*2 + 0]) * exponential(-0.5*power(dOri/boostOri[iType*2 + 1],2)); // normal
+        auto get_boost = [&boostOri, &featureValue, &nV1, &fOri, &readFeature, &nOri](PosInt i, PosInt iType) {
 			Float boost;
-			if (boostOri.size() > 0) {
+			if (boostOri.size() > 0 && readFeature && nOri > 0) {
+                Float dOri = featureValue[nV1 + i] - fOri[iType];
+                if (dOri > 0.5) dOri = 1-dOri;
+                if (dOri < -0.5) dOri = 1+dOri;
+                //Float boost = boostOri[iType*2 + 0] + (1-boostOri[iType*2 + 0]) * exponential(-0.5*power(dOri/boostOri[iType*2 + 1],2)); // normal
 				Float base = boostOri[iType*2 + 0];
 				Float amplitude = 1-boostOri[iType*2 + 0];
 				Float vonMisesAmp = 1-exponential(-2*boostOri[iType*2 + 1]);
@@ -3649,15 +3681,17 @@ int main(int argc, char **argv) {
             return boost;
         };
 		vector<Float> dOri(nV1);
-		for (PosInt i = 0; i<nV1; i++) {
-			dOri[i] = abs(featureValue[nV1 + i] - fOri[0]);
-            if (dOri[i] > 0.5) dOri[i] = 1-dOri[i];
-            if (dOri[i] < -0.5) dOri[i] = 1+dOri[i];
-		}
-		Float dOriMean = accumulate(dOri.begin(), dOri.end(), 0.0)/nV1;
-		Float dOriMin = *min_element(dOri.begin(), dOri.end());
-		Float dOriMax = *max_element(dOri.begin(), dOri.end());
-		cout << "|dOri| = ["  << dOriMin << ", " << dOriMean << ", " << dOriMax << "]\n";
+        if (readFeature && nOri > 0) {
+		    for (PosInt i = 0; i<nV1; i++) {
+		    	dOri[i] = abs(featureValue[nV1 + i] - fOri[0]);
+                if (dOri[i] > 0.5) dOri[i] = 1-dOri[i];
+                if (dOri[i] < -0.5) dOri[i] = 1+dOri[i];
+		    }
+		    Float dOriMean = accumulate(dOri.begin(), dOri.end(), 0.0)/nV1;
+		    Float dOriMin = *min_element(dOri.begin(), dOri.end());
+		    Float dOriMax = *max_element(dOri.begin(), dOri.end());
+		    cout << "|dOri| = ["  << dOriMin << ", " << dOriMean << ", " << dOriMax << "]\n";
+        }
 
 		for (PosInt i=0; i<nblock; i++) {
 			PosInt iType = 0;
@@ -4414,6 +4448,27 @@ int main(int argc, char **argv) {
 	Size texture_nElem = nPixelPerFrame*nChannel*maxFrame;
 	cout << "=== texture memory required: " << maxFrame << "x" << width << "x" << height << " = " << texture_nElem*sizeof(float)/1024.0/1024.0 << "MB\n";
 
+
+/*
+            cout << "number of status change: " << nStatus << ": " << totalDur << "\n";
+            for (PosInt i = 0; i < nStatus; i++) {
+                for (PosInt j=0; j<nInputType; j++) {
+                    cout << LGN_status[i*nInputType + j] << "; " << LGN_sDur[i];
+                    if (j<nInputType-1) cout << ", ";
+                    else  cout << "\n";
+                }
+            } */
+    if (LGN_switch || reverseInput) {
+        //cout << "LGN swithes/Input reverses durations: ";
+        for (PosInt i = 0; i < nStatus; i++) {
+            //cout << LGN_switchIt[i] << "(";
+            LGN_switchIt[i] *= denorm;
+            //cout << LGN_switchIt[i] << " per dt/denorm)";
+			//if (i<nStatus-1) cout << ", ";
+            //else  cout << "\n";
+        }
+	}
+
 	// one cudaArray per channel
 	cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 0, 0, 0, cudaChannelFormatKindFloat);
 	cudaArray *cuArr_L;
@@ -4496,7 +4551,7 @@ int main(int argc, char **argv) {
 		    getLastCudaError("memset failed");
         #endif
 
-		prep_sample(0, width, height, tL, tM, tS, cuArr_L, cuArr_M, cuArr_S, maxFrame, cudaMemcpyDeviceToDevice, 0); // implicit synchronized
+		prep_sample(0, width, height, tL, tM, tS, cuArr_L, cuArr_M, cuArr_S, maxFrame, init_L, init_M, init_S, cudaMemcpyDeviceToDevice, 0); // implicit synchronized
 		/* DEBUG
 		dim3 fb(16,16,1);
 		dim3 fg(16,16,maxFrame);
@@ -4640,26 +4695,26 @@ int main(int argc, char **argv) {
 	//PosInt oldFrame = currentFrame;
 	// framePhase is fractionalized by denorm to fit frame duration with integer units.
 	PosInt iFramePhaseHead = 0;
-	PosInt parvoRemain = (nRetrace*denorm) % ntPerFrame;
+	PosInt parvoRemain = (nRetrace*denorm) % ntPerFrame; // units of 1/denorm dt
 	PosInt parvoComp = (ntPerFrame - parvoRemain) % ntPerFrame;
 	PosInt iFramePhaseTail = parvoComp;
+    cout << "iFramePhaseTail = " << iFramePhaseTail << "\n";
 
 	PosInt mFramePhaseHead = 0;
 	PosInt magnoRemain = (mRetrace*denorm) % ntPerFrame;
 	PosInt magnoComp = (ntPerFrame - magnoRemain) % ntPerFrame;
 	PosInt mFramePhaseTail = magnoComp;
+    cout << "mFramePhaseTail = " << mFramePhaseTail << "\n";
 
 	PosInt iFrameHead = currentFrame % maxFrame;
 	//PosInt iPhase = 0;
 	auto getTail = [](PosInt comp, PosInt phaseTail, PosInt phaseHead, PosInt head) {
 		// point frametail to the tail of the LGN temporal convolution at t-tau
 		PosInt tail;
-		if (phaseTail < comp) {
+		if (phaseTail <= comp) {
 			tail = head + 2;
-			assert(phaseHead > phaseTail);
 		} else {
 			tail = head + 1;
-			assert(phaseHead <= phaseTail);
 		}
 		return tail;
 	};
@@ -4716,10 +4771,6 @@ int main(int argc, char **argv) {
 	Float odt = ot*dt/1000.0;// get interval in sec
     int varSlot = 0;
     PosInt iStatus = 0;
-    InputActivation typeStatus;
-	if (LGN_switch) {
-    	typeStatus.assign(&(LGN_status[0]));
-	}
 	PosIntL oldTimeStamp = 0;
 	PosInt oldFrameHead;
 	//***************************
@@ -5154,10 +5205,11 @@ int main(int argc, char **argv) {
 			currentTimeSlot = 0;
 		}
 	}
+	Size lastStatusIt = 0;
 	if (iFrameHead > 0) { // if restore from file, forward to iFrameHead
 		PosInt iSample = 0;
-		assert((iFrameHead + frameCycle*maxFrame - 1)*ntPerFrame <= it0);
-		assert((iFrameHead + frameCycle*maxFrame)*ntPerFrame > it0);
+		assert((iFrameHead + frameCycle*maxFrame - 1)*ntPerFrame <= it0*denorm);
+		assert((iFrameHead + frameCycle*maxFrame)*ntPerFrame > it0*denorm);
 		for (PosInt i=0; i<iFrameHead + frameCycle*maxFrame; i++) {
 			if (fStimulus) {
 				fStimulus.read(reinterpret_cast<char*>(LMS), nChannel*nPixelPerFrame*sizeof(float));
@@ -5173,23 +5225,30 @@ int main(int argc, char **argv) {
 				return EXIT_FAILURE;
 			}
 			//cp to texture mem in device
-			if (LGN_switch) {
-				prep_sample(iSample, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, cudaMemcpyHostToDevice, reverse[iStatus]);
+			if (reverseInput) {
+				prep_sample(iSample, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, init_L, init_M, init_S, cudaMemcpyHostToDevice, reverse[iStatus]);
 			} else {
-				prep_sample(iSample, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, cudaMemcpyHostToDevice, 0);
+				prep_sample(iSample, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, init_L, init_M, init_S, cudaMemcpyHostToDevice, 0);
 			}
 			iSample = (iSample+1) % maxFrame;
-			if (i * ntPerFrame == LGN_switchIt[iStatus]) {
-				iStatus++;
+			if (i * ntPerFrame - lastStatusIt >= LGN_switchIt[iStatus]) {
+				iStatus = (iStatus+1) % nStatus;
+				lastStatusIt = i*ntPerFrame;
 			}
 		}
 		cout << "pushed input frame to last snapshot\n";
+	}
+
+    InputActivation typeStatus;
+	if (LGN_switch) {
+    	typeStatus.assign(&(LGN_status[iStatus]));
 	}
     //***************************
 	if (!restore.empty() && !asInit) {
 		cout << "simulation resumes from t = " << it0*dt << "...\n";
 	} else {
 		cout << "simulation start: \n";
+        assert(it0 == 0);
 	}
 	size_t pSharedSize = sizeof(Float)*2*nSample;
 	if (pSharedSize < sizeof(Float)*2*parvoFrame) pSharedSize = sizeof(Float)*2*parvoFrame;
@@ -5214,10 +5273,10 @@ int main(int argc, char **argv) {
 				return EXIT_FAILURE;
 			}
 			//cp to texture mem in device
-			if (LGN_switch) {
-				prep_sample(iFrameHead, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, cudaMemcpyHostToDevice, reverse[iStatus]);
+			if (reverseInput) {
+				prep_sample(iFrameHead, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, init_L, init_M, init_S, cudaMemcpyHostToDevice, reverse[iStatus]);
 			} else {
-				prep_sample(iFrameHead, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, cudaMemcpyHostToDevice, 0);
+				prep_sample(iFrameHead, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, init_L, init_M, init_S, cudaMemcpyHostToDevice, 0);
 			}
             #ifdef SYNC
                 checkCudaErrors(cudaDeviceSynchronize());
@@ -5231,6 +5290,20 @@ int main(int argc, char **argv) {
 				frameCycle++;
 			}
 			iFrameHead = (iFrameHead+1) % maxFrame;
+			if (LGN_switch || reverseInput) {
+    	        if ((it0+it+1)*denorm - lastStatusIt > LGN_switchIt[iStatus]) {
+					iStatus = (iStatus + 1) % nStatus;
+					lastStatusIt = (it0+it+1) * denorm;
+    	            typeStatus.assign(&(LGN_status[nInputType*iStatus]));
+					/*
+    	            cout << "status changed at tstep: " << LGN_switchIt[iStatus] << "\n";
+    	            for (PosInt j=0; j<nInputType; j++) {
+    	                cout << typeStatus.actPercent[j];
+    	                if (j<nInputType-1) cout << ", ";
+    	                else  cout << "\n";
+    	            }*/
+    	        }
+    	    }
 
             if (print_log) {
 				if (sizeof(Float) == 4) {
@@ -5239,7 +5312,6 @@ int main(int argc, char **argv) {
 			    	printf("\rsimulating@t = %lf -> %lf, frame %d#%d-%d, %.1f%%\n", t, t+dt, currentFrame/nFrame, currentFrame%nFrame, nFrame, 100*static_cast<float>(it+1)/nt);
 				}
             }
-			//cout << "it = " << it << ", iFrameHead = " << iFrameHead << "\n";
 		}
 		// update frame for head and tail for convolution at t=(it + 1)*dt
 		iFramePhaseTail = (iFramePhaseTail + denorm) % ntPerFrame;
@@ -5249,7 +5321,6 @@ int main(int argc, char **argv) {
 		// point frametail to the tail of the LGN temporal convolution at t-tau
 		PosInt iFrameTail = getTail(parvoComp, iFramePhaseTail, iFramePhaseHead, oldFrameHead + (1-pLongerThanM)*dFrame);
 		PosInt mFrameTail = getTail(magnoComp, mFramePhaseTail, mFramePhaseHead, oldFrameHead + pLongerThanM*dFrame);
-		//cout << "it = " << it << ", head at " << oldFrameHead << "\n";
 
 		/* if it < nRetrace, padded zero-valued frames for t<0
 		   -->|        |<-- framePhase
@@ -5373,20 +5444,7 @@ int main(int argc, char **argv) {
         }
 
 		// generate LGN fr with logistic function
-        if (LGN_switch) {
-			assert(iStatus < nStatus);
-            if (it + it0 == LGN_switchIt[iStatus+1]) {
-				iStatus++;
-                typeStatus.assign(&(LGN_status[nInputType*iStatus]));
-				/*
-                cout << "status changed at tstep: " << LGN_switchIt[iStatus] << "\n";
-                for (PosInt j=0; j<nInputType; j++) {
-                    cout << typeStatus.actPercent[j];
-                    if (j<nInputType-1) cout << ", ";
-                    else  cout << "\n";
-                }*/
-            }
-        }
+        
 		if (it > 0) {
 			cudaProfilerStart();
 		}

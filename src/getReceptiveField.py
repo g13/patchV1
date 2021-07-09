@@ -11,24 +11,57 @@ from sys import stdout
 from readPatchOutput import *
 sys.path.append(os.path.realpath('..'))
 from ext_signal import apply_sRGB_gamma, LMS2sRGB
+from global_vars import LGN_vposFn, featureFn, V1_allposFn, seed
+import warnings
+warnings.filterwarnings( "ignore", module = "matplotlib\..*" )
 
-ns = 10
+ns = 50
 tau = 200
 tau_step = 8
 t0 = 10 # where spike > t0 are counted
 plotSnapshots = True
 plotPop = False # calc props from the max deviation RF snapshot 
 tau_pick = tau_step//3 # one of the steps from tau_steps for pop analysis
-seed=1785421
 checkFrame = True
 
-def getAcuityAtEcc(ecc):
-    acuityK = 0.202103;
-    logAcuity0 = np.log(16) #40
+def LMS2RG_axis(sta, ns, ntau_step, nChannel, height, width, initL, initM):
+    assert(nChannel == 2 or nChannel == 3)
+    RG_axis = np.zeros((ns, ntau_step, height, width))
+    vmin = np.zeros(ns)
+    vmax = np.zeros(ns)
+    for i in range(ns):
+        data = sta[i,:,:,:,:].reshape(ntau_step,nChannel,height*width)
+        L = data[:,0,:]- initL
+        M = data[:,1,:]- initM
+        R_plus = np.array([np.min(L), np.max(L)]) 
+        G_minus = np.array([np.min(M), np.max(M)])
+
+        #data = (dR*L - dG*M).reshape(ntau_step, height, width)
+        data = (M - L).reshape(ntau_step, height, width)
+        vmin[i] = np.min(data)
+        vmax[i] = np.max(data)
+        if np.abs(vmax[i]) > np.abs(vmin[i]):
+            ratio = np.abs(vmax[i])/np.abs(vmin[i])
+            vmin[i] = vmin[i]*ratio
+        else:
+            ratio = np.abs(vmin[i])/np.abs(vmax[i])
+            vmax[i] = vmax[i]*ratio
+        RG_axis[i, :, :, :] = data
+
+    return RG_axis, vmin, vmax
+
+def acuity(ecc): 
+    acuityK = 0.2049795945022049
+    logAcuity0 = 3.6741080244555278
+    cpd = -acuityK*ecc + logAcuity0
+    cpd = np.exp(cpd)
+    return 1.0/cpd/4
+
+def getAcuityAtEcc(ecc, deg = True):
+    if not deg:
+        ecc = ecc/np.pi*180
     rsig = 1
-    cpd = -acuityK * ecc/np.pi*180 + logAcuity0;
-    cpd = np.exp(cpd);
-    acuityC = 1.0/cpd/4 /180*np.pi/rsig; # from cpd to radius of center
+    acuityC = acuity(ecc)/180*np.pi/rsig; # from cpd to radius of center
     acuityS = acuityC*6
     return acuityC, acuityS
 
@@ -40,14 +73,14 @@ def vpos_to_ppos(x0, y0, ecc, polar, normViewDistance):
 
 def getReceptiveField(spikeInfo, inputFn, frameRate, output_fdr, output_suffix, suffix, sampleList, nstep, dt):
     ns = sampleList.size
-    nFrame, width, height, initL, initM, initS, frames = read_input_frames(inputFn) 
+    nFrame, width, height, initL, initM, initS, frames, buffer_ecc, ecc, neye = read_input_frames(inputFn) 
     print(nFrame)
     print(width)
     print(height)
     n = len(spikeInfo)
     print(f'n = {n}')
     _output_suffix = '_' + output_suffix
-    
+
     stepRate = int(round(1000/dt))
     print(stepRate, frameRate)
     moreDt = True
@@ -126,8 +159,10 @@ def getReceptiveField(spikeInfo, inputFn, frameRate, output_fdr, output_suffix, 
         grid = gs.GridSpec(grid_row, grid_col, figure = fig)
     for it in range(it0, nstep):
         if (it+1)*denorm >= currentFrame*ntPerFrame:
+            #print(f'{jFrame}->{iFrame} frame')
             fdt = exact_norm[inorm]/denorm # the start of iFrame happens at (it*dt, it*dt + fdt, (it+1)*dt)
             frame = frames[jFrame,:,:,:]*fdt + frames[iFrame,:,:,:]*(1-fdt)
+            #print([np.mean(frame[0,:,:]), np.mean(frame[1,:,:]), np.mean(frame[2,:,:])])
 
             #print(f'start of frame{iFrame} at {currentFrame * 1000/frameRate:.3f} ms, between it = {it}->{it+1}, t =({it*dt},{(it+1)*dt}), fdt = {fdt:.3f} ms')
             assert(currentFrame * 1000/frameRate <= (it+1)*dt and it*dt < currentFrame * 1000/frameRate or it == it0)
@@ -168,6 +203,8 @@ def getReceptiveField(spikeInfo, inputFn, frameRate, output_fdr, output_suffix, 
 
     with open('STA_samples' + _output_suffix + '-' + suffix + '.bin', 'wb') as f:
         np.array([ns, ntau_step, height, width], dtype='u4').tofile(f)
+        np.array([buffer_ecc, ecc], dtype='f4').tofile(f)
+        np.array([neye]).astype('u4').tofile(f)
         it_tau.tofile(f)
         np.array([dt, initL, initM, initS], dtype='f4').tofile(f)
         sampleList.astype('u4').tofile(f)
@@ -176,12 +213,13 @@ def getReceptiveField(spikeInfo, inputFn, frameRate, output_fdr, output_suffix, 
 
     with open('STA_pop' + _output_suffix + '-' + suffix + '.bin', 'wb') as f:
         np.array([ns, height, width], dtype='u4').tofile(f)
+        np.array([buffer_ecc, ecc], dtype='f4').tofile(f)
+        np.array([neye]).astype('u4').tofile(f)
         np.array([tau_pick, it_tau[tau_pick]], dtype='u4').tofile(f)
         np.array([dt, initL, initM, initS], dtype='f4').tofile(f)
         nsp.tofile(f)
         #popSF.tofile(f)
         #pop.tofile(f)
-
 
 def plotSta(isuffix, output_suffix, conLGN_suffix, output_fdr, nf, hasOP = False):
 
@@ -201,10 +239,6 @@ def plotSta(isuffix, output_suffix, conLGN_suffix, output_fdr, nf, hasOP = False
 
     print(parameterFn)
 
-    featureFn = "V1_feature-micro.bin"
-    LGN_vposFn = "parvo_float-micro.bin"
-    V1_posFn = 'V1_allpos-micro.bin'
-
     prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1, nstep, dt, normViewDistance, L_x0, L_y0, R_x0, R_y0 = read_cfg(parameterFn, True)
 
     LGN_V1_ID, nLGN_V1 = readLGN_V1_ID(LGN_V1_idFn)
@@ -214,7 +248,7 @@ def plotSta(isuffix, output_suffix, conLGN_suffix, output_fdr, nf, hasOP = False
         featureType = np.array([0,1])
         feature, rangeFeature, minFeature, maxFeature = readFeature(featureFn, nV1, featureType)
         LR = feature[0,:]
-        with open(V1_posFn, 'rb' ) as f:
+        with open(V1_allposFn, 'rb' ) as f:
             nblock, neuronPerBlock, posDim = np.fromfile(f, 'u4', 3)
             _ = np.fromfile(f, 'f8', 4)
             nV1 = nblock * neuronPerBlock
@@ -250,6 +284,8 @@ def plotSta(isuffix, output_suffix, conLGN_suffix, output_fdr, nf, hasOP = False
         with open(sample_data_files[i], 'rb') as f:
             if i == 0:
                 ns, ntau_step, height, width = np.fromfile(f, 'u4', 4)
+                buffer_ecc, ecc = np.fromfile(f, 'f4', 2)
+                neye = np.fromfile(f, 'u4', 1)[0]
                 it_tau = np.fromfile(f, 'u4', ntau_step)
                 dt, initL, initM, initS = np.fromfile(f, 'f4', 4)
                 sampleList = np.fromfile(f, 'u4', ns)
@@ -258,11 +294,15 @@ def plotSta(isuffix, output_suffix, conLGN_suffix, output_fdr, nf, hasOP = False
                 sta = np.zeros((ns, ntau_step, 3, height, width), dtype = 'f4')
             else:
                 _ns, _ntau_step, _height, _width = np.fromfile(f, 'u4', 4)
+                _buffer_ecc, _ecc = np.fromfile(f, 'f4', 2)
+                _neye = np.fromfile(f, 'u4', 1)[0]
                 _it_tau = np.fromfile(f, 'u4', _ntau_step)
                 _dt, _initL, _initM, _initS = np.fromfile(f, 'f4', 4)
                 _sampleList = np.fromfile(f, 'u4', ns)
 
                 assert(ns == _ns and _ntau_step == ntau_step and _height == height and _width == width)
+                assert(buffer_ecc == _buffer_ecc and ecc == _ecc)
+                assert(_neye == neye)
                 assert((_it_tau - it_tau == 0).all())
                 assert(_dt == dt)
                 assert(_initL == initL and _initM == initM and _initS == initS)
@@ -271,27 +311,37 @@ def plotSta(isuffix, output_suffix, conLGN_suffix, output_fdr, nf, hasOP = False
             nsp += np.fromfile(f, 'u4', ns)
             sta += np.fromfile(f, 'f4').reshape((ns, ntau_step, 3, height, width))
     ### average here 
-    max_itau = np.zeros(ns, dtype = 'i4')
-    max_pos = np.zeros((ns, 2), dtype = 'i4')
     for i in range(ns):
         if nsp[i] > 0:
             sta[i, :, :, :, :] /= nsp[i]
-            aves = np.mean(np.mean(sta[i,:,:,:,:].reshape(ntau_step,3,width*height), axis =-1), axis = 0)
-            max_itau[i] = np.argmax(np.sum(np.var(sta[i,:,:,:,:].reshape(ntau_step,3,width*height) - np.tile(np.tile(aves.reshape(3,1), (1, width*height)), (ntau_step,1,1)), axis = -1), axis = -1))
-        max_id = np.zeros(ntau_step, dtype = 'i4')
-        max_v = np.zeros(ntau_step)
-        for j in range(ntau_step):
-            dev_data = np.linalg.norm(sta[i,j,:,:,:].reshape(3,width*height) - np.tile(aves.reshape(3,1), (1, width*height)), axis = 0)
-            print(dev_data.shape)
-            max_id[j] = np.argmax(dev_data)
-            max_v[j] = dev_data[max_id[j]]
-        max_it = np.argmax(max_v)
-        max_pos[i, 0] = max_id[max_it]//width
-        max_pos[i, 1] = np.mod(max_id[max_it],width)
-        assert(max_v[max_it] == np.linalg.norm(sta[i,max_it,:,max_pos[i,0],max_pos[i,1]] - aves))
+
+    sta, vmin, vmax = LMS2RG_axis(sta, ns, ntau_step, 3, height, width, initL, initM)
+
+    print(f'nsample = {ns}, ntau_step = {ntau_step}, height = {height}, width = {width}, dt = {dt}, inits = {[initL, initM, initS]}')
+    print(f'it_tau = {it_tau}')
+    print(f'sampleList = {sampleList}')
+    max_itau = np.zeros(ns, dtype = 'i4') - 1
+    max_pos = np.zeros((ns, 2), dtype = 'i4')
+    for i in range(ns):
+        if nsp[i] > 0:
+            dev_data = np.abs(sta[i,:,:,:].reshape(ntau_step, width*height))
+            max_itau[i] = np.argmax(np.max(dev_data, axis = -1))
+            max_id = np.argmax(dev_data[max_itau[i],:])
+            max_pos[i, 0] = np.mod(max_id,width)
+            max_pos[i, 1] = max_id//width
     print(f'spikes: {nsp}')
     print(f'RF max deviation at tau: {max_itau}')
-        
+
+
+    if neye == 1:
+        range_ecc = 2*(ecc+buffer_ecc)
+    else:
+        range_ecc = 2*(ecc+2*buffer_ecc)
+        assert(neye == 2)
+    
+    degPerPixel_w = range_ecc / width 
+    degPerPixel_h = range_ecc / height 
+
     if hasOP:
         if nf > 0:
             with open(pref_file, 'rb') as f:
@@ -310,12 +360,17 @@ def plotSta(isuffix, output_suffix, conLGN_suffix, output_fdr, nf, hasOP = False
     if plotSnapshots:
         for i in range(ns):
             id = sampleList[i]
+            if nsp[i] == 0:
+                print(f'skip #{id}')
+                continue
             fig = plt.figure('sample RF snapshots')
             grid_row = 3
             grid_col = (ntau_step+grid_row-1)//grid_row
             #grid = gs.GridSpec(grid_row, grid_col, figure = fig, hspace = 0.05, wspace = 0.05)
             grid = gs.GridSpec(grid_row, grid_col, figure = fig)
-            
+
+            # normalize sta
+            sta[i,:,:,:] = (sta[i,:,:,:] - vmin[i])/(vmax[i] - vmin[i])
             if isuffix == 0:
                 if id < nLGN_I:
                     lr = 'left'
@@ -336,7 +391,11 @@ def plotSta(isuffix, output_suffix, conLGN_suffix, output_fdr, nf, hasOP = False
                 else:
                     lr = 'right'
                     x, y = vpos_to_ppos(R_x0, R_y0, ecc1[id], polar1[id], normViewDistance)
-                ecc = np.min(ecc0[LGN_V1_ID[id]])
+                if nLGN_V1[id] > 0:
+                    ecc = np.min(ecc0[LGN_V1_ID[id]])
+                else:
+                    ecc = ecc1[id]
+
                 r_center, r_surround = getAcuityAtEcc(ecc)
                 center0 = np.ceil((np.tan(ecc + r_center) - np.tan(ecc))*normViewDistance*width)
                 surround0 = np.ceil((np.tan(ecc + r_surround) - np.tan(ecc))*normViewDistance*width)
@@ -347,7 +406,7 @@ def plotSta(isuffix, output_suffix, conLGN_suffix, output_fdr, nf, hasOP = False
                 print(f'center: {[center0, center1]}, surround: {[surround0, surround1]} pixels')
 
             print(f'{lr}-parent: {(x, y)}')
-            print(f'max_pos: {max_pos[i,:]+0.5}')
+            print(f'max_pos: {max_pos[i,:]}')
             print(f'center: {(x*width,y*height)}')
             if hasOP:
                 if nf > 0:
@@ -362,43 +421,35 @@ def plotSta(isuffix, output_suffix, conLGN_suffix, output_fdr, nf, hasOP = False
                     LR_x0, LR_y0 = L_x0, L_y0
                 else:
                     LR_x0, LR_y0 = R_x0, R_y0
-                #markers = (',r', ',g', ',g', ',r', ',r', ',g')
-                markers = ('^r', 'vg', '*g', 'dr', '^k', 'vb')
-                LGN_x = np.zeros(nLGN_V1[id])
-                LGN_y = np.zeros(nLGN_V1[id])
-                for j in range(nLGN_V1[id]):
-                    LGN_id = LGN_V1_ID[id][j]
-                    if LGN_id < nLGN_I:
-                        LGN_x[j], LGN_y[j] = vpos_to_ppos(L_x0, L_y0, ecc0[LGN_id], polar0[LGN_id], normViewDistance) 
-                    else:
-                        LGN_x[j], LGN_y[j] = vpos_to_ppos(R_x0, R_y0, ecc0[LGN_id], polar0[LGN_id], normViewDistance) 
 
-                    print(f'    child: {(LGN_x[j], LGN_y[j])}')
+                if nLGN_V1[id] > 0:
+                    #markers = (',r', ',g', ',g', ',r', ',r', ',g')
+                    markers = ('^r', 'vg', '*g', 'dr', '^k', 'vb')
+                    labels = ('L-on', 'L-off', 'M-on', 'M-off', 'On', 'Off')
+                    LGN_x = np.zeros(nLGN_V1[id])
+                    LGN_y = np.zeros(nLGN_V1[id])
+                    for j in range(nLGN_V1[id]):
+                        LGN_id = LGN_V1_ID[id][j]
+                        if LGN_id < nLGN_I:
+                            LGN_x[j], LGN_y[j] = vpos_to_ppos(L_x0, L_y0, ecc0[LGN_id], polar0[LGN_id], normViewDistance) 
+                        else:
+                            LGN_x[j], LGN_y[j] = vpos_to_ppos(R_x0, R_y0, ecc0[LGN_id], polar0[LGN_id], normViewDistance) 
+
+                        print(f'    child: {(LGN_x[j], LGN_y[j])}')
             for itau in range(ntau_step):
                 ax = fig.add_subplot(grid[itau//grid_col, np.mod(itau, grid_col)])
                 
-                data = sta[i,itau,:,:,:].reshape(3,height*width)
-                img = np.round(apply_sRGB_gamma(np.matmul(LMS2sRGB, data))*255).T.reshape(height,width,3).astype('u1')
-                ax.imshow(img, aspect = 'equal', origin = 'lower')
-                ax.plot(x*width, y*height, '.k', ms = 0.02, fillstyle = 'full')
-                ax.plot(R_x0*width*np.ones(height+1), np.arange(height+1), '-k')
-                if hasOP:
+                #cmap_name = 'gray'
+                cmap_name = 'PiYG'
+                ax.imshow(sta[i,itau,:,:], cmap = cmap_name, aspect = 'equal', origin = 'lower')
+                ax.plot(x*width, y*height, '.k', ms = 0.5, label = 'preset c.')
+                if neye == 2:
+                    ax.plot(R_x0*width*np.ones(height+1), np.arange(height+1), '-k', lw = 0.2)
+                if hasOP and nLGN_V1[id] > 0:
                     for j in range(nLGN_V1[id]):
                         jtype = LGN_type[LGN_V1_ID[id][j]]
-                        ax.plot(LGN_x[j]*width, LGN_y[j]*height, markers[jtype], ms = 0.02, fillstyle = 'full')
+                        ax.plot(LGN_x[j]*width, LGN_y[j]*height, markers[jtype], ms = 0.5, label = labels[jtype])
 
-                ax.plot(max_pos[i,0]+0.5, max_pos[i,1]+0.5, '*k', ms = 0.02, fillstyle = 'full')
-                time = f'{it_tau[itau]*dt} ms '
-                if itau == 0:
-                    if hasOP:
-                        title = f'{time}, {nsp[i]} spikes, OP:{pref}'
-                    else:
-                        title = f'{time}, {nsp[i]} spikes'
-                else:
-                    title = f'{time}'
-                if itau == max_itau[i]:
-                    title = f'max {title}'
-                ax.set_title(title, fontsize = 8)
                 extent = [surround0, surround1]
                 #extent = [center0, center1]
                 if hasOP:
@@ -408,17 +459,65 @@ def plotSta(isuffix, output_suffix, conLGN_suffix, output_fdr, nf, hasOP = False
                 else:
                     ax.set_xlim(x*width-extent[0], x*width + extent[1])
                     ax.set_ylim(y*height-extent[0],y*height + extent[1])
-                ax.axis('off')
-            ax = fig.add_subplot(20,20,20)
-            data = np.array([initL,initM,initS]).reshape(3,1)
-            img = np.round(apply_sRGB_gamma(np.matmul(LMS2sRGB, data))*255).T.reshape(1,1,3).astype('u1')
-            ax.imshow(img)
-            ax.axis('off')
+
+                xleft, xright = ax.get_xlim()
+                ybot, ytop = ax.get_ylim()
+
+                if max_pos[i,0] < xleft or max_pos[i,0] > xright or max_pos[i,1] < ybot or max_pos[i,1] > ytop:
+                    max_inside = False 
+                else:
+                    ax.plot(max_pos[i,0], max_pos[i,1], '*b', ms = 0.5, label = 'max r.')
+                    max_inside = True
+
+                time = f'{it_tau[itau]*dt} ms '
+                if itau == 0:
+                    if hasOP:
+                        title = f'{time}, {nsp[i]} spikes, OP:{pref}, max inside:{max_inside}'
+                    else:
+                        title = f'{time}, {nsp[i]} spikes, LGN type: {LGN_type[id]}, max inside:{max_inside}'
+                else:
+                    title = f'{time}'
+                if itau == max_itau[i]:
+                    title = f'max {title}'
+                    ax.set_xlabel('deg')
+                    ax.set_ylabel('deg')
+                else:
+                    ax.axis('off')
+                if itau == 0:
+                    ax.legend(fontsize = 'xx-small',bbox_to_anchor=(-0.05, 1), loc='upper right')
+                        
+                ax.set_title(title, fontsize = 8)
+                
+                xtick = ax.get_xticks()
+                ytick = ax.get_yticks()
+                if len(xtick) > 1:
+                    _xtick = xtick[-1] - xtick[0]
+                else:
+                    _xtick = xtick[0]
+                if len(ytick) > 1:
+                    _ytick = ytick[-1] - ytick[0]
+                else:
+                    _ytick = ytick[0]
+
+                if _xtick*degPerPixel_w < 1:
+                    deg_tlx = '{pos:.2f}'
+                else:
+                    deg_tlx = '{pos:.0f}'
+
+                if _ytick*degPerPixel_h < 1:
+                    deg_tly = '{pos:.2f}'
+                else:
+                    deg_tly = '{pos:.0f}'
+
+                xticklabel = [deg_tlx.format(pos = x*degPerPixel_w) for x in xtick] 
+                yticklabel = [deg_tly.format(pos = y*degPerPixel_h) for y in ytick] 
+                ax.set_xticks(xtick)
+                ax.set_yticks(ytick)
+                ax.set_xticklabels(xticklabel)
+                ax.set_yticklabels(yticklabel)
+
             ax = fig.add_subplot(15,20,300)
-            np.abs(sta[i,:,:,:,:])
-            ax.plot(sta[i,:,0,max_pos[i,0], max_pos[i,1]] - initL, '-m', lw = 0.1)
-            ax.plot(sta[i,:,1,max_pos[i,0], max_pos[i,1]] - initM, '-g', lw = 0.1)
-            ax.plot(sta[i,:,2,max_pos[i,0], max_pos[i,1]] - initS, '-b', lw = 0.1)
+            ax.plot(sta[i,:,max_pos[i,0], max_pos[i,1]], '-r', lw = 0.1)
             ax.plot(np.arange(ntau_step), np.zeros(ntau_step), ':k', lw = 0.1)
             ax.axis('off')
             if isuffix == 1:
@@ -501,11 +600,9 @@ if __name__ == "__main__":
             epick = np.hstack([np.arange(nE) + iblock*blockSize for iblock in range(nblock)])
             ipick = np.hstack([np.arange(nI) + iblock*blockSize + nE for iblock in range(nblock)])
 
-            sampleList = epick[np.argpartition(-max_fr[epick], ns)[:ns]]
-            print(max_fr[sampleList])
-            print(np.max(max_fr[epick]))
-            print(np.max(max_fr[ipick]))
-            #sampleList = np.random.randint(nV1, size = ns, dtype = 'u4')
+            #sampleList = epick[np.argpartition(-max_fr[epick], ns)[:ns]]
+            #sampleList = epick[np.argpartition(-max_fr[epick], ns)[:ns]]
+            sampleList = np.random.randint(nV1, size = ns, dtype = 'u4')
             suffix = 'V1'
 
         getReceptiveField(spScatter, inputFn, frameRate, output_fdr, output_suffix, suffix, sampleList, nstep, dt)

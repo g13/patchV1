@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gs
 import matplotlib as mpl
 from readPatchOutput import *
+from global_vars import LGN_vposFn, featureFn, V1_allposFn, seed
+
 import sys
 if len(sys.argv) > 1:
     output_suffix = sys.argv[1]
@@ -43,7 +45,7 @@ if outputfdr:
     outputfdr = outputfdr + "/"
 
 
-np.random.seed(212112)
+np.random.seed(seed)
 ns = 5
 mk = ['o', 'd']
 compThres = 1
@@ -88,17 +90,9 @@ stats_file = 'conStats'+conV1_suffix+'.bin'
 LGN_V1_ID_file = 'LGN_V1_idList'+conLGN_suffix+'.bin'
 LGN_V1_s_file = 'LGN_V1_sList'+conLGN_suffix+'.bin'
 
-#LGN_vpos_file = 'LGN_vpos.bin'
-#feature_file = 'V1_feature.bin'
-#pos_file = 'V1_allpos.bin'
-
-LGN_vpos_file = 'parvo_merged_float-micro.bin'
-feature_file = 'V1_feature-micro.bin'
-pos_file = 'V1_allpos-micro.bin'
-
 sampleBlockId = [13]
 
-with open(pos_file, 'r') as f:
+with open(V1_allposFn, 'r') as f:
     nblock = np.fromfile(f, 'u4', count=1)[0]
     blockSize = np.fromfile(f, 'u4', count=1)[0]
     networkSize = nblock*blockSize
@@ -173,7 +167,7 @@ with open(LGN_V1_s_file, 'rb') as f:
         assert(listSize <= maxList)
         LGN_V1_s[i] = np.fromfile(f, 'f4', listSize)
 
-with open(LGN_vpos_file, 'rb') as f:
+with open(LGN_vposFn, 'rb') as f:
     nLGN_I = np.fromfile(f, 'u4', 1)[0]
     nLGN_C = np.fromfile(f, 'u4', 1)[0]
     nLGN = nLGN_I + nLGN_C
@@ -188,7 +182,7 @@ with open(LGN_vpos_file, 'rb') as f:
 epick = np.hstack([j*blockSize + np.arange(typeAcc[0],typeAcc[1]) for j in range(nblock)])
 ipick = np.hstack([j*blockSize + np.arange(typeAcc[1],typeAcc[2]) for j in range(nblock)])
 
-with open(feature_file, 'rb') as f:
+with open(featureFn, 'rb') as f:
     nFeature = np.fromfile(f, 'u4', count = 1)[0]
     # add simple complex as a pseudo feature
     feature = np.empty((nFeature+1, networkSize), dtype = 'f4')

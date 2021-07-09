@@ -786,26 +786,23 @@ void LGN_convol_parvo(
 		if (tid < nActive) {
 			temporalWeightS = TW_storage[offsetS*nKernelSample + iPatch*nSample + tid];
 			temporalWeightC = TW_storage[offsetC*nKernelSample + iPatch*nSample + tid];
-			//if (blockIdx.x == 0) {
-			//	printf("tw[%u*%u + %u*%u + %u = %u] = %f\n", offsetC, nKernelSample, iPatch, nSample, tid, offsetC*nKernelSample + iPatch*nSample + tid, temporalWeightC);
-			//}
+            /*
+               __syncthreads();
+               if (blockIdx.x == 0 && tid == 0) {
+                       printf("tw: ");
+                       for (Size i = 0; i < nActive; i++) {
+                               printf("%f, ", TW_storage[offsetC*nKernelSample + iPatch*nSample + i]);
+                       }
+                       printf("\n");
+                       printf("id: ");
+                       for (Size i = 0; i < nActive; i++) {
+                               printf("%u, ", offsetC*nKernelSample + iPatch*nSample + i);
+                       }
+                       printf("\n");
+               }
+               __syncthreads();
+               */
 		} 
-		/*
-		__syncthreads();
-		if (blockIdx.x == 0 && tid == 0) {
-			printf("tw: ");
-			for (Size i = 0; i < nActive; i++) {
-				printf("%f, ", TW_storage[offsetC*nKernelSample + iPatch*nSample + i]);
-			}
-			printf("\n");
-			printf("id: ");
-			for (Size i = 0; i < nActive; i++) {
-				printf("%u, ", offsetC*nKernelSample + iPatch*nSample + i);
-			}
-			printf("\n");
-		}
-		__syncthreads();
-		*/
         //2. Find new frames - n, usually just 1
         PosInt old_currentFrame = currentFrame;
         PosInt itFrames, T0;
@@ -817,7 +814,7 @@ void LGN_convol_parvo(
         // number of frames in one patch
         //Size nFrame = (itFrames*denorm + iFramePhase + (ntPerFrame-1)) / ntPerFrame - 1; // exclude the currentFrame within the framePhase, already in F_1
         itFrames = (T0 + (nActive-1)*kernelSampleInterval)*denorm + iFramePhase; // iKernelSampleT0 = 0 or kernelSampleInterval/2
-        Size nFrame = itFrames / ntPerFrame + 1;
+        Size nFrame = (itFrames + ntPerFrame-1) / ntPerFrame;
         // check if the first samplePoint bypass the currentFrame
         if (T0*denorm + iFramePhase >= ntPerFrame) {
             currentFrame = old_currentFrame+1;
@@ -921,29 +918,21 @@ void LGN_convol_parvo(
         //  Get weighted contrast sum from local_I(ntensity) and mean_I(ntensity): p in space 
         Float tempFiltered[2];
         // initialize with the first frame in the patch
-        PosInt it = 0;
+        PosInt it;
         if (iPatch == 0) {
             it = iKernelSampleT0;
         } else {
             it = kernelSampleInterval;
 		}
 		//PosInt iFrame = 0;
-        Int preFrame = currentFrame-1;
+        Int preFrame = old_currentFrame-1;
         for (PosInt iSample = 0; iSample < nActive; iSample++) {
-            PosInt frameNow = old_currentFrame + (it*denorm + iFramePhase)/ntPerFrame; //time starts with old_currentFrame, frame starts with currentFrame
+            PosInt frameNow = old_currentFrame + (static_cast<Int>(it*denorm + iFramePhase)-1)/static_cast<Int>(ntPerFrame); //time starts with old_currentFrame, frame starts with currentFrame, for sample points right on the edge of two frames, sample the previous frame
             if (frameNow > preFrame) { // advance frame
                 //Load mean luminance from shared memory first
                 PosInt iFrame = frameNow - currentFrame;
                 Float meanC = nSampleShared[iFrame];
                 Float meanS = nSampleShared[nFrame + iFrame];
-				/* DEBUG
-					__syncthreads();
-                	iFrame = frameNow - currentFrame;
-					if (blockIdx.x == 52583 && tid == 0) {
-						printf("iFrame: %u/%u, frameNow: %u, iSample: %u\n", iFrame, nFrame, frameNow, iSample);
-					}
-					__syncthreads();
-				*/
                 preFrame = frameNow;
                 Float local_contrast;
 				Float local_I;
@@ -1263,9 +1252,9 @@ void LGN_convol_magno(
             block_reduce<Float>(reduced, local_I);
             if (tid == 0) {
                 // __shared__ to (register/local) to __shared__
-				Float lum = 
-                nSampleShared[iFrame] = reduced[0]/nSample;  // shared memory now used for spatial mean luminance, F_i
-                luminance[id] = reduced[0]/nSample;
+				Float lum = reduced[0]/nSample;
+                nSampleShared[iFrame] = lum;  // shared memory now used for spatial mean luminance, F_i
+                luminance[id] = lum;
             }
         }
         __syncthreads();

@@ -9,10 +9,11 @@ def read_input_frames(fn):
         width = np.fromfile(f, 'u4', 1)[0]
         initL, initM, initS = np.fromfile(f, 'f4', 3)
         print(f'blank frame init values:{[initL, initM, initS]}')
-        _ = np.fromfile(f, 'f4', 2)
+        buffer_ecc, ecc = np.fromfile(f, 'f4', 2)
+        neye = np.fromfile(f,'u4', 1)[0]
         frames = np.fromfile(f, 'f4', height*width*nFrame*3).reshape(nFrame, 3, height, width)
 
-    return nFrame, width, height, initL, initM, initS, frames
+    return nFrame, width, height, initL, initM, initS, frames, buffer_ecc, ecc, neye
 
 def read_cfg(fn, rn = False):
     with open(fn, 'rb') as f:

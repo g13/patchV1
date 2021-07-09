@@ -150,7 +150,7 @@ int main(int argc, char *argv[])
     conLGN_suffix = conLGN_suffix + ".bin";
 
 	Float p_n_LGNeff;
-	Float max_LGNeff;
+	Size max_LGNeff;
 	Float mean_nLGN;
 	Float mean_sLGN;
 	Float preset_nLGN;
@@ -162,7 +162,7 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	} else {
     	fLGN_V1_cfg.read(reinterpret_cast<char*>(&p_n_LGNeff), sizeof(Float));
-    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&max_LGNeff), sizeof(Float));
+    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&max_LGNeff), sizeof(Size));
     	fLGN_V1_cfg.read(reinterpret_cast<char*>(&nType), sizeof(Size));
 		typeAccCount.assign(nType, 0);
     	fLGN_V1_cfg.read(reinterpret_cast<char*>(&typeAccCount[0]), nType*sizeof(Size));
@@ -1808,8 +1808,8 @@ int main(int argc, char *argv[])
 		fConnectome_cfg.write((char*) &nType, sizeof(Size));
 		fConnectome_cfg.write((char*) &nTypeI, sizeof(Size));
 		fConnectome_cfg.write((char*) (&typeAccCount[0]), nType*sizeof(Size));
-		fConnectome_cfg.write((char*) (&synPerCon[0]), nType*nType*sizeof(Size));
-		fConnectome_cfg.write((char*) (&synPerConFF[0]), nType*sizeof(Size));
+		fConnectome_cfg.write((char*) (&synPerCon[0]), nType*nType*sizeof(Float));
+		fConnectome_cfg.write((char*) (&synPerConFF[0]), nType*sizeof(Float));
 		fConnectome_cfg.write((char*) (&nTypeMat[0]), nType*nType*sizeof(Size));
 		fConnectome_cfg.write((char*) (&sTypeMat[0]), nType*nType*sizeof(Float));
 		fConnectome_cfg.write((char*) (&nInhGap[0]), nTypeI*nTypeI*sizeof(Size));

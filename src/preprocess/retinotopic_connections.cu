@@ -38,6 +38,14 @@ void LR2original(vector<T> &seqByLR, vector<T> &original, vector<Int> LR, Size n
     assert(seqByLR.size() == original.size());
 }
 
+Float get_acuity(Float ecc) {
+    Float k = 0.20498;
+    Float log_cpd0 = 3.67411;
+    Float cpd = exponential(-k*ecc + log_cpd0);
+    Float acuity = 1.0/cpd/4.0;
+    return acuity;
+}
+
 vector<vector<Float>> retinotopic_connection(
         vector<vector<Size>> &poolList,
         RandomEngine &rGen,
@@ -49,17 +57,20 @@ vector<vector<Float>> retinotopic_connection(
         const pair<vector<Float>,vector<Float>> &cart0, // LGN VF position
 		const vector<RFtype> &V1Type,
         const vector<Float> &theta,
-        const vector<Float> &phase,
+        vector<Float> &phase,
         vector<Float> &sfreq,
-        const vector<Float> &modAmp_nCon,
+        vector<Float> &modAmp_nCon,
         const vector<Float> &baRatio,
         const vector<Float> &a,
-		const vector<OutputType> &RefType,
+		vector<OutputType> &RefType,
         const vector<InputType> &LGNtype,
         vector<Float> &cx, // V1 VF position (final)
         vector<Float> &cy,
+        const vector<Float> &ecc,
         Int SimpleComplex,
         Float conThres,
+        Float ori_tol,
+        Float disLGN,
 		bool strictStrength,
 		bool top_pick
 ) {
@@ -128,7 +139,8 @@ vector<vector<Float>> retinotopic_connection(
 			if (conThres >= 0) {
 				Float qfreq;
 				RF->setup_param(m, sfreq[i], phase[i], 1.0, theta[i], a[i], baRatio[i], RefType[i], strictStrength, envelopeSig);
-				m = RF->construct_connection_thres(x, y, iType, poolList[i], strengthList, rGen, maxN, conThres, modAmp_nCon[i], qfreq, cart.first[i], cart.second[i], i);
+				//m = RF->construct_connection_thres(x, y, iType, poolList[i], strengthList, rGen, maxN, conThres, modAmp_nCon[i], qfreq, cart.first[i], cart.second[i], i);
+				m = RF->construct_connection_opt(x, y, iType, poolList[i], strengthList, modAmp_nCon[i], qfreq, cart.first[i], cart.second[i], i, ori_tol, get_acuity(ecc[i])/a[i]*disLGN);
 				sfreq[i] = qfreq;
 			} else {
             	if (SimpleComplex == 0) {
@@ -139,6 +151,7 @@ vector<vector<Float>> retinotopic_connection(
 				    m = RF->construct_connection_N(x, y, iType, poolList[i], strengthList, rGen, p_n_LGNeff*modAmp_nCon[i], percentOrNumber, maxN, top_pick);
             	}
 			}
+            RefType[i] = RF->oType;
 			srList.push_back(strengthList);
 			if (m > 0) { 
 				x.clear();
@@ -152,12 +165,14 @@ vector<vector<Float>> retinotopic_connection(
 				cx[i] = cart.first[i];
 				cy[i] = cart.second[i];
 			}
+            phase[i] = RF->phase;
 			// reset reusable variables
 			RF->clear();
 		} else {
 			// keep tentative VF position
 			cx[i] = cart.first[i];
 			cy[i] = cart.second[i];
+            phase[i] = 0;
 			// empty list of connection strength, idList is already empty
 			srList.push_back(vector<Float>());
 		}
@@ -483,6 +498,8 @@ int main(int argc, char *argv[]) {
 	Size maxLGNperV1pool;
     Int SimpleComplex;
 	Float conThres;
+	Float ori_tol;
+	Float disLGN;
 	bool strictStrength;
 	bool top_pick;
     vector<Float> pureComplexRatio;
@@ -492,7 +509,7 @@ int main(int argc, char *argv[]) {
     BigSize seed;
     vector<Size> nRefTypeV1_RF, V1_RefTypeID;
     vector<Float> V1_RFtypeAccDist, V1_RefTypeDist;
-	string LGN_vpos_filename, V1_vpos_filename, V1_RFprop_filename, V1_feature_filename, suffix;
+	string LGN_vpos_filename, V1_vpos_filename, V1_RFpreset_filename, V1_feature_filename, suffix;
 	po::options_description generic("generic options");
 	generic.add_options()
 		("help,h", "print usage")
@@ -511,6 +528,8 @@ int main(int argc, char *argv[]) {
 		("envelopeSig", po::value<Float>(&envelopeSig)->default_value(1.177), "LGN's pools connection probability envelope sigma on distance")
 		("SimpleComplex", po::value<Int>(&SimpleComplex)->default_value(1), "determine how simple complex is implemented, through modulation modAmp_nCon(0) or number of LGN connection(1)")
 		("conThres", po::value<Float>(&conThres)->default_value(-1), "connect to LGN using conThres")
+		("ori_tol", po::value<Float>(&ori_tol)->default_value(15), "tolerance of preset orientation deviation in degree")
+		("disLGN", po::value<Float>(&disLGN)->default_value(1.0), "average visual distance between LGN cells")
 		("strictStrength", po::value<bool>(&strictStrength)->default_value(true), "make nLGN*sLGN strictly as preset")
 		("pureComplexRatio", po::value<vector<Float>>(&pureComplexRatio), "determine the proportion of simple and complex in V1 of size nType")
 		("typeAccCount",po::value<vector<Size>>(&typeAccCount), "neuronal types' discrete accumulative distribution size of nType")
@@ -519,15 +538,15 @@ int main(int argc, char *argv[]) {
 		("V1_RefTypeID", po::value<vector<Size>>(&V1_RefTypeID), "determine the ID of the available cone/ON-OFF combinations in each V1 RF type")
 		("V1_RefTypeDist", po::value<vector<Float>>(&V1_RefTypeDist), "determine the relative portion of the available cone/ON-OFF combinations in each V1 RF type")
 		("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file that stores V1 neurons' parameters")
-		("fV1_RFprop", po::value<string>(&V1_RFprop_filename)->default_value("V1_RFprop.bin"), "file that stores V1 neurons' parameters")
+		("fV1_RFpreset", po::value<string>(&V1_RFpreset_filename)->default_value("V1_RFpreset.bin"), "file that stores V1 neurons' parameters")
 		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"), "file that stores LGN position in visual field (and on-cell off-cell label)")
 		("fV1_vpos", po::value<string>(&V1_vpos_filename)->default_value("V1_vpos.bin"), "file that stores V1 position in visual field)");
 
-    string V1_filename, idList_filename, sList_filename, output_cfg_filename;
+    string V1_RFprop_filename, idList_filename, sList_filename, output_cfg_filename;
 	po::options_description output_opt("output options");
 	output_opt.add_options()
 		("suffix", po::value<string>(&suffix)->default_value(""), "suffix for output file")
-		("fV1", po::value<string>(&V1_filename)->default_value("V1RF"), "file that stores V1 neurons' information")
+		("fV1_RFprop", po::value<string>(&V1_RFprop_filename)->default_value("V1_RFprop"), "file that stores V1 neurons' information")
 		("fLGN_V1_ID", po::value<string>(&idList_filename)->default_value("LGN_V1_idList"), "file stores LGN to V1 connections")
 		("fLGN_V1_s", po::value<string>(&sList_filename)->default_value("LGN_V1_sList"), "file stores LGN to V1 connection strengths")
 		("fLGN_V1_cfg", po::value<string>(&output_cfg_filename)->default_value("LGN_V1_cfg"), "file stores LGN_V1.cfg parameters");
@@ -577,6 +596,7 @@ int main(int argc, char *argv[]) {
         cout << "\n";
     }
     
+
 	ifstream fV1_vpos;
 	fV1_vpos.open(V1_vpos_filename, fstream::in | fstream::binary);
 	if (!fV1_vpos) {
@@ -652,6 +672,11 @@ int main(int argc, char *argv[]) {
 
 	vector<InputType> LGNtype(m);
 	fLGN_vpos.read(reinterpret_cast<char*>(&LGNtype[0]), m * sizeof(PosInt));
+    //for (PosInt i = 0; i < m; i++) {
+    //    cout << 
+    //    assert(static_cast<PosInt>(LGNtype[i]) < 4);
+    //    assert(static_cast<PosInt>(LGNtype[i]) >= 0);
+    //}
 	/*** now read from file directly
 		//temporary vectors to get cartesian coordinate pairs
 		vector<Float> polar0(m);
@@ -823,18 +848,18 @@ int main(int argc, char *argv[]) {
 	}
 
     if (readFromFile) {
-        fstream fV1_RFprop(V1_RFprop_filename, fstream::in | fstream::binary);
-	    if (!fV1_RFprop) {
-	    	cout << "Cannot open or find " << V1_RFprop_filename <<"\n";
+        fstream fV1_RFpreset(V1_RFpreset_filename, fstream::in | fstream::binary);
+	    if (!fV1_RFpreset) {
+	    	cout << "Cannot open or find " << V1_RFpreset_filename <<"\n";
 	    	return EXIT_FAILURE;
 	    }
-	    fV1_RFprop.read(reinterpret_cast<char*>(&nType), sizeof(Size));
-	    fV1_RFprop.read(reinterpret_cast<char*>(&typeAccCount[0]), nType*sizeof(Size));
-	    fV1_RFprop.read(reinterpret_cast<char*>(&V1Type[0]), n * sizeof(RFtype_t));
-	    fV1_RFprop.read(reinterpret_cast<char*>(&RefType[0]), n * sizeof(OutputType_t));
-	    fV1_RFprop.read(reinterpret_cast<char*>(&phase[0]), n * sizeof(Float));
-	    fV1_RFprop.read(reinterpret_cast<char*>(&modAmp_nCon[0]), n * sizeof(Float));
-        fV1_RFprop.close();
+	    fV1_RFpreset.read(reinterpret_cast<char*>(&nType), sizeof(Size));
+	    fV1_RFpreset.read(reinterpret_cast<char*>(&typeAccCount[0]), nType*sizeof(Size));
+	    fV1_RFpreset.read(reinterpret_cast<char*>(&V1Type[0]), n * sizeof(RFtype_t));
+	    fV1_RFpreset.read(reinterpret_cast<char*>(&RefType[0]), n * sizeof(OutputType_t));
+	    fV1_RFpreset.read(reinterpret_cast<char*>(&phase[0]), n * sizeof(Float));
+	    fV1_RFpreset.read(reinterpret_cast<char*>(&modAmp_nCon[0]), n * sizeof(Float));
+        fV1_RFpreset.close();
     } else {
         // discrete portions randomly distributed
         uniform_real_distribution<Float> uniform_01(0,1.0);
@@ -945,25 +970,7 @@ int main(int argc, char *argv[]) {
 				}
 			}
 		}
-
-        ofstream fV1_RFprop(V1_RFprop_filename, fstream::out | fstream::binary);
-	    if (!fV1_RFprop) {
-	    	cout << "Cannot open or find " << V1_RFprop_filename <<"\n";
-	    	return EXIT_FAILURE;
-	    }
-
-		fV1_RFprop.write((char*)&nType, sizeof(Size));
-		fV1_RFprop.write((char*)&typeAccCount[0], nType*sizeof(Size));
-	    fV1_RFprop.write((char*)&V1Type[0], n * sizeof(RFtype_t));
-	    fV1_RFprop.write((char*)&RefType[0], n * sizeof(OutputType_t));
-	    fV1_RFprop.write((char*)&phase[0], n * sizeof(Float));
-	    fV1_RFprop.write((char*)&modAmp_nCon[0], n * sizeof(Float));
-        fV1_RFprop.close();
     }
-    // 
-    //fV1_RFprop.open(V1_RFprop_filename, fstream::out | fstream::binary | fstream::append);
-	//fV1_RFprop.write((char*)&SimpleComplex, sizeof(Int));
-    //fV1_RFprop.close();
 	cout << "V1 RF properties ready.\n";
 
     assert(p_n_LGNeff != 0);
@@ -972,6 +979,7 @@ int main(int argc, char *argv[]) {
 	
 	vector<Float> sfreq = generate_sfreq(n, rGen);
 
+    
     Float mean_sfreq = accumulate(sfreq.begin(), sfreq.end(), 0.0)/n;
     Float mean_a = accumulate(a.begin(), a.end(), 0.0)/n;
     Float suggesting_SF = mean_sfreq/mean_a/2;
@@ -981,39 +989,66 @@ int main(int argc, char *argv[]) {
 
 	vector<Float> cx(n);
 	vector<Float> cy(n);
-    vector<vector<Float>> srList = retinotopic_connection(poolList, rGen, p_n_LGNeff, max_LGNeff, envelopeSig, n, cart, cart0, V1Type, theta, phase, sfreq, modAmp_nCon, baRatio, a, RefType, LGNtype, cx, cy, SimpleComplex, conThres, strictStrength, top_pick);
+    vector<vector<Float>> srList = retinotopic_connection(poolList, rGen, p_n_LGNeff, max_LGNeff, envelopeSig, n, cart, cart0, V1Type, theta, phase, sfreq, modAmp_nCon, baRatio, a, RefType, LGNtype, cx, cy, VFposEcc, SimpleComplex, conThres, ori_tol, disLGN, strictStrength, top_pick);
 
-	ofstream fV1(V1_filename + suffix, fstream::out | fstream::binary);
-	if (!fV1) {
-		cout << "Cannot open or find V1." << V1_filename + suffix <<"\n";
+    if (!readFromFile) {
+        ofstream fV1_RFpreset(V1_RFpreset_filename, fstream::out | fstream::binary);
+	    if (!fV1_RFpreset) {
+	    	cout << "Cannot open or find " << V1_RFpreset_filename <<"\n";
+	    	return EXIT_FAILURE;
+	    }
+
+		fV1_RFpreset.write((char*)&nType, sizeof(Size));
+		fV1_RFpreset.write((char*)&typeAccCount[0], nType*sizeof(Size));
+	    fV1_RFpreset.write((char*)&V1Type[0], n * sizeof(RFtype_t));
+	    fV1_RFpreset.write((char*)&RefType[0], n * sizeof(OutputType_t));
+	    fV1_RFpreset.write((char*)&phase[0], n * sizeof(Float));
+	    fV1_RFpreset.write((char*)&modAmp_nCon[0], n * sizeof(Float));
+        fV1_RFpreset.close();
+    }
+
+	ofstream fV1_RFprop(V1_RFprop_filename + suffix, fstream::out | fstream::binary);
+	if (!fV1_RFprop) {
+		cout << "Cannot open or find V1." << V1_RFprop_filename + suffix <<"\n";
 		return EXIT_FAILURE;
 	}
-    fV1.write((char*)&n, sizeof(Size));
-    fV1.write((char*)&cx[0], n * sizeof(Float));
-	fV1.write((char*)&cy[0], n * sizeof(Float));
-    fV1.write((char*)&a[0], n * sizeof(Float));
-    fV1.write((char*)&baRatio[0], n * sizeof(Float));
-	fV1.write((char*)&sfreq[0], n * sizeof(Float));
-	fV1.close();
+    fV1_RFprop.write((char*)&n, sizeof(Size));
+    fV1_RFprop.write((char*)&cx[0], n * sizeof(Float));
+	fV1_RFprop.write((char*)&cy[0], n * sizeof(Float));
+    fV1_RFprop.write((char*)&a[0], n * sizeof(Float));
+    fV1_RFprop.write((char*)&phase[0], n * sizeof(Float));
+	fV1_RFprop.write((char*)&sfreq[0], n * sizeof(Float));
+    fV1_RFprop.write((char*)&baRatio[0], n * sizeof(Float));
+	fV1_RFprop.close();
 
-    Float min_sfreq = 1e10;
 	Float sfreq2 = 0;
+	Float min_sfreq = 100.0; // 60 as max sfreq
+	Float max_sfreq = 0.0;
+    Size nonZero = 0;
 	for (PosInt i = 0; i<n; i++) {
-		if (sfreq[i] > 0) {
-			sfreq2 += sfreq[i]*sfreq[i];
-			mean_sfreq += sfreq[i];
-			if (sfreq[i] < min_sfreq) {
-				min_sfreq = sfreq[i];
-			}
+		if (sfreq[i] > 0 && poolList[i].size() > 0) {
+            Float sf = sfreq[i]/(mean_a*2);
+            if (sf < min_sfreq) {
+                min_sfreq = sf; 
+            }
+            if (sf > max_sfreq) {
+                max_sfreq = sf; 
+            }
+			sfreq2 += sf*sf;
+			mean_sfreq += sf;
+            nonZero++;
 		}
 	}
-	mean_sfreq /= n;
+	mean_sfreq /= nonZero;
     cout << "mean SF suggested after connection: " << mean_sfreq << " cpd\n";
     cout << "min non-zero SF suggested after connection: " << min_sfreq << " cpd\n";
-    Float max_sfreq = *max_element(sfreq.begin(), sfreq.end());
     cout << "max SF suggested after connection: " << max_sfreq << " cpd\n";
-	sfreq2 /= n;
+	sfreq2 /= nonZero;
     cout << "std SF suggested after connection: " << square_root(sfreq2 - mean_sfreq*mean_sfreq) << " cpd\n";
+
+    Size nonZeroMinPool = maxLGNperV1pool; 
+    Float nonZeroMeanPool = 0; 
+    Size nonZeroMaxPool = 0;
 
     Size minPool = maxLGNperV1pool; 
     Size maxPool = 0; 
@@ -1033,6 +1068,12 @@ int main(int argc, char *argv[]) {
 			ic_max = i;
 		}
         if (iSize < minPool) minPool = iSize;
+        if (iSize > 0) {
+            if (iSize < nonZeroMinPool) nonZeroMinPool = iSize;
+            nonZeroMeanPool += iSize;
+            if (iSize > nonZeroMaxPool) nonZeroMaxPool = iSize;
+        }
+
         meanPool += iSize;
         if (iSize == 0) zeroPool++;
 		assert(poolList[i].size() == srList[i].size());
@@ -1065,6 +1106,7 @@ int main(int argc, char *argv[]) {
 	}
     cout << "# connections: [" << minPool << ", " << meanPool << ", " << maxPool << "]\n";
     cout << "among them " << zeroPool << " would have no connection from LGN\n";
+    cout << "# nonzero connections: [" << nonZeroMinPool << ", " << nonZeroMeanPool/(n-zeroPool) << ", " << nonZeroMaxPool << "]\n";
     cout << "# totalConnectionStd: " << square_root(pool2 - meanPool*meanPool) << "\n";
     cout << "# totalStrength: [" << minSum << ", " << meanSum << ", " << maxSum << "]\n";
     cout << "# totalStrengthStd: " << square_root(sum2 - meanSum*meanSum) << "\n";

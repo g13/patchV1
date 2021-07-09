@@ -8,7 +8,7 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 	end
 	fdr = [fdr, '/'];
 	st = 2; %0 for temporal, 1 for spatial, 2 for both
-	%iV1 = randi(768,1);
+	V1_pick = [1,10,100,1000];
 	rng(1390842)
 	ns = 10;
 	if ~isempty(isuffix)
@@ -18,16 +18,19 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 	    osuffix = ['_', osuffix];
 	end
 	thres = 0.0
-	%iV1 = 218 
-	nstep = 1000
-	dt = 1.0;
+	nstep = 0
 	nbins = 20;
-	nit = 20;
+    nit0 = 20;
 
 	f_sLGN = ['sLGN', osuffix, '.bin']
 	LGN_V1_id_fn = ['LGN_V1_idList', isuffix, '.bin']
 	fLGN_vpos = ['LGN_vpos', isuffix, '.bin'];
 	fLGN_switch = ['LGN_switch', isuffix, '.bin'];
+	learnDataFn = ['learnData_FF', osuffix, '.bin']
+
+	fid = fopen(learnDataFn, 'r');
+	dt = fread(fid, 1, 'float')
+	fclose(fid);
 	
 	fid = fopen(fLGN_vpos, 'r');
 	nLGN = fread(fid, 1, 'uint') % # ipsi-lateral LGN 
@@ -47,6 +50,12 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 	gmax0 = gmaxLGN(1)*sRatio; % TODO, separate E and I
 	fclose(fid);
 
+	if ~exist('nstep', 'var')
+	    nstep = 0;
+	end
+	if nstep > nt || nstep == 0
+	    nstep = nt;
+	end
 	% read connection id
 	sid = fopen(LGN_V1_id_fn, 'r');
 	LGN_V1_ID = zeros(max_LGNperV1, nV1);
@@ -78,7 +87,9 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 		reverse'
 		statusDur'
 		typeInput = [sum(statusDur.*(1-reverse)), sum(statusDur.*reverse)]/sum(statusDur);
+	    nit = nStatus + 1
 	else
+	    nit = nit0
 		typeInput = ones(ntype, 1);
 	end
 
@@ -86,6 +97,7 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 		V1_pick = randi(768,[ns,1]);
 	end
 	disp(V1_pick); 
+    nrow = double(idivide(int32(nit+nit0-1),int32(nit0)));
 	for iq = 1:ns
 	    iV1 = V1_pick(iq)
 	    %disp(nLGN_V1(iV1));
@@ -130,7 +142,7 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 	    	            daspect([1,1,1]);
 						axis image
 	    	            %set(gca,'YDir','normal')
-	    	            title(['t', num2str(qt(i)/1000),'-n',num2str(sum(sum(sLGN(:,:,i)>thres))),'-p',num2str(gmax/gmax0*100,'%.1f'),'%'], 'FontSize', 6);
+	    	            title(['t', num2str(double(qt(i))/nt*100,'%.0f'),'%-n',num2str(sum(sum(sLGN(:,:,i)>thres))),'-p',num2str(gmax/gmax0*100,'%.0f'),'%'], 'FontSize', 6);
 	    	            if i == nit
 							ax = subplot(1, nit+1, nit+1);
 	    	            	im = imagesc(stmp, clims);
@@ -157,7 +169,7 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 							axis image
 	    	                %set(gca,'YDir','normal')
 	    	                if itype == 1
-	    	            		title(['t', num2str(qt(i)/1000),'-n',num2str(sum(sum(sLGN(:,:,i)>thres))),'-p',num2str(gmax/gmax0*100,'%.1f'),'%'], 'FontSize', 6);
+								title(['t', num2str(double(qt(i))/nt*100,'%.0f'),'%-n',num2str(sum(sum(sLGN(:,:,i)>thres))),'-p',num2str(gmax/gmax0*100,'%.0f'),'%'], 'FontSize', 6);
 	    	                end
 	    	                if i == 1
 	    	                    ylabel(['type: ', num2str(types(itype))]);
@@ -174,7 +186,7 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 	    	        end
 	    	    end
 			else
-	        	f = figure('PaperPosition',[0, 0, nit, 2]);
+	        	f = figure('PaperPosition',[0, 0, nit0, ntype*nrow]);
 				set(f, 'PaperUnit', 'inches');
 				assert(doubleOnOff == 1);
 				nLGN_1D = sqrt(double(nLGN/2))
@@ -183,8 +195,15 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 	    	    clims = [0, 1];
 	    	    
 	    	    for itype = 1:ntype
+                    row = 1;
 	    	        for i = 1:nit
-	    	            subplot(ntype,nit+1,(itype-1)*(nit+1) + i)
+                        iplot = (row-1)*ntype*(nit0+1) + (itype-1)*(nit0+1);
+                        if i > nit0
+                            iplot = iplot + mod(i-1, nit0)+1;
+                        else
+                            iplot = iplot + i;
+                        end
+	    	            subplot(nrow*ntype,nit0+1,iplot)
 	    	            stmp = sLGN(itype:2:(nLGN_1D*2),:,i);
 	    	            stmp = stmp./gmax;
 	    	            stmp(stmp<thres) = 0;
@@ -193,13 +212,16 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 						axis image
 	    	            %set(gca,'YDir','normal')
 	    	            if itype == 1
-	    	        		title(['t', num2str(qt(i)/1000),'-n',num2str(sum(stmp>0)),'-p',num2str(gmax/gmax0*100,'%.1f'),'%'], 'FontSize', 6);
+							title(['t', num2str(double(qt(i))/nt*100,'%.0f'),'%-n',num2str(sum(sum(stmp>0))),'-p',num2str(gmax/gmax0*100,'%.0f'),'%'], 'FontSize', 6);
 	    	            end
-	    	            if i == 1
+	    	            if mod(i, nit0) == 1
 	    	                ylabel(['type: ', num2str(types(itype))]);
 	    	            end
+                        if mod(i, nit0) == 0
+                            row = row + 1;
+                        end
 	    	            if i == nit
-							ax = subplot(1, nit+1, nit+1);
+							ax = subplot(1, nit0+1, nit0+1);
 	    	        		im = imagesc(stmp, clims);
 							im.Visible = 0;
 							ax.Visible = 0;
@@ -220,12 +242,7 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 			end
 	    end
 	    if st == 2 || st == 0
-	        if ~exist('nstep', 'var')
-	            nstep = 100;
-	        end
-	        if nstep > nt
-	            nstep = nt;
-	        end
+	        
 	        tstep = int64(round(nt/nstep))
 	        it = 1:tstep:nt;
 	        nstep = length(it)
@@ -246,6 +263,17 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 	       	gmax = max(tLGN(:));
 	        qt = int32(floor(linspace(1,nstep,nit)));
 	        f = figure('PaperPosition',[.1 .1 8 6]);
+			subplot(21,3,3*10 + [1,2])
+			hold on
+			status_t = 0;
+			for i = 1:nStatus
+				current_nt = round(statusDur(i)*1000/dt);
+				current_t = (1:current_nt)*dt;
+				plot(status_t + current_t, zeros(current_nt,1) + reverse(i), 'k');
+				status_t = status_t + statusDur*1000;
+			end
+			set(gca,'visible','off','XColor','none','YColor','none','xtick',[],'ytick',[]);
+				
 			for i = 1:ntype
 	    		subplot(ntype,3, 3*(i-1) + [1,2])
 	        	plot(it*dt, tLGN(LGN_type(LGN_V1_ID(1:nLGN_V1(iV1),iV1)) == types(i),:)./gmax*100, '-');
