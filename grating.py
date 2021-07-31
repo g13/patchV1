@@ -3,7 +3,7 @@ import cv2 as cv
 import functools
 from ext_signal import *
 #TODO: heterogeneous buffers, to save texture memory
-def generate_random(amp, cSize, c_1, c0, c1, fname, time, frameRate = 120, ecc = 2.5, buffer_ecc = 0.25, neye = 2, gtype = 'uniform', seed = None, shift = None, inputLMS = True):
+def generate_random(amp, radius, npixel, c, fname, time, frameRate = 120, ecc = 2.5, buffer_ecc = 0.25, neye = 2, gtype = 'randomPhase', seed = 567421, shift = None, inputLMS = True):
     """
     buffer_ecc: buffering area, to avoid border problems in texture memory accesses
     neye == 2:
@@ -13,16 +13,27 @@ def generate_random(amp, cSize, c_1, c0, c1, fname, time, frameRate = 120, ecc =
         frame from a single visual fields: origin at the center 2(ecc+buffer_ecc) x 2(ecc+buffer_ecc) (width x height)
     """
     if neye == 1:
-        npixel = int(round(2*(ecc+buffer_ecc)/cSize))
+        deg2pixel = npixel / (2*(ecc+buffer_ecc))
         a = npixel
     else:
-        npixel = int(round(2*(ecc+2*buffer_ecc)/cSize))
+        deg2pixel = npixel / (2*(ecc+2*buffer_ecc))
         a = npixel//2
+        if neye != 2:
+            print('neye need to be 1 or 2')
+            return
+        if np.mod(npixel,2) != 0:
+            print('failed: npixel need to be even for neye == 2')
+            return
+
+    radius_in_pixel = max(int(round(radius*deg2pixel)),1)
+    if radius_in_pixel == 1:
+        print('radius smaller than one pixel, mode changed to pixel')
+        gtype = 'pixel'
     b = a*2  
     npixel = b
     FourCC = cv.VideoWriter_fourcc(*'FFV1')
     output = cv.VideoWriter(fname+'.avi', FourCC, frameRate, (npixel,npixel), True)
-    print(f'frame size: {a}x{b}')
+    print(f'frame size: {a}x{b}, radius in pixel {radius_in_pixel}')
 
     if isinstance(time, (list, tuple, np.ndarray)):
         nseq = len(time)
@@ -35,33 +46,52 @@ def generate_random(amp, cSize, c_1, c0, c1, fname, time, frameRate = 120, ecc =
     else:
         amp = np.zeros(nseq) + amp
 
+    print(f'ecc = {ecc}, buffer_ecc = {buffer_ecc}')
+    f = open(fname + '.bin', 'wb')
+    nFrame = int(np.round(frameRate*np.sum(time)))
+    np.array([nFrame, npixel, npixel], dtype='i4').tofile(f)
+    mean_value = np.mean(c, axis = 0)
+    mean_value.astype('f4').tofile(f) # init_luminance
+    np.array([buffer_ecc, ecc], dtype='f4').tofile(f)
+    np.array([neye]).astype('u4').tofile(f)
+
     np.random.seed(seed)
-    LMS = np.empty((nseq,), dtype=object)
     for i in range(nseq):
         t = time[i]
         nstep = np.round(frameRate * t)
         if not nstep == frameRate*t:
             raise Exception(f'time duration of sequence {i} is not in multiples of frame duration')
         nstep = int(nstep)
-        if np.mod(nstep,2) != 0 and gtype == 'rotating':
-            raise Exception(f'need even time step, current: {nstep}')
         print(f'{nstep} frames in total')
 
-        LMS_seq = np.empty((nstep,)+(3, npixel, npixel), dtype=float)
+        LMS_seq = np.empty((3, npixel, npixel), dtype=float)
         for it in range(nstep):
             if neye == 1:
-                #data = randomized(amp[i], a, b, c0, gtype)
-                data = randomStamp(amp[i], a, b, c_1, c0, c1)
+                if gtype == 'pixel':
+                    data = randomStamp(amp[i], a, b, c)
+                if gtype == 'randomPhase':
+                    data = randomPhaseStamp(amp[i], a, b, radius_in_pixel, c)
+                if gtype == 'fixedPhase':
+                    data = randomPhaseStamp(amp[i], a, b, radius_in_pixel, c, True)
             else:
-                #dataL = randomized(amp[i], a, b, c0, gtype)
-                dataL = randomStamp(amp[i], a, b, c_1, c0, c1)
+                if gtype == 'pixel':
+                    dataL = randomized(amp[i], a, b, c0, gtype)
+                if gtype == 'randomPhase':
+                    dataL = randomPhaseStamp(amp[i], a, b, radius_in_pixel, c)
+                if gtype == 'fixedPhase':
+                    dataL = randomPhaseStamp(amp[i], a, b, radius_in_pixel, c, True)
                 if shift is not None:
                     if shift == 0:
                         dataR = dataL
                     else:
                         raise Exception('only matching stimulus is implemented')
                 else:
-                    dataR = randomStamp(amp[i], a, b, c_1, c0, c1)
+                    if gtype == 'pixel':
+                        dataR = randomized(amp[i], a, b, c0, gtype)
+                    if gtype == 'randomPhase':
+                        dataR = randomPhaseStamp(amp[i], a, b, radius_in_pixel, c)
+                    if gtype == 'fixedPhase':
+                        dataR = randomPhaseStamp(amp[i], a, b, radius_in_pixel, c, True)
 
                 data = np.concatenate((dataL,dataR), axis = 1)
 
@@ -80,11 +110,11 @@ def generate_random(amp, cSize, c_1, c0, c1, fname, time, frameRate = 120, ecc =
                     pick = _sRGB < 0
                     _sRGB[pick] = 0
                 pixelData = np.round(_sRGB*255).T.reshape(npixel,npixel,3)[:,:,::-1].astype('uint8')
-                LMS_seq[it,:,:,:] = _LMS.reshape((3,npixel,npixel))
+                LMS_seq = _LMS.reshape((3,npixel,npixel))
             else: # input is sRGB
                 pixelData = np.round(data*255).reshape(npixel,npixel,3).astype('uint8')
                 # bgr->rgb->lms
-                LMS_seq[it,:,:,:] = np.matmul(sRGB2LMS, inverse_sRGB_gamma(data[:,:,::-1].reshape((npixel*npixel,3)).T)).reshape((3,npixel,npixel))
+                LMS_seq = np.matmul(sRGB2LMS, inverse_sRGB_gamma(data[:,:,::-1].reshape((npixel*npixel,3)).T)).reshape((3,npixel,npixel))
 
             #pixelData = np.reshape(np.round(data*255), (npixel,npixel,3)).astype('uint8')
 
@@ -95,11 +125,12 @@ def generate_random(amp, cSize, c_1, c0, c1, fname, time, frameRate = 120, ecc =
             #pixelData = adjust_gamma(pixelData, gamma = 2.2)
             #cv.imshow('gamma', pixelData)
             #cv.waitKey(0)
-        LMS[i] = LMS_seq.copy()
+            LMS_seq.astype('f4').tofile(f)
 
+    f.close()
     output.release()
     cv.destroyAllWindows()
-    return LMS
+    return
 
 def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel, c1, c2, fname, time, phase, sharpness, frameRate = 120, ecc = 2.5, buffer_ecc = 0.25, gtype = 'drifting', neye = 2, bar = False, center = np.pi/2, wing = np.pi/2, mask = None, maskData = None, inputLMS = False, genMovie = True):
     """
@@ -125,6 +156,13 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
         a = npixel
     else:
         a = npixel//2  
+        if neye != 2:
+            print('neye need to be 1 or 2')
+            return
+        if np.mod(npixel,2) != 0:
+            print('failed: npixel need to be even for neye == 2')
+            return
+
     b = npixel  
     if genMovie:
         FourCC = cv.VideoWriter_fourcc(*'HFYU')
@@ -190,6 +228,9 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
 
     ########### VIDEO encodes as BGR: 
     if not inputLMS: # rgb->bgr
+        c1_LMS = np.matmul(sRGB2LMS, inverse_sRGB_gamma(c1.reshape(3,1)))
+        c2_LMS = np.matmul(sRGB2LMS, inverse_sRGB_gamma(c2.reshape(3,1)))
+        mean_value = (c1_LMS+c2_LMS)/2
         c1 = c1[::-1]
         c2 = c2[::-1]
     else:
@@ -199,6 +240,8 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
         print(f'valley in sRGB: {c2_sRGB}')
         if not (c1_sRGB<=1).all() or not (c1_sRGB>=0).all() or not (c2_sRGB<=1).all() or not (c2_sRGB>=0).all():
             raise Exception(f'crest and valley in LMS is out of the sRGB space')
+        mean_value = (c1+c2)/2
+
     c1 = np.reshape(c1,(1,3))
     c2 = np.reshape(c2,(1,3))
     control = np.zeros(3)
@@ -214,12 +257,19 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
         X, Y = np.meshgrid((np.linspace(0,1,a)*(ecc+2*buffer_ecc)-buffer_ecc)*np.pi/180,np.linspace(-1,1,b)*(ecc+2*buffer_ecc)*np.pi/180)
 
 
-    LMS = np.empty((nseq,), dtype=object)
+    print(f'ecc = {ecc}, buffer_ecc = {buffer_ecc}')
+    f = open(fname + '.bin', 'wb')
+    nFrame = int(np.round(frameRate*np.sum(time)))
+    np.array([nFrame, npixel, npixel], dtype='i4').tofile(f)
+    mean_value.astype('f4').tofile(f) # init_luminance
+    np.array([buffer_ecc, ecc], dtype='f4').tofile(f)
+    np.array([neye]).astype('u4').tofile(f)
+
     for i in range(nseq):
         t = time[i]
         nstep = int(np.round(frameRate*t))
         if not nstep == frameRate*t:
-            nstep = int(np.round(frameRate*t))
+            nstep = int(np.ceil(frameRate*t))
             print(f'adjusted to {nstep} frames in total')
         else:
             print(f'exact {nstep} frames in total')
@@ -246,7 +296,7 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
         if gtype not in ('drifting','rotating'):
             raise Exception(f'gtype {gtype} not implemented')
 
-        LMS_seq = np.empty((nstep,)+(3, npixel, npixel), dtype=float)
+        LMS_seq = np.empty((3, npixel, npixel), dtype=float)
         for it in range(nstep):
             t = it * dt
             if neye == 1:
@@ -288,11 +338,11 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
                     pick = _sRGB < 0
                     _sRGB[pick] = 0
                 pixelData = np.round(_sRGB*255).T.reshape(npixel,npixel,3)[:,:,::-1].astype('uint8')
-                LMS_seq[it,:,:,:] = _LMS.reshape((3,npixel,npixel))
+                LMS_seq = _LMS.reshape((3,npixel,npixel))
             else: # input is sRGB
                 pixelData = np.round(data*255).reshape(npixel,npixel,3).astype('uint8')
                 # bgr->rgb->lms
-                LMS_seq[it,:,:,:] = np.matmul(sRGB2LMS, inverse_sRGB_gamma(data[:,:,::-1].reshape((npixel*npixel,3)).T)).reshape((3,npixel,npixel))
+                LMS_seq = np.matmul(sRGB2LMS, inverse_sRGB_gamma(data[:,:,::-1].reshape((npixel*npixel,3)).T)).reshape((3,npixel,npixel))
 
             if genMovie:
                 output.write(pixelData)
@@ -302,12 +352,14 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
             #pixelData = adjust_gamma(pixelData, gamma = 2.2)
             #cv.imshow('gamma', pixelData)
             #cv.waitKey(0)
-        LMS[i] = LMS_seq.copy()
+            LMS_seq.astype('f4').tofile(f)
+
+    f.close()
 
     if genMovie:
         output.release()
         cv.destroyAllWindows()
-    return LMS
+    return
 
 def generate_circular_mask(npixel, radius, seed, ecc, buffer_ecc, neye, center = None):
     """
@@ -460,18 +512,44 @@ def randomized(amp, a, b, c0, gtype):
     color[color < 0] = 0
     return color.reshape((b,a,3))/255
 
-def randomStamp(amp, a, b, c_1, c0, c1):
+def randomPhaseStamp(amp, a, b, r, c, fixed = False):
     color = np.zeros((b*a,3))
-    #stamp = np.random.choice([0, 1, 2], size = b*a)
-    #color[stamp==0,:] = c_1
-    #color[stamp==1,:] = c0
-    #color[stamp==2,:] = c1
-    stamp = np.random.choice([0, 1], size = b*a)
-    color[stamp==0,:] = c_1
-    color[stamp==1,:] = c1
+    nc = c.shape[0]
+
+    xphase0 = np.mod(a, r)
+    if not fixed:
+        xphase = np.random.randint(r)
+    else:
+        xphase = xphase0
+    na = a // r + (xphase + xphase0 + r-1)//r
+    yphase0 = np.mod(b, r)
+    if not fixed:
+        yphase = np.random.randint(r)
+    else:
+        yphase = yphase0
+    
+    nb = b // r + (yphase + yphase0 + r-1)//r
+    stamp = np.random.choice(np.arange(nc), size = (nb,na))
+    mat = np.repeat(np.repeat(stamp, r, axis = 1), r, axis = 0)
+    matStamp = mat[yphase:yphase+b, xphase:xphase+a].reshape(b*a)
+    for i in range(nc):
+        color[matStamp==i,:] = c[i,:]
+
+    color[color > 1] = 1
+    color[color < 0] = 0
+    return color.reshape((b,a,3))
+
+def randomStamp(amp, a, b, c):
+    color = np.zeros((b*a,3))
+    nc = c.shape[0]
+    stamp = np.random.choice(np.arange(nc), size = b*a)
+    for i in range(nc):
+        color[matStamp==i,:] = c[i,:]
+
     color[color > 255] = 255
     color[color < 0] = 0
     return color.reshape((b,a,3))/255
+
 # to check cuda prog output
 def generate_from_float(fname, b, a, nt, cs_transform=LMS2sRGB, frameRate=60, suffix='bin'):
     with open(fname+'.'+suffix, 'rb') as f:
@@ -488,37 +566,3 @@ def generate_from_float(fname, b, a, nt, cs_transform=LMS2sRGB, frameRate=60, su
     
     output.release()
     cv.destroyAllWindows()
-
-if __name__ == "__main__":
-    video_fn = 'color_drifting_2i'
-    stimulus_fn = video_fn + '.bin'
-    crest = [255,0,0]
-    valley = [0,255,0]
-    buffer_deg = 1.0
-    range_deg = 2.5 # eccentricity from the origin
-    SF = 4
-    TF = 8
-    
-    orient = np.array([np.pi*3/4, np.pi*1/4])
-    time = np.array([1.2, 1.2])
-    phase = 8.8*np.pi
-    center = np.pi/2
-    wing = np.pi/2
-    sharpness = 1
-    LMS_series = generate_grating(1.0, SF, TF, orient, 256, crest, valley, video_fn, time, phase, sharpness, frameRate = 120, ecc = range_deg, buffer_ecc = buffer_deg, gtype='drifting', neye = 2, bar = False, center = center, wing = wing)
-    
-    print(LMS_series.shape)
-    nseq = LMS_series.size
-    for i in range(nseq):
-        print([np.min(LMS_series[i]), np.max(LMS_series[i])])
-    
-    with open(stimulus_fn, 'wb') as f:
-        np.array([LMS_series[0].shape[0], LMS_series[0].shape[2], LMS_series[0].shape[3]], dtype='i4').tofile(f)
-        mean_value = np.array([np.mean(LMS_series[0][:,0,:,:]), np.mean(LMS_series[0][:,1,:,:]), np.mean(LMS_series[0][:,2,:,:])])
-        mean_value.astype('f4').tofile(f) # init_luminance
-        np.array([buffer_deg, range_deg], dtype='f4').tofile(f)
-        print([buffer_deg, range_deg])
-        for i in range(nseq):
-            print(i)
-            LMS_series[i].astype('f4').tofile(f)
-    print(mean_value)
