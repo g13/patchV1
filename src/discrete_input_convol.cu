@@ -139,6 +139,94 @@ void testTexture(Float L, Float M, Float S) {
 // iType is for center surround (or multiple surroud) in a single LGN
 // not to be confused with coneTypes
 // weights are stored in shapes of (nLGN, nType, nKernelSample)
+
+__device__ 
+__forceinline__
+Float get_virtual_convol(float x, float y, cudaTextureObject_t linearFrame, PosInt prev, PosInt next, Float r) {
+	Float p0 = static_cast<Float>(tex2DLayered<float>(linearFrame, x, y, prev));
+	Float p1 = static_cast<Float>(tex2DLayered<float>(linearFrame, x, y, next));
+	Float p = p0 + (p1-p0)*r;
+	return p;
+}
+
+__launch_bounds__(1024, 2)
+__global__
+void virtual_LGN_convol(
+        Float* __restrict__ lum,
+        Float* __restrict__ contrast,
+		cudaTextureObject_t* __restrict__ linearFrame,
+        Float* __restrict__ current_convol,
+		float* __restrict__ parvo_center,
+		float* __restrict__ magno_center,
+		InputType_t* __restrict__ LGN_type,
+		Int inputType, Size nParvo_L, Size nMagno_L, Size nParvo_R, Size nLGN, PosInt prev, PosInt next, Float rt, bool saveOutputB4V1) 
+{
+    Size iLGN = blockIdx.x*blockDim.x + threadIdx.x;
+	if (iLGN < nLGN) {
+		float* center;
+		Size nTypeLGN;
+        Size jLGN;
+		if (iLGN < nParvo_L || (iLGN > nParvo_L + nMagno_L && iLGN < nParvo_L + nMagno_L + nParvo_R)) {
+			center = parvo_center;
+			nTypeLGN = nParvo_L + nParvo_R;
+            jLGN = iLGN;
+            if (iLGN > nParvo_L + nMagno_L) {
+                jLGN -= nMagno_L;
+            }
+		} else {
+			center = magno_center;
+			nTypeLGN = nLGN - (nParvo_L + nParvo_R);
+            jLGN = iLGN - nParvo_L;
+            if (iLGN > nParvo_L + nMagno_L) {
+                jLGN -= nParvo_R;
+            }
+		}
+		Float mx = center[jLGN];
+		Float my = center[nTypeLGN + jLGN];
+        /*
+        for (PosInt i = 0; i<nLGN; i++) {
+            if (iLGN == i) {
+                printf("%i, (%f, %f)", iLGN, mx, my);
+                if ((iLGN+1) % 14 == 0) {
+                    printf("\n");
+                }
+            }
+            __syncthreads();
+        }*/
+		// 0, 1, 2, 3, 4, 5, 6, 7
+		// On, Off, L_on, L_off, M_on, M_off
+		PosInt iType; 
+		if (inputType == 0) { 
+			// 0:
+			// 0, 1
+			// On(4), Off(5)
+			iType = LGN_type[iLGN]-4;
+		}
+		if (inputType == 1) {
+			//1:
+			// 0, 1, 2, 3
+			// L_on, L_off, M_on, M_off
+			iType = LGN_type[iLGN];
+		}
+		if (inputType == 2) {
+			// 2:
+			// 0, 1, 2, 3, 4, 5
+			// L_on(0), L_off(1), M_on(2), M_off(3), On(4), Off(5)
+			iType = LGN_type[iLGN];
+		}
+		Float value = get_virtual_convol(mx, my, linearFrame[iType], prev, next, rt);
+		/*if (iLGN == 200) {
+			Float prev_value = static_cast<Float>(tex2DLayered<float>(linearFrame[iType], mx, my, prev));
+			Float next_value = static_cast<Float>(tex2DLayered<float>(linearFrame[iType], mx, my, next));
+			printf("\n %u: prev = %f, next =%f, rt = %f, value = %f\n", iLGN, prev_value, next_value, rt, value);
+		}*/
+		current_convol[iLGN] = value;
+		if (saveOutputB4V1) {
+			lum[iLGN] = value;
+			contrast[iLGN] = value;
+		}
+	}
+}
 __device__
 __forceinline__
 void store_temporalWeight(
@@ -240,7 +328,8 @@ void store_spatialWeight(
         float* __restrict__ SC_storage,
         Size storeID, // (id*nType + iType) * nSample + tid;
         Size nSample,
-        bool uniform_retina
+        bool uniform_retina,
+        bool virtual_LGN 
 ) {
     // rads relative to center
     Float w = (threadIdx.x + 0.5)*dw - wSpan;
@@ -262,6 +351,7 @@ void store_spatialWeight(
 
         retina_to_plane(cosp, sinp, tanEcc, x, y, normViewDistance, LR_x0, LR_y0);
         // DEBUG visual field and stimulus field not matching
+        if (!virtual_LGN) {
             if (LR) {
                 if (x < 0 || x > 0.5) {
                     printf("x = %1.15e\n", x);
@@ -280,6 +370,7 @@ void store_spatialWeight(
                 //assert(y>=0);
                 //assert(y<=1);
             }
+        }
         //
         /* DEBUG
         if (blockIdx.x == 0 && blockIdx.y == 0) {
@@ -293,6 +384,7 @@ void store_spatialWeight(
         x = LR_x0 + (centerEcc * cosine(centerPolar) + w * coso - h * sino) * normViewDistance;
         y = LR_y0 + (centerEcc * sine(centerPolar) + w * sino + h * coso) * normViewDistance;
         // DEBUG visual field and stimulus field not matching
+        if (!virtual_LGN) {
             if (x<0 || x>1) {
                 printf("x = %1.15e\n", x);
                 assert(x>=0);
@@ -303,6 +395,7 @@ void store_spatialWeight(
                 assert(y>=0);
                 assert(y<=1);
             }
+        }
         //
     }
     
@@ -329,6 +422,7 @@ void store_PM(
         Spatial_component &spatial,
         Float* __restrict__ SW_storage,
         float* __restrict__ SC_storage,
+        float* __restrict__ center,
         Float* __restrict__ max_convol,
         Size nBefore, Size nAfter, Size nL, Size nLGN,
 	    Float L_x0,
@@ -338,7 +432,8 @@ void store_PM(
 	    Float normViewDistance,
         Float nsig, // span of spatialRF sample in units of std
         int PM, // 0: parvo, 1: magno
-        bool uniform_retina
+        bool uniform_retina,
+        bool virtual_LGN
 ) {
     __shared__ Float reduced[warpSize];
     __shared__ Float shared_spat[10]; // centerPolar, centerEcc, coso, sino, wSpan, hSpan, dw, dh, wSigSqrt2, hSigSqrt2; TODO: use reduced is enough
@@ -388,10 +483,58 @@ void store_PM(
 				shared_spat[9] = spat.ry;
 			}
             //spat.k /= dw*dh;
+            if (virtual_LGN && blockIdx.y == 0) {
+                float x, y;
+                float cosp_d = cosine(shared_spat[0])*normViewDistance;
+                float sinp_d = sine(shared_spat[0])*normViewDistance;
+                if (!uniform_retina) {
+                    Float tanEcc = tangent(shared_spat[1]);
+                    x = LR_x0 + tanEcc * cosp_d;
+                    y = LR_y0 + tanEcc * sinp_d;
+                } else {
+                    x = LR_x0 + shared_spat[1] * cosp_d;
+                    y = LR_y0 + shared_spat[1] * sinp_d;
+                }
+                center[blockIdx.x] = x;
+		    	center[gridDim.x + blockIdx.x] = y;
+                if (!uniform_retina) {
+                    if (LR) {
+                        if (x < 0 || x > 0.5) {
+                            printf("x = %1.15e\n", x);
+                            //assert(x>=0);
+                            //assert(x<=0.5);
+                        }
+                    } else {
+                        if (x < 0.5 || x > 1) {
+                            printf("x = %1.15e\n", x);
+                            //assert(x>=0.5);
+                            //assert(x<=1);
+                        }
+                    }
+                    if (y<0 || y>1) {
+                        printf("y = %1.15e\n", y);
+                        //assert(y>=0);
+                        //assert(y<=1);
+                    }
+                } else {
+                    if (!virtual_LGN) {
+                        if (x<0 || x>1) {
+                            printf("x = %1.15e\n", x);
+                            assert(x>=0);
+                            assert(x<=1);
+                        }
+                        if (y<0 || y>1) {
+                            printf("y = %1.15e\n", y);
+                            assert(y>=0);
+                            assert(y<=1);
+                        }
+                    }
+                }
+            }
         }
         __syncthreads();
         // load from shared mem
-        store_spatialWeight(reduced, shared_spat[0], shared_spat[1], shared_spat[2], shared_spat[3], shared_spat[4], shared_spat[5], shared_spat[6], shared_spat[7], shared_spat[8], shared_spat[9], normViewDistance, LR_x0, LR_y0, LR, SW_storage, SC_storage, offset*nSample+tid, nSample, uniform_retina);
+        store_spatialWeight(reduced, shared_spat[0], shared_spat[1], shared_spat[2], shared_spat[3], shared_spat[4], shared_spat[5], shared_spat[6], shared_spat[7], shared_spat[8], shared_spat[9], normViewDistance, LR_x0, LR_y0, LR, SW_storage, SC_storage, offset*nSample+tid, nSample, uniform_retina, virtual_LGN);
     } else {
         assert(PM == 1);
         if (tid == 0) {
@@ -467,7 +610,54 @@ void store_PM(
         block_reduce<Float>(reduced, abs(spatialWeight));
         SW_storage[nSample*blockIdx.x + tid] = spatialWeight/reduced[0];
         if (tid == 0) {
-            max_convol[lid] = abs(k); 
+            max_convol[lid] = abs(k)*reduced[0]; 
+            if (virtual_LGN) {
+                float x, y;
+                float cosp_d = cosine(centerPolar)*normViewDistance;
+                float sinp_d = sine(centerPolar)*normViewDistance;
+                if (!uniform_retina) {
+                    x = LR_x0 + tangent(centerEcc) * cosp_d;
+                    y = LR_y0 + tangent(centerEcc) * sinp_d;
+                } else {
+                    x = LR_x0 + centerEcc * cosp_d;
+                    y = LR_y0 + centerEcc * sinp_d;
+                }
+                center[blockIdx.x] = x;
+		    	center[gridDim.x + blockIdx.x] = y;
+                if (!uniform_retina) {
+                    if (LR) {
+                        if (x < 0 || x > 0.5) {
+                            printf("x = %1.15e\n", x);
+                            assert(x>=0);
+                            assert(x<=0.5);
+                        }
+                    } else {
+                        if (x < 0.5 || x > 1) {
+                            printf("x = %1.15e\n", x);
+                            assert(x>=0.5);
+                            assert(x<=1);
+                        }
+                    }
+                    if (y<0 || y>1) {
+                        printf("y = %1.15e\n", y);
+                        assert(y>=0);
+                        assert(y<=1);
+                    }
+                } else {
+                    if (!virtual_LGN) {
+                        if (x<0 || x>1) {
+                            printf("x = %1.15e\n", x);
+                            assert(x>=0);
+                            assert(x<=1);
+                        }
+                        if (y<0 || y>1) {
+                            printf("y = %1.15e\n", y);
+                            assert(y>=0);
+                            assert(y<=1);
+                        }
+                    }
+                }
+            }
         }
         float x, y;
         if (!uniform_retina) {
@@ -480,29 +670,32 @@ void store_PM(
 
             retina_to_plane(cosp, sinp, tanEcc, x, y, normViewDistance, LR_x0, LR_y0);
             // DEBUG visual field and stimulus field not matching
+            if (!virtual_LGN) {
                 if (LR) {
                     if (x < 0 || x > 0.5) {
                         printf("x = %1.15e\n", x);
-                        //assert(x>=0);
-                        //assert(x<=0.5);
+                        assert(x>=0);
+                        assert(x<=0.5);
                     }
                 } else {
                     if (x < 0.5 || x > 1) {
                         printf("x = %1.15e\n", x);
-                        //assert(x>=0.5);
-                        //assert(x<=1);
+                        assert(x>=0.5);
+                        assert(x<=1);
                     }
                 }
                 if (y<0 || y>1) {
                     printf("y = %1.15e\n", y);
-                    //assert(y>=0);
-                    //assert(y<=1);
+                    assert(y>=0);
+                    assert(y<=1);
                 }
+            }
             //
         } else {
             x = LR_x0 + (centerEcc * cosine(centerPolar) + cx * coso - cy * sino) * normViewDistance;
             y = LR_y0 + (centerEcc * sine(centerPolar) + cx * sino + cy * coso) * normViewDistance;
             // DEBUG visual field and stimulus field not matching
+            if (!virtual_LGN) {
                 if (x<0 || x>1) {
                     printf("x = %.3e, %.3f + (%.3e + %.3e) * %.3e\n", x, LR_x0, centerEcc * cosine(centerPolar), cx * coso - cy * sino, normViewDistance);
                     assert(x>=0);
@@ -513,6 +706,7 @@ void store_PM(
                     assert(y>=0);
                     assert(y<=1);
                 }
+            }
             //
         }
         // store coords for retrieve data from texture
@@ -1403,10 +1597,11 @@ void LGN_nonlinear(
         Float* __restrict__ lastNegLogRand,
 		curandStateMRG32k3a* __restrict__ state,
 		InputType_t* __restrict__ LGN_type,
+		Float* __restrict__ switch_value,
         InputActivation typeStatus,
         Float* __restrict__ lVar,
 		cudaSurfaceObject_t LGNspikeSurface,
-        int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning, bool learnData_FF, bool LGN_switch, bool getLGN_sp)
+        int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning, bool learnData_FF, bool LGN_switch, bool getLGN_sp, bool virtual_LGN, int switchNow)
 {
 	unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     bool engaging = id<nLGN;
@@ -1423,8 +1618,12 @@ void LGN_nonlinear(
         Float lTR = leftTimeRate[id];
         Float lNL = lastNegLogRand[id];
         InputType_t type;
-        if (LGN_switch) {
+		Float local_switch;
+        if (switchNow > 0) {
             type = LGN_type[id];
+		}
+        if (virtual_LGN) {
+            current *= max;
         }
         //int x = sx[id];
         //int y = sy[id];
@@ -1432,16 +1631,41 @@ void LGN_nonlinear(
         y = sy[id];
         curandStateMRG32k3a local_state = state[id];
         //PosInt type = static_cast<PosInt>(LGN_type[id]);
+		if (LGN_switch) {
+			if (switchNow > 0) {
+				switch (switchNow) {
+					case 1:
+						if (uniform(&local_state) > typeStatus.actPercent[type]) {
+							local_switch = 0;
+							switch_value[id] = 0;
+						} else {
+							local_switch = 1;
+							switch_value[id] = 1.0;
+						}
+						break;
+					case 2:
+						switch_value[id] = typeStatus.actPercent[type];
+						local_switch = typeStatus.actPercent[type];
+						break;
+				}
+        	} else {
+				local_switch = switch_value[id];
+			}
+			//if (id == 0) {
+			//	printf("switchNow = %i, switch value = %f, actPercent[%u] = %f\n", switchNow, local_switch, type, typeStatus.actPercent[type]); 
+			//}
+		}
 
         // get firing rate
         logistic.load_first(id, C50, K, A, B);
         // Float convol = current; // use with DEBUG
+        if (LGN_switch) {
+			current *= local_switch;
+		}
         if (current < 0) {
             current = 0;
         }
-        if (LGN_switch) {
-            current *= typeStatus.actPercent[type];
-        }
+
         __syncwarp(MASK);
         Float fr = max * transform(C50, K, A, B, current/max);
 		// DEBUG

@@ -239,7 +239,9 @@ def plotSta(isuffix, output_suffix, conLGN_suffix, output_fdr, nf, hasOP = False
 
     print(parameterFn)
 
-    prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1, nstep, dt, normViewDistance, L_x0, L_y0, R_x0, R_y0 = read_cfg(parameterFn, True)
+    prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1, nstep, dt, normViewDistance, L_x0, L_y0, R_x0, R_y0, virtual_LGN = read_cfg(parameterFn, True)
+    if virtual_LGN:
+        raise Exception('not implemented for virtual_LGN')
 
     LGN_V1_ID, nLGN_V1 = readLGN_V1_ID(LGN_V1_idFn)
     nLGN_I, nLGN_C, nLGN, max_ecc, vCoordSpan, LGN_vpos, LGN_type, polar0, ecc0 = readLGN_vpos(LGN_vposFn, True)

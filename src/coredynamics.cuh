@@ -211,11 +211,13 @@ void compute_V_collect_spike_learnFF(
         Float* __restrict__ last_noise,
         Float* __restrict__ output_g,
         Float* __restrict__ output_h,
+        Float* __restrict__ totalFF,
+        Float* __restrict__ totalFF_inf,
         Float tau_noise, PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeFF, Size ngTypeE, Size ngTypeI, ConductanceShape condFF, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, int learning, int varSlot, Size nType,
 		cudaSurfaceObject_t LGNspikeSurface,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
-        LearnVarShapeE learnE, LearnVarShapeQ learnQ, int iModel, int noDelay
+        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo
 );
 
 //template<int ntimesE, int ntimesI> extern

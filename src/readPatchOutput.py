@@ -4,16 +4,23 @@ import matplotlib.colors as clr
 
 def read_input_frames(fn):
     with open(fn) as f:
+        inputType = np.fromfile(f, 'i4', 1)[0]
         nFrame = np.fromfile(f, 'u4', 1)[0]
         height = np.fromfile(f, 'u4', 1)[0]
         width = np.fromfile(f, 'u4', 1)[0]
-        initL, initM, initS = np.fromfile(f, 'f4', 3)
-        print(f'blank frame init values:{[initL, initM, initS]}')
-        buffer_ecc, ecc = np.fromfile(f, 'f4', 2)
+        if inputType < 0:
+            initL, initM, initS = np.fromfile(f, 'f4', 3)
+            print(f'blank frame init values:{[initL, initM, initS]}')
+            buffer_ecc, ecc = np.fromfile(f, 'f4', 2)
+        else:
+            ecc = np.fromfile(f, 'f4', 1)
         neye = np.fromfile(f,'u4', 1)[0]
         frames = np.fromfile(f, 'f4', height*width*nFrame*3).reshape(nFrame, 3, height, width)
 
-    return nFrame, width, height, initL, initM, initS, frames, buffer_ecc, ecc, neye
+    if inputType < 0:
+        return nFrame, width, height, initL, initM, initS, frames, buffer_ecc, ecc, neye
+    else:
+        return nFrame, width, height, frames, ecc, neye
 
 def read_cfg(fn, rn = False):
     with open(fn, 'rb') as f:
@@ -52,6 +59,11 @@ def read_cfg(fn, rn = False):
         nt = np.fromfile(f,'u4',1)[0] 
         dt = np.fromfile(f,prec,1)[0] 
         normViewDistance, L_x0, L_y0, R_x0, R_y0 = np.fromfile(f, prec, 5)
+        iVirtual_LGN = np.fromfile(f, 'i4', 1)[0]
+        if iVirtual_LGN == 1:
+            virtual_LGN = True
+        else:
+            virtual_LGN = False
 
         nE = typeAcc[nTypeHierarchy[0]-1]
         nI = typeAcc[-1] - nE
@@ -62,9 +74,9 @@ def read_cfg(fn, rn = False):
         print(f'sRatioLGN = {sRatioLGN}, sRatioV1 = {sRatioV1}')
         print(f'nLGN = {nLGN}, nV1 = {nV1}, dt = {dt}, nt = {nt}')
     if rn:
-        return prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1, nt, dt, normViewDistance, L_x0, L_y0, R_x0, R_y0
+        return prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1, nt, dt, normViewDistance, L_x0, L_y0, R_x0, R_y0, virtual_LGN
     else:
-        return prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn
+        return prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN
 
 def readLGN_V1_s0(fn, rnLGN_V1 = False, prec='f4'):
     with open(fn, 'rb') as f:

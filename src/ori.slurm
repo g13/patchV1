@@ -22,6 +22,7 @@ module load matlab/2020b
 #module load boost/gcc_4.9.3/openmpi_1.10.2/avx2/1.57.0
 #module load matlab/R2017a
 module list
+####################### USED BY patchTC ############################
 
 op_cfg=${op}-ori_${ori}.cfg
 

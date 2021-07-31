@@ -135,7 +135,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
     spDataFn = "V1_spikes" + _output_suffix
     parameterFn = "patchV1_cfg" +_output_suffix + ".bin"
 
-    prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn = read_cfg(parameterFn)
+    prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN = read_cfg(parameterFn)
     blockSize = typeAcc[-1]
     print(f'blockSize = {blockSize}')
     

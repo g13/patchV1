@@ -446,11 +446,13 @@ void compute_V_collect_spike_learnFF(
         Float* __restrict__ last_noise,
         Float* __restrict__ output_g,
         Float* __restrict__ output_h,
+        Float* __restrict__ totalFF,
+        Float* __restrict__ totalFF_inf,
         Float tau_noise, PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeFF, Size ngTypeE, Size ngTypeI, ConductanceShape condFF, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, int learning, int varSlot, Size nType,
 		cudaSurfaceObject_t LGNspikeSurface,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
-        LearnVarShapeE learnE, LearnVarShapeQ learnQ, int iModel, int noDelay)
+        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo)
 {
 	//assert(blockDim.x == blockSize);
     PosInt tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -805,7 +807,7 @@ void compute_V_collect_spike_learnFF(
 	}
     tBack[tid] = model.tBack;
 
-    if (learning) {
+    if (learning && learning < 4) {
         Float nsp = flooring(sInfo);
         Float tsp = (sInfo>0? sInfo - nsp: 1)*dt;
         // will compute ff learning, first row at start of time step, second row at tsp
@@ -816,24 +818,23 @@ void compute_V_collect_spike_learnFF(
         Float lQ[max_nLearnTypeQ];
         // read ff (post) lVar
         PosInt eid = nE*blockIdx.x+threadIdx.x;
-        if (learning < 4) { // read regardless of cortical spike 
-            if (threadIdx.x < nE) {
-                #pragma unroll max_nLearnTypeFF_E
-                for (PosInt i=0; i<learnE_post.n; i++) {
-                    lFF[2*i+0] =  vLTD_FF_E[nE*gridDim.x*i + eid];
-                    lFF[2*i+1] = vTrip_FF_E[nE*gridDim.x*i + eid];
+        // read lVars regardless of cortical spike 
+        if (threadIdx.x < nE) {
+            #pragma unroll max_nLearnTypeFF_E
+            for (PosInt i=0; i<learnE_post.n; i++) {
+                lFF[2*i+0] =  vLTD_FF_E[nE*gridDim.x*i + eid];
+                lFF[2*i+1] = vTrip_FF_E[nE*gridDim.x*i + eid];
+            }
+            lAvg[0] = vAvgE[eid*2];
+        } else {
+            if (learnI_post.n) {
+                PosInt iid = nI*blockIdx.x+threadIdx.x-nE;
+                #pragma unroll max_nLearnTypeFF_I
+                for (PosInt i=0; i<learnI_post.n; i++) {
+                    lFF[2*i+0] =  vLTD_FF_I[nI*gridDim.x*i + iid];
+                    lFF[2*i+1] = vTrip_FF_I[nI*gridDim.x*i + iid];
                 }
-                lAvg[0] = vAvgE[eid*2];
-            } else {
-                if (learnI_post.n) {
-                    PosInt iid = nI*blockIdx.x+threadIdx.x-nE;
-                    #pragma unroll max_nLearnTypeFF_I
-                    for (PosInt i=0; i<learnI_post.n; i++) {
-                        lFF[2*i+0] =  vLTD_FF_I[nI*gridDim.x*i + iid];
-                        lFF[2*i+1] = vTrip_FF_I[nI*gridDim.x*i + iid];
-                    }
-                    lAvg[0] = vAvgI[iid];
-                }
+                lAvg[0] = vAvgI[iid];
             }
         }
         if (nsp > 0) {
@@ -937,12 +938,44 @@ void compute_V_collect_spike_learnFF(
                 }
             }
         }
-        // learn LGN connection and update LGN lVars
-        if (learning < 4 && (threadIdx.x < nE || learnI_pre.n)) { 
+
+        if (threadIdx.x < nE || learnI_pre.n) { 
+            Float local_totalFF0;
+            Float local_totalFF_inf;
+            Float new_totalFF0; 
+            Float homeostatic_change;
+			Float delta_f;
+			if (applyHomeo) {
+				local_totalFF0 = totalFF[tid];
+            	local_totalFF_inf = totalFF_inf[tid];
+            	new_totalFF0 = (local_totalFF0-local_totalFF_inf)*exp_homeo + local_totalFF_inf;
+				switch (applyHomeo) {	
+					case 1: 
+						homeostatic_change = new_totalFF0/local_totalFF0;
+						break;
+					case 2:
+						homeostatic_change = (new_totalFF0 - local_totalFF0)/m;
+						break;
+				}
+				delta_f = 0.0;
+				/*
+				if (tid == 743) {
+					printf("exp_homeo = %f, f = %f->%f, finf = %f, ratio = %f\n", exp_homeo, local_totalFF0, new_totalFF0, local_totalFF_inf, homeostatic_change);
+				}*/
+			}
+            // learn LGN connection and update LGN lVars
             // learn
             for (PosInt i = 0; i<m; i++) {
                 PosInt lid = tid*max_nLGN + i;
                 Float f = sLGN[lid];
+				switch (applyHomeo) {
+					case 1:
+						f *= homeostatic_change;
+						break;
+					case 2:
+						f += homeostatic_change;
+						break;
+				}
                 int x = LGN_idx[lid];
                 int y = LGN_idy[lid];
                 float sInfo_FF;
@@ -963,14 +996,18 @@ void compute_V_collect_spike_learnFF(
                     if (threadIdx.x < nE) {
                         #pragma unroll max_nLearnTypeFF_E
                         for (PosInt j=0; j<learnE_pre.n; j++) {
-                            Float A_LTD = learnE_post.A_ratio[j] * learnE_pre.tauLTP[j] * lAvg[cPick] * lAvg[cPick]/learnE_post.targetFR;
-                            //Float A_LTD = learnFF_E.A_LTP[j]; TODO: alternative homeostatic design
+                            Float A_LTD = learnE_post.A_ratio[j];
+							if (learnE_post.targetFR > 0) {
+								A_LTD *= learnE_pre.tauLTP[j] * lAvg[cPick] * lAvg[cPick];
+							}
                             /*debug
 							if (lFF[cPick*max_nLearnTypeFF*2 + 2*j+0] > 0 && i == 0) {
                                 printf("%u-%u, A_LTD: %e = %e*%e*%e^2/%e\n", tid, i, A_LTD, learnE_post.A_ratio[j], learnE_pre.tauLTP[j], lAvg[cPick], learnE_post.targetFR);
 								printf("%u-%u, old_f: %e, lFF = %e\n", tid, i, f, lFF[cPick*max_nLearnTypeFF*2 + 2*j+0]);
                             }*/
-                            f -= if_decay(lFF[cPick*max_nLearnTypeFF*2 + 2*j+0], learnE_post.tau[2*j+0], delta_t) * A_LTD;
+                            Float df = if_decay(lFF[cPick*max_nLearnTypeFF*2 + 2*j+0], learnE_post.tau[2*j+0], delta_t) * A_LTD;
+                            f -= df;
+							if (applyHomeo) delta_f -= df;
                             /*debug
 							if (lFF[cPick*max_nLearnTypeFF*2 + 2*j+0] > 0 && i == 0) {
 								printf("%u-%u, new_f: %e\n", tid, i, f);
@@ -981,8 +1018,13 @@ void compute_V_collect_spike_learnFF(
                     } else {
                         #pragma unroll max_nLearnTypeFF_I
                         for (PosInt j=0; j<learnI_pre.n; j++) {
-                            Float A_LTD = learnI_post.A_ratio[j] * learnI_pre.tauLTP[j] * lAvg[cPick] * lAvg[cPick]/learnE_post.targetFR;
-                            f -= if_decay(lFF[cPick*max_nLearnTypeFF*2 + 2*j+0], learnI_post.tau[2*j+0], delta_t) * A_LTD;
+							Float A_LTD = learnI_post.A_ratio[j];
+							if (learnI_post.targetFR > 0) {
+								A_LTD *= learnI_pre.tauLTP[j] * lAvg[cPick] * lAvg[cPick];
+							}
+                            Float df = if_decay(lFF[cPick*max_nLearnTypeFF*2 + 2*j+0], learnI_post.tau[2*j+0], delta_t) * A_LTD;
+                            f -= df;
+                            if (applyHomeo) delta_f -= df;
                         }
                     }
                 } 
@@ -1007,7 +1049,9 @@ void compute_V_collect_spike_learnFF(
                             if (lFF_pre > 0 && lFF[max_nLearnTypeFF*2 + 2*j+1] > 0 && i == 0) {
                                 printf("%u-%u, LTP, old_f = %e, lFF_pre = %e\n", tid, i, f, lFF_pre);
                             }*/
-                            f += if_decay(lFF_pre, learnE_pre.tauLTP[j], delta_t) * lFF[max_nLearnTypeFF*2 + 2*j+1] * learnE_post.A_LTP[j];
+                            Float df = if_decay(lFF_pre, learnE_pre.tauLTP[j], delta_t) * lFF[max_nLearnTypeFF*2 + 2*j+1] * learnE_post.A_LTP[j];
+                            if (applyHomeo) delta_f += df;
+                            f += df;
                             /*debug
                             if (lFF_pre > 0 && lFF[max_nLearnTypeFF*2 + 2*j+1] > 0 && i == 0) {
                                 printf("%u-%u, new_f:%e += %e*%e*%e\n", tid, i, f, if_decay(lFF_pre, learnE_pre.tauLTP[j], delta_t), lFF[max_nLearnTypeFF*2 + 2*j+1], learnE_post.A_LTP[j]);
@@ -1019,27 +1063,39 @@ void compute_V_collect_spike_learnFF(
                             float lFF_pref;
                             surf2DLayeredread(&lFF_pref, LGNspikeSurface, 4*x, y, 1+3*j+fPick);
 							Float lFF_pre = static_cast<Float>(lFF_pref);
-                            f += if_decay(lFF_pre, learnI_pre.tauLTP[j], delta_t) * lFF[max_nLearnTypeFF*2 + 2*j+1] * learnI_post.A_LTP[j];
+                            Float df = if_decay(lFF_pre, learnI_pre.tauLTP[j], delta_t) * lFF[max_nLearnTypeFF*2 + 2*j+1] * learnI_post.A_LTP[j];
+							if (applyHomeo) delta_f += df;
+                            f += df;
                         }
                     }
                 }
                 if (threadIdx.x < nE) {
                    	if (f < learnE_post.gmin) {
-                   	     f = learnE_post.gmin;
+                        if (applyHomeo) delta_f += learnE_post.gmin-f;
+                   	    f = learnE_post.gmin;
                    	}
                    	if (f > learnE_post.gmax) {
-                   	     f = learnE_post.gmax;
+                        if (applyHomeo) delta_f -= f-learnE_post.gmax;
+                   	    f = learnE_post.gmax;
                    	}
                 } else {
                    	if (f < learnI_post.gmin) {
-                   	     f = learnI_post.gmin;
+                        if (applyHomeo) delta_f += learnI_post.gmin-f;
+                   	    f = learnI_post.gmin;
                    	}
                    	if (f > learnI_post.gmax) {
-                   	     f = learnI_post.gmax;
+                        if (applyHomeo) delta_f -= f-learnI_post.gmax;
+                   	    f = learnI_post.gmax;
                    	}
                 }
+				/*
+				if (applyHomeo && lid == 743*max_nLGN + 30) {
+					printf("%f->%f\n", sLGN[lid], f);
+				}*/
                 sLGN[lid] = f;
             }
+            if (applyHomeo) totalFF[tid] = new_totalFF0 + delta_f;
+
             // update FF vars; lAvg(E) to be updated after cortical learning if nLearnTypeE > 0
             Float delta_t = 1;
             PosInt cPick = nsp > 0? 1: 0;

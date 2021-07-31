@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --gres=gpu:1
+##SBATCH --gres=gpu:1
 #SBATCH --job-name=plotLearn
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=64GB
-#SBATCH --time=00:30:00
+#SBATCH --time=02:00:00
 #SBATCH -o log/pLearn_%J.out
 #SBATCH --mail-user=wd554@nyu.edu
 #SBATCH --mail-type=END
@@ -17,19 +17,29 @@ module load boost/intel/1.74.0
 module load matlab/2020b
 module list
 
-readNewSpike=True
+readNewSpike=$1
+if [ -z "$readNewSpike" ]; 
+then
+	readNewSpike=True
+fi
+plotOnly=true
 TF=8
-fdr=mouse_lFF
+fdr=lFF_test_tau
 #op=single_lFF_s
-op=lFF_s3
-op_cfg=lFF.cfg
-lgn=lFF
-v1=lFF
+#op=lFF_4x3_small
+#op=lFF1_1x12_1-3_-1-10_5
+op=40x3_h
+#op=lFF_1x12_108_equi0_1
+#op_cfg=tau_test0.cfg
+op_cfg=standing_test.cfg
+lgn=lFF_40x3_full
+v1=$lgn
 usePrefData=False
 collectMeanDataOnly=False
 OPstatus=1
-LGN_switch=true
+LGN_switch=false
 seed=1924784
+lgn0=lFF
 
 ori=0
 nOri=0
@@ -47,21 +57,28 @@ echo outputs to $fdr
 
 date
 
-matlab -r "inputLearnFF('$lgn', $seed);exit;"
-date
-./patch -c $op_cfg
-date
+if [ "$plotOnly" = false ]
+then
+	echo matlab -r "inputLearnFF('$lgn', $seed, 0, 'lFF');exit;"
+	matlab -r "inputLearnFF('$lgn', $seed);exit;"
+	date
+	./patch -c $op_cfg
+	date
+fi
 
 pid=""
-echo python plotLGN_response.py $op $lgn $fdr $readNewSpike & 
-python plotLGN_response.py $op $lgn $fdr $readNewSpike & 
+#echo python plotLGN_response.py $op $lgn $fdr $readNewSpike & 
+#python plotLGN_response.py $op $lgn $fdr $readNewSpike & 
+#pid+="${!} "
+#echo python plotV1_response_lFF.py $op $lgn $v1 $fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus & 
+#python plotV1_response_lFF.py $op $lgn $v1 $fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus & 
+#pid+="${!} "
+echo matlab -r "outputLearnFF('$lgn0', '$lgn', '$op', '$fdr', $LGN_switch, false);exit;" &
+matlab -r "outputLearnFF('$lgn0', '$lgn', '$op', '$fdr', $LGN_switch, false);exit;" &
 pid+="${!} "
-echo plotV1_response_lFF.py $op $lgn $v1 $fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus & 
-python plotV1_response_lFF.py $op $lgn $v1 $fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus & 
-pid+="${!} "
-echo matlab -r "testLearnFF('$lgn', '$op', '$fdr');outputLearnFF('$lgn', '$op', '$fdr', $LGN_switch, false);exit;" &
-matlab -r "testLearnFF('$lgn', '$op', '$fdr');outputLearnFF('$lgn', '$op', '$fdr', $LGN_switch, false);exit;" &
-pid+="${!} "
+
+#echo matlab -r "testLearnFF('$lgn', '$op', '$fdr');outputLearnFF('$lgn', '$op', '$fdr', $LGN_switch, false);exit;" &
+#matlab -r "testLearnFF('$lgn', '$op', '$fdr');outputLearnFF('$lgn', '$op', '$fdr', $LGN_switch, false);exit;" &
 
 #python patchOutput.py $op $fdr &
 #pid+="${!} "

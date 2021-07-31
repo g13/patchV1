@@ -48,6 +48,20 @@ __forceinline__
 Float get_spike(Size &nsp, Float &leftTimeRate, Float &lastNegLogRand, Float dt, Float rate, curandStateMRG32k3a *state);
 
 //template<int ntimes> extern
+
+__launch_bounds__(1024, 2)
+__global__
+void virtual_LGN_convol(
+        Float* __restrict__ lum,
+        Float* __restrict__ contrast,
+		cudaTextureObject_t* __restrict__ linearFrame,
+        Float* __restrict__ current_convol,
+		float* __restrict__ parvo_center,
+		float* __restrict__ magno_center,
+		InputType_t* __restrict__ LGN_type,
+		Int inputType, Size nParvo_L, Size nMagno_L, Size nParvo_R, Size nLGN, PosInt prev, PosInt next, Float rt, bool saveOutputB4V1
+);
+
 __launch_bounds__(1024, 2)
 __global__ 
 void LGN_nonlinear(
@@ -64,10 +78,11 @@ void LGN_nonlinear(
         Float* __restrict__ lastNegLogRand,
 		curandStateMRG32k3a* __restrict__ state,
 		InputType_t* __restrict__ LGN_type,
+		Float* __restrict__ switch_value,
         InputActivation typeStatus,
         Float* __restrict__ lVar,
 		cudaSurfaceObject_t LGNspikeSurface,
-        int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning, bool learnData_FF, bool LGN_switch, bool getLGN_sp
+        int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning, bool learnData_FF, bool LGN_switch, bool getLGN_sp, bool virtual_LGN, int switchNow
 );
 
 __global__
@@ -81,6 +96,7 @@ void store_PM(// weights and max convolution
         Spatial_component &spatial,
         Float* __restrict__ SW_storage,
         float* __restrict__ SC_storage,
+        float* __restrict__ center,
         Float* __restrict__ max_convol,
 		Size nBefore, Size nAfter, Size nL, Size nLGN,
 		Float L_x0,
@@ -90,7 +106,8 @@ void store_PM(// weights and max convolution
 		Float normViewDistance,
         Float nsig, // span of spatialRF sample in units of std
         int PM,
-        bool uniform_retina
+        bool uniform_retina,
+        bool virtual_LGN
 );
 
 __launch_bounds__(1024, 2)
