@@ -1,96 +1,128 @@
 % essential input files
-function inputLearnFF(suffix, seed)
-	max_ecc = 10;
+% suffix: theme string $lgn in lFF.slurm
+% seed: for randomize LGN connecction
+% stdratio: initial connections weights to be gaussian distributed if nonzero
+% suffix0: theme string %lgn0 in lFF.slurm
+% stage: retinal wave stages, takes 2 or 3
+function inputLearnFF(suffix, seed, stdratio, suffix0, stage)
+	if nargin < 4
+		suffix0 = 'lFF';
+	end
+	if nargin < 3
+		stdratio = 0;
+	end
+	if stdratio > 0
+		normed = true;
+	else
+		normed = false;
+	end
+
+	%%%% HERE %%%%%%%%
+	same = false; % set true if all the V1 neurons have the same LGN connections
+	switch stage
+		case 2
+			pCon = 1.0 % initial sparsity
+			nLGN_1D = 14; % sqrt of the total number of On/Off LGN cells
+			max_ecc = 10; % radius of the visual field spanned by all the LGN
+		case 3
+			pCon = 0.8
+			nLGN_1D = 7;
+			max_ecc = 5;
+		otherwise
+			warning('unexpected stage')
+	end
+	%%%%%%%%
+
+	if ~isempty(suffix0)
+	    suffix0 = ['_', suffix0];
+	end
 	if ~isempty(suffix)
 	    suffix = ['_', suffix];
 	end
 	fLGN_V1_ID = ['LGN_V1_idList', suffix, '.bin'];
 	fLGN_V1_s = ['LGN_V1_sList', suffix, '.bin'];
-	fLGN_surfaceID = ['LGN_surfaceID', suffix, '.bin'];
-	fV1_pos = ['V1_pos', suffix, '.bin'];
-	fV1_vposFn = ['V1_vpos', suffix, '.bin'];
-	fLGN_vpos = ['LGN_vpos', suffix, '.bin'];
 	fV1_RFprop = ['V1_RFprop', suffix, '.bin'];
 	fLGN_switch = ['LGN_switch', suffix, '.bin'];
-	fV1_feature = ['V1_feature', suffix, '.bin'];
+
+	fV1_vposFn = ['V1_vpos', suffix0, '.bin'];
+	fV1_pos = ['V1_pos', suffix0, '.bin'];
+	fV1_feature = ['V1_feature', suffix0, '.bin'];
+	fLGN_vpos = ['LGN_vpos', suffix0, '.bin'];
+	fLGN_surfaceID = ['LGN_surfaceID', suffix0, '.bin'];
 	
 	%parvoMagno = 1 % parvo
 	parvoMagno = 2 % magno 
 	%parvoMagno = 3 % both, don't use, only for testing purpose
 	
-	pCon = 0.5
 	rng(seed);
-	normed = true;
 	initialConnectionStrength = 1.0; % also can be changed by sRatioLGN in .cfg file
 	eiStrength = 0.000;
 	ieStrength = 0.000;
-	iCS_std = 1.0; % zero std gives single-valued connection strength
+	iCS_std = 0.0; % zero std gives single-valued connection strength
 	nblock = 1;
+	%blockSize = 128;
+	%mE = 96;
+	%mI = 32;
 	blockSize = 1024;
 	mE = 768;
 	mI = 256;
 	nV1 = nblock*blockSize;
-	nLGN_1D = 14;
 	doubleOnOff = 1;
 	frameVisV1output = false; % if need framed V1 output, write visual pos to fV1_pos
-	
-	t = 34; % in sec
-	dur = 85/60;
-	nStatus = floor(t/dur);
-	rDur = mod(t, dur);
-	if rDur > 0
-		nStatus = nStatus+1;
-	end
-	nStatus
-	peak = 1.0;
-	spread = 0.0;
-	%peak = 0.0
-	%spread = peak/3;
-	status = zeros(6,nStatus);
-	rands = rand(1,nStatus);
-	
-	%rands = repmat([0,1], [1, floor(nStatus/2)]);
-	%if mod(nStatus,2) == 1
-	%    rands = [rands, 1-rands(end)];
-	%end
-	%rands
-	
-	pOn = 0.5
-	disp('On: ')
-	nOnActive = ceil(nStatus/2)
-	disp('Off: ')
-	nOffActive = nStatus - nOnActive
-	seq = zeros(nStatus)-1;
-	seq(1:nOnActive) = 1;
-	seq = seq(randperm(nStatus))
-	
-	status(5,seq > 0) = 1; % randomly choose to switch on periods
-	status(5,seq < 0) = randn([1, nOffActive]) * spread + peak; % residual activeness when switched off
-	status(6,seq < 0) = 1;
-	status(6,seq > 0) = randn([1, nOnActive]) * spread + peak; 
-		
-	reverse = zeros(nStatus,1);
-	reverse(seq < 0) = 1;
-	%status(5:6,:) = 1;
-	%statusDur = [1];
 
-	statusDur = dur + zeros(nStatus,1);
-	if rDur > 0
-		statusDur(nStatus) = rDur;
+	%%%%% HERE %%%%%%%%
+	frameRate = 30; % from ext_input.py, also need to be set in the <simulation_config>.cfg
+	switch stage
+		case 2
+			peakRate = 0.5; % active cell percentage during wave
+			% corresponds to the parameters set in ext_input.py
+			nOri = 40; % number of orientation for the input waves
+			nRep = 1; % repeat of each orientation
+			framesPerStatus = 225; % frames for each wave
+			framesToFinish = ceil(62.1); % frames for the ending phase of the last wave
+		case 3
+			peakRate = 1.0;
+			absentRate = 1.0; % active cell percentage when being "absent"/not dominating
+			nOri = 40;
+			nRep = 3;
+			framesPerStatus = 132;
+			framesToFinish = ceil(24.9);
 	end
+	%%%%%%%%%%%%%
+	nStatus = nOri*nRep;
+	status = zeros(6,nStatus);
+	statusFrame = zeros(nStatus,1);
+
+	for i=1:nOri
+		for j = 1:nRep
+			statusFrame((i-1)*nRep + j) = framesPerStatus;
+		end
+		statusFrame(i*nRep) = statusFrame(i*nRep) + framesToFinish;
+	end
+	
+	statusFrame'
+	sum(statusFrame)
+	switch stage 
+		case 2
+			status(5,:) = peakRate;
+			status(6,:) = peakRate;
+		case 3
+			%rands = rand(1,nStatus);
+			%absentSeq = rands > 0;
+            absentSeq = 3:3:nStatus;
+			status(5,:) = peakRate;
+			status(5,absentSeq) = absentRate;
+			status(6,:) = 1.0;
+		otherwise
+			warning('unexpected stage')
+	end
+	reverse = zeros(nStatus,1);
+
 	nLGN = nLGN_1D*nLGN_1D;
 	if doubleOnOff
 	    nLGN = nLGN * 2;
 	end
 	
-	nLGNperV1 = round(nLGN * pCon);
-	if mod(nLGNperV1,2) == 1
-		nLGNperV1 = nLGNperV1 + 1
-	end
-	% number of E and I connecitons based on LGN connections
-	nI = int32(nLGNperV1/4);
-	nE = int32(nLGNperV1);
-
 	fid = fopen(fLGN_surfaceID, 'w'); % format follows patch.cu, search for the same variable name
 	if doubleOnOff
 	    [LGN_idx, LGN_idy] = meshgrid(1:nLGN_1D*2, 1:nLGN_1D); % meshgrid gives coordinates of LGN on the surface memory
@@ -121,7 +153,17 @@ function inputLearnFF(suffix, seed)
 	end
 	LGN_y = (LGN_idy(:)-nLGN_1D/2+0.5)./nLGN_1D.*max_ecc./0.5;
 	LGN_vpos0 = [LGN_x(1:2:nLGN), LGN_y(1:2:nLGN)];
-	size(LGN_vpos0)
+
+	nLGN_circ = sum(sum(LGN_vpos0.*LGN_vpos0,2) <= max_ecc.*max_ecc);
+	nLGNperV1 = round(nLGN_circ*2 * pCon);
+	if mod(nLGNperV1,2) == 1
+		nLGNperV1 = nLGNperV1 + 1;
+	end
+	nLGNperV1
+	% number of E and I connecitons based on LGN connections
+	nI = int32(min(nLGNperV1/4, mI));
+	nE = int32(min(nLGNperV1, mE));
+
 
 	fid = fopen(fLGN_V1_ID, 'w'); % format follows read_listOfList in util/util.h
 	fwrite(fid, nV1, 'uint');
@@ -129,19 +171,21 @@ function inputLearnFF(suffix, seed)
 	for i = 1:nV1
 	    fwrite(fid, nLGNperV1, 'uint');
 		if doubleOnOff 
-			%ids = randperm(nLGN_1D*nLGN_1D, nLGNperV1/2)-1; % index start from 0
-			ids = randq(nLGN_1D*nLGN_1D, nLGNperV1/2, LGN_vpos0, max_ecc); % index start from 0
+			if i == 1 || ~same
+				ids_on = randq(nLGN_1D*nLGN_1D, nLGNperV1/2, LGN_vpos0, max_ecc, max_ecc*stdratio); % index start from 0
+			end
 			idi	= zeros(nLGNperV1,1);
 			current_id = 1;
 			for j = 1:nLGN_1D
-				idj = ids(ids >= nLGN_1D*(j-1) & ids < nLGN_1D*j);
+				idj = ids_on(ids_on >= nLGN_1D*(j-1) & ids_on < nLGN_1D*j);
 				idi(current_id:current_id+length(idj)-1) = idj*2;
 				current_id = current_id+length(idj);
 			end
-			%ids = randperm(nLGN_1D*nLGN_1D, nLGNperV1/2)-1; % index start from 0
-			ids = randq(nLGN_1D*nLGN_1D, nLGNperV1/2, LGN_vpos0, max_ecc); % index start from 0
+			if i == 1 || ~same
+				ids_off = randq(nLGN_1D*nLGN_1D, nLGNperV1/2, LGN_vpos0, max_ecc, max_ecc*stdratio); % index start from 0
+			end
 			for j = 1:nLGN_1D
-				idj = ids(ids >= nLGN_1D*(j-1) & ids < nLGN_1D*j);
+				idj = ids_off(ids_off >= nLGN_1D*(j-1) & ids_off < nLGN_1D*j);
 				idi(current_id:current_id+length(idj)-1) = idj*2+1;
 				current_id = current_id+length(idj);
 			end
@@ -185,7 +229,7 @@ function inputLearnFF(suffix, seed)
 	fid = fopen(fLGN_switch, 'w');
 	fwrite(fid, nStatus, 'uint'); 
 	fwrite(fid, status, 'float'); % activated percentage
-	fwrite(fid, statusDur, 'float'); % duration
+	fwrite(fid, statusFrame, 'uint'); % duration
 	fwrite(fid, reverse, 'int');
 	fclose(fid);
 	
@@ -378,9 +422,20 @@ function inputLearnFF(suffix, seed)
 	fwrite(fid, ones(nV1,1), 'float');
 	fclose(fid);
 end
-function ids = randq(m,n,pos,stdev)	
-	rands = rand(m,1);
-	r = sqrt(sum(pos.*pos,2));
-	assert(length(r) == m);
-	[~, ids] = mink(rands ./ exp(-r.*r/(2*stdev*stdev)),n);
+function ids = randq(m,n,pos,r0,stdev)	
+	r2 = sum(pos.*pos,2);
+	ndiscard = m-n;
+	id = 1:m;
+	ndm = sum(r2>r0*r0);
+	pick = r2<=r0*r0;
+	id_left = id(pick);
+	if stdev <= 0
+		ids = id_left(randperm(m-ndm,n));
+	else
+		 rands = rand(m-ndm, 1);
+		[~, id0] = mink(rands ./ exp(-r2(pick)/(stdev*stdev)),n);
+		ids = id_left(id0);
+	end
+	ids = ids-1;
+	assert(all(ids >= 0));
 end

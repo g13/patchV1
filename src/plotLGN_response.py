@@ -51,12 +51,12 @@ if fdr:
 plotResponseSample = True
 plotContrastDist = False 
 plotStat = True 
-nLGN_1D = 16
-nt_ = 10000
+nLGN_1D = 8
+nt_ = 0
 nstep = 10000
 seed = 1653783
 #iLGN = np.array([84,1455,1833,2575])
-#iLGN = np.array([6*16+3,7*16+3,8*16+3, 6*16+10,7*16+10,8*16+10])
+iLGN = np.array([0,1,nLGN_1D*nLGN_1D+nLGN_1D-1,nLGN_1D*nLGN_1D+nLGN_1D])
 #iLGN = np.array([0,1,2,3])
 ns = 10
 
@@ -64,7 +64,7 @@ parameterFn = "patchV1_cfg" +output_suffix + ".bin"
 
 LGN_spFn = "LGN_sp" + output_suffix
 
-prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn = read_cfg(parameterFn)
+prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN = read_cfg(parameterFn)
 print(f'frRatioLGN = {frRatioLGN}, convolRatio = {convolRatio}')
 
 output = "LGN_gallery" + output_suffix + ".bin"
@@ -113,12 +113,16 @@ if 'iLGN' not in locals():
 ns = iLGN.size
 print(f'sample {ns} LGN\'s id:{iLGN}')
 
+for i in range(ns):
+    print(f'{iLGN[i]}: {(LGN_ecc[0,iLGN[i]]*np.cos(LGN_polar[0,iLGN[i]]), LGN_ecc[0,iLGN[i]]*np.sin(LGN_polar[0,iLGN[i]]))}')
+
 output_fn = "outputB4V1" + output_suffix + ".bin"
 with open(output_fn, 'rb') as f:
     nt = np.fromfile(f, 'u4', count = 1)[0]
     dt = np.fromfile(f, prec, count = 1)[0]
-    if nt_ > nt:
+    if nt_ > nt or nt_ == 0:
         nt_ = nt
+        nstep = nt_
     print(f'dt = {dt}')
     print(f'nt_= {nt_}/{nt}')
     if nstep > nt_:
@@ -126,7 +130,8 @@ with open(output_fn, 'rb') as f:
     print(f'nstep = {nstep}')
     interstep = nt_//nstep
     if interstep != nt_/nstep:
-        raise Exception(f'nstep: {nstep} is not divisible by nt_: {nt_}')
+        ntstep = nt_
+        interstep = nt_//nstep
     tt = np.arange(nstep)*interstep
     t = tt * dt
     print(f'interstep = {interstep}')
@@ -146,6 +151,8 @@ with open(output_fn, 'rb') as f:
         frStat = frStat + data
         LGNfr[it,:] = data[iLGN]
         data = np.fromfile(f, prec, count = nLGN)
+        if virtual_LGN:
+            data = data * max_convol
         convol_total[it,:] = data
         convol[it,:] = data[iLGN]
         data = np.fromfile(f, prec, count = nLGN)
@@ -176,7 +183,7 @@ if plotResponseSample:
         sp0 = np.array(LGN_spScatter[j])
         print(f'{sp0.size} spikes')
         sp = sp0[sp0 < t[-1]]
-        ax.plot(sp, np.zeros(sp.size), '*g', ms = 1.0)
+        ax.plot(sp, np.zeros(sp.size), '*g', ms = 0.05)
 
         ax.set_ylim([-1.0,1.0])
         ax2 = ax.twinx()

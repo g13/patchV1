@@ -1,41 +1,62 @@
 % connection strength heatmaps % better to choose from testLearnFF 
-function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
-	if nargin < 4
+function outputLearnFF(isuffix0, isuffix, osuffix, fdr, LGN_switch, mix, st, examSingle)
+	if nargin < 5
 		LGN_switch = true;
 	end
-	if nargin < 5
+	if nargin < 6
 		mix = true;
 	end
 	fdr = [fdr, '/'];
-	st = 2; %0 for temporal, 1 for spatial, 2 for both
-	V1_pick = [1,10,100,1000];
-	rng(1390842)
-	ns = 10;
+	if nargin < 7
+		st = 2; %0 for temporal, 1 for spatial, 2 for both
+	end
+	if nargin < 8
+		examSingle = false;
+	end
+
+
+	rng(1390843)
+	if ~isempty(isuffix0)
+	    isuffix0 = ['_', isuffix0];
+	end
 	if ~isempty(isuffix)
 	    isuffix = ['_', isuffix];
 	end
 	if ~isempty(osuffix)
 	    osuffix = ['_', osuffix];
 	end
-	thres = 0.0
-	nstep = 0
-	nbins = 20;
-    nit0 = 20;
+	%%%% HERE %%%%
+	thres_out = 0.5; % under which ratio of max LGN connection strength will not be used to calculate the orientation of RF, neither will be counted toward the number of connection in spatial figure's title.
+	nstep = 1000; % total steps to sample from the trace of weight evolution.
+	step0 = 1; % starting time step
+	nt_ = 0; % ending time step
+	nbins = 20; % bins for histogram
+    nit0 = 20; % number of snapshot for the spatial figure and histogram in the temporal figure
+	ns = 10; % number for V1 neurons to be sampled.
+	%V1_pick = [1,10,100,999,1000]; % specify the IDs of V1 neurons to be sampled. If set, ns will be ignored.
+	%%%%%%%%%%%%  
 
 	f_sLGN = ['sLGN', osuffix, '.bin']
-	LGN_V1_id_fn = ['LGN_V1_idList', isuffix, '.bin']
-	fLGN_vpos = ['LGN_vpos', isuffix, '.bin'];
-	fLGN_switch = ['LGN_switch', isuffix, '.bin'];
 	learnDataFn = ['learnData_FF', osuffix, '.bin']
+	V1_frFn = ['max_fr', osuffix, '.bin']
+
+	fLGN_vpos = ['LGN_vpos', isuffix0, '.bin'];
+	LGN_V1_id_fn = ['LGN_V1_idList', isuffix, '.bin']
+	fLGN_switch = ['LGN_switch', isuffix, '.bin'];
 
 	fid = fopen(learnDataFn, 'r');
 	dt = fread(fid, 1, 'float')
 	fclose(fid);
-	
+
 	fid = fopen(fLGN_vpos, 'r');
 	nLGN = fread(fid, 1, 'uint') % # ipsi-lateral LGN 
 	nLGN_I = fread(fid, 1, 'uint') % # ipsi-lateral LGN 
-	fseek(fid, (5 + (nLGN+nLGN_I)*5)*4, 0);
+	fseek(fid, 5*4, 0); % 5 float constants
+    LGN_vpos = fread(fid,[(nLGN+nLGN_I), 2], 'float');
+    LGN_type = fread(fid, nLGN, 'uint');
+    types = unique(LGN_type);
+    ntype = length(types);
+	fseek(fid, (nLGN+nLGN_I)*2*4, 0); % skip LGN_vpos in polar
 	doubleOnOff = fread(fid, 1, 'int')
 	fclose(fid);
 	
@@ -46,16 +67,32 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 	max_LGNperV1 = fread(fid, 1, 'uint')
 	sRatio = fread(fid, 1, 'float')
 	nLearnFF = fread(fid, 1, 'uint')
-	gmaxLGN = fread(fid, nLearnFF, 'float')
-	gmax0 = gmaxLGN(1)*sRatio; % TODO, separate E and I
+	gmaxLGN = fread(fid, nLearnFF, 'float')*sRatio
 	fclose(fid);
 
-	if ~exist('nstep', 'var')
-	    nstep = 0;
+	fid = fopen(V1_frFn, 'r');
+	fr = fread(fid, nV1, 'double');
+	fclose(fid);
+	
+
+	if nt_ > nt || nt_ == 0
+		nt_ = nt;
 	end
-	if nstep > nt || nstep == 0
-	    nstep = nt;
+	if step0 > nt_ || step0 == 0
+		step0 = 1;
 	end
+	range_nt = nt_-step0 +1;
+	if range_nt == nt
+		rtime = '';
+	else
+		rtime = ['-t', num2str(step0/nt*100,'%.0f'),'_',num2str(nt_/nt*100,'%.0f'),'%'];
+	end
+	if nstep > range_nt || nstep == 0
+	    nstep = range_nt;
+	end
+	step0
+	nt_
+	nstep
 	% read connection id
 	sid = fopen(LGN_V1_id_fn, 'r');
 	LGN_V1_ID = zeros(max_LGNperV1, nV1);
@@ -70,12 +107,59 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 	end
 	fclose(sid);
 
-	fid = fopen(fLGN_vpos, 'r');
-    fseek(fid, (7+2*nLGN)*4, 0);
-    LGN_type = fread(fid, nLGN, 'uint');
+	if ~exist('V1_pick', 'var') 
+		V1_pick = randi(768,[ns,1]);
+	else
+		ns = length(V1_pick);
+	end
+	disp(V1_pick); 
+
+    orient = zeros(nV1,1);
+	fid = fopen(f_sLGN, 'r');
+	fseek(fid, 6*4, 0); % skip till time
+	fseek(fid, max_LGNperV1*nV1*int64(nt_-1)*4, 0); % skip till time
+	sLGN = fread(fid, [max_LGNperV1, nV1], 'float');
     fclose(fid);
-    types = unique(LGN_type);
-    ntype = length(types)
+
+	nLGN_1D = sqrt(double(nLGN/2))
+	onS = zeros(nV1,1);
+	offS = zeros(nV1,1);
+    for iV1 = 1:nV1
+        all_id = LGN_V1_ID(1:nLGN_V1(iV1),iV1);
+        all_type = LGN_type(all_id);
+        all_s = sLGN(1:nLGN_V1(iV1),iV1);
+
+        on_s = all_s(all_type == 4);
+        on_id = all_id(all_type == 4);
+		sPick = on_s >= max(on_s) * thres_out;
+        onPick = on_id(sPick);
+		onS(iV1) = sum(on_s(sPick));
+        on_pos = mean(LGN_vpos(onPick,:), 1);
+
+        off_s = all_s(all_type == 5);
+        off_id = all_id(all_type == 5);
+		sPick = off_s >= max(off_s) * thres_out;
+        offPick = off_id(sPick);
+		offS(iV1) = sum(off_s(sPick));
+        off_pos = mean(LGN_vpos(offPick,:), 1);
+
+        orient(iV1) = atan2(off_pos(2)-on_pos(2), on_pos(1)-off_pos(1)); % spin around as the imagesc
+        if orient(iV1) < 0
+            orient(iV1) = orient(iV1) + 2*pi;
+        end
+    end
+
+	f = figure('PaperPosition',[0, 0, 8, 16]);
+	subplot(2,1,1)
+    histogram(onS-offS, 20);
+	xlabel('sOn-sOff')
+	subplot(2,1,2)
+    histogram(orient*180/pi, 'BinEdges', linspace(0,360,12));
+	xlabel('OP (deg)')
+
+	set(f, 'OuterPosition', [.1, .1, 8, 12]);
+	set(f, 'innerPosition', [.1, .1, 8, 12]);
+	saveas(f, [fdr, 'stats-LGN_V1', osuffix,rtime, '.png']);
 
 	if LGN_switch
 		fid = fopen(fLGN_switch, 'r');
@@ -92,12 +176,12 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 	    nit = nit0
 		typeInput = ones(ntype, 1);
 	end
-
-	if ~exist('V1_pick', 'var') 
-		V1_pick = randi(768,[ns,1]);
+	if nit <= 1
+		nit = 2
 	end
-	disp(V1_pick); 
+
     nrow = double(idivide(int32(nit+nit0-1),int32(nit0)));
+	qt = int32(floor(linspace(step0, nt_, nit)))
 	for iq = 1:ns
 	    iV1 = V1_pick(iq)
 	    %disp(nLGN_V1(iV1));
@@ -111,21 +195,24 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 	        % skip times
 	        %ht = round(nt/2);
 	        %it = [0, ht-1, nt-1 - (ht+1)]
-	        qt = int32(floor(linspace(1, nt, nit)));
-	        it = diff([0, qt])-1;
-	        for j = 1:nit
+			
+	        fseek(fid, max_LGNperV1*nV1*int64(step0-1)*4, 0); % skip till time
+	        data = fread(fid, [max_LGNperV1, nV1], 'float');
+	        sLGN(LGN_V1_ID(1:nLGN_V1(iV1),iV1),1) = data(1:nLGN_V1(iV1),iV1);
+
+	        it = diff(qt)-1;
+	        for j = 1:nit-1
 	            if it(j) > 0
 	                fseek(fid, max_LGNperV1*nV1*int64(it(j))*4, 0); % skip till time
 	            end
 	            data = fread(fid, [max_LGNperV1, nV1], 'float');
-	            sLGN(LGN_V1_ID(1:nLGN_V1(iV1),iV1),j) = data(1:nLGN_V1(iV1),iV1);
+	            sLGN(LGN_V1_ID(1:nLGN_V1(iV1),iV1),j+1) = data(1:nLGN_V1(iV1),iV1);
 	        end
 	        fclose(fid);
 	        
 			if doubleOnOff == 0
 	        	f = figure('PaperPosition',[0, 0, nit, (2-mix)]);
 				set(f, 'PaperUnit', 'inches');
-				nLGN_1D = sqrt(double(nLGN))
 	    	    sLGN = reshape(sLGN, [nLGN_1D, nLGN_1D, nit]);
 				gmax = max(abs(sLGN(:)));
 	    	    if mix
@@ -135,14 +222,16 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 	    	            stmp = sLGN(:,:,i);
 	    	            offPick = LGN_type == 5;
 	    	            stmp(offPick) = -stmp(offPick);
+
+						local_max = max(abs(stmp(:)));
 	    	            stmp = stmp./gmax;
-	    	            stmp(abs(stmp)<thres) = 0;
-	    	            imagesc(stmp, clims);
+	    	            stmp(abs(stmp)<local_max/gmax*thres_out) = 0;
+
+	    	            imagesc(stmp', clims);
 	    	            colormap('gray');
 	    	            daspect([1,1,1]);
-						axis image
-	    	            %set(gca,'YDir','normal')
-	    	            title(['t', num2str(double(qt(i))/nt*100,'%.0f'),'%-n',num2str(sum(sum(sLGN(:,:,i)>thres))),'-p',num2str(gmax/gmax0*100,'%.0f'),'%'], 'FontSize', 6);
+	    	            set(gca,'YDir','reverse')
+	    	            title(['t', num2str(double(qt(i))/nt*100,'%.0f'),'%-n',num2str(sum(sum(stmp>0))),'-p',num2str(gmax/gmaxLGN*100,'%.0f'),'%'], 'FontSize', 6);
 	    	            if i == nit
 							ax = subplot(1, nit+1, nit+1);
 	    	            	im = imagesc(stmp, clims);
@@ -150,6 +239,9 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 							ax.Visible = 0;
 	    	                colorbar;
 	    	            	colormap('gray');
+                            if i == nit
+                                title([num2str(orient(iV1)*180/pi, '%.0f'), 'deg, ', num2str(fr(iV1),'%.2f'), 'Hz']);
+                            end
 	    	            end
 	    	        end
 	    	    else
@@ -162,14 +254,15 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 								stmp
 							end
 	    	                stmp(LGN_type ~= types(itype)) = 0;
-	    	                stmp = stmp./gmax;
-	    	                stmp(stmp<thres) = 0;
-	    	                imagesc(stmp, clims);
+
+							local_max = max(abs(stmp(:)));
+	    	            	stmp = stmp./gmax;
+
+	    	                imagesc(stmp', clims);
 	    	            	daspect([1,1,1]);
-							axis image
-	    	                %set(gca,'YDir','normal')
+	    	                set(gca,'YDir','reverse')
 	    	                if itype == 1
-								title(['t', num2str(double(qt(i))/nt*100,'%.0f'),'%-n',num2str(sum(sum(sLGN(:,:,i)>thres))),'-p',num2str(gmax/gmax0*100,'%.0f'),'%'], 'FontSize', 6);
+								title(['t', num2str(double(qt(i))/nt*100,'%.0f'),'%-n',num2str(sum(sum(stmp>0))),'-p',num2str(gmax/gmaxLGN*100,'%.0f'),'%'], 'FontSize', 6);
 	    	                end
 	    	                if i == 1
 	    	                    ylabel(['type: ', num2str(types(itype))]);
@@ -179,6 +272,7 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 	    	            		im = imagesc(stmp, clims);
 								im.Visible = 0;
 								ax.Visible = 0;
+                                title([num2str(orient(iV1)*180/pi, '%.0f'), 'deg, ', num2str(fr(iV1),'%.2f'), 'Hz']);
 	    	            		colormap('gray');
 	    	                    colorbar;
 	    	                end
@@ -186,14 +280,12 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 	    	        end
 	    	    end
 			else
-	        	f = figure('PaperPosition',[0, 0, nit0, ntype*nrow]);
+	        	f = figure('PaperPosition',[0, 0, nit0, ntype*nrow], 'Resize', 'off');
 				set(f, 'PaperUnit', 'inches');
 				assert(doubleOnOff == 1);
-				nLGN_1D = sqrt(double(nLGN/2))
 				sLGN = reshape(sLGN, [nLGN_1D*2, nLGN_1D, nit]);
 				gmax = max(abs(sLGN(:)));
 	    	    clims = [0, 1];
-	    	    
 	    	    for itype = 1:ntype
                     row = 1;
 	    	        for i = 1:nit
@@ -204,80 +296,124 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
                             iplot = iplot + i;
                         end
 	    	            subplot(nrow*ntype,nit0+1,iplot)
-	    	            stmp = sLGN(itype:2:(nLGN_1D*2),:,i);
-	    	            stmp = stmp./gmax;
-	    	            stmp(stmp<thres) = 0;
-	    	            imagesc(stmp, clims);
+	    	            stmp0 = sLGN(itype:2:(nLGN_1D*2),:,i);
+						local_max = max(abs(stmp0(:)));
+	    	            stmp = stmp0./gmax;
+	    	            imagesc([1 nLGN_1D], [1,nLGN_1D],stmp', clims);
 	    	        	daspect([1,1,1]);
-						axis image
-	    	            %set(gca,'YDir','normal')
+	    	            set(gca,'YDir','reverse')
+						set(gca,'YTickLabel', []);
+						set(gca,'XTickLabel', []);
+						local_nCon = sum(sum(stmp0>=thres_out*gmax));
 	    	            if itype == 1
-							title(['t', num2str(double(qt(i))/nt*100,'%.0f'),'%-n',num2str(sum(sum(stmp>0))),'-p',num2str(gmax/gmax0*100,'%.0f'),'%'], 'FontSize', 6);
+							title(['t', num2str(double(qt(i))/nt*100,'%.0f'),'%-n',num2str(local_nCon),'-p',num2str(local_max/gmaxLGN*100,'%.0f'),'%'], 'FontSize', 5);
+                        else
+							title(['n',num2str(local_nCon),'-p',num2str(local_max/gmaxLGN*100,'%.0f'),'%'], 'FontSize', 5);
 	    	            end
 	    	            if mod(i, nit0) == 1
 	    	                ylabel(['type: ', num2str(types(itype))]);
 	    	            end
+	    	            if i == nit
+							subplot(nrow*ntype, nit0+1, iplot+1);
+							stmp = stmp0./gmax;
+							stmp(stmp < thres_out) = 0;
+							imagesc([1 nLGN_1D], [1,nLGN_1D], stmp', clims);
+	    	        		daspect([1,1,1]);
+							fpos = get(gca, 'Position');
+	    	            	set(gca,'YDir','reverse')
+							set(gca,'YTickLabel', []);
+							set(gca,'XTickLabel', []);
+							title(num2str(local_nCon,'%.0f'), 'FontSize', 5)
+	    	        		colormap('gray');
+	    	                colorbar;
+							set(gca, 'Position', fpos);
+	    	            end
                         if mod(i, nit0) == 0
                             row = row + 1;
                         end
-	    	            if i == nit
-							ax = subplot(1, nit0+1, nit0+1);
-	    	        		im = imagesc(stmp, clims);
-							im.Visible = 0;
-							ax.Visible = 0;
-	    	        		colormap('gray');
-	    	                colorbar;
-	    	            end
 	    	        end
 	    	    end
+                %suptitle([num2str(nLGN_1D), 'x', num2str(nLGN_1D), 'x2: ',num2str(orient(iV1)*180/pi, '%.0f'), 'deg, (thres:',num2str(thres_out*100,'%.0f'),'%), ', num2str(fr(iV1),'%.2f'), 'Hz']);
 			end
 			set(f, 'OuterPosition', [.1, .1, nit+2, 4]);
 			set(f, 'innerPosition', [.1, .1, nit+2, 4]);
 			if mix && doubleOnOff ~= 1
-	        	saveas(f, [fdr,'sLGN_V1-',num2str(iV1), osuffix, '-mix'], 'fig');
-	        	saveas(f, [fdr,'sLGN_V1-',num2str(iV1), osuffix, '-mix','.png']);
+	        	%saveas(f, [fdr,'sLGN_V1-',num2str(iV1), osuffix, '-mix',rtime], 'fig');
+	        	saveas(f, [fdr,'sLGN_V1-',num2str(iV1), osuffix, '-mix',rtime,'.png']);
 			else
-	        	saveas(f, [fdr,'sLGN_V1-',num2str(iV1), osuffix, '-sep'], 'fig');
-	        	saveas(f, [fdr,'sLGN_V1-',num2str(iV1), osuffix, '-sep','.png']);
+	        	%saveas(f, [fdr,'sLGN_V1-',num2str(iV1), osuffix, '-sep',rtime], 'fig');
+	        	saveas(f, [fdr,'sLGN_V1-',num2str(iV1), osuffix, '-sep',rtime,'.png']);
 			end
 	    end
 	    if st == 2 || st == 0
 	        
-	        tstep = int64(round(nt/nstep))
-	        it = 1:tstep:nt;
+	        tstep = int64(round(range_nt/nstep))
+	        it = step0:tstep:nt_;
 	        nstep = length(it)
+			qtt = int32(floor(linspace(1,nstep,nit)));
 	        tLGN = zeros(max_LGNperV1, nstep);
 	        
 
 	        fid = fopen(f_sLGN, 'r');
 	        fseek(fid, 6*4, 0); % skip till time
+	        fseek(fid, max_LGNperV1*nV1*int64(step0-1)*4, 0); % skip till time
+	        data = fread(fid, [max_LGNperV1, nV1], 'float');
+	        tLGN(:,1) = data(:,iV1);
 	        
-	        for j = 1:nstep
-	            if j > 1
-	                fseek(fid, max_LGNperV1*nV1*int64(tstep-1)*4, 0); % skip till time
-	            end
+	        for j = 2:nstep
+	            fseek(fid, max_LGNperV1*nV1*int64(tstep-1)*4, 0); % skip till time
 	            data = fread(fid, [max_LGNperV1, nV1], 'float');
 	            tLGN(:,j) = data(:,iV1);
 	        end
 	        fclose(fid);
 	       	gmax = max(tLGN(:));
-	        qt = int32(floor(linspace(1,nstep,nit)));
-	        f = figure('PaperPosition',[.1 .1 8 6]);
-			subplot(21,3,3*10 + [1,2])
-			hold on
-			status_t = 0;
-			for i = 1:nStatus
-				current_nt = round(statusDur(i)*1000/dt);
-				current_t = (1:current_nt)*dt;
-				plot(status_t + current_t, zeros(current_nt,1) + reverse(i), 'k');
-				status_t = status_t + statusDur*1000;
+	       	gmin = min(tLGN(:));
+
+			if examSingle
+				f = figure('PaperPosition',[.1 .1 8 8]);
+				for i = 1:nLGN_V1(iV1)
+					ip = LGN_V1_ID(i,iV1);
+					this_type = mod(LGN_type(ip),2);
+					sat = (tLGN(i,end)-gmin)/gmax;
+					val = 1.0;
+					if this_type == 0
+						assert(mod(ip,2) == 1);
+						hue = 0;
+						ip = 2*fix(ip/(2*nLGN_1D))*nLGN_1D + mod((ip+1)/2-1, nLGN_1D)+1;
+					else
+						assert(mod(ip,2) == 0);
+						hue = 2/3;
+						ip = (2*ceil(ip/2/nLGN_1D)-1)*nLGN_1D + mod(ip/2-1, nLGN_1D)+1;
+					end
+					hsv = [hue, sat, val];	
+					subplot(2*nLGN_1D, nLGN_1D, ip)
+	        		plot(it*dt, tLGN(i,:)./gmax*100, '-', 'Color', hsv2rgb(hsv));
+					ylim([0, 100])
+					set(gca,'YTickLabel', []);
+					set(gca,'XTickLabel', []);
+				end
+				saveas(f, [fdr, 'tLGN_V1_single-',num2str(iV1), osuffix,rtime, '.png']);
 			end
-			set(gca,'visible','off','XColor','none','YColor','none','xtick',[],'ytick',[]);
+			f = figure('PaperPosition',[.1 .1 8 6]);
+			
+			if LGN_switch
+				subplot(21,3,3*10 + [1,2])
+				hold on
+				status_t = 0;
+				for i = 1:nStatus
+					current_nt = round(statusDur(i)*1000/dt);
+					current_t = (1:current_nt)*dt;
+					plot(status_t + current_t, zeros(current_nt,1) + reverse(i), 'k');
+					status_t = status_t + statusDur*1000;
+				end
+				set(gca,'visible','off','XColor','none','YColor','none','xtick',[],'ytick',[]);
+			end
 				
 			for i = 1:ntype
 	    		subplot(ntype,3, 3*(i-1) + [1,2])
 	        	plot(it*dt, tLGN(LGN_type(LGN_V1_ID(1:nLGN_V1(iV1),iV1)) == types(i),:)./gmax*100, '-');
 				title(['type', num2str(types(i)), ' input takes ' num2str(typeInput(i)*100, '%.1f'), ' %']);
+				ylim([0, 100])
 	        	ylabel('strength % of max');
 				if i == ntype
 	        		xlabel('ms');
@@ -288,13 +424,16 @@ function outputLearnFF(isuffix, osuffix, fdr, LGN_switch, mix)
 	            subplot(nit,3,3*i)
 				hold on
 				for j = 1:ntype
-	            	histogram(tLGN(LGN_type(LGN_V1_ID(1:nLGN_V1(iV1),iV1)) == types(j), qt(i))./gmax*100, 'BinEdges', edges, 'FaceAlpha', 0.5);
+	            	histogram(tLGN(LGN_type(LGN_V1_ID(1:nLGN_V1(iV1),iV1)) == types(j), qtt(i))./gmax*100, 'BinEdges', edges, 'FaceAlpha', 0.5);
+				end
+				if i == nit
+					xlabel(['strength % of max0, on:off=', num2str(onS(iV1)/offS(iV1),'%.1f')]);
 				end
 	        end
 			set(f, 'OuterPosition', [.1, .1, 8, 6]);
 			set(f, 'innerPosition', [.1, .1, 8, 6]);
-	        saveas(f, [fdr, 'tLGN_V1-',num2str(iV1), osuffix], 'fig');
-	        saveas(f, [fdr, 'tLGN_V1-',num2str(iV1), osuffix, '.png']);
+	        %saveas(f, [fdr, 'tLGN_V1-',num2str(iV1), osuffix,rtime], 'fig');
+	        saveas(f, [fdr, 'tLGN_V1-',num2str(iV1), osuffix,rtime, '.png']);
 	    end
 	end
 end

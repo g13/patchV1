@@ -41,7 +41,12 @@ struct AdEx { //Adaptive Exponential IF
 	AdEx(Float _w0, Float _tau_w, Float _a, Float _b, Float _v0, Float _tBack, Float _vR, Float _vThres, Float _gL, Float _C, Float _tRef, Float _vT, Float _deltaT, Float _gapS, Float dep): v0(_v0), tBack(_tBack), vR(_vR), vThres(_vThres), gL(_gL), C(_C), tRef(_tRef), w0(_w0), tau_w(_tau_w), a(_a), b(_b), vT(_vT), deltaT(_deltaT), gapS(_gapS) {
 		spikeCount = 0;
 		Float targetV = vR + (vT-vR)*dep;
-		depC = (gL+a)*(targetV - vL) - gL*deltaT*exponential((targetV - vT)/deltaT);
+		if (targetV > vT) {
+			depC = (gL+a)*(targetV - vL) - gL*deltaT;
+			
+		} else {
+			depC = (gL+a)*(targetV - vL) - gL*deltaT*exponential((targetV - vT)/deltaT);
+		}
 	};
     __device__ 
 	__forceinline__
@@ -149,7 +154,7 @@ void recal_G_vec(
         std::vector<Size> &nVec,  std::vector<std::vector<PosInt>> &vecID, std::vector<std::vector<Float>> &conVec, std::vector<std::vector<Float>> &delayVec,
         Float gE[], Float gI[], Float hE[], Float hI[], Float pE[], Float pI[], Size typeAcc[],
         std::default_random_engine *h_rGenCond, Float synFail[], Float synPerCon[],
-        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, Size nType, Size nE, Size nI, Size nV1, Float speedOfThought, Size chunkSize, bool noFarDelay
+        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, Size nType, Size nE, Size nI, Size nV1, Float speedOfThought, Size chunkSize, bool noFarDelay, PosInt it
 );
 
 void recal_Gap_vec(
@@ -211,11 +216,13 @@ void compute_V_collect_spike_learnFF(
         Float* __restrict__ last_noise,
         Float* __restrict__ output_g,
         Float* __restrict__ output_h,
+        Float* __restrict__ totalFF,
+        Float* __restrict__ totalFF_inf,
         Float tau_noise, PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeFF, Size ngTypeE, Size ngTypeI, ConductanceShape condFF, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, int learning, int varSlot, Size nType,
 		cudaSurfaceObject_t LGNspikeSurface,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
-        LearnVarShapeE learnE, LearnVarShapeQ learnQ, int iModel, int noDelay
+        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo
 );
 
 //template<int ntimesE, int ntimesI> extern
@@ -261,7 +268,7 @@ void sum_G(
         Float* __restrict__ hE,
         Float* __restrict__ hIt,
         Float* __restrict__ hI,
-        Size ngTypeE, Size ngTypeI
+        Size ngTypeE, Size ngTypeI, PosInt it
 );
 
 __global__
@@ -300,7 +307,7 @@ void recal_G_mat_nd( // <<< nblock[partial], blockSize >>>
         Float* __restrict__ synPerCon,
 		Float* __restrict__ vThres,
         Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, Size nearNeighborBlock, Size nE, Size nI, Size nV1, int learning, PosInt block_offset, Size nType, Size nTypeE, Size nTypeI,
-        LearnVarShapeE lE, LearnVarShapeQ lQ, PosInt iChunk
+        LearnVarShapeE lE, LearnVarShapeQ lQ, PosInt iChunk, PosInt it
 );
 
 #endif

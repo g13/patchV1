@@ -134,14 +134,17 @@ struct LearnVarShapeFF_I_post {
 };
 
 template<class T>
-void learnFF_post(T &l, Float tauLTD[], Float tauTrip[], Float tauAvg, Float targetFR, Float A_LTP[], Float gmax, Float gmin, Size n, Float ratio) {
+void learnFF_post(T &l, Float tauLTD[], Float tauTrip[], Float r_LTD[], Float tauAvg, Float targetFR, Float A_LTP[], Float gmax, Float gmin, Size n, Float ratio) {
     l.n = n;
     for (PosInt i=0; i<n; i++) {
         l.tau[2*i+0] = tauLTD[i];
         l.tau[2*i+1] = tauTrip[i];
         l.A_LTP[i] = A_LTP[i]*ratio;
         Float tauAvg_in_sec = tauAvg/1000.0;
-        l.A_ratio[i] = tauTrip[i]*l.A_LTP[i]/(tauLTD[i]*(tauAvg_in_sec*tauAvg_in_sec))/1000.0; // * tauLTP * filtered spike avg^2 / target firing rate = A_LTD
+		l.A_ratio[i] = r_LTD[i] * l.A_LTP[i]; // = A_LTD
+		if (targetFR > 0) {
+			l.A_ratio[i] *= tauTrip[i]/(tauLTD[i]*(tauAvg_in_sec*tauAvg_in_sec))/1000.0/targetFR; // * tauLTP * filtered spike avg^2 = A_LTD
+		}
     }
     l.tau[2*n] = tauAvg;
     l.targetFR = targetFR; 

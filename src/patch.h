@@ -148,3 +148,19 @@ void prep_sample(unsigned int iSample, unsigned int width, unsigned int height, 
 	params.dstArray = dS;
 	checkCudaErrors(cudaMemcpy3D(&params));
 }
+
+void prep_frame(unsigned int iSample, unsigned int width, unsigned int height, float* frameInput[], cudaArray *frame_cuArray[], unsigned int nLGN_type, unsigned int nSample, cudaMemcpyKind cpyKind) {
+	// copy the three channels L, M, S of the #iSample frame to the cudaArrays dL, dM and dS
+	cudaMemcpy3DParms params = {0};
+	params.srcPos = make_cudaPos(0, 0, 0);
+	params.dstPos = make_cudaPos(0, 0, iSample);
+	// if a cudaArray is involved width is element not byte size
+	params.extent = make_cudaExtent(width, height, nSample);
+	params.kind = cpyKind;
+
+	for (PosInt i=0; i<nLGN_type; i++) {
+		params.srcPtr = make_cudaPitchedPtr(frameInput[i], width * sizeof(float), width, height);
+		params.dstArray = frame_cuArray[i];
+		checkCudaErrors(cudaMemcpy3D(&params));
+	}
+}

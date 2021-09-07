@@ -11,7 +11,7 @@ from sys import stdout
 from readPatchOutput import *
 sys.path.append(os.path.realpath('..'))
 from ext_signal import apply_sRGB_gamma, LMS2sRGB
-from global_vars import LGN_vposFn, featureFn, V1_allposFn, seed
+from global_vars_lFF import LGN_vposFn, featureFn, V1_allposFn, V1_vposFn, seed
 import warnings
 warnings.filterwarnings( "ignore", module = "matplotlib\..*" )
 
@@ -24,31 +24,17 @@ plotPop = False # calc props from the max deviation RF snapshot
 tau_pick = tau_step//3 # one of the steps from tau_steps for pop analysis
 checkFrame = True
 
-def LMS2RG_axis(sta, ns, ntau_step, nChannel, height, width, initL, initM):
-    assert(nChannel == 2 or nChannel == 3)
-    RG_axis = np.zeros((ns, ntau_step, height, width))
+def normalize(sta, ns, ntau_step, height, width, init):
+    axis = np.zeros((ns, ntau_step, height, width))
     vmin = np.zeros(ns)
     vmax = np.zeros(ns)
     for i in range(ns):
-        data = sta[i,:,:,:,:].reshape(ntau_step,nChannel,height*width)
-        L = data[:,0,:]- initL
-        M = data[:,1,:]- initM
-        R_plus = np.array([np.min(L), np.max(L)]) 
-        G_minus = np.array([np.min(M), np.max(M)])
-
-        #data = (dR*L - dG*M).reshape(ntau_step, height, width)
-        data = (M - L).reshape(ntau_step, height, width)
+        data = sta[i,:,1,:,:].reshape(ntau_step,height*width) - init
         vmin[i] = np.min(data)
         vmax[i] = np.max(data)
-        if np.abs(vmax[i]) > np.abs(vmin[i]):
-            ratio = np.abs(vmax[i])/np.abs(vmin[i])
-            vmin[i] = vmin[i]*ratio
-        else:
-            ratio = np.abs(vmin[i])/np.abs(vmax[i])
-            vmax[i] = vmax[i]*ratio
-        RG_axis[i, :, :, :] = data
+        axis[i, :, :, :] = data.reshape(ntau_step,height,width)
 
-    return RG_axis, vmin, vmax
+    return axis, vmin, vmax
 
 def acuity(ecc): 
     acuityK = 0.2049795945022049
@@ -239,9 +225,7 @@ def plotSta(isuffix, output_suffix, conLGN_suffix, output_fdr, nf, hasOP = False
 
     print(parameterFn)
 
-    prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1, nstep, dt, normViewDistance, L_x0, L_y0, R_x0, R_y0, virtual_LGN = read_cfg(parameterFn, True)
-    if virtual_LGN:
-        raise Exception('not implemented for virtual_LGN')
+    prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1, nstep, dt, normViewDistance, L_x0, L_y0, R_x0, R_y0 = read_cfg(parameterFn, True)
 
     LGN_V1_ID, nLGN_V1 = readLGN_V1_ID(LGN_V1_idFn)
     nLGN_I, nLGN_C, nLGN, max_ecc, vCoordSpan, LGN_vpos, LGN_type, polar0, ecc0 = readLGN_vpos(LGN_vposFn, True)
@@ -317,7 +301,7 @@ def plotSta(isuffix, output_suffix, conLGN_suffix, output_fdr, nf, hasOP = False
         if nsp[i] > 0:
             sta[i, :, :, :, :] /= nsp[i]
 
-    sta, vmin, vmax = LMS2RG_axis(sta, ns, ntau_step, 3, height, width, initL, initM)
+    sta, vmin, vmax = normalize(sta, ns, ntau_step, height, width, initL)
 
     print(f'nsample = {ns}, ntau_step = {ntau_step}, height = {height}, width = {width}, dt = {dt}, inits = {[initL, initM, initS]}')
     print(f'it_tau = {it_tau}')
@@ -441,8 +425,7 @@ def plotSta(isuffix, output_suffix, conLGN_suffix, output_fdr, nf, hasOP = False
             for itau in range(ntau_step):
                 ax = fig.add_subplot(grid[itau//grid_col, np.mod(itau, grid_col)])
                 
-                #cmap_name = 'gray'
-                cmap_name = 'PiYG'
+                cmap_name = 'gray'
                 ax.imshow(sta[i,itau,:,:], cmap = cmap_name, aspect = 'equal', origin = 'lower')
                 ax.plot(x*width, y*height, '.k', ms = 0.5, label = 'preset c.')
                 if neye == 2:

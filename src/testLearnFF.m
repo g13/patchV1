@@ -1,7 +1,7 @@
 function testLearnFF(isuffix, osuffix, fdr, iV1)
 	nt_ = 0; % choose time steps to plot
 	targetfr = 5
-	nsub = 2 + 3;
+	nsub = 2 + 2;
 	thres = 0.5;  % as a percent of gmax
 	if ~isempty(isuffix) 
 	    isuffix = ['_', isuffix];
@@ -46,11 +46,8 @@ function testLearnFF(isuffix, osuffix, fdr, iV1)
 	nLearnTypeFF_I = fread(fid, 1, 'uint')
 	nLearnTypeFF = nLearnTypeFF_I + nLearnTypeFF_E;
 	size_t = int64(10*4);
-	if nt_ == 0
-		nt_ = 1000
-	end
-	if nt_ > nt
-	    nt_ = nt
+	if nt_ == 0 || nt_ > nt
+		nt_ = nt
 	end
 	disp(['plotting time: ', num2str(dt*nt_)]);
 	assert(max_LGNperV1 > 0);
@@ -144,7 +141,7 @@ function testLearnFF(isuffix, osuffix, fdr, iV1)
 	            iV1 = randi(mE, 1);
 	        end
 	    else
-	        iV1 = randi(nV1, 1);
+	        iV1 = randi(mE, 1);
 	    end
 	    nsp(iV1)
 	    disp(['this V1 firing rate ', num2str(nsp(iV1)/(nt_*dt/1000)), 'Hz']);
@@ -324,8 +321,18 @@ function testLearnFF(isuffix, osuffix, fdr, iV1)
 	    %nLGN_1D = int32(sqrt(nLGN));
 		pLGN = zeros(nsub,1);
 		[~, pLGN(1)] = max(sLGN(end,:) - sLGN(1,:));
-		[~, pLGN(2)] = min(sLGN(end,:) - sLGN(1,:));
-		pLGN(3:end) = randi(nLGN_V1(iV1), nsub-2, 1);
+		[~, pLGN(3)] = min(sLGN(end,:) - sLGN(1,:));
+		if mod(iLGN(pLGN(1)),2) == 1
+			pLGN(2) = pLGN(1) + 1;
+		else
+			pLGN(2) = pLGN(1) - 1;
+		end
+		if mod(iLGN(pLGN(3)),2) == 1
+			pLGN(4) = pLGN(3) + 1;
+		else
+			pLGN(4) = pLGN(3) - 1;
+		end
+		pLGN(pLGN > nLGN_V1(iV1)) = randi(nLGN_V1(iV1), sum(pLGN>nLGN_V1(iV1)),1);
 	    %pLGN = [1,2,3]
 	    disp(iLGN(pLGN)');
 	    f = figure;
@@ -360,7 +367,7 @@ function testLearnFF(isuffix, osuffix, fdr, iV1)
 	        labels = [labels, 'LGN fr'];
 	        xlim([0,t(end)]);
 	
-			title([titl, ': type-', num2str(LGN_type(iLGN(pLGN(j))))]);
+			title([titl, ': ', num2str(iLGN(pLGN(j))), ' type-', num2str(LGN_type(iLGN(pLGN(j))))]);
 	        pick = iLGN_sInfo(:,i) > 0;
 	        if sum(pick) > 0
 	            gsp = plot((it(pick)-1+iLGN_sInfo(pick,i)' - floor(iLGN_sInfo(pick,i)'))*dt, zeros(sum(pick),1) + ss(pick), '*g', 'MarkerSize', 2.0);

@@ -118,7 +118,7 @@ bool fill_fSpikeTrain(std::vector<std::vector<std::vector<Float>>> &fsp, Float s
     for (PosInt i=0; i<nV1; i++) {
         for (PosInt j=0; j<nVec[i]; j++) {
             Float sInfo = sp[vecID[i][j]];
-            if (sInfo > 0 && !outsideSpiked) {
+            if (sInfo > 1.0 && !outsideSpiked) {
                 outsideSpiked = true;
             }
             fsp[i][j][fcs[i][j]] = sInfo;
