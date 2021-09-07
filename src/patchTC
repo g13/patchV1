@@ -4,14 +4,16 @@ set -e
 fitTC=True
 nOri=6
 TF=8
-SF=39
+SF=40
 op=test-s${SF}t${TF}-replay
 fdr=$op
 lgn=b_4_20-test
 v1=replay
+
 v1_cfg=$v1.cfg
 lgn_cfg=LGN_V1.cfg
 collectMeanDataOnly=False
+redraw=False
 
 plotTConly=$1
 echo $plotTConly
@@ -20,7 +22,11 @@ if [ "$plotTConly" = True ]; then
 	fitDataReady=$2
 else
 	plotOnly=$2
-	fitDataReady=False
+	fitDataReady=$3
+	if [ -z "$fitDataReady" ]; 
+	then
+		fitDataReady=False
+	fi
 fi
 
 
@@ -31,10 +37,10 @@ then
 else
 	mkdir $fdr	
 fi
-cp $lgn_cfg $v1_cfg $fdr
 
 
 jobList=""
+export redraw
 export plotOnly
 export nOri
 export TF
@@ -49,7 +55,10 @@ export collectMeanDataOnly
 export fitDataReady 
 
 if [ "$plotTConly" = False ]; then
-	cp ori.cfg ${op}-ori_1.cfg
+	if [ "$plotOnly" = False ]; then
+		cp ori.cfg ${op}-ori_1.cfg
+	fi
+	cp $lgn_cfg $v1_cfg $fdr
 	for ori in $( seq 1 $nOri )
 	do
 		export ori
@@ -57,14 +66,12 @@ if [ "$plotTConly" = False ]; then
 			jobID=`sbatch --export=ALL ori_cpu.slurm`
 		else
 			jobID=`sbatch --export=ALL ori_gpu.slurm`
+			if [ "${ori}" -lt "${nOri}" ]; then
+				cp ${op}-ori_${ori}.cfg ${op}-ori_$((ori+1)).cfg
+				vim -s nextOri_cfg.keys ${op}-ori_$((ori+1)).cfg
+			fi
 		fi
 		jobList="$jobList:${jobID:20}"
-	
-		if [ "${ori}" -lt "${nOri}" ]; then
-			cp ${op}-ori_${ori}.cfg ${op}-ori_$((ori+1)).cfg
-			vim -s nextOri_cfg.keys ${op}-ori_$((ori+1)).cfg
-		fi
-		
 	done
 	
 	sbatch --export=ALL --dependency=afterok$jobList plotTC.slurm

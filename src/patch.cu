@@ -3480,7 +3480,7 @@ int main(int argc, char **argv) {
         }
     }
     if (fMaxDistance > 0) {
-        Size maxTrainDepth = static_cast<Size>(ceil((fMaxDistance/speedOfThought)/dt));
+        Size maxTrainDepth = static_cast<Size>(ceil((fMaxDistance/speedOfThought)/dt))+1;
 	    cout << "fSpikeTrain retains maximum " << maxTrainDepth << " time steps for farther connections, calculated from a maximum distance of " << fMaxDistance << " mm\n";
     } else {
         assert(accumulate(nVec.begin(), nVec.end(), 0.0) == 0);
@@ -3733,6 +3733,7 @@ int main(int argc, char **argv) {
 
 	vector<Float> iTonicDep(nV1, 0);
 	fConStats.open(conStats_filename + conV1_suffix, fstream::in | fstream::binary);
+	Float tonicMax;
 	if (!fConStats) {
 		cout << "Cannot open or find " << conStats_filename <<" to read V1 ExcRatios.\n";
 		return EXIT_FAILURE;
@@ -3820,7 +3821,7 @@ int main(int argc, char **argv) {
 		checkCudaErrors(cudaMemcpy(d_tonicDep,  &(iTonicDep[0]), nV1*sizeof(Float), cudaMemcpyHostToDevice));
 		Float tonicMean = accumulate(iTonicDep.begin(), iTonicDep.end(), 0.0)/nV1;
 		Float tonicMin = *min_element(iTonicDep.begin(), iTonicDep.end());
-		Float tonicMax = *max_element(iTonicDep.begin(), iTonicDep.end());
+		tonicMax = *max_element(iTonicDep.begin(), iTonicDep.end());
 		cout << "tonicDep = ["  << tonicMin << ", " << tonicMean << ", " << tonicMax << "]\n";
 	}
 
@@ -4029,7 +4030,7 @@ int main(int argc, char **argv) {
     	    	    assert(h_w0 + iblock*blockSize + typeAcc0[i+1] <= h_w0 + nV1);
     	    	}
 			}
-			if (use_v0) {
+			if (use_v0 || tonicMax > 1.0) {
     			//auto get_v0 = get_rand_from_norm(rGen_initV1, v0[i*2+0], v0[i*2+1], vBound);
 		    	auto uniform = uniform_real_distribution<Float>(vR[i], vT[i]);
     			auto get_v0 = [&rGen_initV1, &uniform]() {
@@ -5235,7 +5236,7 @@ int main(int argc, char **argv) {
     	        	        vAvgE, vLTP_E, vLTD_E, vTripE, vSTDP_QE, vSTDP_QI, d_pE, d_pI, typeAcc,
     	        	        rGenCond, d_synFail, d_synPerCon, d_vThres,
     	        	        dt, condE, condI, ngTypeE, ngTypeI,
-    	        	        nearNeighborBlock, nE, nI, nV1, learning, block_offset, nType, nTypeE, nTypeI, lE, lQ, i);
+    	        	        nearNeighborBlock, nE, nI, nV1, learning, block_offset, nType, nTypeE, nTypeI, lE, lQ, i, 0);
 				} else {
     	        	recal_G_mat<<< chunkSize, blockSize, 0, stream[i%matConcurrency]>>> (
     	        	        d_spikeTrain,
@@ -5284,32 +5285,23 @@ int main(int argc, char **argv) {
     	    if (nFar) {
     	    	farSpiked = fill_fSpikeTrain(fSpikeTrain,  spikeTrain + nV1*currentTimeSlot, fCurrenSlot, vecID, nVec, nV1);
 				if (farSpiked) {
+					cout << "far spiked\n!";
     	    		PosInt block_offset = 0;
     	        	for (PosInt i = 0; i < nChunk; i++) {
     	        	    if (i >= iSizeSplit) chunkSize = remainChunkSize;
     	        	    size_t gChunkSize = chunkSize*blockSize*(ngTypeE+ngTypeI)*sizeof(Float);
     	        	    size_t ghChunkSize = gChunkSize*2;
     	        	    // cpu accumulate conductances from far neighbors
-						if (noFarDelay) {
-		    				recal_G_vec(
-		    						fSpikeTrain, fTrainDepth, fCurrenSlot, og, oh,
-		    						nVec, vecID, conVec, delayVec,
-		    						gE[i], gI[i], hE[i], hI[i], &(pE[0]), &(pI[0]), &(typeAccCount[0]),
-            				        h_rGenCond, &(synFail[0]), &(synPerCon[0]),
-		    						dt, condE, condI, ngTypeE, ngTypeI,
-		    						block_offset, nType,
-		    						nE, nI, nV1, speedOfThought, chunkSize, false); // og, oh are not set, utilize the delay version with 1
-						} else {
-		    				recal_G_vec(
-		    						fSpikeTrain, fTrainDepth, fCurrenSlot, og, oh,
-		    						nVec, vecID, conVec, delayVec,
-		    						gE[i], gI[i], hE[i], hI[i], &(pE[0]), &(pI[0]), &(typeAccCount[0]),
-            				        h_rGenCond, &(synFail[0]), &(synPerCon[0]),
-		    						dt, condE, condI, ngTypeE, ngTypeI,
-		    						block_offset, nType,
-		    						nE, nI, nV1, speedOfThought, chunkSize, noFarDelay);
-						}
+		    			recal_G_vec(
+		    					fSpikeTrain, fTrainDepth, fCurrenSlot, og, oh,
+		    					nVec, vecID, conVec, delayVec,
+		    					gE[i], gI[i], hE[i], hI[i], &(pE[0]), &(pI[0]), &(typeAccCount[0]),
+            				    h_rGenCond, &(synFail[0]), &(synPerCon[0]),
+		    					dt, condE, condI, ngTypeE, ngTypeI,
+		    					block_offset, nType,
+		    					nE, nI, nV1, speedOfThought, chunkSize, noFarDelay, 0);
     	        	    // g and h
+						//cout << "recal_G_vec gE[" << i << "]\n";
     	        	#ifdef CHECK
     	        	    checkCudaErrors(cudaMemcpyAsync(d_gEt[i], gE[i], ghChunkSize, cudaMemcpyHostToDevice, stream[i])); // size in maxChunk
     	        	#else
@@ -5318,7 +5310,7 @@ int main(int argc, char **argv) {
     	        	    if (i >= matConcurrency) { //wait for recal_G_mat to be ready before sum_G 
     	        	        cudaStreamWaitEvent(stream[i], gReady[i%matConcurrency], 0);
     	        	    } // otherwise automatically queued in stream
-		    			sum_G<<<chunkSize, blockSize, 0, stream[i]>>> (d_nVec + block_offset*blockSize, d_gEt[i], d_gE[i], d_gIt[i], d_gI[i], d_hEt[i], d_hE[i], d_hIt[i], d_hI[i], ngTypeE, ngTypeI);
+		    			sum_G<<<chunkSize, blockSize, 0, stream[i]>>> (d_nVec + block_offset*blockSize, d_gEt[i], d_gE[i], d_gIt[i], d_gI[i], d_hEt[i], d_hE[i], d_hIt[i], d_hI[i], ngTypeE, ngTypeI, 0);
     	        	    block_offset += chunkSize;
     	        	}
 				} else {
@@ -5691,6 +5683,7 @@ int main(int argc, char **argv) {
             if (rawData) {
 		    	// write g and gap to fRawData
 		    	reshape_chunk_and_write(gE[0], fRawData, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, ngTypeE, ngTypeI, nV1, mI, hWrite);
+				//cout << it << " reshape_chunk_and_write gE\n";
 		    }
 			farSpiked = false;
         }
@@ -5910,7 +5903,7 @@ int main(int argc, char **argv) {
                         vAvgE, vLTP_E, vLTD_E, vTripE, vSTDP_QE, vSTDP_QI, d_pE, d_pI, typeAcc,
                         rGenCond, d_synFail, d_synPerCon, d_vThres,
 			    		dt, condE, condI, ngTypeE, ngTypeI,
-			    		nearNeighborBlock, nE, nI, nV1, learning, block_offset, nType, nTypeE, nTypeI, lE, lQ, i);
+			    		nearNeighborBlock, nE, nI, nV1, learning, block_offset, nType, nTypeE, nTypeI, lE, lQ, i, it);
             } else {
 			    recal_G_mat<<< chunkSize, blockSize, 0, stream[i%matConcurrency]>>> (
 					    d_spikeTrain,
@@ -5984,6 +5977,7 @@ int main(int argc, char **argv) {
         if (nFar) { 
         	farSpiked = fill_fSpikeTrain(fSpikeTrain,  spikeTrain + nV1*currentTimeSlot, fCurrenSlot, vecID, nVec, nV1);
 			if (farSpiked) {
+				cout << "it = " << it << ", far spiked!\n";
 				block_offset = 0;
 		    	for (PosInt i = 0; i < nChunk; i++) {
 		    		if (i >= iSizeSplit) chunkSize = remainChunkSize;
@@ -5997,7 +5991,8 @@ int main(int argc, char **argv) {
             	            h_rGenCond, &(synFail[0]), &(synPerCon[0]),
 		    				dt, condE, condI, ngTypeE, ngTypeI,
 		    				block_offset, nType,
-		    				nE, nI, nV1, speedOfThought, chunkSize, noFarDelay);
+		    				nE, nI, nV1, speedOfThought, chunkSize, noFarDelay, it);
+					//cout << "recal_G_vec gE[" << i << "]\n";
 
 		    		// g and h
             	    #ifdef CHECK
@@ -6008,7 +6003,7 @@ int main(int argc, char **argv) {
 		    		if (i >= matConcurrency) { //wait for recal_G_mat to be ready before sum_G 
 		    			cudaStreamWaitEvent(stream[i], gReady[i%matConcurrency], 0);
 		    		} // otherwise automatically queued in stream
-		    		sum_G<<<chunkSize, blockSize, 0, stream[i]>>> (d_nVec + block_offset*blockSize, d_gEt[i], d_gE[i], d_gIt[i], d_gI[i], d_hEt[i], d_hE[i], d_hIt[i], d_hI[i], ngTypeE, ngTypeI);
+		    		sum_G<<<chunkSize, blockSize, 0, stream[i]>>> (d_nVec + block_offset*blockSize, d_gEt[i], d_gE[i], d_gIt[i], d_gI[i], d_hEt[i], d_hE[i], d_hIt[i], d_hI[i], ngTypeE, ngTypeI, it);
 		    		// 							  // char*
             	    #ifdef CHECK
             	        if (hWrite) checkCudaErrors(cudaMemcpyAsync(gE[i], d_gE[i], ghChunkSize, cudaMemcpyDeviceToHost, stream[i])); // size in chunk
@@ -6017,6 +6012,7 @@ int main(int argc, char **argv) {
             	        if (hWrite) cudaMemcpyAsync(gE[i], d_gE[i], ghChunkSize, cudaMemcpyDeviceToHost, stream[i]); // size in chunk
             	        else cudaMemcpyAsync(gE[i], d_gE[i], gChunkSize, cudaMemcpyDeviceToHost, stream[i]); // size in chunk
             	    #endif
+					//cout << "cudaMemcpyAsync gE[" << i << "]\n";
 		    		if (i < nChunk-1) {
 		    			block_offset += chunkSize;
 		    		}
@@ -6037,7 +6033,7 @@ int main(int argc, char **argv) {
                 cout << "no spikes from distant neighbor or no distant neighbor exists\n";
             }
 		    for (PosInt i = 0; i < matConcurrency; i++) { // at least wait for recal_G_mat finishes
-		    	cudaStreamWaitEvent(stream[0], gReady[i], 0);
+		    	cudaStreamWaitEvent(stream[i], gReady[i], 0);
             }
             #ifdef CHECK
                 if (hWrite) checkCudaErrors(cudaMemcpyAsync(gE[0], d_gE[0], ghSize, cudaMemcpyDeviceToHost, stream[0])); // size in chunk
@@ -6046,6 +6042,7 @@ int main(int argc, char **argv) {
                 if (hWrite) cudaMemcpyAsync(gE[0], d_gE[0], ghSize, cudaMemcpyDeviceToHost, stream[0]); // size in chunk
                 else cudaMemcpyAsync(gE[0], d_gE[0], ghSize/2, cudaMemcpyDeviceToHost, stream[0]); // size in chunk
             #endif
+			//cout << " no far cudaMemcpyAsync gE\n";
 		    cudaEventRecord(gReady[0], stream[0]);
         }
 		if (nGapFar) {

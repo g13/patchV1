@@ -14,7 +14,7 @@ import matplotlib.colors as clr
 from matplotlib import cm
 import sys
 from readPatchOutput import *
-from global_vars import LGN_vposFn, featureFn, seed
+from global_vars import LGN_vposFn, featureFn, seed, V1_allposFn
 #import multiprocessing as mp
 np.seterr(invalid = 'raise')
 
@@ -29,7 +29,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
     fr_thres = 1
     ns = 20
     ndpref = 10
-    SCsplit = 0
+    SCsplit = 1
     heatBins = 25
     sample = None
     pLog = False
@@ -40,6 +40,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
     plotLGNsSize = False
     #plotF1F0 = False
     #plotOSI = False
+    #plotSpatialOP = False
 
     plotTC = True
     plotFR = True 
@@ -47,6 +48,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
     #plotLGNsSize = True
     plotF1F0 = True
     plotOSI = True
+    plotSpatialOP = True
 
     LGN_V1_ID_file = 'LGN_V1_idList'+conLGN_suffix+'.bin'
     LGN_V1_s_file = 'LGN_V1_sList'+conLGN_suffix+'.bin'
@@ -55,6 +57,8 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
     fit_file = 'fit_data' + output_suffix[:-1] + '.bin'
 
     parameterFn = "patchV1_cfg" +output_suffix + "1.bin"
+
+    sampleFn = "OS_sampleList" + output_suffix[:-1] + ".bin"
 
     LGN_V1_s = readLGN_V1_s0(LGN_V1_s_file)
     LGN_V1_ID, nLGN_V1 = readLGN_V1_ID(LGN_V1_ID_file)
@@ -114,7 +118,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
             gI_F1F0[i,:] = np.fromfile(f, 'f8', count = nV1)
     
     nE = nV1 - nI
-    prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn = read_cfg(parameterFn)
+    prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN = read_cfg(parameterFn)
     blockSize = typeAcc[-1]
     typeAcc = np.hstack((0, typeAcc))
     nblock = nV1//blockSize
@@ -134,10 +138,31 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
     opEdges = np.append(opEdges, 180*(1+0.5/nOri))
     print(opEdges)
 
+    featureType = np.array([0,1])
+    feature, rangeFeature, minFeature, maxFeature = readFeature(featureFn, nV1, featureType)
+    LR = feature[0,:]
+    iPref = np.mod(feature[1,:] + 0.5, 1.0)*nOri # for ori
+    print(f'iPref: {[np.min(iPref), np.max(iPref)]}')
+
     iPref_thal = np.argmax(gFF_F1F0, axis = 0)
     print([np.min(iPref_thal), np.max(iPref_thal), nOri])
     iPref_cort = np.argmax(fr, axis = 0)
+    max_fr = fr.T.flatten()[iPref_cort + np.arange(nV1)*nOri]
+    with open('max_fr' + output_suffix[:-1] + '.bin', 'wb') as f:
+        max_fr.tofile(f)
 
+    epick_act = epick[max_fr[epick] > fr_thres]
+    ipick_act = ipick[max_fr[ipick] > fr_thres]
+
+    eSpick_act = eSpick[max_fr[eSpick] > fr_thres]
+    eCpick_act = eCpick[max_fr[eCpick] > fr_thres]
+    iSpick_act = iSpick[max_fr[iSpick] > fr_thres]
+    iCpick_act = iCpick[max_fr[iCpick] > fr_thres]
+
+    zero_fr_pref = np.round(iPref).astype(int)[max_fr == 0]
+    zero_fr_pref[zero_fr_pref == 0] = nOri
+    zero_fr_pref -= 1
+    iPref_cort[max_fr == 0] = zero_fr_pref
 
     max_pick = iPref_thal + np.arange(nV1)*nOri
 
@@ -150,39 +175,33 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
     iPref_thal_2nd_for_ori = np.mod(iPref_thal_2nd + 1, nOri)
     iPref_cort_for_ori = np.mod(iPref_cort + 1, nOri)
 
-    featureType = np.array([0,1])
-    feature, rangeFeature, minFeature, maxFeature = readFeature(featureFn, nV1, featureType)
-    LR = feature[0,:]
-    print(min(LR), max(LR))
-    #iPref = np.mod(np.round(feature[1,:]*nOri), nOri)
-    iPref = np.mod(feature[1,:] + 0.5, 1.0)*nOri # for ori
-    print(f'iPref: {[np.min(iPref), np.max(iPref)]}')
+    if sample is None:
+        np.random.seed(seed)
+        sample = np.random.randint(nV1, size = ns)
+        if True:
+            sample = np.zeros(9, dtype = int)
 
-    max_fr = fr.T.flatten()[iPref_cort + np.arange(nV1)*nOri]
-    with open('max_fr' + output_suffix[:-1] + '.bin', 'wb') as f:
-        max_fr.tofile(f)
+            #pick = epick[nLGN_V1[epick] > np.mean(nLGN_V1[epick])]
+            pick = epick[nLGN_V1[epick] > SCsplit]
+            #sample[0] = pick[np.argmin(max_fr[pick])]
+            sample[0] = pick[np.argpartition(max_fr[pick], pick.size//2)[pick.size//2]] # find median
+            sample[1] = pick[np.argmax(max_fr[pick])]
+            sample[2] = np.random.choice(pick, 1)[0]
 
-    if plotSample:
-        if sample is None:
-            np.random.seed(seed)
-            sample = np.random.randint(nV1, size = ns)
-            if False:
-                sample = np.zeros(9, dtype = int)
+            pick = epick[nLGN_V1[epick] <= SCsplit]
+            #sample[3] = pick[np.argmin(max_fr[pick])]
+            sample[3] = pick[np.argpartition(max_fr[pick], pick.size//2)[pick.size//2]] # find median
+            sample[4] = pick[np.argmax(max_fr[pick])]
+            sample[5] = np.random.choice(pick, 1)[0]
 
-                pick = epick[nLGN_V1[epick] > np.mean(nLGN_V1[epick])]
-                sample[0] = pick[np.argmin(max_fr[pick])]
-                sample[1] = pick[np.argmax(max_fr[pick])]
-                sample[2] = np.random.choice(pick, 1)[0]
-
-                pick = epick[nLGN_V1[epick] == 0]
-                sample[3] = pick[np.argmin(max_fr[pick])]
-                sample[4] = pick[np.argmax(max_fr[pick])]
-                sample[5] = np.random.choice(pick, 1)[0]
-
-                pick = ipick[nLGN_V1[ipick] > np.mean(nLGN_V1[ipick])]
-                sample[6] = pick[np.argmin(max_fr[pick])]
-                sample[7] = pick[np.argmax(max_fr[pick])]
-                sample[8] = np.random.choice(pick, 1)[0]
+            pick = ipick[nLGN_V1[ipick] > SCsplit]
+            sample[6] = pick[np.argpartition(max_fr[pick], pick.size//2)[pick.size//2]] # find median
+            #sample[6] = pick[np.argmin(max_fr[pick])]
+            sample[7] = pick[np.argmax(max_fr[pick])]
+            sample[8] = np.random.choice(pick, 1)[0]
+    
+    with open(sampleFn, 'wb') as f:
+        sample.astype('u4').tofile(f)
 
     nNoOpt = 0
     noOpt = []
@@ -206,6 +225,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
 
             iPref_cort_for_ori = fit_pref/np.pi*nOri
             iPref_cort = np.round(iPref_cort_for_ori).astype(int)
+            # deg = 0 takes half away from deg = 360
             iPref_cort[iPref_cort == 0] = nOri
             iPref_cort = iPref_cort - 1
 
@@ -350,36 +370,61 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
 
     with open(pref_file, 'ab') as f:
         (iPref_thal_for_ori/nOri*np.pi).astype('f4').tofile(f)
-        (np.mod(iPref+1,nOri)/nOri*np.pi).astype('f4').tofile(f)
+        (iPref/nOri*np.pi).astype('f4').tofile(f)
 
         noOpt = np.array(noOpt, dtype = 'i4')
 
     figPref = plt.figure('pref-hist', figsize = (7,4))
     ax = figPref.add_subplot(231)
-    ax.hist(iPref_cort[ipick], bins=nOri, alpha = 0.3, color = 'c', label = 'cort_I', density = True)
-    ax.hist(iPref_cort[epick], bins=nOri, alpha = 0.3, color = 'm', label = 'cort_E', density = True)
-    ax.hist(iPref_thal[iSpick], bins=nOri, alpha = 0.3, color = 'b', label = 'thal_I', density = True)
-    ax.hist(iPref_thal[eSpick], bins=nOri, alpha = 0.3, color = 'r', label = 'thal_E', density = True)
+
+    OPbins = (np.arange(0,nOri+2)-0.5)/nOri*180
+    OPs = (OPbins[1:] + OPbins[:-1])/2
+    OPs = OPs[1:]
+
+    target = iPref_thal_for_ori[iSpick_act]/nOri*180
+    bars0, _ = np.histogram(target, bins=OPbins)
+    bars0[-1] += bars0[0]
+    bars0 = bars0[1:]
+    ax.bar(OPs, bars0, alpha = 0.3, color = 'b', label = 'thal_I', width=180/nOri*0.8)
+    target = iPref_cort_for_ori[iSpick_act]/nOri*180
+    bars, _ = np.histogram(target, bins=OPbins)
+    bars[-1] += bars[0]
+    bars = bars[1:]
+    ax.bar(OPs, bars-bars0, alpha = 0.3, color = 'c', label = 'delta_I', width=180/nOri*0.8)
+
+    target = iPref_thal_for_ori[eSpick_act]/nOri*180
+    bars0, _ = np.histogram(target, bins=OPbins)
+    bars0[-1] += bars0[0]
+    bars0 = bars0[1:]
+    ax.bar(OPs, bars0, alpha = 0.3, color = 'r', label = 'thal_E', width=180/nOri*0.8)
+    target = iPref_cort_for_ori[eSpick_act]/nOri*180
+    bars, _ = np.histogram(target, bins=OPbins)
+    bars[-1] += bars[0]
+    bars = bars[1:]
+    ax.bar(OPs, bars-bars0, alpha = 0.3, color = 'm', label = 'delta_E', width=180/nOri*0.8)
     #ax.legend()
+    ax.set_xticks([60,120,180])
+    ax.set_title('active Simple OP dist.')
 
     ax = figPref.add_subplot(232)
 
-    dPref = iPref_cort_for_ori[iSpick]-iPref_thal_for_ori[iSpick]
+    dPref = iPref_cort_for_ori[iSpick_act]-iPref_thal_for_ori[iSpick_act]
     pick = dPref > nOri//2
     dPref[pick] = nOri - dPref[pick]
     pick = dPref < -nOri//2
     dPref[pick] = nOri + dPref[pick]
     ax.hist(dPref, bins=nOri, label = 'dPref_IS', alpha = 0.3, color = 'b', density = True)
 
-    dPref = iPref_cort_for_ori[eSpick]-iPref_thal_for_ori[eSpick]
+    dPref = iPref_cort_for_ori[eSpick_act]-iPref_thal_for_ori[eSpick_act]
     pick = dPref > nOri//2
     dPref[pick] = nOri - dPref[pick]
     pick = dPref < -nOri//2
     dPref[pick] = nOri + dPref[pick]
     ax.hist(dPref, bins=nOri, label = 'dPref_ES', alpha = 0.3, color = 'r', density = True)
+    ax.set_title('cort vs. thal')
 
     ax.legend()
-    ax.set_xlabel('delta pref LGN vs Cort.')
+    ax.set_xlabel('delta_S  LGN vs Cort.')
 
     ax = figPref.add_subplot(234)
 
@@ -397,9 +442,9 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
     dPrefES[pick] = nOri + dPrefES[pick]
     ax.hist(dPrefES, bins=nOri, label = 'dPref_ES', alpha = 0.3, color = 'r', density = True)
 
-    ax.set_xlabel('delta pref preset vs Thal.')
+    ax.set_xlabel('pre vs Thal. S')
 
-    spick = np.concatenate((eSpick[nLGN_V1[eSpick]>1],iSpick[nLGN_V1[iSpick]>1]))
+    spick = np.concatenate((eSpick,iSpick))
     dPref = iPref_thal_for_ori[spick]-iPref[spick]
     pick = dPref > nOri//2
     dPref[pick] = nOri - dPref[pick]
@@ -413,21 +458,21 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
 
     ax = figPref.add_subplot(235)
 
-    dPref = iPref_cort_for_ori[ipick]-iPref[ipick]
+    dPref = iPref_cort_for_ori[ipick_act]-iPref[ipick_act]
     pick = dPref > nOri//2
     dPref[pick] = nOri - dPref[pick]
     pick = dPref < -nOri//2
     dPref[pick] = nOri + dPref[pick]
     ax.hist(dPref, bins=nOri, label = 'dPref_I', alpha = 0.3, color = 'b', density = True)
 
-    dPref = iPref_cort_for_ori[eCpick]-iPref[eCpick]
+    dPref = iPref_cort_for_ori[eCpick_act]-iPref[eCpick_act]
     pick = dPref > nOri//2
     dPref[pick] = nOri - dPref[pick]
     pick = dPref < -nOri//2
     dPref[pick] = nOri + dPref[pick]
     ax.hist(dPref, bins=nOri, label = 'dPref_EC', alpha = 0.3, color = 'm', density = True)
 
-    dPref = iPref_cort_for_ori[eSpick]-iPref[eSpick]
+    dPref = iPref_cort_for_ori[eSpick_act]-iPref[eSpick_act]
     pick = dPref > nOri//2
     dPref[pick] = nOri - dPref[pick]
     pick = dPref < -nOri//2
@@ -435,11 +480,11 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
     ax.hist(dPref, bins=nOri, label = 'dPref_ES', alpha = 0.3, color = 'r', density = True)
 
     
-    ax.set_xlabel('delta pref preset vs Cort.')
+    ax.set_xlabel('delta pre. vs Cort.')
 
     ax = figPref.add_subplot(233)
     
-    pick = iSpick[LR[iSpick] < 0.5]
+    pick = iSpick_act[LR[iSpick_act] < 0]
     dPrefIS_L = iPref_thal_for_ori[pick]-iPref[pick]
     pick = dPrefIS_L > nOri//2
     dPrefIS_L[pick] = nOri - dPrefIS_L[pick]
@@ -447,18 +492,19 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
     dPrefIS_L[pick] = nOri + dPrefIS_L[pick]
     ax.hist(dPrefIS_L, bins=nOri, label = 'dPref_IS_L', alpha = 0.3, color = 'b')
 
-    pick = eSpick[LR[eSpick] < 0.5]
+    pick = eSpick_act[LR[eSpick_act] < 0]
     dPrefES_L = iPref_thal_for_ori[pick]-iPref[pick]
     pick = dPrefES_L > nOri//2
     dPrefES_L[pick] = nOri - dPrefES_L[pick]
     pick = dPrefES_L < -nOri//2
     dPrefES_L[pick] = nOri + dPrefES_L[pick]
     ax.hist(dPrefES_L, bins=nOri, label = 'dPref_ES_L', alpha = 0.3, color = 'r')
+    ax.set_title('ipsi thal vs. pre')
 
     
     ax = figPref.add_subplot(236)
 
-    pick = iSpick[LR[iSpick] > 0.5]
+    pick = iSpick_act[LR[iSpick_act] > 0]
     dPrefIS_R = iPref_thal_for_ori[pick]-iPref[pick]
     pick = dPrefIS_R > nOri//2
     dPrefIS_R[pick] = nOri - dPrefIS_R[pick]
@@ -466,13 +512,14 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
     dPrefIS_R[pick] = nOri + dPrefIS_R[pick]
     ax.hist(dPrefIS_R, bins=nOri, label = 'dPref_IS_R', alpha = 0.3, color = 'b')
 
-    pick = eSpick[LR[eSpick] > 0.5]
+    pick = eSpick_act[LR[eSpick_act] > 0]
     dPrefES_R = iPref_thal_for_ori[pick]-iPref[pick]
     pick = dPrefES_R > nOri//2
     dPrefES_R[pick] = nOri - dPrefES_R[pick]
     pick = dPrefES_R < -nOri//2
     dPrefES_R[pick] = nOri + dPrefES_R[pick]
     ax.hist(dPrefES_R, bins=nOri, label = 'dPref_ES_R', alpha = 0.3, color = 'r')
+    ax.set_xlabel('ipsi thal vs. pre')
 
     figPref.savefig(outputfdr + 'pref-hist' + output_suffix[:-1] + '.png', dpi = 150)
 
@@ -686,6 +733,184 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
 
     aligned_fr = np.array([fr[aligned_cort[i,:],i] for i in range(nV1)])
 
+    if plotSpatialOP:
+
+        with open(V1_allposFn, 'r') as f:
+            _nblock, _blockSize, dataDim = np.fromfile(f, 'u4', count=3)
+            assert(nV1 == _nblock*_blockSize)
+            coord_span = np.fromfile(f, 'f8', count=4)
+            _pos = np.reshape(np.fromfile(f, 'f8', count = nV1*dataDim), (nblock, dataDim, blockSize))
+            pos = np.zeros((2,nV1))
+            pos[0,:] = _pos[:,0,:].reshape(nV1)
+            pos[1,:] = _pos[:,1,:].reshape(nV1)
+
+        fig = plt.figure('spatial_OP', figsize = (4,7))
+        ax = fig.add_subplot(321)
+        orient = iPref/nOri*180
+        orient_cort = iPref_cort_for_ori/nOri*180
+        
+        bars0,_ = np.histogram(orient[epick[nLGN_V1[epick]>SCsplit]], bins = OPbins)
+        bars,_ = np.histogram(orient_cort[epick[nLGN_V1[epick]>SCsplit]], bins = OPbins)
+        # deal with pi period
+        bars[-1] += bars[0]
+        bars = bars[1:]
+        bars0[-1] += bars0[0]
+        bars0 = bars0[1:]
+        ax.bar(OPs, bars0, alpha = 0.5, width=180/nOri*0.8, label = 'preset')
+        ax.bar(OPs, bars-bars0, alpha = 0.5, width=180/nOri*0.8, label = 'simu.-preset')
+        color = np.tile(np.array([0,0.6,1], dtype = float), (nOri,1))
+        color[:,0] = OPs/180
+        color[color[:,0] < 0,0] = 0
+        color[color[:,0] > 1,0] = 1.0
+        ybot = ax.get_ylim()[0]
+        for i in range(nOri):
+            ax.plot(OPs[i], (ybot + np.min(bars-bars0))/2, '.', ms = 10, mfc=clr.hsv_to_rgb(color[i,:]), mew=0, fillstyle='full', alpha = 0.8)
+
+        ax.legend()
+        ax.set_ylabel(f'#E: nLGN>{SCsplit}')
+        ax.set_xticks([60,120,180])
+
+        ax = fig.add_subplot(323)
+        bars0,_ = np.histogram(orient[epick[nLGN_V1[epick]<=SCsplit]], bins = OPbins)
+        bars,_ = np.histogram(orient_cort[epick[nLGN_V1[epick]<=SCsplit]], bins = OPbins)
+        # deal with pi period
+        bars[-1] += bars[0]
+        bars = bars[1:]
+        bars0[-1] += bars0[0]
+        bars0 = bars0[1:]
+        ax.bar(OPs, bars0, alpha = 0.5, width=180/nOri*0.8)
+        ax.bar(OPs, bars-bars0, alpha = 0.5, width=180/nOri*0.8)
+        ax.set_ylabel(f'#E: nLGN<={SCsplit}')
+        ax.set_xticks([60,120,180])
+
+        ax = fig.add_subplot(325)
+        bars0,_ = np.histogram(orient[ipick], bins = OPbins)
+        bars,_ = np.histogram(orient_cort[ipick], bins = OPbins)
+        # deal with pi period
+        bars[-1] += bars[0]
+        bars = bars[1:]
+        bars0[-1] += bars0[0]
+        bars0 = bars0[1:]
+        ax.bar(OPs, bars0, alpha = 0.5, width=180/nOri*0.8)
+        ax.bar(OPs, bars-bars0, alpha = 0.5, width=180/nOri*0.8)
+        ax.set_ylabel(f'#I')
+        ax.set_xlabel(f'OP (deg)')
+        ax.set_xticks([60,120,180])
+
+        def plotScatter(ori, ax):
+            sat0 = 0.0
+            ms1 = 0.08
+            ms2 = 0.08
+            ms3 = 0.08
+            mk1 = 'o'
+            mk2 = '^'
+            mk3 = 's'
+            # contra
+            pick = epick[np.logical_and(LR[epick] > 0, nLGN_V1[epick] > SCsplit)]
+            nnE = pick.size
+            if nnE > 0:
+                color = np.tile(np.array([0,0,1], dtype = float), (nnE,1))
+                frMax = np.max(max_fr[pick])
+                if frMax == 0:
+                    color[:,1] = sat0
+                else:
+                    color[:,1] = sat0 + np.log(1+max_fr[pick]/frMax)/np.log(2)*(1-sat0)
+
+                color[:,0] = ori[pick]/180
+                color[color[:,0] < 0,0] = 0
+                color[color[:,0] > 1,0] = 1
+                ax.scatter(pos[0,pick], pos[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
+
+            pick = epick[np.logical_and(LR[epick] > 0, nLGN_V1[epick] <= SCsplit)]
+            nnE = pick.size
+            if nnE > 0:
+                color = np.tile(np.array([0,0,1], dtype = float), (nnE,1))
+                frMax = np.max(max_fr[pick])
+                if frMax == 0:
+                    color[:,1] = sat0
+                else:
+                    color[:,1] = sat0 + np.log(1+max_fr[pick]/frMax)/np.log(2)*(1-sat0)
+
+                color[:,0] = ori[pick]/180
+                color[color[:,0] < 0,0] = 0
+                color[color[:,0] > 1,0] = 1
+                ax.scatter(pos[0,pick], pos[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
+
+            pick = ipick[LR[ipick] > 0]
+            nnI = pick.size
+            if nnI > 0:
+                color = np.tile(np.array([0,0,1], dtype = float), (nnI,1))
+                frMax = np.max(max_fr[pick])
+                if frMax == 0:
+                    color[:,1] = sat0
+                else:
+                    color[:,1] = sat0 + np.log(1+max_fr[pick]/frMax)/np.log(2)*(1-sat0)
+
+                color[:,0] = ori[pick]/180
+                color[color[:,0] < 0,0] = 0
+                color[color[:,0] > 1,0] = 1
+                ax.scatter(pos[0,pick], pos[1,pick], s = ms3, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk3)
+
+            ms1 = 0.08
+            ms2 = 0.08
+            ms3 = 0.08
+            mk1 = 'P'
+            mk2 = 'v'
+            mk3 = 'D'
+            # ipsi
+            pick = epick[np.logical_and(LR[epick] < 0, nLGN_V1[epick] > SCsplit)]
+            nnE = pick.size
+            if nnE > 0:
+                color = np.tile(np.array([0,0,1], dtype = float), (nnE,1))
+                frMax = np.max(max_fr[pick])
+                if frMax == 0:
+                    color[:,1] = sat0
+                else:
+                    color[:,1] = sat0 + np.log(1+max_fr[pick]/frMax)/np.log(2)*(1-sat0)
+
+                color[:,0] = ori[pick]/180
+                color[color[:,0] < 0,0] = 0
+                color[color[:,0] > 1,0] = 1
+                ax.scatter(pos[0,pick], pos[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
+
+            pick = epick[np.logical_and(LR[epick] < 0, nLGN_V1[epick] <= SCsplit)]
+            nnE = pick.size
+            if nnE > 0:
+                color = np.tile(np.array([0,0,1], dtype = float), (nnE,1))
+                frMax = np.max(max_fr[pick])
+                if frMax == 0:
+                    color[:,1] = sat0
+                else:
+                    color[:,1] = sat0 + np.log(1+max_fr[pick]/frMax)/np.log(2)*(1-sat0)
+
+                color[:,0] = ori[pick]/180
+                color[color[:,0] < 0,0] = 0
+                color[color[:,0] > 1,0] = 1
+                ax.scatter(pos[0,pick], pos[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
+
+            pick = ipick[LR[ipick] < 0]
+            nnI = pick.size
+            if nnI > 0:
+                color = np.tile(np.array([0,0,1], dtype = float), (nnI,1))
+                frMax = np.max(max_fr[pick])
+                if frMax == 0:
+                    color[:,1] = sat0
+                else:
+                    color[:,1] = sat0 + np.log(1+max_fr[pick]/frMax)/np.log(2)*(1-sat0)
+
+                color[:,0] = ori[pick]/180
+                color[color[:,0] < 0,0] = 0
+                color[color[:,0] > 1,0] = 1
+                ax.scatter(pos[0,pick], pos[1,pick], s = ms3, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk3)
+
+        ax = fig.add_subplot(222)
+        plotScatter(orient,ax)
+        ax = fig.add_subplot(224)
+        ax.set_title('preset_ori. fr')
+        plotScatter(orient_cort,ax)
+        ax.set_title('simu ori fr')
+        fig.savefig(outputfdr+'spatial_OP'+output_suffix[:-1] + '.png', dpi = 900)
+
 
     if plotTC:
 
@@ -694,8 +919,8 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
         # TC based on LGN response
 
         ax = fig.add_subplot(grid[0,0])
-        ytarget = np.array([fr[aligned_thal[i,:],i] for i in eSpick[max_fr[eSpick] > fr_thres]]).flatten()
-        target = np.tile(op, (np.sum(max_fr[eSpick] > fr_thres), 1)).flatten()
+        ytarget = np.array([fr[aligned_thal[i,:],i] for i in eSpick_act]).flatten()
+        target = np.tile(op, (eSpick_act.size, 1)).flatten()
         assert(ytarget.size == target.size)
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Reds', log_scale = pLog)
         ax.set_xlabel('OP')
@@ -703,57 +928,57 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
         ax.set_title('LGN-based simple.E')
 
         ax = fig.add_subplot(grid[1,0])
-        ytarget = np.array([cFF[aligned_thal[i,:],:,i,0].sum(axis = 1)*gFF_F1F0[aligned_thal[i,:],i] for i in eSpick[max_fr[eSpick] > fr_thres]]).flatten()
+        ytarget = np.array([cFF[aligned_thal[i,:],:,i,0].sum(axis = 1)*gFF_F1F0[aligned_thal[i,:],i] for i in eSpick_act]).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Reds', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('E.cFF')
 
         ax = fig.add_subplot(grid[2,0])
-        ytarget = np.array([cE[aligned_thal[i,:],:,i,0].sum(axis = 1) for i in eSpick[max_fr[eSpick] > fr_thres]]).flatten()
+        ytarget = np.array([cE[aligned_thal[i,:],:,i,0].sum(axis = 1) for i in eSpick_act]).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Reds', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('E.cE')
 
         ax = fig.add_subplot(grid[3,0])
-        ytarget = np.array([cI[aligned_thal[i,:],:,i,0].sum(axis = 1) for i in eSpick[max_fr[eSpick] > fr_thres]]).flatten()
+        ytarget = np.array([cI[aligned_thal[i,:],:,i,0].sum(axis = 1) for i in eSpick_act]).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Reds', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('E.cI')
 
         ax = fig.add_subplot(grid[4,0])
-        ytarget = np.array([depC[aligned_thal[i,:],i,0] for i in eSpick[max_fr[eSpick] > fr_thres]]).flatten()
+        ytarget = np.array([depC[aligned_thal[i,:],i,0] for i in eSpick_act]).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Reds', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('E.depC')
 
         ax = fig.add_subplot(grid[0,1])
-        ytarget = np.array([fr[aligned_thal[i,:],i] for i in ipick[max_fr[ipick] > fr_thres]]).flatten()
-        target = np.tile(op, (np.sum(max_fr[ipick]>fr_thres), 1)).flatten()
+        ytarget = np.array([fr[aligned_thal[i,:],i] for i in ipick_act]).flatten()
+        target = np.tile(op, (ipick_act.size, 1)).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Blues', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('I.FR')
         ax.set_title('LGN-based I')
 
         ax = fig.add_subplot(grid[1,1])
-        ytarget = np.array([cFF[aligned_thal[i,:],:,i,0].sum(axis = 1)*gFF_F1F0[aligned_thal[i,:],i] for i in ipick[max_fr[ipick] > fr_thres]]).flatten()
+        ytarget = np.array([cFF[aligned_thal[i,:],:,i,0].sum(axis = 1)*gFF_F1F0[aligned_thal[i,:],i] for i in ipick_act]).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Blues', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('I.cFF')
 
         ax = fig.add_subplot(grid[2,1])
-        ytarget = np.array([cE[aligned_thal[i,:],:,i,0].sum(axis = 1) for i in ipick[max_fr[ipick] > fr_thres]]).flatten()
+        ytarget = np.array([cE[aligned_thal[i,:],:,i,0].sum(axis = 1) for i in ipick_act]).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Blues', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('I.cE')
 
         ax = fig.add_subplot(grid[3,1])
-        ytarget = np.array([cI[aligned_thal[i,:],:,i,0].sum(axis = 1) for i in ipick[max_fr[ipick] > fr_thres]]).flatten()
+        ytarget = np.array([cI[aligned_thal[i,:],:,i,0].sum(axis = 1) for i in ipick_act]).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Blues', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('I.cI')
 
         ax = fig.add_subplot(grid[4,1])
-        ytarget = np.array([depC[aligned_thal[i,:],i,0] for i in ipick[max_fr[ipick] > fr_thres]]).flatten()
+        ytarget = np.array([depC[aligned_thal[i,:],i,0] for i in ipick_act]).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Blues', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('I.depC')
@@ -761,97 +986,97 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
         # TC based on cortical response
 
         ax = fig.add_subplot(grid[0,2])
-        ytarget = aligned_fr[eSpick[max_fr[eSpick] > fr_thres],:].flatten()
-        target = np.tile(op, (np.sum(max_fr[eSpick] > fr_thres), 1)).flatten()
+        ytarget = aligned_fr[eSpick_act,:].flatten()
+        target = np.tile(op, (eSpick_act.size, 1)).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Reds', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('E.FR')
         ax.set_title('cortical-based simple.E')
 
         ax = fig.add_subplot(grid[1,2])
-        ytarget = np.array([cFF[aligned_cort[i,:],:,i,0].sum(axis = 1)*gFF_F1F0[aligned_cort[i,:],i] for i in eSpick[max_fr[eSpick] > fr_thres]]).flatten()
+        ytarget = np.array([cFF[aligned_cort[i,:],:,i,0].sum(axis = 1)*gFF_F1F0[aligned_cort[i,:],i] for i in eSpick_act]).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Reds', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('E.cFF')
 
         ax = fig.add_subplot(grid[2,2])
-        ytarget = np.array([cE[aligned_cort[i,:],:,i,0].sum(axis = 1) for i in eSpick[max_fr[eSpick] > fr_thres]]).flatten()
+        ytarget = np.array([cE[aligned_cort[i,:],:,i,0].sum(axis = 1) for i in eSpick_act]).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Reds', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('E.cE')
 
         ax = fig.add_subplot(grid[3,2])
-        ytarget = np.array([cI[aligned_cort[i,:],:,i,0].sum(axis = 1) for i in eSpick[max_fr[eSpick] > fr_thres]]).flatten()
+        ytarget = np.array([cI[aligned_cort[i,:],:,i,0].sum(axis = 1) for i in eSpick_act]).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Reds', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('E.cI')
 
         ax = fig.add_subplot(grid[4,2])
-        ytarget = np.array([depC[aligned_cort[i,:],i,0] for i in eSpick[max_fr[eSpick] > fr_thres]]).flatten()
+        ytarget = np.array([depC[aligned_cort[i,:],i,0] for i in eSpick_act]).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Reds', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('E.depC')
 
         ax = fig.add_subplot(grid[0,3])
-        ytarget = aligned_fr[eCpick[max_fr[eCpick] > fr_thres],:].flatten()
-        target = np.tile(op, (np.sum(max_fr[eCpick] > fr_thres), 1)).flatten()
+        ytarget = aligned_fr[eCpick_act,:].flatten()
+        target = np.tile(op, (eCpick_act.size, 1)).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Reds', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('E.FR')
         ax.set_title('cortical-based complex.E')
 
         ax = fig.add_subplot(grid[1,3])
-        ytarget = np.array([cFF[aligned_cort[i,:],:,i,0].sum(axis = 1)*gFF_F1F0[aligned_cort[i,:],i] for i in eCpick[max_fr[eCpick] > fr_thres]]).flatten()
+        ytarget = np.array([cFF[aligned_cort[i,:],:,i,0].sum(axis = 1)*gFF_F1F0[aligned_cort[i,:],i] for i in eCpick_act]).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Reds', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('E.cFF')
 
         ax = fig.add_subplot(grid[2,3])
-        ytarget = np.array([cE[aligned_cort[i,:],:,i,0].sum(axis = 1) for i in eCpick[max_fr[eCpick] > fr_thres]]).flatten()
+        ytarget = np.array([cE[aligned_cort[i,:],:,i,0].sum(axis = 1) for i in eCpick_act]).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Reds', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('E.cE')
 
         ax = fig.add_subplot(grid[3,3])
-        ytarget = np.array([cI[aligned_cort[i,:],:,i,0].sum(axis = 1) for i in eCpick[max_fr[eCpick] > fr_thres]]).flatten()
+        ytarget = np.array([cI[aligned_cort[i,:],:,i,0].sum(axis = 1) for i in eCpick_act]).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Reds', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('E.cI')
 
         ax = fig.add_subplot(grid[4,3])
-        ytarget = np.array([depC[aligned_cort[i,:],i,0] for i in eCpick[max_fr[eCpick] > fr_thres]]).flatten()
+        ytarget = np.array([depC[aligned_cort[i,:],i,0] for i in eCpick_act]).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Reds', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('E.depC')
 
         ax = fig.add_subplot(grid[0,4])
-        ytarget = aligned_fr[ipick[max_fr[ipick] > fr_thres],:].flatten()
-        target = np.tile(op, (np.sum(max_fr[ipick] > fr_thres), 1)).flatten()
+        ytarget = aligned_fr[ipick_act,:].flatten()
+        target = np.tile(op, (ipick_act.size, 1)).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Blues', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('I.FR')
         ax.set_title('cortical based I')
 
         ax = fig.add_subplot(grid[1,4])
-        ytarget = np.array([cFF[aligned_cort[i,:],:,i,0].sum(axis = 1)*gFF_F1F0[aligned_cort[i,:],i] for i in ipick[max_fr[ipick] > fr_thres]]).flatten()
+        ytarget = np.array([cFF[aligned_cort[i,:],:,i,0].sum(axis = 1)*gFF_F1F0[aligned_cort[i,:],i] for i in ipick_act]).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Blues', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('I.cFF')
 
         ax = fig.add_subplot(grid[2,4])
-        ytarget = np.array([cE[aligned_cort[i,:],:,i,0].sum(axis = 1) for i in ipick[max_fr[ipick] > fr_thres]]).flatten()
+        ytarget = np.array([cE[aligned_cort[i,:],:,i,0].sum(axis = 1) for i in ipick_act]).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Blues', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('I.cE')
 
         ax = fig.add_subplot(grid[3,4])
-        ytarget = np.array([cI[aligned_cort[i,:],:,i,0].sum(axis = 1) for i in ipick[max_fr[ipick] > fr_thres]]).flatten()
+        ytarget = np.array([cI[aligned_cort[i,:],:,i,0].sum(axis = 1) for i in ipick_act]).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Blues', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('I.cI')
 
         ax = fig.add_subplot(grid[4,4])
-        ytarget = np.array([depC[aligned_cort[i,:],i,0] for i in ipick[max_fr[ipick] > fr_thres]]).flatten()
+        ytarget = np.array([depC[aligned_cort[i,:],i,0] for i in ipick_act]).flatten()
         HeatMap(target, ytarget, opEdges, heatBins, ax, 'Blues', log_scale = pLog)
         ax.set_xlabel('OP')
         ax.set_ylabel('I.depC')
@@ -865,23 +1090,23 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
         nbins = 10
         F1F0_op = F1F0.T.flatten()[iPref_thal + np.arange(nV1)*nOri]
         ax = fig.add_subplot(221)
-        ax.hist(F1F0_op[eSpick[max_fr[eSpick]>fr_thres]], bins = nbins, color = 'r', alpha = 0.3)
+        ax.hist(F1F0_op[eSpick_act], bins = nbins, color = 'r', alpha = 0.3)
         ax.set_title('thal-based')
 
         ax = fig.add_subplot(223)
-        ax.hist(F1F0_op[iSpick[max_fr[iSpick]>fr_thres]], bins = nbins, color = 'b', alpha = 0.3)
+        ax.hist(F1F0_op[iSpick_act], bins = nbins, color = 'b', alpha = 0.3)
 
         F1F0_op = F1F0.T.flatten()[iPref_cort + np.arange(nV1)*nOri]
         ax = fig.add_subplot(222)
-        ax.hist(F1F0_op[eSpick[max_fr[eSpick]>fr_thres]], bins = nbins, color = 'r', alpha = 0.3)
+        ax.hist(F1F0_op[eSpick_act], bins = nbins, color = 'r', alpha = 0.3)
         ax.set_title('cort-based')
         ax2 = ax.twinx()
-        ax2.hist(F1F0_op[eCpick[max_fr[eCpick]>fr_thres]], bins = nbins, color = 'm', alpha = 0.3)
+        ax2.hist(F1F0_op[eCpick_act], bins = nbins, color = 'm', alpha = 0.3)
 
         ax = fig.add_subplot(224)
-        ax.hist(F1F0_op[iSpick[max_fr[iSpick]>fr_thres]], bins = nbins, color = 'b', alpha = 0.3)
+        ax.hist(F1F0_op[iSpick_act], bins = nbins, color = 'b', alpha = 0.3)
         ax2 = ax.twinx()
-        ax2.hist(F1F0_op[iCpick[max_fr[iCpick]>fr_thres]], bins = nbins, color = 'c', alpha = 0.3)
+        ax2.hist(F1F0_op[iCpick_act], bins = nbins, color = 'c', alpha = 0.3)
         fig.savefig(outputfdr+'F1F0'+output_suffix[:-1] + '.png', dpi = 900)
 
         max_lgn = max(nLGN_V1)
@@ -948,6 +1173,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
             ax2.plot(op, cFF[itheta,:,iV1,0].sum(axis = 1)*gFF_F1F0[itheta, iV1], 'g')
             ax2.plot(op, np.zeros(op.size), ':y')
             ax2.plot(op, cE[itheta,:,iV1,0].sum(axis = 1), 'r')
+            ax2.plot(op, depC[itheta,iV1,0], ':m')
             ax2.plot(op, cI[itheta,:,iV1,0].sum(axis = 1), 'b')
             ax.set_xlabel('orientation')
             ax.set_ylabel('fr')

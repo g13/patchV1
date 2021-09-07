@@ -27,20 +27,20 @@ date
 echo python getTuningCurve.py $op $lgn $v1 $fdr $nOri $fitTC $fitDataReady
 python getTuningCurve.py $op $lgn $v1 $fdr $nOri $fitTC $fitDataReady
 
-#if [ "$collectMeanDataOnly" = True ]; then
-#	OPstatus=1
-#else
-#	OPstatus=2
-#fi
-#
-#if [ "$fitTC" = True ]; then
-#
-#	pid=""
-#	for ori in $( seq 1 $nOri )
-#	do
-#		python plotV1_response.py $op $lgn $v1 $fdr $TF $ori $nOri False True False $OPstatus & 
-#		pid+="${!} "
-#	done
-#	wait $pid
-#fi
+if [ "$collectMeanDataOnly" = True ]; then
+	OPstatus=1
+else
+	OPstatus=2
+fi
+
+if [ "$redraw" = True ]; then
+
+	pid=""
+	for ori in $( seq 1 $nOri )
+	do
+		python plotV1_response.py $op $lgn $v1 $fdr $TF $ori $nOri False True False $OPstatus & 
+		pid+="${!} "
+	done
+	wait $pid
+fi
 date

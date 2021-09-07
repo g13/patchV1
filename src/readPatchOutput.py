@@ -309,6 +309,8 @@ def readSpike(rawDataFn, spFn, prec, sizeofPrec, vThres):
                 idxFired = np.nonzero(data >= 1)[0]
                 k = 0
                 for j in idxFired:
+                    if j == 8*1024+180:
+                        print(it, tsps[k])
                     nsp = np.int(np.floor(tsps[k]))
                     tsp = tsps[k] - nsp
                     if nsp > 1:

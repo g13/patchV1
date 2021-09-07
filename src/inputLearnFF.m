@@ -1,6 +1,10 @@
 % essential input files
-function inputLearnFF(suffix, seed, stdratio, suffix0)
-	sType = 1;
+% suffix: theme string $lgn in lFF.slurm
+% seed: for randomize LGN connecction
+% stdratio: initial connections weights to be gaussian distributed if nonzero
+% suffix0: theme string %lgn0 in lFF.slurm
+% stage: retinal wave stages, takes 2 or 3
+function inputLearnFF(suffix, seed, stdratio, suffix0, stage)
 	if nargin < 4
 		suffix0 = 'lFF';
 	end
@@ -12,7 +16,23 @@ function inputLearnFF(suffix, seed, stdratio, suffix0)
 	else
 		normed = false;
 	end
-	max_ecc = 5;
+
+	%%%% HERE %%%%%%%%
+	same = false; % set true if all the V1 neurons have the same LGN connections
+	switch stage
+		case 2
+			pCon = 1.0 % initial sparsity
+			nLGN_1D = 14; % sqrt of the total number of On/Off LGN cells
+			max_ecc = 10; % radius of the visual field spanned by all the LGN
+		case 3
+			pCon = 0.8
+			nLGN_1D = 7;
+			max_ecc = 5;
+		otherwise
+			warning('unexpected stage')
+	end
+	%%%%%%%%
+
 	if ~isempty(suffix0)
 	    suffix0 = ['_', suffix0];
 	end
@@ -34,7 +54,6 @@ function inputLearnFF(suffix, seed, stdratio, suffix0)
 	parvoMagno = 2 % magno 
 	%parvoMagno = 3 % both, don't use, only for testing purpose
 	
-	pCon = 0.8
 	rng(seed);
 	initialConnectionStrength = 1.0; % also can be changed by sRatioLGN in .cfg file
 	eiStrength = 0.000;
@@ -48,17 +67,28 @@ function inputLearnFF(suffix, seed, stdratio, suffix0)
 	mE = 768;
 	mI = 256;
 	nV1 = nblock*blockSize;
-	nLGN_1D = 8;
 	doubleOnOff = 1;
 	frameVisV1output = false; % if need framed V1 output, write visual pos to fV1_pos
 
-	peakRate = 1.0;
-	absentRate = 1.0;
-	frameRate = 30;
-	nOri = 40;
-	nRep = 3;
-	framesPerStatus = 132;
-	framesToFinish = round(24.9);
+	%%%%% HERE %%%%%%%%
+	frameRate = 30; % from ext_input.py, also need to be set in the <simulation_config>.cfg
+	switch stage
+		case 2
+			peakRate = 0.5; % active cell percentage during wave
+			% corresponds to the parameters set in ext_input.py
+			nOri = 40; % number of orientation for the input waves
+			nRep = 1; % repeat of each orientation
+			framesPerStatus = 225; % frames for each wave
+			framesToFinish = ceil(62.1); % frames for the ending phase of the last wave
+		case 3
+			peakRate = 1.0;
+			absentRate = 1.0; % active cell percentage when being "absent"/not dominating
+			nOri = 40;
+			nRep = 3;
+			framesPerStatus = 132;
+			framesToFinish = ceil(24.9);
+	end
+	%%%%%%%%%%%%%
 	nStatus = nOri*nRep;
 	status = zeros(6,nStatus);
 	statusFrame = zeros(nStatus,1);
@@ -70,24 +100,21 @@ function inputLearnFF(suffix, seed, stdratio, suffix0)
 		statusFrame(i*nRep) = statusFrame(i*nRep) + framesToFinish;
 	end
 	
-	statusFrame
+	statusFrame'
 	sum(statusFrame)
-	switch sType
-		case 1
-			%rands = rand(1,nStatus);
-			%absentSeq = rands > 0;
-            absentSeq = 3:3:nStatus;
-			status(5,:) = peakRate;
-			status(5,absentSeq) = absentRate;
-			status(6,:) = 1.0;
+	switch stage 
 		case 2
+			status(5,:) = peakRate;
+			status(6,:) = peakRate;
+		case 3
 			%rands = rand(1,nStatus);
 			%absentSeq = rands > 0;
             absentSeq = 3:3:nStatus;
 			status(5,:) = peakRate;
 			status(5,absentSeq) = absentRate;
 			status(6,:) = 1.0;
-				
+		otherwise
+			warning('unexpected stage')
 	end
 	reverse = zeros(nStatus,1);
 
@@ -130,8 +157,9 @@ function inputLearnFF(suffix, seed, stdratio, suffix0)
 	nLGN_circ = sum(sum(LGN_vpos0.*LGN_vpos0,2) <= max_ecc.*max_ecc);
 	nLGNperV1 = round(nLGN_circ*2 * pCon);
 	if mod(nLGNperV1,2) == 1
-		nLGNperV1 = nLGNperV1 + 1
+		nLGNperV1 = nLGNperV1 + 1;
 	end
+	nLGNperV1
 	% number of E and I connecitons based on LGN connections
 	nI = int32(min(nLGNperV1/4, mI));
 	nE = int32(min(nLGNperV1, mE));
@@ -143,19 +171,21 @@ function inputLearnFF(suffix, seed, stdratio, suffix0)
 	for i = 1:nV1
 	    fwrite(fid, nLGNperV1, 'uint');
 		if doubleOnOff 
-			%ids = randperm(nLGN_1D*nLGN_1D, nLGNperV1/2)-1; % index start from 0
-			ids = randq(nLGN_1D*nLGN_1D, nLGNperV1/2, LGN_vpos0, max_ecc, max_ecc*stdratio); % index start from 0
+			if i == 1 || ~same
+				ids_on = randq(nLGN_1D*nLGN_1D, nLGNperV1/2, LGN_vpos0, max_ecc, max_ecc*stdratio); % index start from 0
+			end
 			idi	= zeros(nLGNperV1,1);
 			current_id = 1;
 			for j = 1:nLGN_1D
-				idj = ids(ids >= nLGN_1D*(j-1) & ids < nLGN_1D*j);
+				idj = ids_on(ids_on >= nLGN_1D*(j-1) & ids_on < nLGN_1D*j);
 				idi(current_id:current_id+length(idj)-1) = idj*2;
 				current_id = current_id+length(idj);
 			end
-			%ids = randperm(nLGN_1D*nLGN_1D, nLGNperV1/2)-1; % index start from 0
-			ids = randq(nLGN_1D*nLGN_1D, nLGNperV1/2, LGN_vpos0, max_ecc, max_ecc*stdratio); % index start from 0
+			if i == 1 || ~same
+				ids_off = randq(nLGN_1D*nLGN_1D, nLGNperV1/2, LGN_vpos0, max_ecc, max_ecc*stdratio); % index start from 0
+			end
 			for j = 1:nLGN_1D
-				idj = ids(ids >= nLGN_1D*(j-1) & ids < nLGN_1D*j);
+				idj = ids_off(ids_off >= nLGN_1D*(j-1) & ids_off < nLGN_1D*j);
 				idi(current_id:current_id+length(idj)-1) = idj*2+1;
 				current_id = current_id+length(idj);
 			end

@@ -28,15 +28,15 @@ op_cfg=${op}-ori_${ori}.cfg
 cp $op_cfg $fdr
 
 date
-if [ "$plotOnly" = False ]; then
+if [ "$plotOnly" = True ]; then
+	readNewSpike=False
+	usePrefData=True
+	collectMeanDataOnly=False
+else
 	./patch -c $op_cfg
 	date
 	readNewSpike=True
 	usePrefData=False
-else
-	readNewSpike=False
-	usePrefData=True
-	collectMeanDataOnly=False
 fi
 
 if [ "$fitTC" = True ]; then

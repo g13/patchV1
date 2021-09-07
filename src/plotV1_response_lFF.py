@@ -9,20 +9,33 @@ import matplotlib.colors as clr
 from matplotlib import cm
 import sys
 from readPatchOutput import *
-from global_vars import LGN_vposFn, featureFn, V1_allposFn, V1_vposFn, seed
+from global_vars_lFF import LGN_vposFn3, featureFn3, V1_allposFn3, V1_vposFn3, LGN_vposFn2, featureFn2, V1_allposFn2, V1_vposFn2, seed
 np.seterr(invalid = 'raise')
 
 
 #@profile
-def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
+def plotV1_response_lFF(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus, stage):
     #sample = np.array([0,1,2,768])
     #sample = np.array([40, 58, 75])
     #sample = np.array([1338, 10235])
-    SCsplit = 1
+    #sample = np.array([1,10,100,999,1000]);
+    print(f'stage={stage}')
+    if stage == 2:
+        LGN_vposFn = LGN_vposFn2
+        featureFn = featureFn2
+        V1_allposFn = V1_allposFn2
+        V1_vposFn = V1_vposFn2
+    else: # global to local
+        LGN_vposFn = LGN_vposFn3
+        featureFn = featureFn3
+        V1_allposFn = V1_allposFn3
+        V1_vposFn = V1_vposFn3
+
+    SCsplit = 0
     nLGNorF1F0 = True
     ns = 10
     np.random.seed(seed)
-    nt_ = 10000
+    nt_ = 0
     nstep = 10000
     step0 = 0
     if nOri > 0:
@@ -37,9 +50,9 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
     nsmooth = 0
     lw = 0.1
     
-    plotRpStat = True 
-    plotRpCorr = True
-    plotScatterFF = True
+    #plotRpStat = True 
+    #plotRpCorr = True
+    #plotScatterFF = True
     plotSample = True
     #plotDepC = True # plot depC distribution over orientation
     #plotLGNsCorr = True
@@ -47,9 +60,9 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
     #plotExc_sLGN = True
     #plotLR_rp = True
     
-    #plotRpStat = False 
-    #plotRpCorr = False 
-    #plotScatterFF = False
+    plotRpStat = False 
+    plotRpCorr = False 
+    plotScatterFF = False
     #plotSample = False
     plotDepC = False
     plotLGNsCorr = False 
@@ -135,8 +148,6 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
     spDataFn = "V1_spikes" + _output_suffix
     parameterFn = "patchV1_cfg" +_output_suffix + ".bin"
 
-    sampleFn = "OS_sampleList_" + output_suffix0 + ".bin"
-
     prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN = read_cfg(parameterFn)
     blockSize = typeAcc[-1]
     print(f'blockSize = {blockSize}')
@@ -184,11 +195,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
         print(f'dataDim = {dataDim}')
         assert(blockSize == typeAcc[-1])
         print([nblock,blockSize,networkSize,dataDim])
-        coord_span = np.fromfile(f, 'f8', count=4)
-        V1_x0 = coord_span[0]
-        V1_xspan = coord_span[1]
-        V1_y0 = coord_span[2]
-        V1_yspan = coord_span[3]
+        V1_x0, V1_xspan, V1_y0, V1_yspan = np.fromfile(f, 'f8', count=4)
         print(f'x:{[V1_x0, V1_x0 + V1_xspan]}')
         print(f'y:{[V1_y0, V1_y0 + V1_yspan]}')
         _pos = np.reshape(np.fromfile(f, 'f8', count = networkSize*dataDim), (nblock, dataDim, blockSize))
@@ -211,6 +218,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
         if nstep > nt_:
             nstep = nt_
         tstep = (nt_ + nstep - 1)//nstep
+        tstep = min(round(10/dt),tstep)
         nstep = nt_//tstep
         interval = tstep - 1
         print(f'plot {nstep} data points from the {nt_} time steps startingfrom step {step0}, total {nt} steps, dt = {dt}')
@@ -328,91 +336,87 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
             baRatio = np.fromfile(f, 'f4', _n)
 
         if 'sample' not in locals():
-            if usePrefData:
-                with open(sampleFn, 'rb') as f:
-                    sample = np.fromfile(f, 'u4')
-            else:
-                sample = np.random.randint(nV1, size = ns)
-                if False:
-                    sample = np.argsort(sfreq)[-ns:]
-                    print(sample)
+            sample = np.random.randint(nV1, size = ns)
+            if False:
+                sample = np.argsort(sfreq)[-ns:]
+                print(sample)
 
-                if True:
-                    sample = np.zeros(12, dtype = int)
+            if False:
+                sample = np.zeros(12, dtype = int)
 
-                    pick = epick[nLGN_V1[epick] > np.mean(nLGN_V1[epick])]
-                    opick = pick[dOP[pick] <= dOri]
-                    if np.sum(opick) > 0:
-                        sample[0] = opick[np.argmin(fr[opick])]
-                        sample[1] = opick[np.argmax(fr[opick])]
-                    else:
-                        sample[0] = np.random.randint(nV1)
-                        sample[1] = np.random.randint(nV1)
+                pick = epick[nLGN_V1[epick] > np.mean(nLGN_V1[epick])]
+                opick = pick[dOP[pick] <= dOri]
+                if np.sum(opick) > 0:
+                    sample[0] = opick[np.argmin(fr[opick])]
+                    sample[1] = opick[np.argmax(fr[opick])]
+                else:
+                    sample[0] = np.random.randint(nV1)
+                    sample[1] = np.random.randint(nV1)
 
-                    opick = pick[dOP[pick] >= (nOri/2-1)*dOri]
-                    if np.sum(opick) > 0:
-                        sample[2] = opick[np.argmin(fr[opick])]
-                        sample[3] = opick[np.argmax(fr[opick])]
-                    else:
-                        sample[2] = np.random.randint(nV1)
-                        sample[3] = np.random.randint(nV1)
+                opick = pick[dOP[pick] >= (nOri/2-1)*dOri]
+                if np.sum(opick) > 0:
+                    sample[2] = opick[np.argmin(fr[opick])]
+                    sample[3] = opick[np.argmax(fr[opick])]
+                else:
+                    sample[2] = np.random.randint(nV1)
+                    sample[3] = np.random.randint(nV1)
 
-                    pick = epick[nLGN_V1[epick] == 0]
-                    opick = pick[dOP[pick] <= dOri]
-                    if np.sum(opick) > 0:
-                        sample[4] = opick[np.argmin(fr[opick])]
-                        sample[5] = opick[np.argmax(fr[opick])]
-                    else:
-                        sample[4] = np.random.randint(nV1)
-                        sample[5] = np.random.randint(nV1)
+                pick = epick[nLGN_V1[epick] == 0]
+                opick = pick[dOP[pick] <= dOri]
+                if np.sum(opick) > 0:
+                    sample[4] = opick[np.argmin(fr[opick])]
+                    sample[5] = opick[np.argmax(fr[opick])]
+                else:
+                    sample[4] = np.random.randint(nV1)
+                    sample[5] = np.random.randint(nV1)
 
-                    opick = pick[dOP[pick] >= (nOri/2-1)*dOri]
-                    if np.sum(opick) > 0:
-                        sample[6] = opick[np.argmin(fr[opick])]
-                        sample[7] = opick[np.argmax(fr[opick])]
-                    else:
-                        sample[6] = np.random.randint(nV1)
-                        sample[7] = np.random.randint(nV1)
+                opick = pick[dOP[pick] >= (nOri/2-1)*dOri]
+                if np.sum(opick) > 0:
+                    sample[6] = opick[np.argmin(fr[opick])]
+                    sample[7] = opick[np.argmax(fr[opick])]
+                else:
+                    sample[6] = np.random.randint(nV1)
+                    sample[7] = np.random.randint(nV1)
 
-                    pick = ipick[nLGN_V1[ipick] > np.mean(nLGN_V1[ipick])]
-                    opick = pick[dOP[pick] <= dOri]
-                    if np.sum(opick) > 0:
-                        sample[8] = opick[np.argmin(fr[opick])]
-                        sample[9] = opick[np.argmax(fr[opick])]
-                    else:
-                        sample[8] = np.random.randint(nV1)
-                        sample[9] = np.random.randint(nV1)
+                pick = ipick[nLGN_V1[ipick] > np.mean(nLGN_V1[ipick])]
+                opick = pick[dOP[pick] <= dOri]
+                if np.sum(opick) > 0:
+                    sample[8] = opick[np.argmin(fr[opick])]
+                    sample[9] = opick[np.argmax(fr[opick])]
+                else:
+                    sample[8] = np.random.randint(nV1)
+                    sample[9] = np.random.randint(nV1)
 
-                    opick = pick[dOP[pick] >= (nOri/2-1)*dOri]
-                    if np.sum(opick) > 0:
-                        sample[10] = opick[np.argmin(fr[opick])]
-                        sample[11] = opick[np.argmax(fr[opick])]
-                    else:
-                        sample[10] = np.random.randint(nV1)
-                        sample[11] = np.random.randint(nV1)
+                opick = pick[dOP[pick] >= (nOri/2-1)*dOri]
+                if np.sum(opick) > 0:
+                    sample[10] = opick[np.argmin(fr[opick])]
+                    sample[11] = opick[np.argmax(fr[opick])]
+                else:
+                    sample[10] = np.random.randint(nV1)
+                    sample[11] = np.random.randint(nV1)
 
-                    #sample = np.zeros(4, dtype = int)
-                    sample[0] = 8372
-                    #sample[1] = 1
-                    #sample[2] = 1000
-                    #sample[3] = 1001
+                #sample = np.zeros(4, dtype = int)
+                #sample[0] = 0
+                #sample[1] = 1
+                #sample[2] = 1000
+                #sample[3] = 1001
         
-                if False:
-                    pick = epick[nLGN_V1[epick] == 0]
-                    sample[0] = pick[np.argmin(fr[pick])]
-                    sample[1] = pick[np.argmax(fr[pick])]
+            if False:
+                pick = epick[nLGN_V1[epick] == 0]
+                sample[0] = pick[np.argmin(fr[pick])]
+                sample[1] = pick[np.argmax(fr[pick])]
         
-                    pick = epick[nLGN_V1[epick] > np.mean(nLGN_V1[epick])]
-                    sample[2] = pick[np.argmin(fr[pick])]
-                    sample[3] = pick[np.argmax(fr[pick])]
+                pick = epick[nLGN_V1[epick] > np.mean(nLGN_V1[epick])]
+                sample[2] = pick[np.argmin(fr[pick])]
+                sample[3] = pick[np.argmax(fr[pick])]
         
-                    pick = ipick[nLGN_V1[ipick] == 0]
-                    sample[4] = pick[np.argmin(fr[pick])]
-                    sample[5] = pick[np.argmax(fr[pick])]
+                pick = ipick[nLGN_V1[ipick] == 0]
+                sample[4] = pick[np.argmin(fr[pick])]
+                sample[5] = pick[np.argmax(fr[pick])]
         
-                    pick = ipick[nLGN_V1[ipick] > np.mean(nLGN_V1[ipick])]
-                    sample[6] = pick[np.argmin(fr[pick])]
-                    sample[7] = pick[np.argmax(fr[pick])]
+                pick = ipick[nLGN_V1[ipick] > np.mean(nLGN_V1[ipick])]
+                sample[6] = pick[np.argmin(fr[pick])]
+                sample[7] = pick[np.argmax(fr[pick])]
         ns = sample.size
         print(f'sampling {[(s//blockSize, np.mod(s,blockSize)) for s in sample]}') 
     
@@ -1055,6 +1059,13 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 ax2.plot(t, _gE[0,ig,i,:], '-r', lw = (ig+1)/ngE * lw)
             for ig in range(ngI):
                 ax2.plot(t, _gI[0,ig,i,:], '-b', lw = (ig+1)/ngI * lw)
+
+            frTmp = LGN_fr[:, LGN_V1_ID[iV1]]
+            LGN_fr_sSum = np.sum(frTmp[tpick,:] * LGN_V1_s[iV1], axis=-1)
+            ax2.plot(t, LGN_fr_sSum/np.max(LGN_fr_sSum), '-g', lw = 2*lw)
+            ax2.set_ylabel('conductance', fontsize = 'x-small')
+            ax.set_ylabel('voltage', fontsize = 'x-small')
+
             if pH:
                 for ig in range(ngFF):
                     ax2.plot(t, _gFF[1,ig,i,:], ':g', lw = (ig+1)/ngFF * lw)
@@ -1063,10 +1074,13 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 for ig in range(ngI):
                     ax2.plot(t, _gI[1,ig,i,:], ':b', lw = (ig+1)/ngI * lw)
     
-            ax.set_title(f'ID: {(iblock, ithread)}:({LR[iV1]:.0f},{OP[iV1]*180/np.pi:.0f})- LGN:{nLGN_V1[iV1]}({np.sum(LGN_V1_s[iV1]):.1f}), E{preN[0,iV1]}({preNS[0,iV1]:.1f}), I{preN[1,iV1]}({preNS[1,iV1]:.1f})')
+            ax.set_title(f'ID: {(iblock, ithread)}:({LR[iV1]:.0f},{OP[iV1]*180/np.pi:.0f})- LGN:{nLGN_V1[iV1]}({np.sum(LGN_V1_s[iV1]):.1f}), E{preN[0,iV1]}({preNS[0,iV1]:.1f}), I{preN[1,iV1]}({preNS[1,iV1]:.1f})', fontsize = 'small')
             _vBot = min(vR[itype], np.min(_v[i,:]))
             ax.set_ylim(bottom = _vBot)
             ax.set_ylim(top = _vBot + (_vThres - _vBot) * 1.1)
+            ax.tick_params(axis='both', labelsize='xx-small', direction='in')
+            ax2.tick_params(axis='both', labelsize='xx-small', direction='in')
+
             ax2.set_ylim(bottom = 0)
             if min(_v[i,:]) > -100 and max(_v[i,:]) < 50:
                 ax.yaxis.grid(True, which='minor', linestyle=':', linewidth = 0.1)
@@ -1122,8 +1136,9 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 title = f'FR:{fr[iV1]:.3f}, F1F0:{F1F0[iV1]:.3f}, {gFF_F1F0[iV1]:.3f}(gFF)'
             else:
                 title = f'FR:{fr[iV1]:.3f}, F1F0:{F1F0[iV1]:.3f}'
-            ax.set_title(title)
-            ax.set_ylabel('current')
+            ax.set_title(title, fontsize = 'small')
+            ax.set_ylabel('current', fontsize = 'small')
+            ax.tick_params(axis='both', labelsize='xx-small', direction='in')
 
             ax.yaxis.grid(True, which='minor', linestyle=':', linewidth = 0.1)
             ax.yaxis.grid(True, which='major', linestyle='-', linewidth = 0.1)
@@ -1141,8 +1156,6 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
 
                 print(f'LGN id for neuron {iV1}: {LGN_V1_ID[iV1]}')
                 ax = fig.add_subplot(grid[2,0])
-                frTmp = LGN_fr[:, LGN_V1_ID[iV1]]
-                LGN_fr_sSum = np.sum(frTmp[tpick,:] * LGN_V1_s[iV1], axis=-1)
                 ax.plot(t, LGN_fr_sSum, '-g', lw = 2*lw)
     
                 nbins = int(FRbins*t_in_sec*TF)
@@ -1155,6 +1168,8 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 ax2 = ax.twinx()
                 for ig in range(ngFF):
                     ax2.plot(t, _gFF[0,ig,i,:], ':g', lw = (ig+1)/ngFF * lw)
+                ax.tick_params(axis='both', labelsize='xx-small', direction='in')
+                ax2.tick_params(axis='both', labelsize='xx-small', direction='in')
     
                 ax = fig.add_subplot(grid[2,1])
                         #   L-on L-off M-on  M-off  On   Off
@@ -1230,6 +1245,9 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                         ax.plot(x0, y0, ':b', lw = 0.15)
                 
                 ax.set_aspect('equal')
+                ax.set_xlabel('deg', fontsize = 'x-small')
+                ax.set_ylabel('deg', fontsize = 'x-small')
+                ax.tick_params(axis='both', labelsize='xx-small', direction='in')
 
             if pSingleLGN:
                 for j in range(nLGN_V1[iV1]):
@@ -2898,7 +2916,7 @@ def ellipse(cx, cy, a, baRatio, orient, n = 50):
 if __name__ == "__main__":
 
     if len(sys.argv) < 8:
-        raise Exception('not enough argument for plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, TF, iOri, nOri, readNewSpike = True, usePrefData = False, collectMeanDataOnly = False, OPstatus = 1)')
+        raise Exception('not enough argument for plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, TF, iOri, nOri, readNewSpike = True, usePrefData = False, collectMeanDataOnly = False, OPstatus = 1, stage = 3)')
     else:
         output_suffix = sys.argv[1]
         print(output_suffix)
@@ -2944,20 +2962,28 @@ if __name__ == "__main__":
                                 print('preset OP plots are plotted')
                             if OPstatus == 2:
                                 print('update OP plots only')
+                        if len(sys.argv) > 12:
+                            stage = int(sys.argv[12])
+                        else:
+                            stage = 3
                     else:
                         OPstatus = 1
+                        stage = 3
                 else:
                     collectMeanDataOnly = False
                     OPstatus = 1
+                    stage = 3
             else:
                 usePrefData = False
                 collectMeanDataOnly = False
                 OPstatus = 1
+                stage = 3
         else:
             readNewSpike = True 
             usePrefData = False
             collectMeanDataOnly = False
             OPstatus = 1
+            stage = 3
 
     print(sys.argv)
-    plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus)
+    plotV1_response_lFF(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus, stage)
