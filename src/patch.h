@@ -14,6 +14,7 @@
 #include <chrono>
 #include "cuda_profiler_api.h"
 #include "boost/program_options.hpp"
+#include "boost/filesystem.hpp"
 #include "LGN_props.cuh"
 #include "LGN_props.h"
 #include "condShape.h"
@@ -47,7 +48,9 @@ inline void read_LGN(std::string filename, Float* &array, Size &maxList, Float s
         Size listSize;
         input_file.read(reinterpret_cast<char*>(&listSize), sizeof(Size));
 		std::vector<float> array0(listSize);
-		input_file.read(reinterpret_cast<char*>(&array0[0]), listSize * sizeof(float));
+		if (listSize > 0) {
+			input_file.read(reinterpret_cast<char*>(&array0[0]), listSize * sizeof(float));
+		} else continue;
 		for (PosInt j=0; j<listSize; j++) {
 			array[i*maxList + j] = static_cast<Float>(array0[j]);
 		}

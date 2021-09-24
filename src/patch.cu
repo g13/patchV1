@@ -1,31 +1,31 @@
 #include "patch.h"
 //TODO: gap junction and learning in cortex
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
 	namespace po = boost::program_options;
+	namespace bf = boost::filesystem;
 	using namespace std;
-	using std::string;
-    int nDevice;
-    checkCudaErrors(cudaGetDeviceCount(&nDevice));
-    cout << nDevice << " gpu on the node\n";
-    int iDevice;
-    size_t maxFree = 0;
-    for (PosInt i=0; i<nDevice; i++) {
-        checkCudaErrors(cudaSetDevice(i));
-        size_t free;
-        size_t total;
-        checkCudaErrors(cudaMemGetInfo(&free, &total));
-        if (free > maxFree) {
-            iDevice = i; 
-            maxFree = free;
-        }
-    }
-    checkCudaErrors(cudaSetDevice(iDevice));
-    cout << "using gpu device " << iDevice << ", with " << maxFree/1024.0/1024.0 << "Mb memory\n";
+	int nDevice;
+	checkCudaErrors(cudaGetDeviceCount(&nDevice));
+	cout << nDevice << " gpu on the node\n";
+	int iDevice;
+	size_t maxFree = 0;
+	for (PosInt i = 0; i < nDevice; i++) {
+		checkCudaErrors(cudaSetDevice(i));
+		size_t free;
+		size_t total;
+		checkCudaErrors(cudaMemGetInfo(&free, &total));
+		if (free > maxFree) {
+			iDevice = i;
+			maxFree = free;
+		}
+	}
+	checkCudaErrors(cudaSetDevice(iDevice));
+	cout << "using gpu device " << iDevice << ", with " << maxFree / 1024.0 / 1024.0 << "Mb memory\n";
 	cudaDeviceProp deviceProps;
 	checkCudaErrors(cudaGetDeviceProperties(&deviceProps, 0));
 	printf("CUDA device [%s] has %d Multi-Processors ", deviceProps.name, deviceProps.multiProcessorCount);
 	printf("SM %d.%d\n", deviceProps.major, deviceProps.minor);
-	printf("total global memory: %f Mb.\n", deviceProps.totalGlobalMem/1024.0/1024.0);
+	printf("total global memory: %f Mb.\n", deviceProps.totalGlobalMem / 1024.0 / 1024.0);
 	size_t GMemAvail = deviceProps.totalGlobalMem;
 
 #ifdef SINGLE_PRECISION
@@ -41,54 +41,54 @@ int main(int argc, char **argv) {
 	bool storeSpatial = true;
 	Float dt; // in ms, better in fractions of binary 
 	Float dot;
-    bool print_log;
+	bool print_log;
 	bool useNewLGN, readFeature;
 	bool saveLGN_fr, saveLGN_gallery, saveOutputB4V1;
 	bool frameVisV1output, frameVisLGNoutput, framePhyV1output;
-    bool hWrite, rawData;
-    bool ignoreRetinogeniculateDelay;
-    bool learnData_FF;
-    bool learnData_V1;
-    bool manual;
-    bool symQ;
-    bool flat_retina;
-    bool uniform_LGN;
-    bool LGN_switch;
-    bool reverseInput;
-    bool getLGN_sp;
+	bool hWrite, rawData;
+	bool ignoreRetinogeniculateDelay;
+	bool learnData_FF;
+	bool learnData_V1;
+	bool manual;
+	bool symQ;
+	bool flat_retina;
+	bool uniform_LGN;
+	bool LGN_switch;
+	bool reverseInput;
+	bool getLGN_sp;
 	bool delPrevSnapshot;
 	bool asInit;
 	bool use_v0;
 	bool virtual_LGN;
-    int rebound;
-    int learning;
-    int iModel;
-    int noDelay;
-    int noFarDelay;
+	int rebound;
+	int learning;
+	int iModel;
+	int noDelay;
+	int noFarDelay;
 	int switchType;
 	int applyHomeo;
 	Size snapshotInterval;
 	Size nChunk;
-    Size nOri;
+	Size nOri;
 	Size matConcurrency;
 	Float phyWidth_scale;
 	Float visWidth_scale;
-    Size nLearnTypeFF_E, nLearnTypeFF_I, nLearnTypeE;
+	Size nLearnTypeFF_E, nLearnTypeFF_I, nLearnTypeE;
 	SmallSize nSpatialSample1D;
 	SmallSize mSpatialSample1D;
 	SmallSize nKernelSample;
 	SmallSize mKernelSample;
-    Size SCsplit;
+	Size SCsplit;
 	Float hdFF;
 	Float FF_InfRatio;
-    vector<Float> spE0;
-    vector<Float> spI0;
-    vector<Float> noisyDep;
-    vector<Float> tonicDep;
+	vector<Float> spE0;
+	vector<Float> spI0;
+	vector<Float> noisyDep;
+	vector<Float> tonicDep;
 	vector<Float> minTonicRatio;
-    vector<Float> synFailFF;
-    vector<Float> synFail;
-    // TODO: specify proportion of different types of conductances
+	vector<Float> synFailFF;
+	vector<Float> synFail;
+	// TODO: specify proportion of different types of conductances
 	vector<Float> grFF;
 	vector<Float> grE;
 	vector<Float> grI;
@@ -129,15 +129,15 @@ int main(int argc, char **argv) {
 	vector<Float> tau_w;
 	vector<Float> a;
 	vector<Float> b;
-    vector<PosInt> preList, postList;
-    vector<Float> sList;
+	vector<PosInt> preList, postList;
+	vector<Float> sList;
 	vector<Float> sRatioLGN;
 	vector<Float> sRatioV1;
 	vector<Float> gapRatio;
 	vector<Size> nTypeHierarchy;
 	vector<Float> fbROI, fbSamplingRate, fbEI_ratio, fbFR;
-    vector<Float> boostOri;
-    vector<PosInt> iOri;
+	vector<Float> boostOri;
+	vector<PosInt> iOri;
 	vector<Size> nFBperColumn;
 	Float nsig; // extent of spatial RF sampling in units of std
 	Float tau, mau;
@@ -153,7 +153,7 @@ int main(int argc, char **argv) {
 
 	po::options_description generic_opt("Generic options");
 	generic_opt.add_options()
-		("seed,s", po::value<PosIntL>(&seed),"seed for trial")
+		("seed,s", po::value<PosIntL>(&seed), "seed for trial")
 		("cfg_file,c", po::value<string>()->default_value("patchV1.cfg"), "filename for configuration file")
 		("print,p", po::value<bool>(&print_log)->default_value(false), "print outputs")
 		("help,h", "print usage");
@@ -161,8 +161,8 @@ int main(int argc, char **argv) {
 	// non-files
 	top_opt.add_options()
 		("dt", po::value<Float>(&dt)->default_value(0.0625), "simulatoin time step in ms")
-		("nChunk,n", po::value<Size>(&nChunk)->default_value(10),"simulation in chunks, empricial")
-		("matConcurrency,n", po::value<Size>(&matConcurrency)->default_value(10),"sum presynaptic inputs from connection matrices in parallel, depends on the availability of device memory")
+		("nChunk,n", po::value<Size>(&nChunk)->default_value(10), "simulation in chunks, empricial")
+		("matConcurrency,n", po::value<Size>(&matConcurrency)->default_value(10), "sum presynaptic inputs from connection matrices in parallel, depends on the availability of device memory")
 		("speedOfThought", po::value<Float>(&speedOfThought)->default_value(1.0), "velocity of conduction, mm/ms")
 		("nt", po::value<Size>(&nt)->default_value(8000), "total simulatoin time in units of time step")
 		("fbROI", po::value<vector<Float>>(&fbROI), "feedback ROI not implemented")
@@ -177,8 +177,8 @@ int main(int argc, char **argv) {
 		("nsig", po::value<Float>(&nsig)->default_value(3), "extent of spatial RF sampling in units of std")
 		("nSpatialSample1D", po::value<SmallSize>(&nSpatialSample1D)->default_value(warpSize), "number of samples per x,y direction for a parvo-LGN spatial RF")
 		("mSpatialSample1D", po::value<SmallSize>(&mSpatialSample1D)->default_value(warpSize), "number of samples per x,y direction for a magno-LGN spatial RF")
-        ("phyWidth_scale", po::value<Float>(&phyWidth_scale)->default_value(1), "pixel width of the physical V1 sheet frame output")
-        ("visWidth_scale", po::value<Float>(&visWidth_scale)->default_value(1), "pixel width of the half visual field frame output")
+		("phyWidth_scale", po::value<Float>(&phyWidth_scale)->default_value(1), "pixel width of the physical V1 sheet frame output")
+		("visWidth_scale", po::value<Float>(&visWidth_scale)->default_value(1), "pixel width of the half visual field frame output")
 		("tau", po::value<Float>(&tau)->default_value(250.0), "the backward time interval that a parvo-LGN temporal RF should cover")
 		("mau", po::value<Float>(&mau)->default_value(250.0), "the backward time interval that a magno-LGN temporal RF should cover")
 		("Itau", po::value<Float>(&Itau)->default_value(300.0), "the light intensity adaptation time-scale of a cone")
@@ -208,19 +208,19 @@ int main(int argc, char **argv) {
 		("pFF", po::value<vector<Float>>(&pFF), "array for proportions of [nType, ngTypeFF]")
 		("pE", po::value<vector<Float>>(&pE), "array for proportions of [nType, ngTypeE]")
 		("pI", po::value<vector<Float>>(&pI), "array for proportions of [nType, ngTypeI]")
-        ("learning", po::value<int>(&learning)->default_value(1), "trip rule learning, from Jennifer, 0 no learning, 1 default learning")
+		("learning", po::value<int>(&learning)->default_value(1), "trip rule learning, from Jennifer, 0 no learning, 1 default learning")
 		("rebound", po::value<int>(&rebound)->default_value(0), "after connection strength hits min or max can they retract") // TODO: replace "continue;" in compute_V 
 		("iModel", po::value<int>(&iModel)->default_value(0), "0: LIF, 1: AdEx")
 		("noDelay", po::value<int>(&noDelay)->default_value(1), "0: distance-dependent spike time. 1: distance-independent spike time")
 		("noFarDelay", po::value<int>(&noFarDelay)->default_value(1), "for farther connections, 0: distance-dependent spike time. 1: distance-independent spike time")
-        ("A_LGN", po::value<vector<Float>>(&A_LGN), "array of learning rate for feedforward connections")
-        ("r_LTD", po::value<vector<Float>>(&r_LTD), "array of rate for LTD learning rate")
-        ("A_V1", po::value<vector<Float>>(&A_V1), "array of learning rate for coritcal connections")
-        ("A_Q", po::value<vector<Float>>(&A_Q), "array of learning rate ofr inhibitory connecitons")
-        ("symQ", po::value<bool>(&symQ)->default_value(true), "if pre and post of STDP Qlearning is symmetric")
-        ("nLearnTypeFF_I", po::value<Size>(&nLearnTypeFF_I)->default_value(1), " number of types of triplet rule learning for feedforward LGN connections to inhibitory neurons")
-        ("nLearnTypeFF_E", po::value<Size>(&nLearnTypeFF_E)->default_value(1), " number of types of triplet rule learning for feedforward LGN connections to excitatory neurons")
-        ("nLearnTypeE", po::value<Size>(&nLearnTypeE)->default_value(1), " number of types of triplet rule learning that involves only excitatory coritcal cells")
+		("A_LGN", po::value<vector<Float>>(&A_LGN), "array of learning rate for feedforward connections")
+		("r_LTD", po::value<vector<Float>>(&r_LTD), "array of rate for LTD learning rate")
+		("A_V1", po::value<vector<Float>>(&A_V1), "array of learning rate for coritcal connections")
+		("A_Q", po::value<vector<Float>>(&A_Q), "array of learning rate ofr inhibitory connecitons")
+		("symQ", po::value<bool>(&symQ)->default_value(true), "if pre and post of STDP Qlearning is symmetric")
+		("nLearnTypeFF_I", po::value<Size>(&nLearnTypeFF_I)->default_value(1), " number of types of triplet rule learning for feedforward LGN connections to inhibitory neurons")
+		("nLearnTypeFF_E", po::value<Size>(&nLearnTypeFF_E)->default_value(1), " number of types of triplet rule learning for feedforward LGN connections to excitatory neurons")
+		("nLearnTypeE", po::value<Size>(&nLearnTypeE)->default_value(1), " number of types of triplet rule learning that involves only excitatory coritcal cells")
 		("tauQ", po::value<vector<Float>>(&tauQ), "array for the decay timescale of iSTDP variable")
 		("tauLTP", po::value<vector<Float>>(&tauLTP), "array for the decay timescale of LTP variable of the triplet rule")
 		("tauLTD", po::value<vector<Float>>(&tauLTD), "array for the decay timescale of LTD variable of the triplet rule")
@@ -233,46 +233,46 @@ int main(int argc, char **argv) {
 		("gminLGN", po::value<vector<Float>>(&gminLGN), "minimum connection strength for LGN->V1, size of nLearnTypeFF")
 		("gminE", po::value<vector<Float>>(&gminE), "minimum connection strength for E->E, size of nLearnTypeE")
 		("gminQ", po::value<vector<Float>>(&gminQ), "minimum connection strength for I->E, size of nLearnTypeQ")
-		("vR",po::value<vector<Float>>(&vR), "single neuron model's reseting voltage of size nType")
-		("vThres",po::value<vector<Float>>(&vThres), "single neuron model's reset threshold of size nType")
-		("gL",po::value<vector<Float>>(&gL), "single neuron model's leaky conductance of size nType")
-		("C",po::value<vector<Float>>(&C), "single neuron model's capacitance of size nType")
-		("tRef",po::value<vector<Float>>(&tRef), "single neuron model's refactory period of size nType")
-		("vT",po::value<vector<Float>>(&vT), "AdEx model's spiking threshold (parameter) of size nType")
-		("deltaT",po::value<vector<Float>>(&deltaT), "AdEx model's deltaT of size nType")
-		("tau_w",po::value<vector<Float>>(&tau_w), "AdEx model's time scale of adaptive variable w of size nType")
-		("a",po::value<vector<Float>>(&a), "AdEx model's parameter a of size nType")
-		("b",po::value<vector<Float>>(&b), "AdEx model's parameter b of size nType")
-        ("nTypeHierarchy",  po::value<vector<Size>>(&nTypeHierarchy), "types of excitatory neurons and inhibtory neurons")
-        ("spE0",  po::value<vector<Float>>(&spE0), "Exc. initial spike dist. mean. of size [nTypeHierarchy[0], 2] (s->c) ")
-        ("spI0",  po::value<vector<Float>>(&spI0), "Inh. initial spike dist. mean. of size [nTypeHierarchy[1], 2] (s->c) ")
-        ("SCsplit",  po::value<Size>(&SCsplit)->default_value(0), "simple complex split at nLGN > SCsplit (simple)")
+		("vR", po::value<vector<Float>>(&vR), "single neuron model's reseting voltage of size nType")
+		("vThres", po::value<vector<Float>>(&vThres), "single neuron model's reset threshold of size nType")
+		("gL", po::value<vector<Float>>(&gL), "single neuron model's leaky conductance of size nType")
+		("C", po::value<vector<Float>>(&C), "single neuron model's capacitance of size nType")
+		("tRef", po::value<vector<Float>>(&tRef), "single neuron model's refactory period of size nType")
+		("vT", po::value<vector<Float>>(&vT), "AdEx model's spiking threshold (parameter) of size nType")
+		("deltaT", po::value<vector<Float>>(&deltaT), "AdEx model's deltaT of size nType")
+		("tau_w", po::value<vector<Float>>(&tau_w), "AdEx model's time scale of adaptive variable w of size nType")
+		("a", po::value<vector<Float>>(&a), "AdEx model's parameter a of size nType")
+		("b", po::value<vector<Float>>(&b), "AdEx model's parameter b of size nType")
+		("nTypeHierarchy", po::value<vector<Size>>(&nTypeHierarchy), "types of excitatory neurons and inhibtory neurons")
+		("spE0", po::value<vector<Float>>(&spE0), "Exc. initial spike dist. mean. of size [nTypeHierarchy[0], 2] (s->c) ")
+		("spI0", po::value<vector<Float>>(&spI0), "Inh. initial spike dist. mean. of size [nTypeHierarchy[1], 2] (s->c) ")
+		("SCsplit", po::value<Size>(&SCsplit)->default_value(0), "simple complex split at nLGN > SCsplit (simple)")
 		("noisyDep", po::value<vector<Float>>(&noisyDep), "noisy depolarization borrow from NMC model")
 		("tonicDep", po::value<vector<Float>>(&tonicDep), "tonic depolarization borrow from NMC model")
 		("tau_noise", po::value<Float>(&tau_noise)->default_value(0), "auto-correlation decay time scale of the correlated gaussian noise")
 		("minTonicRatio", po::value<vector<Float>>(&minTonicRatio), "minimum tonic depolarization ratio of size [nType]")
-        ("synFailFF",  po::value<vector<Float>>(&synFailFF), "FF synpase failure rate of size nType")
-        ("synFail",  po::value<vector<Float>>(&synFail), "synpase failure rate of size [nType, nType]")
-        ("manual", po::value<bool>(&manual)->default_value(false), "manually connect neurons, modify on top of conMat")
-        ("preList", po::value<vector<PosInt>>(&preList), "the presynaptic neurons of the manual connections")
-        ("postList", po::value<vector<PosInt>>(&postList), "the postynaptic neurons of the manual connections")
-        ("sList", po::value<vector<Float>>(&sList), "the strength of the manual connections, can be an scalar")
+		("synFailFF", po::value<vector<Float>>(&synFailFF), "FF synpase failure rate of size nType")
+		("synFail", po::value<vector<Float>>(&synFail), "synpase failure rate of size [nType, nType]")
+		("manual", po::value<bool>(&manual)->default_value(false), "manually connect neurons, modify on top of conMat")
+		("preList", po::value<vector<PosInt>>(&preList), "the presynaptic neurons of the manual connections")
+		("postList", po::value<vector<PosInt>>(&postList), "the postynaptic neurons of the manual connections")
+		("sList", po::value<vector<Float>>(&sList), "the strength of the manual connections, can be an scalar")
 		("readFeature", po::value<bool>(&readFeature)->default_value(true), "read features, OD, OP rather than learning them")
 		("hWrite", po::value<bool>(&hWrite)->default_value(true), "write h data to fRawData output")
-		("saveLGN_fr", po::value<bool>(&saveLGN_fr)->default_value(true),"write LGN firing rates to disk, specify filename through LGN_fr_filename")
+		("saveLGN_fr", po::value<bool>(&saveLGN_fr)->default_value(true), "write LGN firing rates to disk, specify filename through LGN_fr_filename")
 		("rawData", po::value<bool>(&rawData)->default_value(true), "to save V1 response (spike, v, g, (h, depends on hWrite)) over time")
 		("learnData_FF", po::value<bool>(&learnData_FF)->default_value(false), "to save LGN->V1 connection strength plasticity over time")
 		("learnData_V1", po::value<bool>(&learnData_V1)->default_value(false), "to save V1->V1 connection strength plasticity over time")
-		("framePhyV1output", po::value<bool>(&framePhyV1output)->default_value(false),"get response stats frame for cortical sheet of V1")
-		("frameVisV1output", po::value<bool>(&frameVisV1output)->default_value(false),"get response stats frame for visual field of V1")
-		("frameVisLGNoutput", po::value<bool>(&frameVisLGNoutput)->default_value(false),"get response stats frame for visual field of LGN")
-		("dot", po::value<Float>(&dot)->default_value(16), "outputFrame interval in ms") 
+		("framePhyV1output", po::value<bool>(&framePhyV1output)->default_value(false), "get response stats frame for cortical sheet of V1")
+		("frameVisV1output", po::value<bool>(&frameVisV1output)->default_value(false), "get response stats frame for visual field of V1")
+		("frameVisLGNoutput", po::value<bool>(&frameVisLGNoutput)->default_value(false), "get response stats frame for visual field of LGN")
+		("dot", po::value<Float>(&dot)->default_value(16), "outputFrame interval in ms")
 		("saveLGN_gallery", po::value<bool>(&saveLGN_gallery)->default_value(true), "check convolution kernels and maximum convolution values, write data to disk, specify filename through LGN_gallery_filename")
 		("saveOutputB4V1", po::value<bool>(&saveOutputB4V1)->default_value(true), "check adapted luminance values, write data to disk, specify filename through outputB4V1_filename")
 		("ignoreRetinogeniculateDelay", po::value<bool>(&ignoreRetinogeniculateDelay)->default_value(true), "ignore the delay")
 		("flat_retina", po::value<bool>(&flat_retina)->default_value(false), "flat retina means cyclop,  flat stimulus and no special transformations")
 		("uniform_LGN", po::value<bool>(&uniform_LGN)->default_value(false), "uniform LGN properties within cell type")
-		("virtual_LGN", po::value<bool>(&virtual_LGN)->default_value(false), "LGN become virtual skipping convolution with the input")
+		("virtual_LGN", po::value<bool>(&virtual_LGN)->default_value(false), "LGN become virtual: input is now directly LGN linear response, skipping convolution with the input. Use for: spontaneous waves")
 		("LGN_switch", po::value<bool>(&LGN_switch)->default_value(false), "control LGN activation during retinal waves, make sure LGN_switch file is ready")
 		("switchType", po::value<int>(&switchType)->default_value(0), "0: no switch, 1: per status, 2: rate ratio, 3:per spike.")
 		("reverseInput", po::value<bool>(&reverseInput)->default_value(false), "control input On-Off reverse")
@@ -282,12 +282,13 @@ int main(int argc, char **argv) {
 		("use_v0", po::value<bool>(&use_v0)->default_value(false), "use v0 to initialize membrane potential, otherwise is set according to depC")
 		("useNewLGN", po::value<bool>(&useNewLGN)->default_value(true), "regenerate the a new ensemble of LGN parameters according to their distribution");
 
+	string inputFolder, outputFolder;
 	// files
 	string connectome_cfg_filename, patchV1_cfg_filename, restore;
-    string output_suffix, output_suffix0; // suffix to be added to all output filename
-    string conV1_suffix; // suffix of the input filenames, if suffix is not the same, set f*
-    string conLGN_suffix; // suffix of the input filenames, if suffix is not the same, set f*
-    string snapshot_suffix; // suffix of the input filenames, if suffix is not the same, set f*
+	string output_suffix, output_suffix0; // suffix to be added to all output filename
+	string conV1_suffix; // suffix of the input filenames, if suffix is not the same, set f*
+	string conLGN_suffix; // suffix of the input filenames, if suffix is not the same, set f*
+	string snapshot_suffix; // suffix of the input filenames, if suffix is not the same, set f*
 	string conStats_filename;
 	string stimulus_filename, LGN_switch_filename;
 	string V1_RF_filename, V1_feature_filename, V1_pos_filename;
@@ -298,38 +299,42 @@ int main(int argc, char **argv) {
 	string LGN_fr_filename, outputFrame_filename; // outputs
 	string LGN_convol_filename, LGN_gallery_filename, outputB4V1_filename, rawData_filename, learnData_FF_filename, learnData_V1_filename, sLGN_filename, LGN_sp_filename;
 	top_opt.add_options()
-		("output_suffix", po::value<string>(&output_suffix0)->default_value(""),"output file suffix")
-		("conV1_suffix", po::value<string>(&conV1_suffix)->default_value(""),"suffix for V1 connectome files")
-		("conLGN_suffix", po::value<string>(&conLGN_suffix)->default_value(""),"suffix for LGN to V1 connectome files")
-		("fConnectome_cfg", po::value<string>(&connectome_cfg_filename)->default_value("connectome_cfg"),"file that stores connectome cfg parameters")
-		("snapshot_suffix", po::value<string>(&snapshot_suffix),"suffix of the snapshot")
-		("fSnapshot", po::value<string>(&restore)->default_value(""),"file that can be used to restore previous simulation status")
-		("fPatchV1_cfg", po::value<string>(&patchV1_cfg_filename)->default_value("patchV1_cfg"),"file that stores patchV1 cfg parameters")
-		("fLGN_switch", po::value<string>(&LGN_switch_filename)->default_value("LGN_switch"),"file that stores which types of LGN to turn on and off over time, ints of size: (nInputType, nStatus)")
-		("fStimulus", po::value<string>(&stimulus_filename)->default_value("stimulus.bin"),"file that stores LGN firing rates, array of size (nframes,width,height,3)")
-		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"),"file that stores LGN neurons information")
-		("fLGN_V1_ID", po::value<string>(&LGN_V1_ID_filename)->default_value("LGN_V1_idList"),"file stores LGN to V1 connections")
-		("fLGN_V1_s", po::value<string>(&LGN_V1_s_filename)->default_value("LGN_V1_sList"),"file stores LGN to V1 connection strengths")
-		("fLGN_surfaceID", po::value<string>(&LGN_surfaceID_filename)->default_value("LGN_surfaceID.bin"),"file stores LGN position ID on surface memory")
+		//inputs:
+		("inputFolder", po::value<string>(&inputFolder)->default_value(""), "where the input data files at, must end with /")
+		("conV1_suffix", po::value<string>(&conV1_suffix)->default_value(""), "suffix for V1 connectome files")
+		("conLGN_suffix", po::value<string>(&conLGN_suffix)->default_value(""), "suffix for LGN to V1 connectome files")
+		("snapshot_suffix", po::value<string>(&snapshot_suffix), "suffix of the snapshot")
+		("fConnectome_cfg", po::value<string>(&connectome_cfg_filename)->default_value("connectome_cfg"), "file that stores connectome cfg parameters")
+		("fSnapshot", po::value<string>(&restore)->default_value(""), "file that can be used to restore previous simulation status. if not provided, no restore, other put restore file in the inputFolder")
+		("fLGN_switch", po::value<string>(&LGN_switch_filename)->default_value("LGN_switch"), "file that stores which types of LGN to turn on and off over time, ints of size: (nInputType, nStatus)")
+		("fStimulus", po::value<string>(&stimulus_filename)->default_value("stimulus.bin"), "file that stores LGN firing rates, array of size (nframes,width,height,3)")
+		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"), "file that stores LGN neurons information")
+		("fLGN_V1_ID", po::value<string>(&LGN_V1_ID_filename)->default_value("LGN_V1_idList"), "file stores LGN to V1 connections")
+		("fLGN_V1_s", po::value<string>(&LGN_V1_s_filename)->default_value("LGN_V1_sList"), "file stores LGN to V1 connection strengths")
+		("fLGN_surfaceID", po::value<string>(&LGN_surfaceID_filename)->default_value("LGN_surfaceID.bin"), "file stores LGN position ID on surface memory")
 		("fV1_pos", po::value<string>(&V1_pos_filename)->default_value("V1_allpos.bin"), "file that stores V1 coritcal position and visual field position")
 		("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file to read spatially predetermined functional features of neurons")
 		("fV1_conMat", po::value<string>(&V1_conMat_filename)->default_value("V1_conMat"), "file that stores V1 to V1 connection within the neighboring blocks")
 		("fV1_delayMat", po::value<string>(&V1_delayMat_filename)->default_value("V1_delayMat"), "file that stores V1 to V1 transmission delay within the neighboring blocks")
 		("fV1_gapMat", po::value<string>(&V1_gapMat_filename)->default_value("V1_gapMat"), "file that stores inhibitory to inhibitory gap junction within the neighboring blocks")
-		("fConStats", po::value<string>(&conStats_filename)->default_value("conStats"),"file that stores connection stats")
+		("fConStats", po::value<string>(&conStats_filename)->default_value("conStats"), "file that stores connection stats")
 		("fV1_vec", po::value<string>(&V1_vec_filename)->default_value("V1_vec"), "file that stores V1 to V1 connection ID, strength and transmission delay farther than the neighboring blocks")
 		("fV1_gapVec", po::value<string>(&V1_gapVec_filename)->default_value("V1_gapVec"), "file that stores inhibitory to inhibitory gap junction ID, strength farther than the neighboring blocks")
 		("fNeighborBlock", po::value<string>(&neighborBlock_filename)->default_value("neighborBlock"), "file that stores V1 to V1 connection ID, strength and transmission delay far the neighboring blocks")
 		("fV1_RF", po::value<string>(&V1_RF_filename)->default_value("V1_RF"), "file that stores V1 RF properties, (orientation info is in fV1_feature)")
-		("fLGN", po::value<string>(&LGN_filename)->default_value("LGN"),"file that stores all the information of LGN neurons")
-		("fLGN_fr", po::value<string>(&LGN_fr_filename)->default_value("LGN_fr"),"file stores LGN firing rates")
+		//outputs: 
+		("outputFolder", po::value<string>(&outputFolder)->default_value(""), "where the output data files at must end with /")
+		("output_suffix", po::value<string>(&output_suffix0)->default_value(""), "output file suffix")
+		("fPatchV1_cfg", po::value<string>(&patchV1_cfg_filename)->default_value("patchV1_cfg"), "file that stores patchV1 cfg parameters")
+		("fLGN", po::value<string>(&LGN_filename)->default_value("LGN"), "file that stores all the information of LGN neurons")
+		("fLGN_fr", po::value<string>(&LGN_fr_filename)->default_value("LGN_fr"), "file stores LGN firing rates")
 		("fRawData", po::value<string>(&rawData_filename)->default_value("rawData"), "file that stores V1 response (spike, v, g) over time")
 		("fLearnData_FF", po::value<string>(&learnData_FF_filename)->default_value("learnData_FF"), "file that stores LGN->V1 connection strength and the related variables over time, make sure learnData_FF is set")
 		("f_sLGN", po::value<string>(&sLGN_filename)->default_value("sLGN"), "file that stores the LGN->V1 connection strength over time, make sure learnData_FF is set")
 		("fLGN_sp", po::value<string>(&LGN_sp_filename)->default_value("LGN_sp"), "write LGN spikes to file")
-		("fOutputFrame", po::value<string>(&outputFrame_filename)->default_value("outputFrame"),"file that stores firing rate from LGN and/or V1 (in physical location or visual field) spatially to be ready for frame production") // TEST 
-		("fOutputB4V1", po::value<string>(&outputB4V1_filename)->default_value("outputB4V1"),"file that stores luminance values, contrasts, LGN convolution and their firing rates") // TEST 
-		("fLGN_gallery", po::value<string>(&LGN_gallery_filename)->default_value("LGN_gallery"),"file that stores spatial and temporal convolution parameters"); // TEST 
+		("fOutputFrame", po::value<string>(&outputFrame_filename)->default_value("outputFrame"), "file that stores firing rate from LGN and/or V1 (in physical location or visual field) spatially to be ready for frame production") // TEST 
+		("fOutputB4V1", po::value<string>(&outputB4V1_filename)->default_value("outputB4V1"), "file that stores luminance values, contrasts, LGN convolution and their firing rates") // TEST 
+		("fLGN_gallery", po::value<string>(&LGN_gallery_filename)->default_value("LGN_gallery"), "file that stores spatial and temporal convolution parameters"); // TEST 
 
 	po::options_description cmdline_options;
 	cmdline_options.add(generic_opt).add(top_opt);
@@ -343,9 +348,7 @@ int main(int argc, char **argv) {
 		cout << cmdline_options << "\n";
 		return EXIT_SUCCESS;
 	}
-	if (ignoreRetinogeniculateDelay) {
-		cout << "ignoreRetinogeniculateDelay = " << ignoreRetinogeniculateDelay << "\n";
-	}
+    
 	string cfg_filename = vm["cfg_file"].as<string>();
 	ifstream cfg_file;
 	if (!cfg_filename.empty()) {
@@ -361,6 +364,109 @@ int main(int argc, char **argv) {
 		}
 	} else {
 		cout << "No configuration file is given, default values are used for non-specified parameters\n";
+	}
+
+	if (!vm["inputFolder"].defaulted()) {
+		cout << "unspecified input files will be read from " << inputFolder << "\n";
+		if (vm["fConnectome_cfg"].defaulted()){
+			connectome_cfg_filename = inputFolder + connectome_cfg_filename;
+		}
+		if (!vm["fSnapshot"].defaulted()){ // if defaulted, no restore, other put restore file in the inputFolder
+			restore = inputFolder + restore;
+		}
+		if (vm["fLGN_switch"].defaulted()){
+			LGN_switch_filename = inputFolder + LGN_switch_filename;
+		}
+		if (vm["fStimulus"].defaulted()){
+			stimulus_filename = inputFolder + stimulus_filename;
+		}
+		if (vm["fLGN_vpos"].defaulted()){
+			LGN_vpos_filename = inputFolder + LGN_vpos_filename;
+		}
+		if (vm["fLGN_V1_ID"].defaulted()){
+			LGN_V1_ID_filename = inputFolder + LGN_V1_ID_filename;
+		}
+		if (vm["fLGN_V1_s"].defaulted()){
+			LGN_V1_s_filename = inputFolder + LGN_V1_s_filename;
+		}
+		if (vm["fLGN_surfaceID"].defaulted()){
+			LGN_surfaceID_filename = inputFolder + LGN_surfaceID_filename;
+		}
+		if (vm["fV1_pos"].defaulted()){
+			V1_pos_filename = inputFolder + V1_pos_filename;
+		}
+		if (vm["V1_feature_filename"].defaulted()){
+			V1_feature_filename = inputFolder + V1_feature_filename;
+		}
+		if (vm["fV1_conMat"].defaulted()){
+			V1_conMat_filename = inputFolder + V1_conMat_filename;
+		}
+		if (vm["fV1_delayMat"].defaulted()){
+			V1_delayMat_filename = inputFolder + V1_delayMat_filename;
+		}
+		if (vm["fV1_gapMat"].defaulted()){
+			V1_gapMat_filename = inputFolder + V1_gapMat_filename;
+		}
+		if (vm["fConStats"].defaulted()){
+			conStats_filename = inputFolder + conStats_filename;
+		}
+		if (vm["fV1_vec"].defaulted()){
+			V1_vec_filename = inputFolder + V1_vec_filename;
+		}
+		if (vm["fV1_gapVec"].defaulted()){
+			V1_gapVec_filename = inputFolder + V1_gapVec_filename;
+		}
+		if (vm["fNeighborBlock"].defaulted()){
+			neighborBlock_filename = inputFolder + neighborBlock_filename;
+		}
+		// not in use
+		//if (!vm["fV1_RF"].defaulted(){
+		//	V1_RF_filename = inputFolder + V1_RF_filename;
+		//}
+	} else {
+		cout << "inputFolder defaulted to current folder\n";
+	}
+
+	if (!vm["outputFolder"].defaulted()) {
+		bf::path outputPath(outputFolder);
+		if (!bf::is_directory(outputPath)) {
+			cout << "creating output folder: " << outputFolder << "\n";
+			bf::create_directory(outputPath);
+		}
+		if (vm["fPatchV1_cfg"].defaulted()){
+			patchV1_cfg_filename = outputFolder + patchV1_cfg_filename;
+		}
+		if (vm["fLGN"].defaulted()){
+			LGN_filename = outputFolder + LGN_filename;
+		}
+		if (vm["fLGN_fr"].defaulted()){
+			LGN_fr_filename = outputFolder + LGN_fr_filename;
+		}
+		if (vm["fRawData"].defaulted()){
+			rawData_filename = outputFolder + rawData_filename;
+		}
+		if (vm["fLearnData_FF"].defaulted()){
+			learnData_FF_filename = outputFolder + learnData_FF_filename;
+		}
+		if (vm["f_sLGN"].defaulted()){
+			sLGN_filename = outputFolder + sLGN_filename;
+		}
+		if (vm["fLGN_sp"].defaulted()){
+			LGN_sp_filename = outputFolder + LGN_sp_filename;
+		}
+		if (vm["fOutputFrame"].defaulted()){
+			outputFrame_filename = outputFolder + outputFrame_filename;
+		}
+		if (vm["fOutputB4V1"].defaulted()){
+			outputB4V1_filename = outputFolder + outputB4V1_filename;
+		}
+		if (vm["fLGN_gallery"].defaulted()){
+			LGN_gallery_filename = outputFolder + LGN_gallery_filename;
+		}
+	}
+    
+	if (ignoreRetinogeniculateDelay) {
+		cout << "ignoreRetinogeniculateDelay = " << ignoreRetinogeniculateDelay << "\n";
 	}
 
 	if (sizeof(Float) == 4) {
@@ -395,7 +501,7 @@ int main(int argc, char **argv) {
     cout << "conV1_suffix: " << conV1_suffix << "\n";
 
 	if (!restore.empty()) {
-		restore = restore + "_" + snapshot_suffix + ".bin";
+        restore = restore + "_" + snapshot_suffix + ".bin";
 		if (!asInit) {
 			if (snapshot_suffix != output_suffix0) {
 				cout << "to use snapshot to resume simulation, it needs to have the same suffix as the output_suffix to work\n";
@@ -838,12 +944,12 @@ int main(int argc, char **argv) {
 
     // LearnType
     Size nLearnTypeFF;
-    LearnVarShapeFF_E_pre lFF_E_pre;
-    LearnVarShapeFF_I_pre lFF_I_pre;
-    LearnVarShapeFF_E_post lFF_E_post;
-    LearnVarShapeFF_I_post lFF_I_post;
-    LearnVarShapeE lE;
-    LearnVarShapeQ lQ;
+	LearnVarShapeFF_E_pre lFF_E_pre = {};
+	LearnVarShapeFF_I_pre lFF_I_pre = {};
+	LearnVarShapeFF_E_post lFF_E_post = {};
+	LearnVarShapeFF_I_post lFF_I_post = {};
+	LearnVarShapeE lE = {};
+	LearnVarShapeQ lQ = {};
 	Size nLearnTypeQ;
 	Float exp_homeo;
     if (learning) {
@@ -1090,6 +1196,7 @@ int main(int argc, char **argv) {
         nLearnTypeFF = 0;
         nLearnTypeE = 0;
         nLearnTypeQ = 0;
+		exp_homeo = 0;
     }
 
 	// precheck
@@ -2289,8 +2396,8 @@ int main(int argc, char **argv) {
 	LGN_parameter dLGN(hLGN);
 	usingGMem += hLGN.freeMem();
 
-    InputType_t* dLGN_type;
-    Float* switch_value;
+    InputType_t* dLGN_type = NULL;
+    Float* switch_value = NULL;
     if (LGN_switch || virtual_LGN) {
 		checkCudaErrors(cudaMalloc((void **) &dLGN_type, nLGN*sizeof(InputType_t)));
 		checkCudaErrors(cudaMemcpy(dLGN_type, &(LGNtype[0]), nLGN*sizeof(InputType_t), cudaMemcpyHostToDevice));
@@ -2410,7 +2517,7 @@ int main(int argc, char **argv) {
 	nLGN_thread = blockSize;
 	nLGN_block = (nLGN + nLGN_thread - 1)/nLGN_thread;
     cout << "logRand_init<<<" << nLGN_block << ", " << nLGN_thread << ">>>" << "\n";
-	logRand_init<<<nLGN_block, nLGN_thread>>>(lastNegLogRand, leftTimeRate, d_sx, d_sy, randState, seed, nLGN, nLearnTypeFF);
+	logRand_init<<<nLGN_block, nLGN_thread>>>(lastNegLogRand, leftTimeRate, d_sx, d_sy, randState, LGNspikeSurface, seed, nLGN, nLearnTypeFF);
 	seed++;
     #ifdef CHECK
 	    getLastCudaError("logRand_init");
@@ -2457,6 +2564,10 @@ int main(int argc, char **argv) {
 	    checkCudaErrors(cudaMalloc((void **) &LGN_center, nLGN*2*sizeof(float)));
 	    parvo_center = LGN_center;
 	    magno_center = LGN_center + 2*nParvo;
+	} else {
+        // not used
+        parvo_center = NULL;
+        magno_center = NULL;
     }
 
 	// finish LGN setup
@@ -3930,9 +4041,9 @@ int main(int argc, char **argv) {
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 	checkCudaErrors(cudaMemcpy(d_surfacePos, surfacePos, surfacePosSize, cudaMemcpyHostToDevice));
 
-	Float *totalFF;
-	Float *d_totalFF;
-	Float *d_totalFF_inf;
+	Float *totalFF = NULL;
+	Float *d_totalFF = NULL;
+	Float *d_totalFF_inf = NULL;
 	if (learning && learning < 4) {
 		totalFF = new Float[nV1];
 		checkCudaErrors(cudaMalloc((void**)&d_totalFF, nV1*2*sizeof(Float)));
@@ -3961,6 +4072,8 @@ int main(int argc, char **argv) {
     if (learnData_FF) {
 		checkCudaErrors(cudaMalloc((void**)&lVarFFpre, LGN_learnPreSize));
     	usingGMem += LGN_learnPreSize;
+	} else {
+		lVarFFpre = NULL;
 	}
     // 
     size_t learnVarFFsize0 = (nE*nLearnTypeFF_E + nI*nLearnTypeFF_I)*2*nblock;
@@ -4594,10 +4707,11 @@ int main(int argc, char **argv) {
 	cudaArray *cuArr_L;
 	cudaArray *cuArr_M;
 	cudaArray *cuArr_S;
-	cudaArray **frame_cuArr = new cudaArray*[nLGN_type];
+	cudaArray** frame_cuArr; 
 	//cudaArray *frame_cuArr[2];
 
 	if (virtual_LGN) {
+		frame_cuArr = new cudaArray * [nLGN_type];
 		for (PosInt i=0; i<nLGN_type; i++) {
 			checkCudaErrors(cudaMalloc3DArray(&frame_cuArr[i], &channelDesc, make_cudaExtent(width, height, maxFrame), cudaArrayLayered));
 		}
@@ -4621,12 +4735,13 @@ int main(int argc, char **argv) {
     checkCudaErrors(cudaDeviceSetLimit(cudaLimitMallocHeapSize, totalHeapSize));
 
 
-	cudaTextureObject_t* linearFrame = new cudaTextureObject_t[nLGN_type]{0}; // linear interpolation between frames
+	cudaTextureObject_t* linearFrame;
 	cudaTextureObject_t* dLinearFrame;
 	cudaTextureObject_t L_retinaInput = 0;
 	cudaTextureObject_t M_retinaInput = 0;
 	cudaTextureObject_t S_retinaInput = 0;
 	if (virtual_LGN) {
+		linearFrame = new cudaTextureObject_t[nLGN_type]{0}; // linear interpolation between frames
 		checkCudaErrors(cudaMalloc((void **)&dLinearFrame, nLGN_type*sizeof(cudaTextureObject_t)));
 		for (PosInt i=0; i<nLGN_type; i++) {
 			init_layer_obj(linearFrame[i], frame_cuArr[i]);
@@ -4699,6 +4814,7 @@ int main(int argc, char **argv) {
         #endif
 
 		prep_sample(0, width, height, tL, tM, tS, cuArr_L, cuArr_M, cuArr_S, maxFrame, init_L, init_M, init_S, cudaMemcpyDeviceToDevice, 0); // implicit synchronized
+
 		/* DEBUG
 		dim3 fb(16,16,1);
 		dim3 fg(16,16,maxFrame);
@@ -6559,22 +6675,20 @@ int main(int argc, char **argv) {
         if (virtual_LGN) {
 			for (PosInt i=0; i<nLGN_type; i++) {
 				checkCudaErrors(cudaFreeArray(frame_cuArr[i]));
+				checkCudaErrors(cudaDestroyTextureObject(linearFrame[i]));
 			}
 			checkCudaErrors(cudaFree(dLinearFrame));
 			delete []frameInput;
+			delete []frame_cuArr;
+			delete []linearFrame;
         } else {
 		    checkCudaErrors(cudaFreeArray(cuArr_L));
 		    checkCudaErrors(cudaFreeArray(cuArr_M));
 		    checkCudaErrors(cudaFreeArray(cuArr_S));
         }
-		for (PosInt i=0; i<nLGN_type; i++) {
-			checkCudaErrors(cudaDestroyTextureObject(linearFrame[i]));
-		}
 		checkCudaErrors(cudaDestroyTextureObject(L_retinaInput));
 		checkCudaErrors(cudaDestroyTextureObject(M_retinaInput));
 		checkCudaErrors(cudaDestroyTextureObject(S_retinaInput));
-		delete []frame_cuArr;
-		delete []linearFrame;
 		checkCudaErrors(cudaFreeArray(cuSurfArray));
 		cudaDestroySurfaceObject(LGNspikeSurface);
 		checkCudaErrors(cudaDeviceSynchronize());

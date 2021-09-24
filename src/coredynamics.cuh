@@ -51,13 +51,13 @@ struct AdEx { //Adaptive Exponential IF
     __device__ 
 	__forceinline__
 	void rk2_vFixedBefore(Float dt) {
-		Float A = a*(v0-vL);
+		Float A = a*(v0 - vL);
 		w0 = (w0 - A) * exponential(-dt/tau_w) + A;
 	}
     __device__ 
 	__forceinline__
 	void rk2_vFixedAfter(Float dt) {
-		Float A = a*(v-vL);
+		Float A = a*(v - vL);
 		w = (w0 - A) * exponential(-dt/tau_w) + A;
 	}
 
@@ -72,13 +72,13 @@ struct AdEx { //Adaptive Exponential IF
 		Float v1 = v0 + fk1;
 		v = v0 + fk1/2;
 
-		Float gk1 = a*(v0-vL) - w0;
+		Float gk1 = a*(v0 - vL) - w0;
 		gk1 *= dt/tau_w;
 		Float w1 = w0 + gk1; // split add fk1, fk2 to optimize register usage
 		w = w0 + gk1/2;
 
 		Float fk2 = -a1*v1 + b1 + dTgL*exponential((v1-vT)/deltaT) - w1;
-		Float gk2 = (a*(v1-vL) - w1)*dt/tau_w;
+		Float gk2 = (a*(v1 - vL) - w1)*dt/tau_w;
 		w += (gk2*dt/tau_w)/2;
 		v += (fk2*dt/C + noise)/2;
 	}
@@ -147,7 +147,7 @@ void rand_spInit(Float* __restrict__ tBack,
 );
 
 
-__global__ void logRand_init(Float *logRand, Float *lTR, int* LGN_idx, int* LGN_idy, curandStateMRG32k3a *state, PosIntL seed, Size n, Size nFF);
+__global__ void logRand_init(Float *logRand, Float *lTR, int* LGN_idx, int* LGN_idy, curandStateMRG32k3a *state, cudaSurfaceObject_t LGNspikeSurface, PosIntL seed, Size n, Size nFF);
 
 void recal_G_vec(
         std::vector<std::vector<std::vector<Float>>> &spikeTrain, std::vector<std::vector<Size>> &trainDepth, std::vector<std::vector<PosInt>> &currentTimeSlot, Float og[], Float oh[],

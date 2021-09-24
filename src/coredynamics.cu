@@ -1,7 +1,6 @@
 #include "coredynamics.cuh"
 //TODO: gap junction and learning in cortex, synaptic depression
 //TODO: synaptic failure, noise
-extern surface<void, cudaSurfaceType2DLayered> LGNspikeSurface;
 
 __launch_bounds__(1024,2)
 __global__ 
@@ -61,7 +60,7 @@ void rand_spInit(Float* __restrict__ tBack,
 				Float v0 = vR[type];
                 v[id] = v0;
 				if (iModel == 1) {
-					Float A = a[type]*(v0-vL) * tau_w[type];
+					Float A = a[type]*(v0 - vL) * tau_w[type];
 					Float w0 = w[id] + b[type];
 					w[id] = (w0 - A) * exponential(-dt*(1-tsp)/tau_w[type]) + A;
 				}
@@ -132,6 +131,7 @@ void logRand_init(Float* __restrict__ logRand,
                   int* __restrict__ LGN_idx,
                   int* __restrict__ LGN_idy,
                   curandStateMRG32k3a *state,
+                  cudaSurfaceObject_t LGNspikeSurface,
                   PosIntL seed, Size n, Size nFF)
 {
     Size id = blockIdx.x * blockDim.x + threadIdx.x;

@@ -1581,7 +1581,7 @@ Float get_spike(Size &nsp,
 }
 
 //template<int ntimes>
-//__launch_bounds__(1024, 2)
+__launch_bounds__(1024, 2)
 __global__ 
 void LGN_nonlinear(
         Size nLGN,

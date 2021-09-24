@@ -49,7 +49,6 @@ Float get_spike(Size &nsp, Float &leftTimeRate, Float &lastNegLogRand, Float dt,
 
 //template<int ntimes> extern
 
-__launch_bounds__(1024, 2)
 __global__
 void virtual_LGN_convol(
         Float* __restrict__ lum,
@@ -62,7 +61,6 @@ void virtual_LGN_convol(
 		Int inputType, Size nParvo_L, Size nMagno_L, Size nParvo_R, Size nLGN, PosInt prev, PosInt next, Float rt, bool saveOutputB4V1
 );
 
-__launch_bounds__(1024, 2)
 __global__ 
 void LGN_nonlinear(
         Size nLGN,
@@ -110,7 +108,6 @@ void store_PM(// weights and max convolution
         bool virtual_LGN
 );
 
-__launch_bounds__(1024, 2)
 __global__
 void parvo_maxConvol(
         Spatial_component &spatial,
