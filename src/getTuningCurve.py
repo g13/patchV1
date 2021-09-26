@@ -14,7 +14,7 @@ import matplotlib.colors as clr
 from matplotlib import cm
 import sys
 from readPatchOutput import *
-from global_vars import LGN_vposFn, featureFn, seed, V1_allposFn
+from global_vars import _LGN_vposFn, _featureFn, _V1_allposFn, seed
 #import multiprocessing as mp
 np.seterr(invalid = 'raise')
 
@@ -61,6 +61,11 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_
     parameterFn = data_fdr+"patchV1_cfg" +output_suffix + "1.bin"
 
     sampleFn = data_fdr+"OS_sampleList" + output_suffix[:-1] + ".bin"
+
+    LGN_vposFn = res_fdr + _LGN_vposFn
+    featureFn = res_fdr + _featureFn
+    V1_allposFn = res_fdr + _V1_allposFn
+    V1_vposFn = res_fdr + _V1_vposFn
 
     LGN_V1_s = readLGN_V1_s0(LGN_V1_s_file)
     LGN_V1_ID, nLGN_V1 = readLGN_V1_ID(LGN_V1_ID_file)

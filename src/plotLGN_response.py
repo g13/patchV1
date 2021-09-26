@@ -11,7 +11,9 @@ from readPatchOutput import *
 from os import path
 
 import sys
-if len(sys.argv) == 7:
+if len(sys.argv) < 7:
+    raise Exception(' need all 6 arguments, no default values available')
+else:
     output_suffix = sys.argv[1]
     input_suffix = sys.argv[2]
     res_fdr = sys.argv[3]
@@ -22,8 +24,6 @@ if len(sys.argv) == 7:
         print('read new spikes')
     else:
         readNewSpike = False
-else:
-    raise Exception(' need all 6 arguments, no default values available')
 
 print(output_suffix)
 print(input_suffix)

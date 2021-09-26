@@ -10,7 +10,7 @@ import matplotlib.colors as clr
 from matplotlib import cm
 import sys
 from readPatchOutput import *
-from global_vars import LGN_vposFn, featureFn, V1_allposFn, V1_vposFn, seed
+from global_vars import _LGN_vposFn, _featureFn, _V1_allposFn, _V1_vposFn, seed
 np.seterr(invalid = 'raise')
 
 
@@ -138,7 +138,12 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, data_f
     spDataFn = data_fdr + "V1_spikes" + _output_suffix
     parameterFn = data_fdr + "patchV1_cfg" +_output_suffix + ".bin"
 
-    sampleFn = "OS_sampleList_" + output_suffix0 + ".bin"
+    sampleFn = data_fdr + "OS_sampleList_" + output_suffix0 + ".bin"
+
+    LGN_vposFn = res_fdr + _LGN_vposFn
+    featureFn = res_fdr + _featureFn
+    V1_allposFn = res_fdr + _V1_allposFn
+    V1_vposFn = res_fdr + _V1_vposFn
 
     prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN = read_cfg(parameterFn)
     blockSize = typeAcc[-1]
@@ -303,7 +308,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, data_f
     fr = np.array([x[np.logical_and(x>=step0*dt, x<(nt_+step0)*dt)].size for x in spScatter])/t_in_sec
 
     if nOri == 0:
-        with open('max_fr_' + output_suffix0 + '.bin', 'wb') as f:
+        with open(data_fdr + 'max_fr_' + output_suffix0 + '.bin', 'wb') as f:
             fr.tofile(f)
 
     print('V1 spikes acquired')

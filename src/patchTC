@@ -4,6 +4,7 @@ set -e
 fdr0=/scratch/wd554/patchV1
 res_fdr=$fdr0 # stimulus, V1-static and LGN-static files
 in_fdr=$fdr0 # inputFolder in cfg
+data_fdr=$fdr0 # outputFolder in cfg
 
 fitTC=True
 nOri=6

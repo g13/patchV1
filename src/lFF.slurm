@@ -79,7 +79,7 @@ then
 else
 	gpu=0
 	cp outputLearnFF.m outputLearnFF_${op}_m.bak
-	mv ${op}_cfg.bak inputLearnFF_${op}_m.bak outputLearnFF_${op}_m.bak $fig_fdr
+	mv outputLearnFF_${op}_m.bak $fig_fdr
 fi
 
 if ! [ -d "log" ]

@@ -51,6 +51,7 @@ pid=""
 echo plotLGN_response.py ${op}_${ori} $lgn $res_fdr $data_fdr $fig_fdr $readNewSpike
 plotLGN_response.py ${op}_${ori} $lgn $res_fdr $data_fdr $fig_fdr $readNewSpike &
 pid+="${!} "
+
 echo plotV1_response.py $op $lgn $v1 $res_fdr $data_fdr $fig_fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus
 plotV1_response.py $op $lgn $v1 $res_fdr $data_fdr $fig_fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus &
 pid+="${!} "
