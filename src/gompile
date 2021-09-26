@@ -23,6 +23,6 @@ nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std
 rm -f cuda_util.o
 nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c ../util/cuda_util.cu -o cuda_util.o
 
-nvcc -arch=$sm -lcudadevrt -lcudart -lboost_program_options cuda_util.o connect.o genCon.o -o ../genCon #-lcurand
+nvcc -arch=$sm -lcudadevrt -lcudart -lboost_program_options cuda_util.o connect.o genCon.o -o /home/wd554/bin/genCon #-lcurand
 
 cd ..
