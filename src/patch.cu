@@ -262,7 +262,7 @@ int main(int argc, char** argv) {
 		("saveLGN_fr", po::value<bool>(&saveLGN_fr)->default_value(true), "write LGN firing rates to disk, specify filename through LGN_fr_filename")
 		("rawData", po::value<bool>(&rawData)->default_value(true), "to save V1 response (spike, v, g, (h, depends on hWrite)) over time")
 		("learnData_FF", po::value<bool>(&learnData_FF)->default_value(false), "to save LGN->V1 connection strength plasticity over time")
-		("learnData_V1", po::value<bool>(&learnData_V1)->default_value(false), "to save V1->V1 connection strength plasticity over time")
+		("learnData_V1", po::value<bool>(&learnData_V1)->default_value(false), "to save V1->V1 connection strength plasticity over time, not completely implemented yet")
 		("framePhyV1output", po::value<bool>(&framePhyV1output)->default_value(false), "get response stats frame for cortical sheet of V1")
 		("frameVisV1output", po::value<bool>(&frameVisV1output)->default_value(false), "get response stats frame for visual field of V1")
 		("frameVisLGNoutput", po::value<bool>(&frameVisLGNoutput)->default_value(false), "get response stats frame for visual field of LGN")
@@ -3272,7 +3272,14 @@ int main(int argc, char** argv) {
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	// pinned pathway for conDelayGapMat concurrency
-	if (matConcurrency < 2) {
+	size_t nearBlockSize = static_cast<size_t>(nearNeighborBlock) * blockSize*blockSize;
+	size_t gap_nearBlockSize = static_cast<size_t>(nearNeighborBlock) * nI*nI;
+	size_t sChunkMatSize = maxChunkSize*(2*nearBlockSize + gap_nearBlockSize); // 2 for conMat and delayMat
+	size_t rChunkMatSize = remainChunkSize*(2*nearBlockSize + gap_nearBlockSize);
+    size_t singleMatSize = (2*nearBlockSize + gap_nearBlockSize)*sizeof(float);
+    cout << "single blockMat of conMat, delayMat and gapMat cost " << singleMatSize/1024.0/1024.0 << "Mb\n"; 
+	cout << "single chunk of conDelayGapMat requires at most " << sChunkMatSize*sizeof(float)/1024.0/1024.0 << "Mb, smaller chunks require " << rChunkMatSize*sizeof(float)/1024.0/1024.0 << "Mb\n";
+    if (matConcurrency < 2) {
 		matConcurrency = 2;
 		cout << "matConcurrency raised to 2, smaller values not implemented.\n";
 	}
@@ -3280,11 +3287,7 @@ int main(int argc, char** argv) {
         matConcurrency = nChunk;
 		cout << "matConcurrency is reduced to " << nChunk << ", the same as nChunk\n";  
 	}
-	size_t nearBlockSize = static_cast<size_t>(nearNeighborBlock) * blockSize*blockSize;
-	size_t gap_nearBlockSize = static_cast<size_t>(nearNeighborBlock) * nI*nI;
-	size_t sChunkMatSize = maxChunkSize*(2*nearBlockSize + gap_nearBlockSize); // 2 for conMat and delayMat
-	size_t rChunkMatSize = remainChunkSize*(2*nearBlockSize + gap_nearBlockSize);
-	cout << "single chunk of conDelayGapMat requires at most " << sChunkMatSize*sizeof(float)/1024.0/1024.0 << "Mb, smaller chunks require " << rChunkMatSize*sizeof(float)/1024.0/1024.0 << "Mb\n";
+
 	size_t ccChunkMatSize; // # of (c)on(c)urrent chunks
 	if (matConcurrency > iSizeSplit) {
 		ccChunkMatSize = iSizeSplit * sChunkMatSize + (matConcurrency-iSizeSplit) * rChunkMatSize;
@@ -3657,7 +3660,7 @@ int main(int argc, char** argv) {
 		v = w + nV1;
 	}
 	Float *gFF = v + nV1;
-	Float *hFF = gFF +  nV1*ngTypeFF;
+	Float *hFF = gFF + nV1*ngTypeFF;
 	Float **gE = new Float*[nChunk];
 	Float **gI = new Float*[nChunk];
 	Float **hE = new Float*[nChunk];
@@ -3669,6 +3672,7 @@ int main(int argc, char** argv) {
 	gI[0] = gE[0] + eSize;
 	hE[0] = gI[0] + iSize;
 	hI[0] = hE[0] + eSize;
+
 	for (PosInt i = 1; i<nChunk; i++) {
 		gE[i] = hI[i-1] + iSize; 
 		if (i >= iSizeSplit) {
@@ -3684,12 +3688,11 @@ int main(int argc, char** argv) {
 	gap[0] = hI[nChunk-1] + iSize;
 	Size gap_size = maxChunkSize*nI;
 	for (PosInt i = 1; i<nChunk; i++) {
+		gap[i] = gap[i-1] + gap_size;
 		if (i >= iSizeSplit) {
 			gap_size = remainChunkSize*nI;
 		}
-		gap[i] = gap[i-1] + gap_size;
 	}
-
     assert(gap[nChunk-1] + gap_size == pinnedMem + pinnedSize/sizeof(Float));
 
 	// GPU arrays to receive g,h sum from conVec (pinned), FF not needed
@@ -3720,10 +3723,10 @@ int main(int argc, char** argv) {
 	gap_size = maxChunkSize*nI;
 	d_gapt[0] = d_hIt[nChunk - 1] + iSize;
 	for (PosInt i = 1; i<nChunk; i++) {
+		d_gapt[i] = d_gapt[i-1] + gap_size;
 		if (i >= iSizeSplit) {
 			gap_size = remainChunkSize*nI;
 		}
-		d_gapt[i] = d_gapt[i-1] + gap_size;
 	}
 
     assert(d_gapt[nChunk-1] + gap_size == d_gh_gap + (ghSize + gapSize)/sizeof(Float));
@@ -3778,10 +3781,10 @@ int main(int argc, char** argv) {
 	gap_size = maxChunkSize*nI;
 	d_gap[0] = d_hI[nChunk - 1] + iSize;
 	for (PosInt i = 1; i<nChunk; i++) {
+		d_gap[i] = d_gap[i-1] + gap_size;
 		if (i >= iSizeSplit) {
 			gap_size = remainChunkSize*nI;
 		}
-		d_gap[i] = d_gap[i-1] + gap_size;
 	}
     assert(d_gap[nChunk-1] + gap_size == d_vgh_gap + totalSize/sizeof(Float));
 
@@ -5306,7 +5309,7 @@ int main(int argc, char** argv) {
     	            p_offset = 0;
     	        }
     	        if (matConcurrency < nChunk) {
-    	            // staging each chunk at a time
+    	            // staging each chunk at a time as the first matConcurrency finishes
     	            if (i>=matConcurrency) {
     	                //cout << "#" << i << ":\n";
     	                //if (cudaSuccess == cudaEventQuery(eTmp[i-1])) cout << "b4memcpy last recal_G already finished\n";
@@ -5323,7 +5326,7 @@ int main(int argc, char** argv) {
     	                //else cout << "after memcpy last recal_G still running\n";
     	            }
     	        }
-    	        if (matConcurrency < nChunk || learnData_V1) {
+    	        if (matConcurrency < nChunk || learnData_V1) { // pass staged matrices to device
     	        #ifdef CHECK
     	            checkCudaErrors(cudaMemcpyAsync(d_conDelayGapMat[i%matConcurrency], p_conDelayGapMat + p_offset, (2*mChunkSize+gap_mChunkSize)*sizeof(float), cudaMemcpyHostToDevice, stream[i%matConcurrency]));
     	        #else
@@ -5343,7 +5346,7 @@ int main(int argc, char** argv) {
     	        float* d_conMat = d_conDelayGapMat[i%matConcurrency];
     	        float* d_delayMat = d_conMat + mChunkSize;
 				float* d_gapMat = d_delayMat + mChunkSize;
-				if (noDelay) {
+				if (noDelay) { // recal_G
     	        	recal_G_mat_nd<<< chunkSize, blockSize, 0, stream[i%matConcurrency]>>> (
 							d_spikeTrain + nV1*currentTimeSlot, d_og, d_oh,
     	        	        d_conMat, d_gapMat,
