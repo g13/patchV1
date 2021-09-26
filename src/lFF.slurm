@@ -1,10 +1,16 @@
 #!/bin/bash
 
+fdr0=/scratch/wd554/patchV1
+res_fdr=$fdr0 # stimulus, V1-static and LGN-static files
+in_fdr=$fdr0 # inputFolder in cfg
+data_fdr=$fdr0 # outputFolder in cfg
+
 # stage II wave goes here
 waveStage=2 # stage number
-fdr=wave_II # folder will be made to store figures and configuratoin files
-op=40ii_test3 # theme string to be added to filenames of data and figures
-op_cfg=waveII.cfg # the simulation config file to be used
+fdr=testfdr # folder will be made to store figures and configuratoin files
+op=testfdr # theme string to be added to filenames of data and figures
+#op_cfg=wave_II.cfg # the simulation config file to be used
+op_cfg=testfdr.cfg # the simulation config file to be used
 lgn=lFF_40ii # the theme string to be used for LGN_V1 connections
 lgn0=lFF_ii # the theme string to be used for V1, LGN positions etc.
 
@@ -35,38 +41,50 @@ v1=$lgn # cortical V1 connections used the same theme as LGN to V1 connections
 
 echo $op # echo/print out the variable "op" in the job's output file
 
-if [ -d "$fdr" ]
+fig_fdr=${fdr0}/${fdr}
+
+if [ -d "$fig_fdr" ]
 then
-	echo overwrite contents in $fdr
+	echo overwrite contents in $fig_fdr
 else
-	mkdir $fdr	
+	mkdir $fig_fdr
 fi
 
 echo using $op_cfg
-echo outputs to $fdr
+echo outputs to $fig_fdr
+cp lFF.slurm ${fig_fdr}/lFF_${op}_slurm.bak
 
 readNewSpike=$1
 if [ -z "$readNewSpike" ]; 
 then
 	readNewSpike=True
 fi
-echo $readNewSpike
+echo readNewSpike=$readNewSpike
 
 plotOnly=$2
 if [ -z "$plotOnly" ]; 
 then
 	plotOnly=False
 fi
-echo $plotOnly
+echo plotOnly=$plotOnly
 
 if [ "$plotOnly" = False ]
 then
 	gpu=1
 	cp $op_cfg ${op}_cfg.bak
+	cp $op_cfg ${fdr0}/$op_cfg
 	cp inputLearnFF.m inputLearnFF_${op}_m.bak
-	cp ${op}_cfg.bak inputLearnFF_${op}_m.bak $fdr
+	cp outputLearnFF.m outputLearnFF_${op}_m.bak
+	mv ${op}_cfg.bak inputLearnFF_${op}_m.bak outputLearnFF_${op}_m.bak $fig_fdr
 else
 	gpu=0
+	cp outputLearnFF.m outputLearnFF_${op}_m.bak
+	mv ${op}_cfg.bak inputLearnFF_${op}_m.bak outputLearnFF_${op}_m.bak $fig_fdr
+fi
+
+if ! [ -d "log" ]
+then
+	mkdir log
 fi
 
 #isuffix=0
@@ -82,6 +100,7 @@ sbatch <<EOT
 #SBATCH --mail-user=wd554@nyu.edu
 #SBATCH --mail-type=END
 set -e
+echo $PATH
 module purge
 module load gcc/10.2.0
 module load cuda/11.1.74
@@ -89,44 +108,43 @@ module load boost/intel/1.74.0
 module load matlab/2020b
 module list
 
+cd $fdr0
 date
 
 if [ "$plotOnly" = False ]
 then
-	echo matlab -r "inputLearnFF('$lgn', $seed, 0, '$lgn0', $waveStage);exit;"
-	matlab -r "inputLearnFF('$lgn', $seed, 0, '$lgn0', $waveStage);exit;"
+	echo matlab -nodisplay -nosplash -r "inputLearnFF('$lgn', $seed, 0, '$lgn0', $waveStage, '$res_fdr', '$data_fdr');exit;"
+	matlab -nodisplay -nosplash -r "inputLearnFF('$lgn', $seed, 0, '$lgn0', $waveStage, '$res_fdr', '$data_fdr');exit;"
 	date
-	./patch -c ${op}_cfg.bak
+	patch -c $op_cfg
 	date
 fi
 
 
-#echo python plotLGN_response.py $op $lgn $fdr $readNewSpike & 
-#python plotLGN_response.py $op $lgn $fdr $readNewSpike & 
+#echo plotLGN_response.py $op $lgn $res_fdr $data_fdr $fig_fdr $readNewSpike & 
+#plotLGN_response.py $op $lgn $res_fdr $data_fdr $fig_fdr $readNewSpike & 
 
-echo python plotV1_response_lFF.py $op $lgn $v1 $fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus $waveStage & 
-python plotV1_response_lFF.py $op $lgn $v1 $fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus $waveStage
+echo plotV1_response_lFF.py $op $lgn $v1 $res_fdr $data_fdr $fig_fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus $waveStage & 
+plotV1_response_lFF.py $op $lgn $v1 $res_fdr $data_fdr $fig_fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus $waveStage
 
-echo matlab -r "outputLearnFF('$lgn0', '$lgn', '$op', '$fdr', $LGN_switch, false, $st, $examSingle);exit;" &
-matlab -r "outputLearnFF('$lgn0', '$lgn', '$op', '$fdr', $LGN_switch, false, $st, $examSingle);exit;" &
+echo matlab -nodisplay -nosplash -r "outputLearnFF('$lgn0', '$lgn', '$op', '$res_fdr', '$data_fdr', '$fig_fdr', $LGN_switch, false, $st, $examSingle);exit;" &
+matlab -nodisplay -nosplash -r "outputLearnFF('$lgn0', '$lgn', '$op', '$res_fdr', '$data_fdr', '$fig_fdr', $LGN_switch, false, $st, $examSingle);exit;" &
 
-cp outputLearnFF.m $fdr/outputLearnFF_m.bak
+#echo matlab -nodisplay -nosplash -r "testLearnFF('$lgn', '$op', '$data_fdr');outputLearnFF('$lgn', '$op', '$data_fdr', $LGN_switch, false);exit;" &
+#matlab -nodisplay -nosplash -r "testLearnFF('$lgn', '$op', '$data_fdr');outputLearnFF('$lgn', '$op', '$data_fdr', $LGN_switch, false);exit;" &
 
-#echo matlab -r "testLearnFF('$lgn', '$op', '$fdr');outputLearnFF('$lgn', '$op', '$fdr', $LGN_switch, false);exit;" &
-#matlab -r "testLearnFF('$lgn', '$op', '$fdr');outputLearnFF('$lgn', '$op', '$fdr', $LGN_switch, false);exit;" &
+#python patchOutput.py $op $data_fdr &
 
-#python patchOutput.py $op $fdr &
-
-#echo python getReceptiveField_lFF.py collecting $op $lgn $fdr $isuffix 1
-#python getReceptiveField_lFF.py collecting $op $lgn $fdr $isuffix 1
-#echo python getReceptiveField_lFF.py plotting $isuffix $op $lgn $fdr $nOri $isuffix
-#python getReceptiveField_lFF.py plotting $isuffix $op $lgn $fdr $nOri $isuffix
+#echo python getReceptiveField_lFF.py collecting $op $lgn $data_fdr $isuffix 1
+#python getReceptiveField_lFF.py collecting $op $lgn $data_fdr $isuffix 1
+#echo python getReceptiveField_lFF.py plotting $isuffix $op $lgn $data_fdr $nOri $isuffix
+#python getReceptiveField_lFF.py plotting $isuffix $op $lgn $data_fdr $nOri $isuffix
 #
 #isuffix=1
-#echo python getReceptiveField_lFF.py collecting $op $lgn $fdr $isuffix 1
-#python getReceptiveField_lFF.py collecting $op $lgn $fdr $isuffix 1
-#echo python getReceptiveField_lFF.py plotting $isuffix $op $lgn $fdr $nOri $isuffix
-#python getReceptiveField_lFF.py plotting $isuffix $op $lgn $fdr $nOri $isuffix
+#echo python getReceptiveField_lFF.py collecting $op $lgn $data_fdr $isuffix 1
+#python getReceptiveField_lFF.py collecting $op $lgn $data_fdr $isuffix 1
+#echo python getReceptiveField_lFF.py plotting $isuffix $op $lgn $data_fdr $nOri $isuffix
+#python getReceptiveField_lFF.py plotting $isuffix $op $lgn $data_fdr $nOri $isuffix
 
 wait
 date

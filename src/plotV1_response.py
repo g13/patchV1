@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
@@ -14,7 +15,7 @@ np.seterr(invalid = 'raise')
 
 
 #@profile
-def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
+def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
     #sample = np.array([0,1,2,768])
     #sample = np.array([40, 58, 75])
     #sample = np.array([1338, 10235])
@@ -22,7 +23,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
     nLGNorF1F0 = True
     ns = 10
     np.random.seed(seed)
-    nt_ = 10000
+    nt_ = 0
     nstep = 10000
     step0 = 0
     if nOri > 0:
@@ -117,23 +118,25 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
     _output_suffix = "_" + output_suffix
     conLGN_suffix = "_" + conLGN_suffix
     conV1_suffix = "_" + conV1_suffix
-    outputfdr = outputfdr+"/"
+    data_fdr = data_fdr+"/"
+    res_fdr = res_fdr+"/"
+    fig_fdr = fig_fdr+"/"
     
-    rawDataFn = "rawData" + _output_suffix + ".bin"
-    LGN_frFn = "LGN_fr" + _output_suffix + ".bin"
-    LGN_spFn = "LGN_sp" + _output_suffix
-    meanFn = "mean_data" + _output_suffix + ".bin"
+    rawDataFn = data_fdr + "rawData" + _output_suffix + ".bin"
+    LGN_frFn = data_fdr + "LGN_fr" + _output_suffix + ".bin"
+    LGN_spFn = data_fdr + "LGN_sp" + _output_suffix
+    meanFn = data_fdr + "mean_data" + _output_suffix + ".bin"
     
-    LGN_V1_sFn = "LGN_V1_sList" + conLGN_suffix + ".bin"
-    LGN_V1_idFn = "LGN_V1_idList" + conLGN_suffix + ".bin"
+    LGN_V1_sFn = data_fdr + "LGN_V1_sList" + conLGN_suffix + ".bin"
+    LGN_V1_idFn = data_fdr + "LGN_V1_idList" + conLGN_suffix + ".bin"
     
-    conStats_Fn = "conStats" + conV1_suffix + ".bin"
-    V1_RFpropFn = "V1_RFprop" + conLGN_suffix + ".bin"
+    conStats_Fn = data_fdr + "conStats" + conV1_suffix + ".bin"
+    V1_RFpropFn = data_fdr + "V1_RFprop" + conLGN_suffix + ".bin"
 
-    pref_file = 'cort_pref_' + output_suffix0 + '.bin'
+    pref_file = data_fdr + 'cort_pref_' + output_suffix0 + '.bin'
 
-    spDataFn = "V1_spikes" + _output_suffix
-    parameterFn = "patchV1_cfg" +_output_suffix + ".bin"
+    spDataFn = data_fdr + "V1_spikes" + _output_suffix
+    parameterFn = data_fdr + "patchV1_cfg" +_output_suffix + ".bin"
 
     sampleFn = "OS_sampleList_" + output_suffix0 + ".bin"
 
@@ -184,11 +187,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
         print(f'dataDim = {dataDim}')
         assert(blockSize == typeAcc[-1])
         print([nblock,blockSize,networkSize,dataDim])
-        coord_span = np.fromfile(f, 'f8', count=4)
-        V1_x0 = coord_span[0]
-        V1_xspan = coord_span[1]
-        V1_y0 = coord_span[2]
-        V1_yspan = coord_span[3]
+        V1_x0, V1_xspan, V1_y0, V1_yspan = np.fromfile(f, 'f8', count=4)
         print(f'x:{[V1_x0, V1_x0 + V1_xspan]}')
         print(f'y:{[V1_y0, V1_y0 + V1_yspan]}')
         _pos = np.reshape(np.fromfile(f, 'f8', count = networkSize*dataDim), (nblock, dataDim, blockSize))
@@ -211,6 +210,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
         if nstep > nt_:
             nstep = nt_
         tstep = (nt_ + nstep - 1)//nstep
+        tstep = min(round(10/dt),tstep)
         nstep = nt_//tstep
         interval = tstep - 1
         print(f'plot {nstep} data points from the {nt_} time steps startingfrom step {step0}, total {nt} steps, dt = {dt}')
@@ -738,7 +738,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
             F1[i,:] = np.zeros(2)
             F2[i,:] = np.zeros(2)
     if plotTempMod and pSample and not collectMeanDataOnly:
-        sfig.savefig(outputfdr+output_suffix + 'V1-sample_TF' + '.png')
+        sfig.savefig(fig_fdr+output_suffix + 'V1-sample_TF' + '.png')
         plt.close(sfig)
     
     F1F0 = np.zeros(F1.shape[0])
@@ -856,7 +856,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
             pick = ipick[np.logical_and(nLGN_V1[ipick]==0, F0[ipick]>0)]
             ax.hist(target[pick], bins = phase_range, color = 'b', alpha = 0.5)
             ax.set_xlabel('F1 phase')
-            fig.savefig(outputfdr+output_suffix + 'V1-F1F0-stats' + '.png')
+            fig.savefig(fig_fdr+output_suffix + 'V1-F1F0-stats' + '.png')
             plt.close(fig)
     
         if OPstatus != 0:
@@ -899,7 +899,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
             if usePrefData:
                 fign = fign + '_pref'
 
-            fig.savefig(outputfdr+output_suffix + fign + '.png')
+            fig.savefig(fig_fdr+output_suffix + fign + '.png')
             plt.close(fig)
     
         if OPstatus != 2:
@@ -938,7 +938,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
             ax.hist(target[pick], bins = phase_range, color = 'b', alpha = 0.5)
             ax.set_xlabel('F2 phase')
             
-            fig.savefig(outputfdr+output_suffix + 'V1-F2F0' + '.png')
+            fig.savefig(fig_fdr+output_suffix + 'V1-F2F0' + '.png')
             plt.close(fig)
     
         if pCond:
@@ -967,7 +967,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                         ax.set_title(f'gFF {(sample[i]//blockSize,np.mod(sample[i], blockSize))}')
                         ax.set_yscale('log')
                         ax.set_xlabel('Hz')
-                sfig.savefig(outputfdr+output_suffix + 'gFF_TF-sample'+'.png')
+                sfig.savefig(fig_fdr+output_suffix + 'gFF_TF-sample'+'.png')
                 plt.close(sfig)
         
             if OPstatus != 2:
@@ -994,7 +994,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 ax.hist(data, bins = phase_range, color = colors, alpha = 0.5)
                 ax.set_title('F1 phase')
         
-                fig.savefig(outputfdr+output_suffix + 'gFF-TFstat' + '.png')
+                fig.savefig(fig_fdr+output_suffix + 'gFF-TFstat' + '.png')
                 plt.close(fig)
         
             if OPstatus != 0:
@@ -1022,7 +1022,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 ax.hist(data, bins = phase_range, color = colors, alpha = 0.5)
                 ax.set_title('F1 phase')
         
-                fig.savefig(outputfdr+output_suffix + 'OPgFF-TFstat' + '.png')
+                fig.savefig(fig_fdr+output_suffix + 'OPgFF-TFstat' + '.png')
                 plt.close(fig)
     
     if plotSample:
@@ -1248,7 +1248,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                     ax.plot(iLGN_vpos[0,j], iLGN_vpos[1,j], '*k')
                     ax.set_aspect('equal')
 
-            fig.savefig(outputfdr+output_suffix + f'V1-sample-{iblock}-{ithread}#{nLGN_V1[iV1]}' + '.png')
+            fig.savefig(fig_fdr+output_suffix + f'V1-sample-{iblock}-{ithread}#{nLGN_V1[iV1]}' + '.png')
             plt.close(fig)
     
     # plot depC distribution over orientation
@@ -1277,7 +1277,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
         fign = 'depC'
         if usePrefData:
             fign = fign + '_pref'
-        fig.savefig(outputfdr+output_suffix + fign + '.png')
+        fig.savefig(fig_fdr+output_suffix + fign + '.png')
 
     # statistics
     if plotRpStat:
@@ -1351,7 +1351,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
             ax.hist(target[iCpick], bins = 12, color = 'g', alpha = 0.5)
             ax.set_title('gI')
     
-            fig.savefig(outputfdr+output_suffix + 'V1-rpStats' + '.png')
+            fig.savefig(fig_fdr+output_suffix + 'V1-rpStats' + '.png')
             plt.close(fig)
     
         if OPstatus != 0:
@@ -1434,7 +1434,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
             if usePrefData:
                 fign = fign + '_pref'
 
-            fig.savefig(outputfdr+output_suffix + fign + '.png')
+            fig.savefig(fig_fdr+output_suffix + fign + '.png')
             plt.close(fig)
     
     if plotRpCorr and (OPstatus != 2 or usePrefData):
@@ -1640,7 +1640,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
         if usePrefData:
             fign = fign + '_pref'
 
-        fig.savefig(outputfdr+output_suffix + fign + '.png')
+        fig.savefig(fig_fdr+output_suffix + fign + '.png')
         plt.close(fig)
     
     if plotLR_rp and OPstatus != 2:
@@ -1671,7 +1671,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
         ax.hist(target[LR>0], bins = 12, color = 'r', alpha = 0.5)
         ax.hist(target[LR<0], bins = 12, color = 'b', alpha = 0.5)
         ax.set_title('gI')
-        fig.savefig(outputfdr+output_suffix + 'V1-LRrpStats' + '.png')
+        fig.savefig(fig_fdr+output_suffix + 'V1-LRrpStats' + '.png')
         plt.close(fig)
     
     if plotExc_sLGN and OPstatus != 2:
@@ -1716,7 +1716,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
         ax.set_xlim(left = 0)
         ax.set_ylim(bottom = 0)
     
-        fig.savefig(outputfdr+output_suffix + 'Exc_sLGN' + '.png')
+        fig.savefig(fig_fdr+output_suffix + 'Exc_sLGN' + '.png')
         plt.close(fig)
             
     # scatter
@@ -2032,9 +2032,9 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 fign = fign + '_pref'
 
             if nt == nt_:
-                fig.savefig(outputfdr+output_suffix + fign + '-' + mode + '_full.png')
+                fig.savefig(fig_fdr+output_suffix + fign + '-' + mode + '_full.png')
             else:
-                fig.savefig(outputfdr+output_suffix + fign + '-' + mode + '.png')
+                fig.savefig(fig_fdr+output_suffix + fign + '-' + mode + '.png')
             plt.close(fig)
 
         if OPstatus != 0:
@@ -2757,9 +2757,9 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
                 fign = fign + 'pref'
 
             if nt == nt_:
-                fig.savefig(outputfdr+output_suffix + fign + '-' + mode + '_full.png')
+                fig.savefig(fig_fdr+output_suffix + fign + '-' + mode + '_full.png')
             else:
-                fig.savefig(outputfdr+output_suffix + fign + '-' + mode + '.png')
+                fig.savefig(fig_fdr+output_suffix + fign + '-' + mode + '.png')
             plt.close(fig)
     
     if plotLGNsCorr:
@@ -2858,7 +2858,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, outputfdr, TF, 
         ax.set_xlabel('inh. gFF')
         ax.set_ylabel('inh. gEt/gTot')
     
-        fig.savefig(outputfdr+output_suffix + 'sLGN-corr' + '.png')
+        fig.savefig(fig_fdr+output_suffix + 'sLGN-corr' + '.png')
         plt.close(fig)
     print('plotting finished')
 
@@ -2896,9 +2896,9 @@ def ellipse(cx, cy, a, baRatio, orient, n = 50):
     return x, y
 
 if __name__ == "__main__":
-
-    if len(sys.argv) < 8:
-        raise Exception('not enough argument for plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, TF, iOri, nOri, readNewSpike = True, usePrefData = False, collectMeanDataOnly = False, OPstatus = 1)')
+    print(sys.argv)
+    if len(sys.argv) < 13:
+        raise Exception('not enough argument for plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus)')
     else:
         output_suffix = sys.argv[1]
         print(output_suffix)
@@ -2906,58 +2906,43 @@ if __name__ == "__main__":
         print(conLGN_suffix)
         conV1_suffix = sys.argv[3]
         print(conV1_suffix)
-        outputfdr = sys.argv[4]
-        print(outputfdr)
-        TF = float(sys.argv[5])
+        res_fdr = sys.argv[4]
+        print(res_fdr)
+        data_fdr = sys.argv[5]
+        print(data_fdr)
+        fig_fdr = sys.argv[6]
+        print(fig_fdr)
+        TF = float(sys.argv[7])
         print(TF)
-        iOri = int(sys.argv[6])
-        nOri = int(sys.argv[7])
+        iOri = int(sys.argv[8])
+        nOri = int(sys.argv[9])
         print(f'{iOri}/{nOri}')
-        if len(sys.argv) > 8:
-            if sys.argv[8] == 'True' or sys.argv[9] == '1':
-                readNewSpike = True 
-                print('read new spikes')
-            else:
-                readNewSpike = False
-                print('read stored spikes')
-            if len(sys.argv) > 9:
-                if sys.argv[9] == 'True' or sys.argv[9] == '1':
-                    usePrefData = True 
-                    print('using fitted data')
-                else:
-                    usePrefData = False
-                    print('not using fitted data')
-                if len(sys.argv) > 10:
-                    if sys.argv[10] == 'True' or sys.argv[10] == '1':
-                        collectMeanDataOnly= True 
-                        print('collect mean data only')
-                    else:
-                        collectMeanDataOnly = False
-                    if len(sys.argv) > 11:
-                        OPstatus = int(sys.argv[11])
-                        if OPstatus != 0 and OPstatus != 1 and OPstatus != 2:
-                            raise Exception(f'OPstatus = {OPstatus} but it can only be 0: no OP plots, 1: preset OP plots, 2: update OP plots only')
-                        else:
-                            if OPstatus == 0:
-                                print('no OP plots are plotted')
-                            if OPstatus == 1:
-                                print('preset OP plots are plotted')
-                            if OPstatus == 2:
-                                print('update OP plots only')
-                    else:
-                        OPstatus = 1
-                else:
-                    collectMeanDataOnly = False
-                    OPstatus = 1
-            else:
-                usePrefData = False
-                collectMeanDataOnly = False
-                OPstatus = 1
-        else:
+        if sys.argv[10] == 'True' or sys.argv[10] == '1':
             readNewSpike = True 
+            print('read new spikes')
+        else:
+            readNewSpike = False
+            print('read stored spikes')
+        if sys.argv[11] == 'True' or sys.argv[11] == '1':
+            usePrefData = True 
+            print('using fitted data')
+        else:
             usePrefData = False
+            print('not using fitted data')
+        if sys.argv[12] == 'True' or sys.argv[12] == '1':
+            collectMeanDataOnly= True 
+            print('collect mean data only')
+        else:
             collectMeanDataOnly = False
-            OPstatus = 1
 
-    print(sys.argv)
-    plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus)
+        OPstatus = int(sys.argv[13])
+        if OPstatus != 0 and OPstatus != 1 and OPstatus != 2:
+            raise Exception(f'OPstatus = {OPstatus} but it can only be 0: no OP plots, 1: preset OP plots, 2: update OP plots only')
+        else:
+            if OPstatus == 0:
+                print('no OP plots are plotted')
+            if OPstatus == 1:
+                print('preset OP plots are plotted')
+            if OPstatus == 2:
+                print('update OP plots only')
+    plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus)

@@ -1,4 +1,4 @@
-function testLearnFF(isuffix, osuffix, fdr, iV1)
+function testLearnFF(isuffix, osuffix, res_fdr, data_fdr, fig_fdr, iV1)
 	nt_ = 0; % choose time steps to plot
 	targetfr = 5
 	nsub = 2 + 2;
@@ -9,13 +9,15 @@ function testLearnFF(isuffix, osuffix, fdr, iV1)
 	if ~isempty(osuffix) 
 	    osuffix = ['_', osuffix];
 	end
-	fdr = [fdr, '/'];
-	learnDataFn = ['learnData_FF', osuffix, '.bin']
-	rawDataFn = ['rawData', osuffix, '.bin']
-	LGN_V1_id_fn = ['LGN_V1_idList', isuffix, '.bin']
-	f_sLGN = ['sLGN', osuffix, '.bin']
-	f_LGNoutput = ['outputB4V1', osuffix, '.bin']
-	fLGN_vpos = ['LGN_vpos', isuffix, '.bin']
+	res_fdr = [res_fdr, '/'];
+	data_fdr = [data_fdr, '/'];
+	fig_fdr = [fig_fdr, '/'];
+	learnDataFn = [data_fdr, 'learnData_FF', osuffix, '.bin']
+	rawDataFn = [data_fdr, 'rawData', osuffix, '.bin']
+	LGN_V1_id_fn = [data_fdr, 'LGN_V1_idList', isuffix, '.bin']
+	f_sLGN = [data_fdr, 'sLGN', osuffix, '.bin']
+	f_LGNoutput = [data_fdr, 'outputB4V1', osuffix, '.bin']
+	fLGN_vpos = [res_fdr, 'LGN_vpos', isuffix, '.bin']
 	%%
 	
 	fid = fopen(f_sLGN, 'r');
@@ -304,7 +306,7 @@ function testLearnFF(isuffix, osuffix, fdr, iV1)
 	disp([min(nsp_LGN), mean(nsp_LGN), max(nsp_LGN)]./(nt_*dt/1000));
 	
 	f = figure;
-	titl = [fdr, 'LGNspike_scatter'];
+	titl = [fig_fdr, 'LGNspike_scatter'];
 	plot(tsp_LGN, id_LGN, '*k');
 	saveas(f, titl, 'fig');
 	saveas(f, [titl, '.png']);
@@ -427,8 +429,8 @@ function testLearnFF(isuffix, osuffix, fdr, iV1)
 	    end
 	    
 	    %%
-	    saveas(f, [fdr,titl], 'fig');
-	    saveas(f, [fdr, titl, '.png']) ;
+	    saveas(f, [fig_fdr,titl], 'fig');
+	    saveas(f, [fig_fdr, titl, '.png']) ;
 	end
 	
 	fid = fopen(['LGN_fr', osuffix, '.bin'], 'r');

@@ -11,42 +11,29 @@ from readPatchOutput import *
 from os import path
 
 import sys
-if len(sys.argv) > 1:
+if len(sys.argv) == 7:
     output_suffix = sys.argv[1]
-    if len(sys.argv) > 2:
-        input_suffix = sys.argv[2]
-        if len(sys.argv) > 3:
-            fdr = sys.argv[3]
-            if len(sys.argv) > 4:
-                if sys.argv[4] == 'True' or sys.argv[4] == '1':
-                    readNewSpike = True 
-                    print('read new spikes')
-                else:
-                    readNewSpike = False
-                    print('read stored spikes')
-            else:
-                readNewSpike = False
-        else:
-            fdr = ''
-            readNewSpike = False
+    input_suffix = sys.argv[2]
+    res_fdr = sys.argv[3]
+    data_fdr = sys.argv[4]
+    fig_fdr = sys.argv[5]
+    if sys.argv[6] == 'True' or sys.argv[6] == '1':
+        readNewSpike = True 
+        print('read new spikes')
     else:
-        fdr = ''
         readNewSpike = False
-        input_suffix = ""
 else:
-    fdr = ''
-    readNewSpike = False
-    output_suffix = ""
-    input_suffix = ""
+    raise Exception(' need all 6 arguments, no default values available')
 
 print(output_suffix)
 print(input_suffix)
-if output_suffix:
-    output_suffix = "_" + output_suffix 
-if input_suffix:
-    input_suffix = "_" + input_suffix 
-if fdr:
-    fdr = fdr + '/'
+output_suffix = "_" + output_suffix 
+input_suffix = "_" + input_suffix 
+
+data_fdr = data_fdr + '/'
+res_fdr = res_fdr + '/'
+fig_fdr = fig_fdr + '/'
+
 
 plotResponseSample = True
 plotContrastDist = False 
@@ -60,14 +47,14 @@ iLGN = np.array([0,1,nLGN_1D*nLGN_1D+nLGN_1D-1,nLGN_1D*nLGN_1D+nLGN_1D])
 #iLGN = np.array([0,1,2,3])
 ns = 10
 
-parameterFn = "patchV1_cfg" +output_suffix + ".bin"
+parameterFn = data_fdr + "patchV1_cfg" +output_suffix + ".bin"
 
-LGN_spFn = "LGN_sp" + output_suffix
+LGN_spFn = data_fdr + "LGN_sp" + output_suffix
 
 prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN = read_cfg(parameterFn)
 print(f'frRatioLGN = {frRatioLGN}, convolRatio = {convolRatio}')
 
-output = "LGN_gallery" + output_suffix + ".bin"
+output = data_fdr + "LGN_gallery" + output_suffix + ".bin"
 with open(output, 'rb') as f:
     nParvo = np.fromfile(f, 'u4', 1)[0]
     nType = np.fromfile(f, 'u4', 1)[0]
@@ -86,7 +73,7 @@ with open(output, 'rb') as f:
     nLGN = nParvo + nMagno
     max_convol = np.fromfile(f, prec, nLGN)
 
-output = "LGN" + output_suffix + ".bin"
+output = data_fdr + "LGN" + output_suffix + ".bin"
 with open(output, 'rb') as f:
     nLGN = np.fromfile(f, 'u4', 1)[0]
     LGN_type = np.fromfile(f, 'u4', nLGN)
@@ -116,7 +103,7 @@ print(f'sample {ns} LGN\'s id:{iLGN}')
 for i in range(ns):
     print(f'{iLGN[i]}: {(LGN_ecc[0,iLGN[i]]*np.cos(LGN_polar[0,iLGN[i]]), LGN_ecc[0,iLGN[i]]*np.sin(LGN_polar[0,iLGN[i]]))}')
 
-output_fn = "outputB4V1" + output_suffix + ".bin"
+output_fn = data_fdr + "outputB4V1" + output_suffix + ".bin"
 with open(output_fn, 'rb') as f:
     nt = np.fromfile(f, 'u4', count = 1)[0]
     dt = np.fromfile(f, prec, count = 1)[0]
@@ -198,7 +185,7 @@ if plotResponseSample:
         ix = np.mod(j, nLGN_1D)
         iy = np.int(np.floor(j/nLGN_1D))
         ax2.set_title(f'#{j} {(ix,iy)}, {LGN_type[j]} ' + on_off + f' fr: {np.mean(LGNfr[:,i]):.3f}/{np.max(LGNfr[:,i]):.3f}Hz, {len(LGN_spScatter[j])/t[-1]*1000:.3f}Hz')
-    fig.savefig(fdr+'lgn-response' + output_suffix + '.png')
+    fig.savefig(fig_fdr+'lgn-response' + output_suffix + '.png')
 
 if plotContrastDist:
     fig = plt.figure('contrast', dpi = 300)
@@ -216,7 +203,7 @@ if plotContrastDist:
     ax.hist(contrast[ind1,1,pick1], color = 'c', bins = 10, alpha = 0.5)
     ax = fig.add_subplot(212)
     ax.hist(frStat/nstep)
-    fig.savefig(fdr+'lgn-contrast' + output_suffix + '.png')
+    fig.savefig(fig_fdr+'lgn-contrast' + output_suffix + '.png')
 
 if plotStat:
     fig = plt.figure('LGN_activity', dpi = 600)
@@ -236,4 +223,4 @@ if plotStat:
     ax = fig.add_subplot(224)
     ax.hist(np.mean(LGNfr, axis = 0), bins=10)
     ax.set_xlabel('mean fr')
-    fig.savefig(fdr+'LGN_activity'+output_suffix+'.png')
+    fig.savefig(fig_fdr+'LGN_activity'+output_suffix+'.png')

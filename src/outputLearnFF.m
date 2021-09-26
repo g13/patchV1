@@ -1,19 +1,13 @@
 % connection strength heatmaps % better to choose from testLearnFF 
-function outputLearnFF(isuffix0, isuffix, osuffix, fdr, LGN_switch, mix, st, examSingle)
-	if nargin < 5
-		LGN_switch = true;
-	end
-	if nargin < 6
-		mix = true;
-	end
-	fdr = [fdr, '/'];
-	if nargin < 7
-		st = 2; %0 for temporal, 1 for spatial, 2 for both
-	end
-	if nargin < 8
-		examSingle = false;
+function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, LGN_switch, mix, st, examSingle)
+	if nargin < 10
+		disp('no default argument available');
+		return
 	end
 
+	fig_fdr = [fig_fdr, '/'];
+	res_fdr = [res_fdr, '/'];
+	data_fdr = [data_fdr, '/'];
 
 	rng(1390843)
 	if ~isempty(isuffix0)
@@ -36,13 +30,13 @@ function outputLearnFF(isuffix0, isuffix, osuffix, fdr, LGN_switch, mix, st, exa
 	%V1_pick = [1,10,100,999,1000]; % specify the IDs of V1 neurons to be sampled. If set, ns will be ignored.
 	%%%%%%%%%%%%  
 
-	f_sLGN = ['sLGN', osuffix, '.bin']
-	learnDataFn = ['learnData_FF', osuffix, '.bin']
-	V1_frFn = ['max_fr', osuffix, '.bin']
+	f_sLGN = [data_fdr, 'sLGN', osuffix, '.bin']
+	learnDataFn = [data_fdr, 'learnData_FF', osuffix, '.bin']
+	V1_frFn = [data_fdr, 'max_fr', osuffix, '.bin']
 
-	fLGN_vpos = ['LGN_vpos', isuffix0, '.bin'];
-	LGN_V1_id_fn = ['LGN_V1_idList', isuffix, '.bin']
-	fLGN_switch = ['LGN_switch', isuffix, '.bin'];
+	fLGN_vpos = [res_fdr, 'LGN_vpos', isuffix0, '.bin'];
+	LGN_V1_id_fn = [data_fdr, 'LGN_V1_idList', isuffix, '.bin']
+	fLGN_switch = [data_fdr,'LGN_switch', isuffix, '.bin'];
 
 	fid = fopen(learnDataFn, 'r');
 	dt = fread(fid, 1, 'float')
@@ -159,7 +153,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, fdr, LGN_switch, mix, st, exa
 
 	set(f, 'OuterPosition', [.1, .1, 8, 12]);
 	set(f, 'innerPosition', [.1, .1, 8, 12]);
-	saveas(f, [fdr, 'stats-LGN_V1', osuffix,rtime, '.png']);
+	saveas(f, [fig_fdr, 'stats-LGN_V1', osuffix,rtime, '.png']);
 
 	if LGN_switch
 		fid = fopen(fLGN_switch, 'r');
@@ -338,11 +332,11 @@ function outputLearnFF(isuffix0, isuffix, osuffix, fdr, LGN_switch, mix, st, exa
 			set(f, 'OuterPosition', [.1, .1, nit+2, 4]);
 			set(f, 'innerPosition', [.1, .1, nit+2, 4]);
 			if mix && doubleOnOff ~= 1
-	        	%saveas(f, [fdr,'sLGN_V1-',num2str(iV1), osuffix, '-mix',rtime], 'fig');
-	        	saveas(f, [fdr,'sLGN_V1-',num2str(iV1), osuffix, '-mix',rtime,'.png']);
+	        	%saveas(f, [fig_fdr,'sLGN_V1-',num2str(iV1), osuffix, '-mix',rtime], 'fig');
+	        	saveas(f, [fig_fdr,'sLGN_V1-',num2str(iV1), osuffix, '-mix',rtime,'.png']);
 			else
-	        	%saveas(f, [fdr,'sLGN_V1-',num2str(iV1), osuffix, '-sep',rtime], 'fig');
-	        	saveas(f, [fdr,'sLGN_V1-',num2str(iV1), osuffix, '-sep',rtime,'.png']);
+	        	%saveas(f, [fig_fdr,'sLGN_V1-',num2str(iV1), osuffix, '-sep',rtime], 'fig');
+	        	saveas(f, [fig_fdr,'sLGN_V1-',num2str(iV1), osuffix, '-sep',rtime,'.png']);
 			end
 	    end
 	    if st == 2 || st == 0
@@ -392,7 +386,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, fdr, LGN_switch, mix, st, exa
 					set(gca,'YTickLabel', []);
 					set(gca,'XTickLabel', []);
 				end
-				saveas(f, [fdr, 'tLGN_V1_single-',num2str(iV1), osuffix,rtime, '.png']);
+				saveas(f, [fig_fdr, 'tLGN_V1_single-',num2str(iV1), osuffix,rtime, '.png']);
 			end
 			f = figure('PaperPosition',[.1 .1 8 6]);
 			
@@ -432,8 +426,8 @@ function outputLearnFF(isuffix0, isuffix, osuffix, fdr, LGN_switch, mix, st, exa
 	        end
 			set(f, 'OuterPosition', [.1, .1, 8, 6]);
 			set(f, 'innerPosition', [.1, .1, 8, 6]);
-	        %saveas(f, [fdr, 'tLGN_V1-',num2str(iV1), osuffix,rtime], 'fig');
-	        saveas(f, [fdr, 'tLGN_V1-',num2str(iV1), osuffix,rtime, '.png']);
+	        %saveas(f, [fig_fdr, 'tLGN_V1-',num2str(iV1), osuffix,rtime], 'fig');
+	        saveas(f, [fig_fdr, 'tLGN_V1-',num2str(iV1), osuffix,rtime, '.png']);
 	    end
 	end
 end

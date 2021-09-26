@@ -14,7 +14,7 @@ module purge
 module load python/intel/3.8.6
 # Dalma modules
 module list
-default=$1
+default=$1 # if run plotTC.slurm alone
 if [ "$default" = True ]; then
 	nOri=6
 	fdr=tc-test
@@ -24,8 +24,8 @@ if [ "$default" = True ]; then
 fi
 
 date
-echo python getTuningCurve.py $op $lgn $v1 $fdr $nOri $fitTC $fitDataReady
-python getTuningCurve.py $op $lgn $v1 $fdr $nOri $fitTC $fitDataReady
+echo getTuningCurve.py $op $lgn $v1 $res_fdr $data_fdr $fig_fdr $nOri $fitTC $fitDataReady
+getTuningCurve.py $op $lgn $v1 $res_fdr $data_fdr $fig_fdr $nOri $fitTC $fitDataReady
 
 if [ "$collectMeanDataOnly" = True ]; then
 	OPstatus=1
@@ -38,7 +38,7 @@ if [ "$redraw" = True ]; then
 	pid=""
 	for ori in $( seq 1 $nOri )
 	do
-		python plotV1_response.py $op $lgn $v1 $fdr $TF $ori $nOri False True False $OPstatus & 
+		plotV1_response.py $op $lgn $v1 $res_fdr $data_fdr $fig_fdr $TF $ori $nOri False True False $OPstatus & 
 		pid+="${!} "
 	done
 	wait $pid

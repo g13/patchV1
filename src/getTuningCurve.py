@@ -18,9 +18,11 @@ from global_vars import LGN_vposFn, featureFn, seed, V1_allposFn
 #import multiprocessing as mp
 np.seterr(invalid = 'raise')
 
-def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOri, fitTC, fitDataReady):
-    if outputfdr:
-        outputfdr = outputfdr+"/"
+def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, nOri, fitTC, fitDataReady):
+
+    res_fdr = res_fdr+"/"
+    data_fdr = data_fdr+"/"
+    fig_fdr = fig_fdr+"/"
 
     output_suffix = "_" + output_suffix + "_"
     conLGN_suffix = "_" + conLGN_suffix
@@ -50,15 +52,15 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
     plotOSI = True
     plotSpatialOP = True
 
-    LGN_V1_ID_file = 'LGN_V1_idList'+conLGN_suffix+'.bin'
-    LGN_V1_s_file = 'LGN_V1_sList'+conLGN_suffix+'.bin'
+    LGN_V1_ID_file = data_fdr+'LGN_V1_idList'+conLGN_suffix+'.bin'
+    LGN_V1_s_file = data_fdr+'LGN_V1_sList'+conLGN_suffix+'.bin'
 
-    pref_file = 'cort_pref' + output_suffix[:-1] + '.bin'
-    fit_file = 'fit_data' + output_suffix[:-1] + '.bin'
+    pref_file = data_fdr+'cort_pref' + output_suffix[:-1] + '.bin'
+    fit_file = data_fdr+'fit_data' + output_suffix[:-1] + '.bin'
 
-    parameterFn = "patchV1_cfg" +output_suffix + "1.bin"
+    parameterFn = data_fdr+"patchV1_cfg" +output_suffix + "1.bin"
 
-    sampleFn = "OS_sampleList" + output_suffix[:-1] + ".bin"
+    sampleFn = data_fdr+"OS_sampleList" + output_suffix[:-1] + ".bin"
 
     LGN_V1_s = readLGN_V1_s0(LGN_V1_s_file)
     LGN_V1_ID, nLGN_V1 = readLGN_V1_ID(LGN_V1_ID_file)
@@ -66,7 +68,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
 
     nV1_0 = nLGN_V1.size
     
-    mean_data_files = ["mean_data" + output_suffix + str(iOri+1) + ".bin" for iOri in range(nOri)]
+    mean_data_files = [data_fdr+"mean_data" + output_suffix + str(iOri+1) + ".bin" for iOri in range(nOri)]
     for i in range(nOri):
         with open(mean_data_files[i], 'rb') as f:
             if i == 0:
@@ -148,7 +150,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
     print([np.min(iPref_thal), np.max(iPref_thal), nOri])
     iPref_cort = np.argmax(fr, axis = 0)
     max_fr = fr.T.flatten()[iPref_cort + np.arange(nV1)*nOri]
-    with open('max_fr' + output_suffix[:-1] + '.bin', 'wb') as f:
+    with open(data_fdr+'max_fr' + output_suffix[:-1] + '.bin', 'wb') as f:
         max_fr.tofile(f)
 
     epick_act = epick[max_fr[epick] > fr_thres]
@@ -521,7 +523,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
     ax.hist(dPrefES_R, bins=nOri, label = 'dPref_ES_R', alpha = 0.3, color = 'r')
     ax.set_xlabel('ipsi thal vs. pre')
 
-    figPref.savefig(outputfdr + 'pref-hist' + output_suffix[:-1] + '.png', dpi = 150)
+    figPref.savefig(fig_fdr + 'pref-hist' + output_suffix[:-1] + '.png', dpi = 150)
 
     fig = plt.figure('nLGN-pref', figsize = (6,4))
     dOpEdges = opEdges - 90 + 90/nOri
@@ -538,7 +540,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
     ax.hist(nLGN_V1[epick], np.arange(maxLGN+1))
     ax = fig.add_subplot(224)
     ax.hist(nLGN_V1[ipick], np.arange(maxLGN+1))
-    fig.savefig(outputfdr + 'nLGN-pref' + output_suffix[:-1] + '.png', dpi = 150)
+    fig.savefig(fig_fdr + 'nLGN-pref' + output_suffix[:-1] + '.png', dpi = 150)
 
     markers = ['^r', 'vg', 'og', 'sr', '*k', 'dk']
     ms = 1.5
@@ -616,7 +618,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
 
         ax.set_title(f'rounded pre:{orient*180/np.pi:.1f}, thal:{orient_thal*180/np.pi:.1f}, preset:{orient_set*180/np.pi:.1f}')
         i = i+1
-    fig.savefig(outputfdr+'thal_set-prefMax'+conLGN_suffix + output_suffix[:-1] +'.png')
+    fig.savefig(fig_fdr+'thal_set-prefMax'+conLGN_suffix + output_suffix[:-1] +'.png')
 
     fig = plt.figure('thal_set-prefMin', dpi = 300)
     grid = gs.GridSpec((ndpref+3)//4, 4, figure = fig, hspace = 0.2)
@@ -690,7 +692,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
 
         ax.set_title(f'rounded pre:{orient*180/np.pi:.1f}, thal:{orient_thal*180/np.pi:.1f}, preset:{orient_set*180/np.pi:.1f}')
         i = i+1
-    fig.savefig(outputfdr+'thal_set-prefMin'+conLGN_suffix+ output_suffix[:-1]+'.png')
+    fig.savefig(fig_fdr+'thal_set-prefMin'+conLGN_suffix+ output_suffix[:-1]+'.png')
 
     def alignTC(iPref, nOri, q):
         n = iPref.size
@@ -909,7 +911,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
         ax.set_title('preset_ori. fr')
         plotScatter(orient_cort,ax)
         ax.set_title('simu ori fr')
-        fig.savefig(outputfdr+'spatial_OP'+output_suffix[:-1] + '.png', dpi = 900)
+        fig.savefig(fig_fdr+'spatial_OP'+output_suffix[:-1] + '.png', dpi = 900)
 
 
     if plotTC:
@@ -1081,7 +1083,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
         ax.set_xlabel('OP')
         ax.set_ylabel('I.depC')
 
-        fig.savefig(outputfdr+'popTC'+output_suffix[:-1] + '.png', dpi = 900)
+        fig.savefig(fig_fdr+'popTC'+output_suffix[:-1] + '.png', dpi = 900)
 
     if plotF1F0:
 
@@ -1107,7 +1109,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
         ax.hist(F1F0_op[iSpick_act], bins = nbins, color = 'b', alpha = 0.3)
         ax2 = ax.twinx()
         ax2.hist(F1F0_op[iCpick_act], bins = nbins, color = 'c', alpha = 0.3)
-        fig.savefig(outputfdr+'F1F0'+output_suffix[:-1] + '.png', dpi = 900)
+        fig.savefig(fig_fdr+'F1F0'+output_suffix[:-1] + '.png', dpi = 900)
 
         max_lgn = max(nLGN_V1)
         fig = plt.figure('F1F0-nLGN', figsize = (6, 2*max_lgn+1))
@@ -1123,7 +1125,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
             ax.set_ylabel(f'# nLGN={i}')
             if i == max_lgn:
                 ax.set_xlabel('F1F0 at PO')
-        fig.savefig(outputfdr+'F1F0-nLGN'+output_suffix[:-1] + '.png', dpi = 900)
+        fig.savefig(fig_fdr+'F1F0-nLGN'+output_suffix[:-1] + '.png', dpi = 900)
 
     if plotFR:
         if fitTC:
@@ -1148,7 +1150,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
             ax.set_ylabel(f'# nLGN={i}')
             if i == max_lgn:
                 ax.set_xlabel('FR at PO')
-        fig.savefig(outputfdr+'FR-nLGN'+output_suffix[:-1] + '.png', dpi = 900)
+        fig.savefig(fig_fdr+'FR-nLGN'+output_suffix[:-1] + '.png', dpi = 900)
 
     if plotSample:
         theta = np.linspace(0, np.pi, 37)
@@ -1190,7 +1192,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
                 iI = iblock*mI + ithread - mE
                 ax.plot(op, cGap[itheta, iI, 0], 'c')
 
-            fig.savefig(outputfdr+ f'sampleTC-{iblock}-{ithread}#{nLGN_V1[iV1]}' +output_suffix[:-1]+ '.png', dpi = 300)
+            fig.savefig(fig_fdr+ f'sampleTC-{iblock}-{ithread}#{nLGN_V1[iV1]}' +output_suffix[:-1]+ '.png', dpi = 300)
             plt.close(fig)
 
     def get_gOSI(tc, nOri):
@@ -1248,53 +1250,37 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOr
             ax.hist(OSI[type_Cpick], bins = osi_range, color = c[1])
             if iType == 0:
                 ax.set_title('OSI')
-        fig.savefig(outputfdr+ f'TC-OSI' +output_suffix[:-1]+ '.png', dpi = 300)
+        fig.savefig(fig_fdr+ f'TC-OSI' +output_suffix[:-1]+ '.png', dpi = 300)
         plt.close(fig)
             
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
+    print(sys.argv)
+    if len(sys.argv) < 9:
+        raise Exception('not enough argument for getTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus)')
+    else:
         output_suffix = sys.argv[1]
         print(output_suffix)
-        if len(sys.argv) > 2:
-            conLGN_suffix = sys.argv[2]
-            print(conLGN_suffix)
-            if len(sys.argv) > 3:
-                conV1_suffix = sys.argv[3]
-                print(conV1_suffix)
-                if len(sys.argv) > 4:
-                    outputfdr = sys.argv[4]
-                    print(outputfdr)
-                    if len(sys.argv) > 5:
-                        nOri = int(sys.argv[5])
-                        print(nOri)
-                        if len(sys.argv) > 6:
-
-                            if sys.argv[6] == 'True' or sys.argv[6] == '1':
-                                fitTC = True
-                                print('use TC fitted with von Mises function')
-                            else:
-                                fitTC = False
-                                print('won\'t use fitted TC')
-                            if len(sys.argv) > 7:
-                                if sys.argv[7] == 'True' or sys.argv[7] == '1':
-                                    fitDataReady = True
-                                else:
-                                    fitDataReady = False
-                            else:
-                                fitDataReady = False
-                        else:
-                            fitTC = False
-                            fitDataReady = False
-                    else:
-                        raise Exception('nOri is not set') 
-                else:
-                    raise Exception('outputfdr, nOri are not set') 
-            else:
-                raise Exception('conV1_suffix, outputfdr, nOri are not set') 
+        conLGN_suffix = sys.argv[2]
+        print(conLGN_suffix)
+        conV1_suffix = sys.argv[3]
+        print(conV1_suffix)
+        res_fdr = sys.argv[4]
+        print(res_fdr)
+        data_fdr = sys.argv[5]
+        print(data_fdr)
+        fig_fdr = sys.argv[6]
+        print(fig_fdr)
+        nOri = int(sys.argv[7])
+        print(nOri)
+        if sys.argv[8] == 'True' or sys.argv[6] == '1':
+            fitTC = True
+            print('use TC fitted with von Mises function')
         else:
-            raise Exception('conLGN_V1_suffix, conV1_suffix, outputfdr, nOri are not set') 
-    else:
-        raise Exception('output_suffix, conLGN_V1_suffix, conV1_suffix, outputfdr, nOri are not set') 
-    print(sys.argv)
+            fitTC = False
+            print('won\'t use fitted TC')
+        if sys.argv[9] == 'True' or sys.argv[9] == '1':
+            fitDataReady = True
+        else:
+            fitDataReady = False
 
-    gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, outputfdr, nOri, fitTC, fitDataReady)
+    gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr,fig_fdr, nOri, fitTC, fitDataReady)

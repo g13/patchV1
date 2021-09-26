@@ -15,16 +15,13 @@ module load gcc/10.2.0
 module load cuda/11.1.74
 module load boost/intel/1.74.0
 module load matlab/2020b
+module load python/intel/3.8.6
 # Dalma modules
 #module load gcc/4.9.3
 #module load cuda/9.2
 #module load boost/gcc_4.9.3/openmpi_1.10.2/avx2/1.57.0
 #module load matlab/R2017a
 module list
-
-op_cfg=${op}-ori_${ori}.cfg
-
-cp $op_cfg $fdr
 
 readNewSpike=True
 usePrefData=False
@@ -38,15 +35,15 @@ fi
 
 date
 pid=""
-echo python plotLGN_response.py ${op}_${ori} $lgn $fdr $readNewSpike
-python plotLGN_response.py ${op}_${ori} $lgn $fdr $readNewSpike &
+echo plotLGN_response.py ${op}_${ori} $lgn $res_fdr $data_fdr $fig_fdr $readNewSpike
+plotLGN_response.py ${op}_${ori} $lgn $res_fdr $data_fdr $fig_fdr $readNewSpike &
 pid+="${!} "
-echo python plotV1_response.py $op $lgn $v1 $fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus
-python plotV1_response.py $op $lgn $v1 $fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus &
+echo plotV1_response.py $op $lgn $v1 $res_fdr $data_fdr $fig_fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus
+plotV1_response.py $op $lgn $v1 $res_fdr $data_fdr $fig_fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus &
 pid+="${!} "
 #if [ ${ori} -eq 1 ]; then
-#	echo python connections.py ${op}_${ori} $lgn $v1 $fdr
-#	python connections.py ${op}_${ori} $lgn $v1 $fdr & 
+#	echo connections.py ${op}_${ori} $lgn $v1 $fdr
+#	connections.py ${op}_${ori} $lgn $v1 $fdr & 
 #	pid+="${!} "
 #fi
 wait $pid
