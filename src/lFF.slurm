@@ -1,26 +1,36 @@
 #!/bin/bash
 
+cd $HOME/repos/patchV1/src
 fdr0=/scratch/wd554/patchV1
 res_fdr=$fdr0 # stimulus, V1-static and LGN-static files
 in_fdr=$fdr0 # inputFolder in cfg
 data_fdr=$fdr0 # outputFolder in cfg
 
-# stage II wave goes here
-waveStage=2 # stage number
-fdr=testfdr # folder will be made to store figures and configuratoin files
-op=testfdr # theme string to be added to filenames of data and figures
-#op_cfg=wave_II.cfg # the simulation config file to be used
-op_cfg=testfdr.cfg # the simulation config file to be used
-lgn=lFF_40ii # the theme string to be used for LGN_V1 connections
-lgn0=lFF_ii # the theme string to be used for V1, LGN positions etc.
+waveStage=5 # set stage number
 
-# uncomment the following lines for stage III wave, DON'T FORGET to comment out the lines above
-#waveStage=3
-#fdr=wave_III
-#op=40x3_iii1
-#op_cfg=wave_III.cfg
-#lgn=lFF_40x3
-#lgn0=lFF_iii
+if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
+	fdr=wave_concat/wave_II # folder will be made to store figures and configuratoin files
+	op=32_ii # theme string to be added to filenames of data and figures
+	op_cfg=wave_II.cfg # the simulation config file to be used
+	lgn=lFF_ii # the theme string to be used for LGN_V1 connections
+	lgn0=lFF # the theme string to be used for V1, LGN positions etc.
+fi
+
+if [[ "${waveStage}" = "3" ]] ;then
+	fdr=wave_concat/wave_III
+	op=32x3_iii
+	op_cfg=wave_III.cfg
+	lgn=lFF_iii
+	lgn0=lFF_iii
+fi
+
+if [[ "${waveStage}" = "5" ]] ;then
+	fdr=wave_concat
+	op=32_32x3_concat
+	op_cfg=wave_concat.cfg
+	lgn=lFF_concat
+	lgn0=lFF # starts out from stage II
+fi
 
 seed=1924784 # RANDOM SEED for post-analysis sampling and input randomization 
 # for outputLearnFF.m
@@ -47,7 +57,7 @@ if [ -d "$fig_fdr" ]
 then
 	echo overwrite contents in $fig_fdr
 else
-	mkdir $fig_fdr
+	mkdir -p $fig_fdr
 fi
 
 echo using $op_cfg
@@ -68,17 +78,17 @@ then
 fi
 echo plotOnly=$plotOnly
 
+cp outputLearnFF.m outputLearnFF_${op}_m.bak
 if [ "$plotOnly" = False ]
 then
 	gpu=1
-	cp $op_cfg ${op}_cfg.bak
 	cp $op_cfg ${fdr0}/$op_cfg
+
+	cp $op_cfg ${op}_cfg.bak
 	cp inputLearnFF.m inputLearnFF_${op}_m.bak
-	cp outputLearnFF.m outputLearnFF_${op}_m.bak
 	mv ${op}_cfg.bak inputLearnFF_${op}_m.bak outputLearnFF_${op}_m.bak $fig_fdr
 else
 	gpu=0
-	cp outputLearnFF.m outputLearnFF_${op}_m.bak
 	mv outputLearnFF_${op}_m.bak $fig_fdr
 fi
 
@@ -95,7 +105,7 @@ sbatch <<EOT
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=64GB
-#SBATCH --time=04:00:00
+#SBATCH --time=08:00:00
 #SBATCH -o log/pLearn_%J.out
 #SBATCH --mail-user=wd554@nyu.edu
 #SBATCH --mail-type=END

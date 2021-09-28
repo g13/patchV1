@@ -5,6 +5,10 @@
 % suffix0: theme string %lgn0 in lFF.slurm
 % stage: retinal wave stages, takes 2 or 3
 function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
+
+	data_fdr = [data_fdr,'/']
+	res_fdr = [res_fdr,'/']
+
 	if stdratio > 0
 		normed = true;
 	else
@@ -12,19 +16,19 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	end
 
 	%%%% HERE %%%%%%%%
+    nother = 1; % set the number of temporal-variable learning parameters, such as rLTD 
+    set_other = [[0.25, 1.0]]; % rLTD
 	same = false; % set true if all the V1 neurons have the same LGN connections
-	switch stage
-		case 2
-			pCon = 1.0 % initial sparsity
-			nLGN_1D = 14; % sqrt of the total number of On/Off LGN cells
-			max_ecc = 10; % radius of the visual field spanned by all the LGN
-		case 3
-			pCon = 0.8
-			nLGN_1D = 7;
-			max_ecc = 5;
-		otherwise
-			warning('unexpected stage')
+	if stage == 2 || stage == 5
+		pCon = 1.0 % initial sparsity
+		nLGN_1D = 14; % sqrt of the total number of On/Off LGN cells
+		max_ecc = 10; % radius of the visual field spanned by all the LGN
 	end
+	if stage == 3
+		pCon = 0.8
+		nLGN_1D = 7;
+		max_ecc = 5;
+    end
 	%%%%%%%%
 
 	if ~isempty(suffix0)
@@ -33,6 +37,7 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	if ~isempty(suffix)
 	    suffix = ['_', suffix];
 	end
+
 	fLGN_V1_ID = [data_fdr, 'LGN_V1_idList', suffix, '.bin'];
 	fLGN_V1_s = [data_fdr, 'LGN_V1_sList', suffix, '.bin'];
 	fV1_RFprop = [data_fdr, 'V1_RFprop', suffix, '.bin'];
@@ -64,53 +69,98 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	doubleOnOff = 1;
 	frameVisV1output = false; % if need framed V1 output, write visual pos to fV1_pos
 
-	%%%%% HERE %%%%%%%%
 	frameRate = 30; % from ext_input.py, also need to be set in the <simulation_config>.cfg
-	switch stage
-		case 2
-			peakRate = 0.5; % active cell percentage during wave
-			% corresponds to the parameters set in ext_input.py
-			nOri = 40; % number of orientation for the input waves
-			nRep = 1; % repeat of each orientation
-			framesPerStatus = 225; % frames for each wave
-			framesToFinish = ceil(62.1); % frames for the ending phase of the last wave
-		case 3
-			peakRate = 1.0;
-			absentRate = 1.0; % active cell percentage when being "absent"/not dominating
-			nOri = 40;
-			nRep = 3;
-			framesPerStatus = 132;
-			framesToFinish = ceil(24.9);
-	end
-	%%%%%%%%%%%%%
-	nStatus = nOri*nRep;
-	status = zeros(6,nStatus);
-	statusFrame = zeros(nStatus,1);
+    if stage == 2 || stage == 3
+	    %%%%% HERE %%%%%%%%
+	    if stage == 2
+	    	peakRate = 0.5; % active cell percentage during wave
+	    	% corresponds to the parameters set in ext_input.py
+	    	nOri = 32; % number of orientation for the input waves
+	    	nRep = 1; % repeat of each orientation
+	    	framesPerStatus = 225; % frames for each wave
+	    	framesToFinish = ceil(62.1); % frames for the ending phase of the last wave
+	    end
+	    if stage == 3
+	    	peakRate = 1.0;
+	    	absentRate = 1.0; % active cell percentage when being "absent"/not dominating
+	    	nOri = 32;
+	    	nRep = 3;
+	    	framesPerStatus = 132;
+	    	framesToFinish = ceil(24.9);
+	    end
+	    %%%%%%%%%%%%%
+	    nStatus = nOri*nRep;
+	    status = zeros(6,nStatus);
+	    statusFrame = zeros(nStatus,1);
 
-	for i=1:nOri
-		for j = 1:nRep
-			statusFrame((i-1)*nRep + j) = framesPerStatus;
-		end
-		statusFrame(i*nRep) = statusFrame(i*nRep) + framesToFinish;
-	end
-	
-	statusFrame'
-	sum(statusFrame)
-	switch stage 
-		case 2
-			status(5,:) = peakRate;
-			status(6,:) = peakRate;
-		case 3
-			%rands = rand(1,nStatus);
-			%absentSeq = rands > 0;
-            absentSeq = 3:3:nStatus;
-			status(5,:) = peakRate;
-			status(5,absentSeq) = absentRate;
-			status(6,:) = 1.0;
-		otherwise
-			warning('unexpected stage')
-	end
-	reverse = zeros(nStatus,1);
+	    for i=1:nOri
+	    	for j = 1:nRep
+	    		statusFrame((i-1)*nRep + j) = framesPerStatus;
+	    	end
+	    	statusFrame(i*nRep) = statusFrame(i*nRep) + framesToFinish;
+	    end
+	    
+	    statusFrame'
+	    sum(statusFrame)
+	    switch stage 
+	    	case 2
+	    		status(5,:) = peakRate;
+	    		status(6,:) = peakRate;
+	    	case 3
+	    		%rands = rand(1,nStatus);
+	    		%absentSeq = rands > 0;
+                absentSeq = 3:3:nStatus;
+	    		status(5,:) = peakRate;
+	    		status(5,absentSeq) = absentRate;
+	    		status(6,:) = 1.0;
+	    	otherwise
+	    		warning('unexpected stage')
+	    end
+	    reverse = zeros(nStatus,1);
+    else
+	    %%%%% HERE %%%%%%%%
+	    assert(stage == 5);
+	    peakRate = [0.5, 1.0]; % active cell percentage during wave
+	    % corresponds to the parameters set in ext_input.py
+	    nOri = [32, 32]; % number of orientation for the input waves
+	    nRep = [1, 3]; % repeat of each orientation
+	    framesPerStatus = [225, 192]; % frames for each wave
+	    framesToFinish = [ceil(62.1), ceil(49.7)]; % frames for the ending phase of the last wave
+	    absentRate = 1.0; % active cell percentage when being "absent"/not dominating
+	    nStatus = sum(nOri.*nRep);
+	    status = zeros(6,nStatus);
+	    statusFrame = zeros(nStatus,1);
+        others = zeros(nStatus,nother);
+        iFrame = 0;
+        for k = 1:length(nOri)
+            for i=1:nother
+                others(iFrame+1:nOri(k)*nRep(k),i) = set_other(i, k);
+            end
+            iFrame = iFrame + nOri(k)*nRep(k);
+        end
+        others
+	    %%%%%%%%%%%%%
+        iFrame = 0;
+        for k=1:length(nOri)
+            for i=1:nOri(k)
+	        	for j = 1:nRep(k)
+                    jFrame = iFrame + (i-1)*nRep(k) + j;
+	        		statusFrame(jFrame) = framesPerStatus(k);
+                    if k == 2 && mod(j,3) == 0
+                        status(5,jFrame) = absentRate;
+                    else
+	                    status(5,jFrame) = peakRate(k);
+                    end
+	    	        status(6,jFrame) = peakRate(k);
+	        	end
+	        	statusFrame(iFrame + i*nRep(k)) = statusFrame(iFrame + i*nRep(k)) + framesToFinish(k);
+	        end
+            iFrame = iFrame + nOri(k) * nRep(k);
+        end
+	    statusFrame'
+	    sum(statusFrame)
+	    reverse = zeros(nStatus,1);
+    end
 
 	nLGN = nLGN_1D*nLGN_1D;
 	if doubleOnOff
@@ -225,6 +275,10 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	fwrite(fid, status, 'float'); % activated percentage
 	fwrite(fid, statusFrame, 'uint'); % duration
 	fwrite(fid, reverse, 'int');
+    if stage == 5
+	    fwrite(fid, nother, 'uint'); 
+        fwrite(fid, others, 'float');
+    end
 	fclose(fid);
 	
 	fid = fopen(fLGN_vpos, 'w'); % format follows patch.cu, search for the same variable name

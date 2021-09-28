@@ -141,16 +141,17 @@ def plotV1_response_lFF(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, da
     parameterFn = data_fdr + "patchV1_cfg" +_output_suffix + ".bin"
 
     print(f'stage={stage}')
-    if stage == 2:
-        LGN_vposFn = LGN_vposFn2
-        featureFn = featureFn2
-        V1_allposFn = V1_allposFn2
-        V1_vposFn = V1_vposFn2
-    else: # global to local
+    # global to local
+    if stage == 3:
         LGN_vposFn = LGN_vposFn3
         featureFn = featureFn3
         V1_allposFn = V1_allposFn3
         V1_vposFn = V1_vposFn3
+    else: # 2 or 5
+        LGN_vposFn = LGN_vposFn2
+        featureFn = featureFn2
+        V1_allposFn = V1_allposFn2
+        V1_vposFn = V1_vposFn2
 
     LGN_vposFn = res_fdr + LGN_vposFn
     featureFn = res_fdr + featureFn

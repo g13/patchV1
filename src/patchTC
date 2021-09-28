@@ -38,7 +38,7 @@ if [ -d "$fig_fdr" ]
 then
 	echo overwrite contents in $fig_fdr
 else
-	mkdir $fig_fdr	
+	mkdir -p $fig_fdr	
 fi
 
 cp patchTC ${fig_fdr}/patchTC_${op}.bak

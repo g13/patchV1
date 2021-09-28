@@ -980,6 +980,10 @@ void compute_V_collect_spike_learnFF(
             for (PosInt i = 0; i<m; i++) {
                 PosInt lid = tid*max_nLGN + i;
                 Float f = sLGN[lid];
+                // pruning process not revertible
+                if (f == 0) {
+                    continue;
+                }
 				switch (applyHomeo) {
 					case 1:
 						f *= homeostatic_change;

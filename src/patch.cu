@@ -69,6 +69,7 @@ int main(int argc, char** argv) {
 	int applyHomeo;
 	Size snapshotInterval;
 	Size nChunk;
+	Size nOther;
 	Size nOri;
 	Size matConcurrency;
 	Float phyWidth_scale;
@@ -275,6 +276,7 @@ int main(int argc, char** argv) {
 		("virtual_LGN", po::value<bool>(&virtual_LGN)->default_value(false), "LGN become virtual: input is now directly LGN linear response, skipping convolution with the input. Use for: spontaneous waves")
 		("LGN_switch", po::value<bool>(&LGN_switch)->default_value(false), "control LGN activation during retinal waves, make sure LGN_switch file is ready")
 		("switchType", po::value<int>(&switchType)->default_value(0), "0: no switch, 1: per status, 2: rate ratio, 3:per spike.")
+		("nOther", po::value<Size>(&nOther)->default_value(0), "other parameter switch that come with LGN_switch")
 		("reverseInput", po::value<bool>(&reverseInput)->default_value(false), "control input On-Off reverse")
 		("getLGN_sp", po::value<bool>(&getLGN_sp)->default_value(false), "if write LGN spikes to file")
 		("delPrevSnapshot", po::value<bool>(&delPrevSnapshot)->default_value(true), "delete old snapshot")
@@ -1404,6 +1406,7 @@ int main(int argc, char** argv) {
     vector<Float> LGN_sDur;
     vector<Size> LGN_switchIt;
 	vector<int> reverse;
+	vector<Float> others;
     if (LGN_switch || reverseInput) {
         fLGN_switch.open(LGN_switch_filename + conLGN_suffix, fstream::in | fstream::binary);
         if (!fLGN_switch) {
@@ -1451,6 +1454,13 @@ int main(int argc, char** argv) {
                 if (i < nStatus-1) cout << ", ";
                 else  cout << "\n";
             }
+			if (nOther > 0) {
+				Size _nOther;
+            	fLGN_switch.read(reinterpret_cast<char*>(&_nOther), sizeof(Size));
+				assert(_nOther == nOther);
+            	others.assign(nStatus*nOther,0);
+		    	fLGN_switch.read(reinterpret_cast<char*>(&others[0]), nStatus*nOther*sizeof(float));
+			}
 			fLGN_switch.close();
         }
     } else {
@@ -1633,7 +1643,8 @@ int main(int argc, char** argv) {
         Float nD_onMagno[2] = {9.5f, 0.1f};
         Float delay_onMagno[2] = {14.0f, 0.1f};
 
-        Float K_offMagno[2] = {54.0f * frRatioLGN, 0.1f};
+        //Float K_offMagno[2] = {54.0f * frRatioLGN, 0.1f};
+        Float K_offMagno[2] = {60.0f * frRatioLGN, 0.1f};
         Float ratio_offMagno[2] = {1.0f, 0.1f};
         //Float tauR_onMagno[2] = {1.5f, 0.1f}; // Macaque, 8Hz
         //Float tauD_onMagno[2] = {4.5f, 0.1f};
@@ -5605,6 +5616,12 @@ int main(int argc, char** argv) {
 				if (virtual_LGN && currentFrame-1 - lastStatusFrame >= LGN_switchIt[iStatus] || !virtual_LGN && currentFrame - lastStatusFrame >= LGN_switchIt[iStatus]) {
 					iStatus = (iStatus + 1) % nStatus;
     	            typeStatus.assign(&(LGN_status[nInputType*iStatus]));
+					for (PosInt iE = 0; iE<lFF_E_post.n; iE++) {
+						lFF_E_post.A_ratio[iE]*others[iStatus]/others[iStatus-1];
+					}
+					for (PosInt iI = 0; iI<lFF_I_post.n; iI++) {
+						lFF_I_post.A_ratio[iI]*others[iStatus]/others[iStatus-1];
+					}
 					if (virtual_LGN) {
 						lastStatusFrame = currentFrame-1;
 					} else {
