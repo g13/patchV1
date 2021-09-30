@@ -488,12 +488,13 @@ def generate_retinal_wave(amp, spatialFrequency, temporalFrequency, waveSF, wave
     else:
         nseq = 1
         time = np.array([time])
-    amp = check_size(amp, nInputType, nseq, 'amp')
-    spatialFrequency = check_size(spatialFrequency, nInputType, nseq, 'spatialFrequency')
-    temporalFrequency = check_size(temporalFrequency, nInputType, nseq, 'temporalFrequency')
-    direction = check_size(direction, nInputType, nseq, 'direction')
-    phase = check_size(phase, nInputType, nseq, 'phase')
-    sharpness = check_size(sharpness, nInputType, nseq, 'sharpness')
+
+    amp = check_size(amp, nInputType, nseq, 'first', 'amp')
+    spatialFrequency = check_size(spatialFrequency, nInputType, nseq, 'first', 'spatialFrequency')
+    temporalFrequency = check_size(temporalFrequency, nInputType, nseq, 'first', 'temporalFrequency')
+    direction = check_size(direction, nInputType, nseq, 'second', 'direction')
+    phase = check_size(phase, nInputType, nseq, 'first', 'phase')
+    sharpness = check_size(sharpness, nInputType, nseq, 'first', 'sharpness')
 
     if mask is not None:
         if maskData is None:
@@ -674,18 +675,39 @@ def logistic(sharpness):
         return static_nolinearity
     return decorator_logistic
 
-def check_size(target, first, second, label = 'some var'):
+def check_size(target, first, second, preferred = None, label = 'some var'):
+    #print(f'before: {label} = {target}')
     if isinstance(target, (list, tuple, np.ndarray)):
         if not (len(target) == first or len(target) == second):
             raise Exception(f'{label} does not match') 
         else:
-            if len(target) == first:
-                target = np.tile(np.array([target]), (second,1)).T
+            if first == second and preferred is None: 
+                raise Exception(f'{label} shape is ambiguous') 
             else:
-                target = np.tile(np.array([target]), (first,1))
+                if preferred is None:
+                    if len(target) == first:
+                        target = np.tile(np.array([target]), (second,1)).T
+                    else:
+                        target = np.tile(np.array([target]), (first,1))
+                else:
+                    if preferred == 'first':
+                        if len(target) == first:
+                            target = np.tile(np.array([target]), (second,1)).T
+                        else:
+                            raise Exception(f'{label} shape is not consistent with the preferred {preferred} dimension') 
+                        
+                    else:
+                        if preferred == 'second':
+                            if len(target) == second:
+                                target = np.tile(np.array([target]), (first,1))
+                            else:
+                                raise Exception(f'{label} shape is not consistent with the preferred {preferred} dimension') 
+                        else:
+                            raise Exception(f'unknown {preferred} dimension')
     else:
         target = np.tile(np.array([target]), (first, second))
 
+    #print(f'after: {label} = {target}')
     assert(target.shape[0] == first)
     assert(target.shape[1] == second)
     return target
