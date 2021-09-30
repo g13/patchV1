@@ -16,11 +16,15 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	end
 
 	%%%% HERE %%%%%%%%
-    nother = 1; % set the number of temporal-variable learning parameters, such as rLTD 
-    set_other = [[0.25, 1.0]]; % rLTD
+	if stage == 5
+		nother = 1; % set the number of temporal-variable learning parameters, such as rLTD 
+		set_other = [[0.25, 1.0]]; % rLTD
+	else
+		nother = 0;
+	end
 	same = false; % set true if all the V1 neurons have the same LGN connections
 	if stage == 2 || stage == 5
-		pCon = 1.0 % initial sparsity
+		pCon = 0.9 % initial sparsity
 		nLGN_1D = 14; % sqrt of the total number of On/Off LGN cells
 		max_ecc = 10; % radius of the visual field spanned by all the LGN
 	end
@@ -75,7 +79,7 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	    if stage == 2
 	    	peakRate = 0.5; % active cell percentage during wave
 	    	% corresponds to the parameters set in ext_input.py
-	    	nOri = 32; % number of orientation for the input waves
+	    	nOri = 2; % number of orientation for the input waves
 	    	nRep = 1; % repeat of each orientation
 	    	framesPerStatus = 225; % frames for each wave
 	    	framesToFinish = ceil(62.1); % frames for the ending phase of the last wave
@@ -85,8 +89,10 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	    	absentRate = 1.0; % active cell percentage when being "absent"/not dominating
 	    	nOri = 32;
 	    	nRep = 3;
-	    	framesPerStatus = 132;
-	    	framesToFinish = ceil(24.9);
+	    	%framesPerStatus = 132;
+	    	%framesToFinish = ceil(24.9);
+	    	framesPerStatus = 192;
+	    	framesToFinish = ceil(49.7);
 	    end
 	    %%%%%%%%%%%%%
 	    nStatus = nOri*nRep;
@@ -275,8 +281,8 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	fwrite(fid, status, 'float'); % activated percentage
 	fwrite(fid, statusFrame, 'uint'); % duration
 	fwrite(fid, reverse, 'int');
+	fwrite(fid, nother, 'uint'); 
     if stage == 5
-	    fwrite(fid, nother, 'uint'); 
         fwrite(fid, others, 'float');
     end
 	fclose(fid);
@@ -364,14 +370,14 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	% by setting useNewLGN to false, populate LGN.bin follow the format in patch.cu
 	
 	% not in use, only self block is included
-	fNeighborBlock = ['neighborBlock', suffix, '.bin'];
+	fNeighborBlock = [data_fdr, 'neighborBlock', suffix, '.bin'];
 	% not in use, may use if cortical inhibition is needed
-	fV1_delayMat = ['V1_delayMat', suffix, '.bin']; % zeros
-	fV1_conMat = ['V1_conMat', suffix, '.bin']; % zeros
-	fV1_vec = ['V1_vec', suffix, '.bin']; % zeros
+	fV1_delayMat = [data_fdr, 'V1_delayMat', suffix, '.bin']; % zeros
+	fV1_conMat = [data_fdr, 'V1_conMat', suffix, '.bin']; % zeros
+	fV1_vec = [data_fdr, 'V1_vec', suffix, '.bin']; % zeros
 	
-	fV1_gapMat = ['V1_gapMat', suffix, '.bin']; % zeros
-	fV1_gapVec = ['V1_gapVec', suffix, '.bin']; % zeros
+	fV1_gapMat = [data_fdr, 'V1_gapMat', suffix, '.bin']; % zeros
+	fV1_gapVec = [data_fdr, 'V1_gapVec', suffix, '.bin']; % zeros
 	
 	nearNeighborBlock = 1; % self-only
 	fid = fopen(fV1_conMat, 'w');
@@ -432,7 +438,7 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	fwrite(fid, nGapVec, 'uint');
 	fclose(fid);
 	
-	fConnectome = ['connectome_cfg', suffix, '.bin'];
+	fConnectome = [data_fdr, 'connectome_cfg', suffix, '.bin'];
 	fid = fopen(fConnectome, 'w');
 	fwrite(fid,2,'uint');
 	fwrite(fid,1,'uint');
@@ -441,7 +447,7 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	fwrite(fid,[10,10],'float'); % synapse per FF connection in float!
 	fclose(fid);
 	
-	fConStats = ['conStats', suffix, '.bin'];
+	fConStats = [data_fdr, 'conStats', suffix, '.bin'];
 	fid = fopen(fConStats, 'w');
 	fwrite(fid,2,'uint');
 	fwrite(fid,nV1,'uint');

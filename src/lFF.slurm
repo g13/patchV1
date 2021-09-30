@@ -1,12 +1,12 @@
 #!/bin/bash
+cd ${HOME}/repos/patchV1/src
 
-cd $HOME/repos/patchV1/src
-fdr0=/scratch/wd554/patchV1
-res_fdr=$fdr0 # stimulus, V1-static and LGN-static files
-in_fdr=$fdr0 # inputFolder in cfg
-data_fdr=$fdr0 # outputFolder in cfg
+fdr0=/scratch/wd554/Jen
+res_fdr=${fdr0}/resource # stimulus, V1-static and LGN-static files
+in_fdr=${fdr0} # inputFolder in cfg
+data_fdr=${fdr0} # outputFolder in cfg
 
-waveStage=5 # set stage number
+waveStage=3 # set stage number
 
 if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 	fdr=wave_concat/wave_II # folder will be made to store figures and configuratoin files
@@ -17,8 +17,10 @@ if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 fi
 
 if [[ "${waveStage}" = "3" ]] ;then
-	fdr=wave_concat/wave_III
-	op=32x3_iii
+	#fdr=wave_III/standard
+	fdr=wave_III/rLTD-90%
+	#op=32x3_standard
+	op=32x3_rLTD-90%
 	op_cfg=wave_III.cfg
 	lgn=lFF_iii
 	lgn0=lFF_iii
@@ -47,49 +49,49 @@ TF=8
 ori=0
 nOri=0
 
-v1=$lgn # cortical V1 connections used the same theme as LGN to V1 connections
+v1=${lgn} # cortical V1 connections used the same theme as LGN to V1 connections
 
-echo $op # echo/print out the variable "op" in the job's output file
+echo ${op} # echo/print out the variable "op" in the job's output file
 
 fig_fdr=${fdr0}/${fdr}
 
-if [ -d "$fig_fdr" ]
+if [ -d "${fig_fdr}" ]
 then
-	echo overwrite contents in $fig_fdr
+	echo overwrite contents in ${fig_fdr}
 else
-	mkdir -p $fig_fdr
+	mkdir -p ${fig_fdr}
 fi
 
-echo using $op_cfg
-echo outputs to $fig_fdr
+echo using ${op_cfg}
+echo outputs to ${fig_fdr}
 cp lFF.slurm ${fig_fdr}/lFF_${op}_slurm.bak
 
 readNewSpike=$1
-if [ -z "$readNewSpike" ]; 
+if [ -z "${readNewSpike}" ]; 
 then
 	readNewSpike=True
 fi
-echo readNewSpike=$readNewSpike
+echo readNewSpike=${readNewSpike}
 
 plotOnly=$2
-if [ -z "$plotOnly" ]; 
+if [ -z "${plotOnly}" ]; 
 then
 	plotOnly=False
 fi
-echo plotOnly=$plotOnly
+echo plotOnly=${plotOnly}
 
 cp outputLearnFF.m outputLearnFF_${op}_m.bak
-if [ "$plotOnly" = False ]
+if [ "${plotOnly}" = False ]
 then
 	gpu=1
-	cp $op_cfg ${fdr0}/$op_cfg
+	cp ${op_cfg} ${fdr0}/${op_cfg}
 
-	cp $op_cfg ${op}_cfg.bak
+	cp ${op_cfg} ${op}_cfg.bak
 	cp inputLearnFF.m inputLearnFF_${op}_m.bak
-	mv ${op}_cfg.bak inputLearnFF_${op}_m.bak outputLearnFF_${op}_m.bak $fig_fdr
+	mv ${op}_cfg.bak inputLearnFF_${op}_m.bak outputLearnFF_${op}_m.bak ${fig_fdr}
 else
 	gpu=0
-	mv outputLearnFF_${op}_m.bak $fig_fdr
+	mv outputLearnFF_${op}_m.bak ${fig_fdr}
 fi
 
 if ! [ -d "log" ]
@@ -100,17 +102,17 @@ fi
 #isuffix=0
 sbatch <<EOT
 #!/bin/bash
-#SBATCH --gres=gpu:$gpu
+#SBATCH --gres=gpu:${gpu}
 #SBATCH --job-name=plotLearn
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=64GB
-#SBATCH --time=08:00:00
+#SBATCH --time=03:00:00
 #SBATCH -o log/pLearn_%J.out
 #SBATCH --mail-user=wd554@nyu.edu
 #SBATCH --mail-type=END
 set -e
-echo $PATH
+echo ${PATH}
 module purge
 module load gcc/10.2.0
 module load cuda/11.1.74
@@ -118,43 +120,43 @@ module load boost/intel/1.74.0
 module load matlab/2020b
 module list
 
-cd $fdr0
+cd ${fdr0}
 date
 
-if [ "$plotOnly" = False ]
+if [ "${plotOnly}" = False ]
 then
-	echo matlab -nodisplay -nosplash -r "inputLearnFF('$lgn', $seed, 0, '$lgn0', $waveStage, '$res_fdr', '$data_fdr');exit;"
-	matlab -nodisplay -nosplash -r "inputLearnFF('$lgn', $seed, 0, '$lgn0', $waveStage, '$res_fdr', '$data_fdr');exit;"
+	echo matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, 0, '${lgn0}', ${waveStage}, '${res_fdr}', '${data_fdr}');exit;"
+	matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, 0, '${lgn0}', ${waveStage}, '${res_fdr}', '${data_fdr}');exit;"
 	date
-	patch -c $op_cfg
+	patch -c ${op_cfg}
 	date
 fi
 
 
-#echo plotLGN_response.py $op $lgn $res_fdr $data_fdr $fig_fdr $readNewSpike & 
-#plotLGN_response.py $op $lgn $res_fdr $data_fdr $fig_fdr $readNewSpike & 
+#echo plotLGN_response.py ${op} ${lgn} ${res_fdr} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
+#plotLGN_response.py ${op} ${lgn} ${res_fdr} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
 
-echo plotV1_response_lFF.py $op $lgn $v1 $res_fdr $data_fdr $fig_fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus $waveStage & 
-plotV1_response_lFF.py $op $lgn $v1 $res_fdr $data_fdr $fig_fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus $waveStage
+echo plotV1_response_lFF.py ${op} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} ${waveStage} & 
+plotV1_response_lFF.py ${op} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} ${waveStage}
 
-echo matlab -nodisplay -nosplash -r "outputLearnFF('$lgn0', '$lgn', '$op', '$res_fdr', '$data_fdr', '$fig_fdr', $LGN_switch, false, $st, $examSingle);exit;" &
-matlab -nodisplay -nosplash -r "outputLearnFF('$lgn0', '$lgn', '$op', '$res_fdr', '$data_fdr', '$fig_fdr', $LGN_switch, false, $st, $examSingle);exit;" &
+echo matlab -nodisplay -nosplash -r "outputLearnFF('${lgn0}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle});exit;" &
+matlab -nodisplay -nosplash -r "outputLearnFF('${lgn0}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle});exit;" &
 
-#echo matlab -nodisplay -nosplash -r "testLearnFF('$lgn', '$op', '$data_fdr');outputLearnFF('$lgn', '$op', '$data_fdr', $LGN_switch, false);exit;" &
-#matlab -nodisplay -nosplash -r "testLearnFF('$lgn', '$op', '$data_fdr');outputLearnFF('$lgn', '$op', '$data_fdr', $LGN_switch, false);exit;" &
+#echo matlab -nodisplay -nosplash -r "testLearnFF('${lgn}', '${op}', '${data_fdr}');outputLearnFF('${lgn}', '${op}', '${data_fdr}', ${LGN_switch}, false);exit;" &
+#matlab -nodisplay -nosplash -r "testLearnFF('${lgn}', '${op}', '${data_fdr}');outputLearnFF('${lgn}', '${op}', '${data_fdr}', ${LGN_switch}, false);exit;" &
 
-#python patchOutput.py $op $data_fdr &
+#python patchOutput.py ${op} ${data_fdr} &
 
-#echo python getReceptiveField_lFF.py collecting $op $lgn $data_fdr $isuffix 1
-#python getReceptiveField_lFF.py collecting $op $lgn $data_fdr $isuffix 1
-#echo python getReceptiveField_lFF.py plotting $isuffix $op $lgn $data_fdr $nOri $isuffix
-#python getReceptiveField_lFF.py plotting $isuffix $op $lgn $data_fdr $nOri $isuffix
+#echo python getReceptiveField_lFF.py collecting ${op} ${lgn} ${data_fdr} ${isuffix} 1
+#python getReceptiveField_lFF.py collecting ${op} ${lgn} ${data_fdr} ${isuffix} 1
+#echo python getReceptiveField_lFF.py plotting ${isuffix} ${op} ${lgn} ${data_fdr} ${nOri} ${isuffix}
+#python getReceptiveField_lFF.py plotting ${isuffix} ${op} ${lgn} ${data_fdr} ${nOri} ${isuffix}
 #
 #isuffix=1
-#echo python getReceptiveField_lFF.py collecting $op $lgn $data_fdr $isuffix 1
-#python getReceptiveField_lFF.py collecting $op $lgn $data_fdr $isuffix 1
-#echo python getReceptiveField_lFF.py plotting $isuffix $op $lgn $data_fdr $nOri $isuffix
-#python getReceptiveField_lFF.py plotting $isuffix $op $lgn $data_fdr $nOri $isuffix
+#echo python getReceptiveField_lFF.py collecting ${op} ${lgn} ${data_fdr} ${isuffix} 1
+#python getReceptiveField_lFF.py collecting ${op} ${lgn} ${data_fdr} ${isuffix} 1
+#echo python getReceptiveField_lFF.py plotting ${isuffix} ${op} ${lgn} ${data_fdr} ${nOri} ${isuffix}
+#python getReceptiveField_lFF.py plotting ${isuffix} ${op} ${lgn} ${data_fdr} $nOri $isuffix
 
 wait
 date

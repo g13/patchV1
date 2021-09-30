@@ -108,6 +108,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	end
 	disp(V1_pick); 
 
+	%%%%%%%%%%%%%%%%%% HERE %%%%%%%%%%%%%%%%%%
     orient = zeros(nV1,1);
 	fid = fopen(f_sLGN, 'r');
 	fseek(fid, 6*4, 0); % skip till time
@@ -154,6 +155,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	set(f, 'OuterPosition', [.1, .1, 8, 12]);
 	set(f, 'innerPosition', [.1, .1, 8, 12]);
 	saveas(f, [fig_fdr, 'stats-LGN_V1', osuffix,rtime, '.png']);
+	%%%%%%%%%%%%%%%%%% HERE %%%%%%%%%%%%%%%%%%
 
 	if LGN_switch
 		fid = fopen(fLGN_switch, 'r');
