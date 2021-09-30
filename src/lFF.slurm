@@ -12,18 +12,18 @@ if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 	fdr=wave_concat/wave_II # folder will be made to store figures and configuratoin files
 	op=32_ii # theme string to be added to filenames of data and figures
 	op_cfg=wave_II.cfg # the simulation config file to be used
+	new_setup=False
 	lgn=lFF_ii # the theme string to be used for LGN_V1 connections
 	lgn0=lFF # the theme string to be used for V1, LGN positions etc.
 fi
 
 if [[ "${waveStage}" = "3" ]] ;then
-	#fdr=wave_III/standard
-	fdr=wave_III/rLTD-90%
-	#op=32x3_standard
-	op=32x3_rLTD-90%
+	fdr=wave_III/32x3_5-10_rLTD-90%
+	op=32x3_5-10_rLTD-90%
 	op_cfg=wave_III.cfg
-	lgn=lFF_iii
-	lgn0=lFF_iii
+	new_setup=False
+	lgn=lFF_iii_5-10
+	lgn0=lFF_iii_5-10
 fi
 
 if [[ "${waveStage}" = "5" ]] ;then
@@ -123,10 +123,13 @@ module list
 cd ${fdr0}
 date
 
-if [ "${plotOnly}" = False ]
+if [ "${plotOnly}" = False ];
 then
-	echo matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, 0, '${lgn0}', ${waveStage}, '${res_fdr}', '${data_fdr}');exit;"
-	matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, 0, '${lgn0}', ${waveStage}, '${res_fdr}', '${data_fdr}');exit;"
+	if [ "${new_setup}" = True ];
+	then
+		echo matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, 0, '${lgn0}', ${waveStage}, '${res_fdr}', '${data_fdr}');exit;"
+		matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, 0, '${lgn0}', ${waveStage}, '${res_fdr}', '${data_fdr}');exit;"
+	fi
 	date
 	patch -c ${op_cfg}
 	date
