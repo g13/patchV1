@@ -10,12 +10,11 @@ import matplotlib.colors as clr
 from matplotlib import cm
 import sys
 from readPatchOutput import *
-from global_vars_lFF import LGN_vposFn3, featureFn3, V1_allposFn3, V1_vposFn3, LGN_vposFn2, featureFn2, V1_allposFn2, V1_vposFn2, seed
 np.seterr(invalid = 'raise')
 
 
 #@profile
-def plotV1_response_lFF(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus, stage):
+def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
     #sample = np.array([0,1,2,768])
     #sample = np.array([40, 58, 75])
     #sample = np.array([1338, 10235])
@@ -24,6 +23,7 @@ def plotV1_response_lFF(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, da
     SCsplit = 0
     nLGNorF1F0 = True
     ns = 10
+    seed = 657890
     np.random.seed(seed)
     nt_ = 0
     nstep = 10000
@@ -118,8 +118,10 @@ def plotV1_response_lFF(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, da
     else:
         output_suffix = output_suffix0
     _output_suffix = "_" + output_suffix
+    res_suffix = "_" + res_suffix
     conLGN_suffix = "_" + conLGN_suffix
     conV1_suffix = "_" + conV1_suffix
+
     data_fdr = data_fdr+"/"
     res_fdr = res_fdr+"/"
     fig_fdr = fig_fdr+"/"
@@ -140,23 +142,10 @@ def plotV1_response_lFF(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, da
     spDataFn = data_fdr + "V1_spikes" + _output_suffix
     parameterFn = data_fdr + "patchV1_cfg" +_output_suffix + ".bin"
 
-    print(f'stage={stage}')
-    # global to local
-    if stage == 3:
-        LGN_vposFn = LGN_vposFn3
-        featureFn = featureFn3
-        V1_allposFn = V1_allposFn3
-        V1_vposFn = V1_vposFn3
-    else: # 2 or 5
-        LGN_vposFn = LGN_vposFn2
-        featureFn = featureFn2
-        V1_allposFn = V1_allposFn2
-        V1_vposFn = V1_vposFn2
-
-    LGN_vposFn = res_fdr + LGN_vposFn
-    featureFn = res_fdr + featureFn
-    V1_allposFn = res_fdr + V1_allposFn
-    V1_vposFn = res_fdr + V1_vposFn
+    LGN_vposFn = res_fdr + 'LGN_vpos'+ res_suffix + ".bin"
+    featureFn = res_fdr + 'V1_feature' + res_suffix + ".bin"
+    V1_allposFn = res_fdr + 'V1_allpos' + res_suffix + ".bin"
+    V1_vposFn = res_fdr + 'V1_vpos' + res_suffix + ".bin"
 
     prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN = read_cfg(parameterFn)
     blockSize = typeAcc[-1]
@@ -2926,44 +2915,46 @@ def ellipse(cx, cy, a, baRatio, orient, n = 50):
 if __name__ == "__main__":
 
     if len(sys.argv) < 14:
-        raise Exception('not enough argument for plotV1_response_lFF(output_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus, stage)')
+        raise Exception('not enough argument for plotV1_response_lFF(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus)')
     else:
         output_suffix = sys.argv[1]
         print(output_suffix)
-        conLGN_suffix = sys.argv[2]
+        res_suffix = sys.argv[2]
+        print(res_suffix)
+        conLGN_suffix = sys.argv[3]
         print(conLGN_suffix)
-        conV1_suffix = sys.argv[3]
+        conV1_suffix = sys.argv[4]
         print(conV1_suffix)
-        res_fdr = sys.argv[4]
+        res_fdr = sys.argv[5]
         print(res_fdr)
-        data_fdr = sys.argv[5]
+        data_fdr = sys.argv[6]
         print(data_fdr)
-        fig_fdr = sys.argv[6]
+        fig_fdr = sys.argv[7]
         print(fig_fdr)
-        TF = float(sys.argv[7])
+        TF = float(sys.argv[8])
         print(TF)
-        iOri = int(sys.argv[8])
-        nOri = int(sys.argv[9])
+        iOri = int(sys.argv[9])
+        nOri = int(sys.argv[10])
         print(f'{iOri}/{nOri}')
-        if sys.argv[10] == 'True' or sys.argv[10] == '1':
+        if sys.argv[11] == 'True' or sys.argv[10] == '1':
             readNewSpike = True 
             print('read new spikes')
         else:
             readNewSpike = False
             print('read stored spikes')
-        if sys.argv[11] == 'True' or sys.argv[11] == '1':
+        if sys.argv[12] == 'True' or sys.argv[11] == '1':
             usePrefData = True 
             print('using fitted data')
         else:
             usePrefData = False
             print('not using fitted data')
-        if sys.argv[12] == 'True' or sys.argv[12] == '1':
+        if sys.argv[13] == 'True' or sys.argv[12] == '1':
             collectMeanDataOnly= True 
             print('collect mean data only')
         else:
             collectMeanDataOnly = False
 
-        OPstatus = int(sys.argv[13])
+        OPstatus = int(sys.argv[14])
         if OPstatus != 0 and OPstatus != 1 and OPstatus != 2:
             raise Exception(f'OPstatus = {OPstatus} but it can only be 0: no OP plots, 1: preset OP plots, 2: update OP plots only')
         else:
@@ -2973,7 +2964,6 @@ if __name__ == "__main__":
                 print('preset OP plots are plotted')
             if OPstatus == 2:
                 print('update OP plots only')
-        stage = int(sys.argv[14])
 
     print(sys.argv)
-    plotV1_response_lFF(output_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus, stage)
+    plotV1_response_lFF(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus)

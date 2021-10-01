@@ -11,7 +11,6 @@ from sys import stdout
 from readPatchOutput import *
 sys.path.append(os.path.realpath('..'))
 from ext_signal import apply_sRGB_gamma, LMS2sRGB
-from global_vars_lFF import LGN_vposFn, featureFn, V1_allposFn, V1_vposFn, seed
 import warnings
 warnings.filterwarnings( "ignore", module = "matplotlib\..*" )
 
@@ -207,7 +206,7 @@ def getReceptiveField(spikeInfo, inputFn, frameRate, output_fdr, output_suffix, 
         #popSF.tofile(f)
         #pop.tofile(f)
 
-def plotSta(isuffix, output_suffix, conLGN_suffix, output_fdr, nf, hasOP = False):
+def plotSta(isuffix, output_suffix, res_suffix, conLGN_suffix, output_fdr, nf, hasOP = False):
 
     if isuffix == 0:
         suffix = 'LGN'
@@ -224,6 +223,15 @@ def plotSta(isuffix, output_suffix, conLGN_suffix, output_fdr, nf, hasOP = False
         parameterFn = "patchV1_cfg" +_output_suffix + "_1.bin"
 
     print(parameterFn)
+
+    res_suffix = "_" + res_suffix
+
+    LGN_vposFn = 'LGN_vpos'+ res_suffix + ".bin"
+    featureFn = 'V1_feature' + res_suffix + ".bin"
+    V1_allposFn = 'V1_allpos' + res_suffix + ".bin"
+    #LGN_vposFn = res_fdr + 'LGN_vpos'+ res_suffix + ".bin"
+    #featureFn = res_fdr + 'V1_feature' + res_suffix + ".bin"
+    #V1_allposFn = res_fdr + 'V1_allpos' + res_suffix + ".bin"
 
     prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1, nstep, dt, normViewDistance, L_x0, L_y0, R_x0, R_y0 = read_cfg(parameterFn, True)
 
@@ -558,6 +566,7 @@ if __name__ == "__main__":
 
         prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1, nstep, dt, normViewDistance, L_x0, L_y0, R_x0, R_y0 = read_cfg(parameterFn, True)
 
+        seed = 7689237
         np.random.seed(seed)
         if LGN_or_V1 == 0:
             with np.load(LGN_spFn + '.npz', allow_pickle=True) as data:
@@ -596,17 +605,18 @@ if __name__ == "__main__":
         
         isuffix = int(sys.argv[2])
         output_suffix = sys.argv[3]
-        conLGN_suffix = sys.argv[4]
-        output_fdr = sys.argv[5]
-        nf = int(sys.argv[6])
+        res_suffix = int(sys.argv[4])
+        conLGN_suffix = sys.argv[5]
+        output_fdr = sys.argv[6]
+        nf = int(sys.argv[7])
         if len(sys.argv) < 8:
             hasOP = False
         else:
-            if sys.argv[7] == True or sys.argv[7] == '1':
+            if sys.argv[8] == True or sys.argv[8] == '1':
                 hasOP = True
-            elif sys.argv[7] == False or sys.argv[7] == '0':
+            elif sys.argv[8] == False or sys.argv[8] == '0':
                 hasOP = False
             else:
                 raise Exception('hasOP can only be True(1) or False(0)')
         
-        plotSta(isuffix, output_suffix, conLGN_suffix, output_fdr, nf, hasOP)
+        plotSta(isuffix, output_suffix, res_suffix, conLGN_suffix, output_fdr, nf, hasOP)

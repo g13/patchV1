@@ -14,16 +14,18 @@ if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 	op_cfg=wave_II.cfg # the simulation config file to be used
 	new_setup=False
 	lgn=lFF_ii # the theme string to be used for LGN_V1 connections
-	lgn0=lFF # the theme string to be used for V1, LGN positions etc.
+	res=lFF # the theme string to be used for V1, LGN positions etc.
 fi
 
 if [[ "${waveStage}" = "3" ]] ;then
-	fdr=wave_III/32x3_5-10_rLTD-90%
-	op=32x3_5-10_rLTD-90%
+	#fdr=wave_III/32x3_5-5_pr_rLTD-90%
+	#op=32x3_5-5_pr_rLTD-90%
+	fdr=wave_III/32x3_5-5_pr_standard
+	op=32x3_5-5_pr_standard
 	op_cfg=wave_III.cfg
-	new_setup=False
-	lgn=lFF_iii_5-10
-	lgn0=lFF_iii_5-10
+	new_setup=True
+	lgn=lFF_iii_5-5
+	res=lFF_iii_5-5
 fi
 
 if [[ "${waveStage}" = "5" ]] ;then
@@ -31,7 +33,7 @@ if [[ "${waveStage}" = "5" ]] ;then
 	op=32_32x3_concat
 	op_cfg=wave_concat.cfg
 	lgn=lFF_concat
-	lgn0=lFF # starts out from stage II
+	res=lFF # starts out from stage II
 fi
 
 seed=1924784 # RANDOM SEED for post-analysis sampling and input randomization 
@@ -127,8 +129,8 @@ if [ "${plotOnly}" = False ];
 then
 	if [ "${new_setup}" = True ];
 	then
-		echo matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, 0, '${lgn0}', ${waveStage}, '${res_fdr}', '${data_fdr}');exit;"
-		matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, 0, '${lgn0}', ${waveStage}, '${res_fdr}', '${data_fdr}');exit;"
+		echo matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, 0, '${res}', ${waveStage}, '${res_fdr}', '${data_fdr}');exit;"
+		matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, 0, '${res}', ${waveStage}, '${res_fdr}', '${data_fdr}');exit;"
 	fi
 	date
 	patch -c ${op_cfg}
@@ -139,11 +141,11 @@ fi
 #echo plotLGN_response.py ${op} ${lgn} ${res_fdr} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
 #plotLGN_response.py ${op} ${lgn} ${res_fdr} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
 
-echo plotV1_response_lFF.py ${op} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} ${waveStage} & 
-plotV1_response_lFF.py ${op} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} ${waveStage}
+echo plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} & 
+plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
 
-echo matlab -nodisplay -nosplash -r "outputLearnFF('${lgn0}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle});exit;" &
-matlab -nodisplay -nosplash -r "outputLearnFF('${lgn0}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle});exit;" &
+echo matlab -nodisplay -nosplash -r "outputLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle});exit;" &
+matlab -nodisplay -nosplash -r "outputLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle});exit;" &
 
 #echo matlab -nodisplay -nosplash -r "testLearnFF('${lgn}', '${op}', '${data_fdr}');outputLearnFF('${lgn}', '${op}', '${data_fdr}', ${LGN_switch}, false);exit;" &
 #matlab -nodisplay -nosplash -r "testLearnFF('${lgn}', '${op}', '${data_fdr}');outputLearnFF('${lgn}', '${op}', '${data_fdr}', ${LGN_switch}, false);exit;" &
@@ -152,14 +154,14 @@ matlab -nodisplay -nosplash -r "outputLearnFF('${lgn0}', '${lgn}', '${op}', '${r
 
 #echo python getReceptiveField_lFF.py collecting ${op} ${lgn} ${data_fdr} ${isuffix} 1
 #python getReceptiveField_lFF.py collecting ${op} ${lgn} ${data_fdr} ${isuffix} 1
-#echo python getReceptiveField_lFF.py plotting ${isuffix} ${op} ${lgn} ${data_fdr} ${nOri} ${isuffix}
-#python getReceptiveField_lFF.py plotting ${isuffix} ${op} ${lgn} ${data_fdr} ${nOri} ${isuffix}
+#echo python getReceptiveField_lFF.py plotting ${isuffix} ${op} ${res} ${lgn} ${data_fdr} ${nOri} ${isuffix}
+#python getReceptiveField_lFF.py plotting ${isuffix} ${op} ${res} ${lgn} ${data_fdr} ${nOri} ${isuffix}
 #
 #isuffix=1
 #echo python getReceptiveField_lFF.py collecting ${op} ${lgn} ${data_fdr} ${isuffix} 1
 #python getReceptiveField_lFF.py collecting ${op} ${lgn} ${data_fdr} ${isuffix} 1
-#echo python getReceptiveField_lFF.py plotting ${isuffix} ${op} ${lgn} ${data_fdr} ${nOri} ${isuffix}
-#python getReceptiveField_lFF.py plotting ${isuffix} ${op} ${lgn} ${data_fdr} $nOri $isuffix
+#echo python getReceptiveField_lFF.py plotting ${isuffix} ${op} ${res} ${lgn} ${data_fdr} ${nOri} ${isuffix}
+#python getReceptiveField_lFF.py plotting ${isuffix} ${op} ${res} ${lgn} ${data_fdr} $nOri $isuffix
 
 wait
 date

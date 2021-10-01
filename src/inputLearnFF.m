@@ -48,7 +48,7 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	fLGN_switch = [data_fdr, 'LGN_switch', suffix, '.bin'];
 
 	fV1_vposFn = [res_fdr, 'V1_vpos', suffix0, '.bin'];
-	fV1_pos = [res_fdr, 'V1_pos', suffix0, '.bin'];
+	fV1_pos = [res_fdr, 'V1_allpos', suffix0, '.bin'];
 	fV1_feature = [res_fdr, 'V1_feature', suffix0, '.bin'];
 	fLGN_vpos = [res_fdr, 'LGN_vpos', suffix0, '.bin'];
 	fLGN_surfaceID = [res_fdr, 'LGN_surfaceID', suffix0, '.bin'];
@@ -89,10 +89,10 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	    	absentRate = 1.0; % active cell percentage when being "absent"/not dominating
 	    	nOri = 32;
 	    	nRep = 3;
-	    	%framesPerStatus = 132;
-	    	%framesToFinish = ceil(24.9);
-	    	framesPerStatus = 192;
-	    	framesToFinish = ceil(49.7);
+	    	framesPerStatus = 132;
+	    	framesToFinish = ceil(24.9);
+	    	%framesPerStatus = 192;
+	    	%framesToFinish = ceil(49.7);
 	    end
 	    %%%%%%%%%%%%%
 	    nStatus = nOri*nRep;
