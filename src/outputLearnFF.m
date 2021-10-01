@@ -35,8 +35,8 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	V1_frFn = [data_fdr, 'max_fr', osuffix, '.bin']
 
 	fLGN_vpos = [res_fdr, 'LGN_vpos', isuffix0, '.bin'];
-	LGN_V1_id_fn = [data_fdr, 'LGN_V1_idList', isuffix, '.bin']
-	fLGN_switch = [data_fdr,'LGN_switch', isuffix, '.bin'];
+	LGN_V1_id_fn = [res_fdr, 'LGN_V1_idList', isuffix, '.bin']
+	fLGN_switch = [res_fdr,'LGN_switch', isuffix, '.bin'];
 
 	fid = fopen(learnDataFn, 'r');
 	dt = fread(fid, 1, 'float')

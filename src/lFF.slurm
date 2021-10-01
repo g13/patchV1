@@ -2,8 +2,7 @@
 cd ${HOME}/repos/patchV1/src
 
 fdr0=/scratch/wd554/Jen
-res_fdr=${fdr0}/resource # stimulus, V1-static and LGN-static files
-in_fdr=${fdr0} # inputFolder in cfg
+res_fdr=${fdr0}/resource # inputFolder in cfg stimulus, V1-static, LGN-static and connectome files
 data_fdr=${fdr0} # outputFolder in cfg
 
 waveStage=3 # set stage number
@@ -32,6 +31,7 @@ if [[ "${waveStage}" = "5" ]] ;then
 	fdr=wave_concat
 	op=32_32x3_concat
 	op_cfg=wave_concat.cfg
+	new_setup=True
 	lgn=lFF_concat
 	res=lFF # starts out from stage II
 fi
@@ -129,8 +129,8 @@ if [ "${plotOnly}" = False ];
 then
 	if [ "${new_setup}" = True ];
 	then
-		echo matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, 0, '${res}', ${waveStage}, '${res_fdr}', '${data_fdr}');exit;"
-		matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, 0, '${res}', ${waveStage}, '${res_fdr}', '${data_fdr}');exit;"
+		echo matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, 0, '${res}', ${waveStage}, '${res_fdr}');exit;"
+		matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, 0, '${res}', ${waveStage}, '${res_fdr}');exit;"
 	fi
 	date
 	patch -c ${op_cfg}

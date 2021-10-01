@@ -4,10 +4,9 @@
 % stdratio: initial connections weights to be gaussian distributed if nonzero
 % suffix0: theme string %lgn0 in lFF.slurm
 % stage: retinal wave stages, takes 2 or 3
-function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
+function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 
-	data_fdr = [data_fdr,'/']
-	res_fdr = [res_fdr,'/']
+	fdr = [fdr,'/'] %inputFolder in cfg
 
 	if stdratio > 0
 		normed = true;
@@ -42,16 +41,16 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	    suffix = ['_', suffix];
 	end
 
-	fLGN_V1_ID = [data_fdr, 'LGN_V1_idList', suffix, '.bin'];
-	fLGN_V1_s = [data_fdr, 'LGN_V1_sList', suffix, '.bin'];
-	fV1_RFprop = [data_fdr, 'V1_RFprop', suffix, '.bin'];
-	fLGN_switch = [data_fdr, 'LGN_switch', suffix, '.bin'];
+	fLGN_V1_ID = [fdr, 'LGN_V1_idList', suffix, '.bin'];
+	fLGN_V1_s = [fdr, 'LGN_V1_sList', suffix, '.bin'];
+	fV1_RFprop = [fdr, 'V1_RFprop', suffix, '.bin'];
+	fLGN_switch = [fdr, 'LGN_switch', suffix, '.bin'];
 
-	fV1_vposFn = [res_fdr, 'V1_vpos', suffix0, '.bin'];
-	fV1_allpos = [res_fdr, 'V1_allpos', suffix0, '.bin'];
-	fV1_feature = [res_fdr, 'V1_feature', suffix0, '.bin'];
-	fLGN_vpos = [res_fdr, 'LGN_vpos', suffix0, '.bin'];
-	fLGN_surfaceID = [res_fdr, 'LGN_surfaceID', suffix0, '.bin'];
+	fV1_vposFn = [fdr, 'V1_vpos', suffix0, '.bin'];
+	fV1_allpos = [fdr, 'V1_allpos', suffix0, '.bin'];
+	fV1_feature = [fdr, 'V1_feature', suffix0, '.bin'];
+	fLGN_vpos = [fdr, 'LGN_vpos', suffix0, '.bin'];
+	fLGN_surfaceID = [fdr, 'LGN_surfaceID', suffix0, '.bin'];
 	
 	%parvoMagno = 1 % parvo
 	parvoMagno = 2 % magno 
@@ -370,14 +369,14 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	% by setting useNewLGN to false, populate LGN.bin follow the format in patch.cu
 	
 	% not in use, only self block is included
-	fNeighborBlock = [data_fdr, 'neighborBlock', suffix, '.bin'];
+	fNeighborBlock = [fdr, 'neighborBlock', suffix, '.bin'];
 	% not in use, may use if cortical inhibition is needed
-	fV1_delayMat = [data_fdr, 'V1_delayMat', suffix, '.bin']; % zeros
-	fV1_conMat = [data_fdr, 'V1_conMat', suffix, '.bin']; % zeros
-	fV1_vec = [data_fdr, 'V1_vec', suffix, '.bin']; % zeros
+	fV1_delayMat = [fdr, 'V1_delayMat', suffix, '.bin']; % zeros
+	fV1_conMat = [fdr, 'V1_conMat', suffix, '.bin']; % zeros
+	fV1_vec = [fdr, 'V1_vec', suffix, '.bin']; % zeros
 	
-	fV1_gapMat = [data_fdr, 'V1_gapMat', suffix, '.bin']; % zeros
-	fV1_gapVec = [data_fdr, 'V1_gapVec', suffix, '.bin']; % zeros
+	fV1_gapMat = [fdr, 'V1_gapMat', suffix, '.bin']; % zeros
+	fV1_gapVec = [fdr, 'V1_gapVec', suffix, '.bin']; % zeros
 	
 	nearNeighborBlock = 1; % self-only
 	fid = fopen(fV1_conMat, 'w');
@@ -438,7 +437,7 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	fwrite(fid, nGapVec, 'uint');
 	fclose(fid);
 	
-	fConnectome = [data_fdr, 'connectome_cfg', suffix, '.bin'];
+	fConnectome = [fdr, 'connectome_cfg', suffix, '.bin'];
 	fid = fopen(fConnectome, 'w');
 	fwrite(fid,2,'uint');
 	fwrite(fid,1,'uint');
@@ -447,7 +446,7 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	fwrite(fid,[10,10],'float'); % synapse per FF connection in float!
 	fclose(fid);
 	
-	fConStats = [data_fdr, 'conStats', suffix, '.bin'];
+	fConStats = [fdr, 'conStats', suffix, '.bin'];
 	fid = fopen(fConStats, 'w');
 	fwrite(fid,2,'uint');
 	fwrite(fid,nV1,'uint');

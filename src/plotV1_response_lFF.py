@@ -131,17 +131,17 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
     LGN_spFn = data_fdr + "LGN_sp" + _output_suffix
     meanFn = data_fdr + "mean_data" + _output_suffix + ".bin"
     
-    LGN_V1_sFn = data_fdr + "LGN_V1_sList" + conLGN_suffix + ".bin"
-    LGN_V1_idFn = data_fdr + "LGN_V1_idList" + conLGN_suffix + ".bin"
-    
-    conStats_Fn = data_fdr + "conStats" + conV1_suffix + ".bin"
-    V1_RFpropFn = data_fdr + "V1_RFprop" + conLGN_suffix + ".bin"
-
     pref_file = data_fdr + 'cort_pref_' + output_suffix0 + '.bin'
+    if nOri == 0:
+        max_frFn = data_fdr + 'max_fr' + output_suffix0 + '.bin'
 
     spDataFn = data_fdr + "V1_spikes" + _output_suffix
     parameterFn = data_fdr + "patchV1_cfg" +_output_suffix + ".bin"
 
+    LGN_V1_sFn = res_fdr + "LGN_V1_sList" + conLGN_suffix + ".bin"
+    LGN_V1_idFn = res_fdr + "LGN_V1_idList" + conLGN_suffix + ".bin"
+    conStats_Fn = res_fdr + "conStats" + conV1_suffix + ".bin"
+    V1_RFpropFn = res_fdr + "V1_RFprop" + conLGN_suffix + ".bin"
     LGN_vposFn = res_fdr + 'LGN_vpos'+ res_suffix + ".bin"
     featureFn = res_fdr + 'V1_feature' + res_suffix + ".bin"
     V1_allposFn = res_fdr + 'V1_allpos' + res_suffix + ".bin"
@@ -310,7 +310,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
     fr = np.array([x[np.logical_and(x>=step0*dt, x<(nt_+step0)*dt)].size for x in spScatter])/t_in_sec
 
     if nOri == 0:
-        with open('max_fr_' + output_suffix0 + '.bin', 'wb') as f:
+        with open(max_frFn, 'wb') as f:
             fr.tofile(f)
 
     print('V1 spikes acquired')
