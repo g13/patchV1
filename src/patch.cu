@@ -295,7 +295,7 @@ int main(int argc, char** argv) {
 	string snapshot_suffix; // output_suffix of the snapshots for previous runs
 	string conStats_filename;
 	string stimulus_filename, LGN_switch_filename;
-	string V1_RF_filename, V1_feature_filename, V1_pos_filename;
+	string V1_RF_filename, V1_feature_filename, V1_allpos_filename;
 	string neighborBlock_filename;
 	string V1_vec_filename, V1_gapVec_filename, V1_delayMat_filename, V1_conMat_filename, V1_gapMat_filename;
 	string LGN_surfaceID_filename;
@@ -317,7 +317,7 @@ int main(int argc, char** argv) {
 		("fLGN_V1_ID", po::value<string>(&LGN_V1_ID_filename)->default_value("LGN_V1_idList"), "file stores LGN to V1 connections")
 		("fLGN_V1_s", po::value<string>(&LGN_V1_s_filename)->default_value("LGN_V1_sList"), "file stores LGN to V1 connection strengths")
 		("fLGN_surfaceID", po::value<string>(&LGN_surfaceID_filename)->default_value("LGN_surfaceID"), "file stores LGN position ID on surface memory")
-		("fV1_pos", po::value<string>(&V1_pos_filename)->default_value("V1_allpos"), "file that stores V1 coritcal position and visual field position")
+		("fV1_allpos", po::value<string>(&V1_allpos_filename)->default_value("V1_allpos"), "file that stores V1 coritcal position and visual field position")
 		("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature"), "file to read spatially predetermined functional features of neurons")
 		("fV1_conMat", po::value<string>(&V1_conMat_filename)->default_value("V1_conMat"), "file that stores V1 to V1 connection within the neighboring blocks")
 		("fV1_delayMat", po::value<string>(&V1_delayMat_filename)->default_value("V1_delayMat"), "file that stores V1 to V1 transmission delay within the neighboring blocks")
@@ -397,8 +397,8 @@ int main(int argc, char** argv) {
 		if (vm["fLGN_surfaceID"].defaulted()){
 			LGN_surfaceID_filename = inputFolder + LGN_surfaceID_filename;
 		}
-		if (vm["fV1_pos"].defaulted()){
-			V1_pos_filename = inputFolder + V1_pos_filename;
+		if (vm["fV1_allpos"].defaulted()){
+			V1_allpos_filename = inputFolder + V1_allpos_filename;
 		}
 		if (vm["V1_feature_filename"].defaulted()){
 			V1_feature_filename = inputFolder + V1_feature_filename;
@@ -2593,7 +2593,7 @@ int main(int argc, char** argv) {
 	// finish LGN setup
 
 	// V1 related memory
-	ifstream fV1_pos;
+	ifstream fV1_allpos;
 	ifstream fV1_conMat, fV1_delayMat, fV1_gapMat, fV1_vec, fV1_gapVec, fNeighborBlock; 
 	ifstream fConStats;
 
@@ -2607,37 +2607,37 @@ int main(int argc, char** argv) {
 	double V1_y0, V1_yspan;
 	double V1_vx0, V1_vxspan;
 	double V1_vy0, V1_vyspan;
-	fV1_pos.open(V1_pos_filename + res_suffix, fstream::in | fstream::binary);
-	if (!fV1_pos) {
-		cout << "Cannot open or find " << V1_pos_filename + res_suffix <<" to read V1 positions.\n";
+	fV1_allpos.open(V1_allpos_filename + res_suffix, fstream::in | fstream::binary);
+	if (!fV1_allpos) {
+		cout << "Cannot open or find " << V1_allpos_filename + res_suffix <<" to read V1 positions.\n";
 		return EXIT_FAILURE;
 	} else {
-		fV1_pos.read(reinterpret_cast<char*>(&nblock), sizeof(Size));
-		fV1_pos.read(reinterpret_cast<char*>(&neuronPerBlock), sizeof(Size));
+		fV1_allpos.read(reinterpret_cast<char*>(&nblock), sizeof(Size));
+		fV1_allpos.read(reinterpret_cast<char*>(&neuronPerBlock), sizeof(Size));
 		assert(neuronPerBlock == blockSize);
-		fV1_pos.read(reinterpret_cast<char*>(&posDim), sizeof(Size));
+		fV1_allpos.read(reinterpret_cast<char*>(&posDim), sizeof(Size));
 		if (posDim > 2) {
 			cout << "3-D not yet implemented\n";
 			return EXIT_FAILURE;
 		}
-		fV1_pos.read(reinterpret_cast<char*>(&V1_x0), sizeof(double));
-		fV1_pos.read(reinterpret_cast<char*>(&V1_xspan), sizeof(double));
-		fV1_pos.read(reinterpret_cast<char*>(&V1_y0), sizeof(double));
-		fV1_pos.read(reinterpret_cast<char*>(&V1_yspan), sizeof(double));
+		fV1_allpos.read(reinterpret_cast<char*>(&V1_x0), sizeof(double));
+		fV1_allpos.read(reinterpret_cast<char*>(&V1_xspan), sizeof(double));
+		fV1_allpos.read(reinterpret_cast<char*>(&V1_y0), sizeof(double));
+		fV1_allpos.read(reinterpret_cast<char*>(&V1_yspan), sizeof(double));
 		nV1 = nblock * neuronPerBlock;
 		cout << nV1 << " V1 neurons, x:[" << V1_x0 << ", " << V1_x0+V1_xspan << "], y:[" << V1_y0 << ", " << V1_y0 + V1_yspan << "] mm\n";
 		if (!frameVisV1output) {
 			cpu_chunk_V1pos = new double[nV1*2];
-			fV1_pos.read(reinterpret_cast<char*>(cpu_chunk_V1pos), 2*nV1*sizeof(double));
+			fV1_allpos.read(reinterpret_cast<char*>(cpu_chunk_V1pos), 2*nV1*sizeof(double));
 		} else {
 			cpu_chunk_V1pos = new double[nV1*4];
-			fV1_pos.read(reinterpret_cast<char*>(cpu_chunk_V1pos), 2*nV1*sizeof(double));
-			fV1_pos.read(reinterpret_cast<char*>(&V1_vx0), sizeof(double));
-			fV1_pos.read(reinterpret_cast<char*>(&V1_vxspan), sizeof(double));
-			fV1_pos.read(reinterpret_cast<char*>(&V1_vy0), sizeof(double));
-			fV1_pos.read(reinterpret_cast<char*>(&V1_vyspan), sizeof(double));
+			fV1_allpos.read(reinterpret_cast<char*>(cpu_chunk_V1pos), 2*nV1*sizeof(double));
+			fV1_allpos.read(reinterpret_cast<char*>(&V1_vx0), sizeof(double));
+			fV1_allpos.read(reinterpret_cast<char*>(&V1_vxspan), sizeof(double));
+			fV1_allpos.read(reinterpret_cast<char*>(&V1_vy0), sizeof(double));
+			fV1_allpos.read(reinterpret_cast<char*>(&V1_vyspan), sizeof(double));
 		    cout << " V1 visual position, x:[" << V1_vx0 << ", " << V1_vx0+V1_vxspan << "], y:[" << V1_vy0 << ", " << V1_vy0 + V1_vyspan << "] in degree\n";
-			fV1_pos.read(reinterpret_cast<char*>(cpu_chunk_V1pos + 2*nV1), 2*nV1*sizeof(double));
+			fV1_allpos.read(reinterpret_cast<char*>(cpu_chunk_V1pos + 2*nV1), 2*nV1*sizeof(double));
 		}
 		V1_x = cpu_chunk_V1pos;
 		V1_y = V1_x + nV1;
@@ -2687,7 +2687,7 @@ int main(int argc, char** argv) {
             assert(vyMax <= V1_vy0+V1_vyspan);
 		}
 	}
-	fV1_pos.close();
+	fV1_allpos.close();
 
 	Size mI = nI*nblock;
 	Size mE = nE*nblock;
