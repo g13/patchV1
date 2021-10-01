@@ -133,7 +133,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
     
     pref_file = data_fdr + 'cort_pref_' + output_suffix0 + '.bin'
     if nOri == 0:
-        max_frFn = data_fdr + 'max_fr' + output_suffix0 + '.bin'
+        max_frFn = data_fdr + 'max_fr_' + output_suffix0 + '.bin'
 
     spDataFn = data_fdr + "V1_spikes" + _output_suffix
     parameterFn = data_fdr + "patchV1_cfg" +_output_suffix + ".bin"
