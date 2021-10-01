@@ -288,7 +288,6 @@ int main(int argc, char** argv) {
 	// files
 	string connectome_cfg_filename, patchV1_cfg_filename, restore;
 	string output_suffix, output_suffix0; // suffix to be added to all output filename
-	string static_suffix; // suffix of the input filenames, if suffix is not the same, set f*
 	string res_suffix; // suffix for resource files
 	string conV1_suffix; // suffix for V1 connectome files
 	string conLGN_suffix; // suffix for LGN-V1 connectome files
@@ -305,7 +304,7 @@ int main(int argc, char** argv) {
 	top_opt.add_options()
 		//inputs:
 		("inputFolder", po::value<string>(&inputFolder)->default_value(""), "where the input data files at, must end with /")
-		("res_suffix", po::value<string>(&static_suffix)->default_value(""), "suffix for resource files")
+		("res_suffix", po::value<string>(&res_suffix)->default_value(""), "suffix for resource files")
 		("conV1_suffix", po::value<string>(&conV1_suffix)->default_value(""), "suffix for V1 connectome files")
 		("conLGN_suffix", po::value<string>(&conLGN_suffix)->default_value(""), "suffix for LGN to V1 connectome files")
 		("snapshot_suffix", po::value<string>(&snapshot_suffix), "suffix of the snapshot")

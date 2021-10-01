@@ -17,12 +17,12 @@ if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 fi
 
 if [[ "${waveStage}" = "3" ]] ;then
-	#fdr=wave_III/32x3_5-5_pr_rLTD-90%
-	#op=32x3_5-5_pr_rLTD-90%
-	fdr=wave_III/32x3_5-5_pr_standard
-	op=32x3_5-5_pr_standard
+	fdr=wave_III/32x3_5-5_rLTD
+	op=32x3_5-5_rLTD-110%
+	#fdr=wave_III/32x3_5-5_standard
+	#op=32x3_5-5_standard0
 	op_cfg=wave_III.cfg
-	new_setup=True
+	new_setup=False
 	lgn=lFF_iii_5-5
 	res=lFF_iii_5-5
 fi
@@ -40,11 +40,11 @@ seed=1924784 # RANDOM SEED for post-analysis sampling and input randomization
 # for outputLearnFF.m
 st=2 # figures' output: 0 for temporal, 1 for spatial, 2 for both
 examSingle=true # output the spatiotemporal figure, tLGN_V1_single if true
+collectMeanDataOnly=True # not ploting samples of V1 response variable traces
 
 
 # NOT RELATED, leave alone
 usePrefData=False
-collectMeanDataOnly=False
 OPstatus=1 
 LGN_switch=false
 TF=8
@@ -86,8 +86,6 @@ cp outputLearnFF.m outputLearnFF_${op}_m.bak
 if [ "${plotOnly}" = False ]
 then
 	gpu=1
-	cp ${op_cfg} ${fdr0}/${op_cfg}
-
 	cp ${op_cfg} ${op}_cfg.bak
 	cp inputLearnFF.m inputLearnFF_${op}_m.bak
 	mv ${op}_cfg.bak inputLearnFF_${op}_m.bak outputLearnFF_${op}_m.bak ${fig_fdr}
@@ -133,7 +131,7 @@ then
 		matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, 0, '${res}', ${waveStage}, '${res_fdr}');exit;"
 	fi
 	date
-	patch -c ${op_cfg}
+	patch -c ${fig_fdr}/${op}_cfg.bak
 	date
 fi
 
