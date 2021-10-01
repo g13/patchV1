@@ -48,7 +48,7 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	fLGN_switch = [data_fdr, 'LGN_switch', suffix, '.bin'];
 
 	fV1_vposFn = [res_fdr, 'V1_vpos', suffix0, '.bin'];
-	fV1_pos = [res_fdr, 'V1_allpos', suffix0, '.bin'];
+	fV1_allpos = [res_fdr, 'V1_allpos', suffix0, '.bin'];
 	fV1_feature = [res_fdr, 'V1_feature', suffix0, '.bin'];
 	fLGN_vpos = [res_fdr, 'LGN_vpos', suffix0, '.bin'];
 	fLGN_surfaceID = [res_fdr, 'LGN_surfaceID', suffix0, '.bin'];
@@ -71,7 +71,7 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	mI = 256;
 	nV1 = nblock*blockSize;
 	doubleOnOff = 1;
-	frameVisV1output = false; % if need framed V1 output, write visual pos to fV1_pos
+	frameVisV1output = false; % if need framed V1 output, write visual pos to fV1_allpos
 
 	frameRate = 30; % from ext_input.py, also need to be set in the <simulation_config>.cfg
     if stage == 2 || stage == 3
@@ -247,7 +247,7 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	end
 	fclose(fid);
 	
-	fid = fopen(fV1_pos, 'w'); % format follows patch.cu, search for the same variable name
+	fid = fopen(fV1_allpos, 'w'); % format follows patch.cu, search for the same variable name
 	% not necessarily a ring
 	loop = linspace(0,pi,nV1+1);
 	polar = loop(1:nV1)';
@@ -266,7 +266,7 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, res_fdr, data_fdr)
 	fwrite(fid, 2, 'double'); % vxspan: max(vx)-min(vx)
 	fwrite(fid, -1, 'double'); % vy..
 	fwrite(fid, 2, 'double'); % vyspan..
-	fwrite(fid, V1_pos, 'double'); 
+	fwrite(fid, V1_pos, 'double');  %supposedly vpos
 	fclose(fid);
 	
 	

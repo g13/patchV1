@@ -288,9 +288,11 @@ int main(int argc, char** argv) {
 	// files
 	string connectome_cfg_filename, patchV1_cfg_filename, restore;
 	string output_suffix, output_suffix0; // suffix to be added to all output filename
-	string conV1_suffix; // suffix of the input filenames, if suffix is not the same, set f*
-	string conLGN_suffix; // suffix of the input filenames, if suffix is not the same, set f*
-	string snapshot_suffix; // suffix of the input filenames, if suffix is not the same, set f*
+	string static_suffix; // suffix of the input filenames, if suffix is not the same, set f*
+	string res_suffix; // suffix for resource files
+	string conV1_suffix; // suffix for V1 connectome files
+	string conLGN_suffix; // suffix for LGN-V1 connectome files
+	string snapshot_suffix; // output_suffix of the snapshots for previous runs
 	string conStats_filename;
 	string stimulus_filename, LGN_switch_filename;
 	string V1_RF_filename, V1_feature_filename, V1_pos_filename;
@@ -303,6 +305,7 @@ int main(int argc, char** argv) {
 	top_opt.add_options()
 		//inputs:
 		("inputFolder", po::value<string>(&inputFolder)->default_value(""), "where the input data files at, must end with /")
+		("res_suffix", po::value<string>(&static_suffix)->default_value(""), "suffix for resource files")
 		("conV1_suffix", po::value<string>(&conV1_suffix)->default_value(""), "suffix for V1 connectome files")
 		("conLGN_suffix", po::value<string>(&conLGN_suffix)->default_value(""), "suffix for LGN to V1 connectome files")
 		("snapshot_suffix", po::value<string>(&snapshot_suffix), "suffix of the snapshot")
@@ -310,12 +313,12 @@ int main(int argc, char** argv) {
 		("fSnapshot", po::value<string>(&restore)->default_value(""), "file that can be used to restore previous simulation status. if not provided, no restore, other put restore file in the inputFolder")
 		("fLGN_switch", po::value<string>(&LGN_switch_filename)->default_value("LGN_switch"), "file that stores which types of LGN to turn on and off over time, ints of size: (nInputType, nStatus)")
 		("fStimulus", po::value<string>(&stimulus_filename)->default_value("stimulus.bin"), "file that stores LGN firing rates, array of size (nframes,width,height,3)")
-		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"), "file that stores LGN neurons information")
+		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos"), "file that stores LGN neurons information")
 		("fLGN_V1_ID", po::value<string>(&LGN_V1_ID_filename)->default_value("LGN_V1_idList"), "file stores LGN to V1 connections")
 		("fLGN_V1_s", po::value<string>(&LGN_V1_s_filename)->default_value("LGN_V1_sList"), "file stores LGN to V1 connection strengths")
-		("fLGN_surfaceID", po::value<string>(&LGN_surfaceID_filename)->default_value("LGN_surfaceID.bin"), "file stores LGN position ID on surface memory")
-		("fV1_pos", po::value<string>(&V1_pos_filename)->default_value("V1_allpos.bin"), "file that stores V1 coritcal position and visual field position")
-		("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file to read spatially predetermined functional features of neurons")
+		("fLGN_surfaceID", po::value<string>(&LGN_surfaceID_filename)->default_value("LGN_surfaceID"), "file stores LGN position ID on surface memory")
+		("fV1_pos", po::value<string>(&V1_pos_filename)->default_value("V1_allpos"), "file that stores V1 coritcal position and visual field position")
+		("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature"), "file to read spatially predetermined functional features of neurons")
 		("fV1_conMat", po::value<string>(&V1_conMat_filename)->default_value("V1_conMat"), "file that stores V1 to V1 connection within the neighboring blocks")
 		("fV1_delayMat", po::value<string>(&V1_delayMat_filename)->default_value("V1_delayMat"), "file that stores V1 to V1 transmission delay within the neighboring blocks")
 		("fV1_gapMat", po::value<string>(&V1_gapMat_filename)->default_value("V1_gapMat"), "file that stores inhibitory to inhibitory gap junction within the neighboring blocks")
@@ -373,7 +376,7 @@ int main(int argc, char** argv) {
 		if (vm["fConnectome_cfg"].defaulted()){
 			connectome_cfg_filename = inputFolder + connectome_cfg_filename;
 		}
-		if (!vm["fSnapshot"].defaulted()){ // if defaulted, no restore, other put restore file in the inputFolder
+		if (!vm["fSnapshot"].defaulted()){ // if defaulted, no restore, otherwise put restore file in the inputFolder
 			restore = inputFolder + restore;
 		}
 		if (vm["fLGN_switch"].defaulted()){
@@ -489,6 +492,11 @@ int main(int argc, char** argv) {
     } else output_suffix = "";
     output_suffix = output_suffix + ".bin";
 
+    if (!res_suffix.empty())  {
+        res_suffix = "_" + res_suffix;
+    }
+    res_suffix = res_suffix + ".bin";
+
     if (!conLGN_suffix.empty())  {
         conLGN_suffix = "_" + conLGN_suffix;
     }
@@ -499,6 +507,7 @@ int main(int argc, char** argv) {
     }
     conV1_suffix = conV1_suffix + ".bin";
 
+    cout << "res_suffix: " << res_suffix << "\n";
     cout << "conLGN_suffix: " << conLGN_suffix << "\n";
     cout << "conV1_suffix: " << conV1_suffix << "\n";
 
@@ -1380,9 +1389,9 @@ int main(int argc, char** argv) {
 	// Float rad2deg = 180.0/M_PI;
 	Size nLGN_I, nLGN_C, nLGN;
     Float max_ecc, L_x0, L_y0, R_x0, R_y0, normViewDistance;
-	fLGN_vpos.open(LGN_vpos_filename, fstream::in | fstream::binary);
+	fLGN_vpos.open(LGN_vpos_filename + res_suffix, fstream::in | fstream::binary);
 	if (!fLGN_vpos) {
-		cout << "Cannot open or find " << LGN_vpos_filename <<" to read in LGN properties.\n";
+		cout << "Cannot open or find " << LGN_vpos_filename + res_suffix <<" to read in LGN properties.\n";
 		return EXIT_FAILURE;
 	} else {
 		fLGN_vpos.read(reinterpret_cast<char*>(&nLGN_I), sizeof(Size));
@@ -2423,9 +2432,9 @@ int main(int argc, char** argv) {
 	vector<int> sxyID(2*nLGN);
 	ifstream fLGN_surfaceID;
 	Size nsx, nsy;
-	fLGN_surfaceID.open(LGN_surfaceID_filename, fstream::in | fstream::binary);
+	fLGN_surfaceID.open(LGN_surfaceID_filename + res_suffix, fstream::in | fstream::binary);
 	if (!fLGN_surfaceID) {
-		cout << "Cannot open or find " << LGN_surfaceID_filename <<" to read in LGN surface position.\n";
+		cout << "Cannot open or find " << LGN_surfaceID_filename + res_suffix <<" to read in LGN surface position.\n";
 		return EXIT_FAILURE;
 	} else {
 		fLGN_surfaceID.read(reinterpret_cast<char*>(&nsx), sizeof(Size));
@@ -2598,9 +2607,9 @@ int main(int argc, char** argv) {
 	double V1_y0, V1_yspan;
 	double V1_vx0, V1_vxspan;
 	double V1_vy0, V1_vyspan;
-	fV1_pos.open(V1_pos_filename, fstream::in | fstream::binary);
+	fV1_pos.open(V1_pos_filename + res_suffix, fstream::in | fstream::binary);
 	if (!fV1_pos) {
-		cout << "Cannot open or find " << V1_pos_filename <<" to read V1 positions.\n";
+		cout << "Cannot open or find " << V1_pos_filename + res_suffix <<" to read V1 positions.\n";
 		return EXIT_FAILURE;
 	} else {
 		fV1_pos.read(reinterpret_cast<char*>(&nblock), sizeof(Size));
@@ -2742,9 +2751,9 @@ int main(int argc, char** argv) {
 
 	vector<Float> featureValue;
 	if (readFeature) {
-		fV1_feature.open(V1_feature_filename, ios::in|ios::binary);
+		fV1_feature.open(V1_feature_filename + res_suffix, ios::in|ios::binary);
 		if (!fV1_feature) {
-			cout << "failed to open feature file:" << V1_feature_filename << "\n";
+			cout << "failed to open feature file:" << V1_feature_filename + res_suffix << "\n";
 			return EXIT_FAILURE;
 		}
 		Size nFeature;
