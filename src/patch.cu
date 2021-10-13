@@ -38,6 +38,11 @@ int main(int argc, char** argv) {
 	printf("registers per block: %d.\n", deviceProps.regsPerBlock);
 	cout << "\n";
 
+    size_t size_heap, size_stack;
+    checkCudaErrors(cudaDeviceGetLimit(&size_heap, cudaLimitMallocHeapSize));
+    checkCudaErrors(cudaDeviceGetLimit(&size_stack, cudaLimitStackSize));
+    printf("Heap size found to be %d; Stack size found to be %d\n",(float)(size_heap)/1024.0/1024.0,(float)(size_stack)/1024.0/1024.0);
+    
 	bool storeSpatial = true;
 	Float dt; // in ms, better in fractions of binary 
 	Float dot;
@@ -2788,14 +2793,19 @@ int main(int argc, char** argv) {
 	// two visual field surface, left and right
     Size visWidth = width*visWidth_scale;
 	Size nPixel_visV1, visHeight; // share with visLGN
+	Size nPixel_visLGN;
 	if (frameVisV1output || frameVisLGNoutput) {
 		Float hwVisRatioV = LGN_yspan/LGN_xspan;
 		visHeight = ceil(hwVisRatioV * visWidth);
 		if (visHeight%2 == 1) visHeight++;
 		// left + 4pixel gap + right = 1024
-		nPixel_visV1 = 2*visWidth * visHeight;
+        if (frameVisV1output) {
+		    nPixel_visV1 = 2*visWidth * visHeight;
+        }
+        if (frameVisLGNoutput) {
+            nPixel_visLGN = 2*visWidth * visHeight;
+        }
 	}
-	Size nPixel_visLGN = nPixel_visV1;
 
 	PosInt iFrameOutput = 0;
 	// Allocate mem for framePosId nXXperPixel and outputFrame
@@ -4748,13 +4758,18 @@ int main(int argc, char** argv) {
 	cout << "Using "<< usingGMem/1024.0/1024.0 << " Mb from a total of " << deviceProps.totalGlobalMem/1024.0/1024.0 << " Mb, remaining " << (deviceProps.totalGlobalMem - usingGMem)/1024.0/1024.0 << " Mb\n";
 
 	size_t stackSize = 3 * sizeof(Float) * (max_ngTypeE + max_ngTypeI) + 20*sizeof(Float);
-	cout << "perStackSize = " << stackSize << "bytes.\n";
-	stackSize = 1024;
-	size_t totalHeapSize = stackSize * maxChunkSize*blockSize * deviceProps.multiProcessorCount;
+	cout << "perStackSize = " << stackSize;
+	stackSize = 1024 * 200;
+	cout << " set to " << stackSize << "\n";
+	size_t totalHeapSize = 1024 * maxChunkSize*blockSize * deviceProps.multiProcessorCount;
 	cout << "totalHeapSize = " << totalHeapSize/1024/1024 << "Mb.\n";
 
     checkCudaErrors(cudaDeviceSetLimit(cudaLimitStackSize, stackSize));
     checkCudaErrors(cudaDeviceSetLimit(cudaLimitMallocHeapSize, totalHeapSize));
+
+    checkCudaErrors(cudaDeviceGetLimit(&size_heap, cudaLimitMallocHeapSize));
+    checkCudaErrors(cudaDeviceGetLimit(&size_stack, cudaLimitStackSize));
+    printf("Heap size now is %f Mb; Stack size now is %f Mb\n",(float)(size_heap)/1024.0/1024.0,(float)(size_stack)/1024.0/1024.0);
 
 
 	cudaTextureObject_t* linearFrame;
