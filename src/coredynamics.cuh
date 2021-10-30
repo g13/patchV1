@@ -121,8 +121,8 @@ struct AdEx { //Adaptive Exponential IF
 		w0 += b;
 		v = vR;
 	}
-    __device__ void update(Float **var) {
-		*(var[0]) = w;
+    __device__ void update(Float var[], PosInt tid) {
+		var[tid] = w;
 	};
 };
 
@@ -154,14 +154,14 @@ void recal_G_vec(
         std::vector<Size> &nVec,  std::vector<std::vector<PosInt>> &vecID, std::vector<std::vector<Float>> &conVec, std::vector<std::vector<Float>> &delayVec,
         Float gE[], Float gI[], Float hE[], Float hI[], Float pE[], Float pI[], Size typeAcc[],
         std::default_random_engine *h_rGenCond, Float synFail[], Float synPerCon[],
-        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, Size nType, Size nE, Size nI, Size nV1, Float speedOfThought, Size chunkSize, bool noFarDelay, PosInt it
+        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, Size nType, Size nE, Size nI, Size nV1, Float speedOfThought, Size chunkSize, bool noFarDelay, PosInt it, Size neuronPerBlock
 );
 
 void recal_Gap_vec(
         std::vector<std::vector<std::vector<Float>>> &gapTrain, std::vector<std::vector<Size>> &gapDepth, std::vector<std::vector<PosInt>> &gap_currentTimeSlot,
         std::vector<Size> &nGapVec, std::vector<std::vector<PosInt>> &gapVecID, std::vector<std::vector<Float>> &gapVec, std::vector<std::vector<Float>> &gapDelayVec,
 		std::vector<Float> &vThres, Float gap[], Size typeAcc[], 
-        Float dt, PosInt block_offset, Size nType, Size nTypeE, Size nI, Float speedOfThought, Size chunkSize, bool noFarDelay
+        Float dt, PosInt block_offset, Size nType, Size nTypeE, Size nI, Float speedOfThought, Size chunkSize, bool noFarDelay, Size neuronPerBlock
 );
 
 //template<int ntimesFF, int ntimesE, int ntimesI> extern

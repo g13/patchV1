@@ -51,23 +51,22 @@ inline void read_LGN(std::string filename, Float* &array, Size &maxList, Float s
 		if (listSize > 0) {
 			input_file.read(reinterpret_cast<char*>(&array0[0]), listSize * sizeof(float));
 		} else continue;
-		for (PosInt j=0; j<listSize; j++) {
-			array[i*maxList + j] = static_cast<Float>(array0[j]);
-		}
+
         PosInt type;
         for (PosInt j=0; j<nType; j++) {
-            if (i%blockSize < typeAcc[j]) {
+            if (i%typeAcc[nType-1] < typeAcc[j]) {
                 type = j;
                 break;
             }
         }
+
 		for (PosInt j=0; j<listSize; j++) {
-			array[i*maxList + j] *= s_ratio[type];
+			array[j*nList + i] = static_cast<Float>(array0[j]) * s_ratio[type];// transposed
 		}
         if (print) {
             std::cout << i << "-" << listSize << ":  ";
             for (PosInt j=0; j<listSize; j++) {
-                std::cout << array[i*maxList + j];
+                std::cout << array[j*nList + i];// transposed
                 if (j == listSize-1) std::cout << "\n";
                 else std::cout << ", ";
             }

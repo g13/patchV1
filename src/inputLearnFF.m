@@ -61,13 +61,14 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 	eiStrength = 0.000;
 	ieStrength = 0.000;
 	iCS_std = 0.0; % zero std gives single-valued connection strength
-	nblock = 1;
-	%blockSize = 128;
-	%mE = 96;
-	%mI = 32;
-	blockSize = 1024;
-	mE = 768;
-	mI = 256;
+	nblock = 32;
+    blockSize = 32;
+	mE = 24;
+	mI = 8;
+	%nblock = 1;
+    %blockSize = 1024;
+	%mE = 768;
+	%mI = 256;
 	nV1 = nblock*blockSize;
 	doubleOnOff = 1;
 	frameVisV1output = false; % if need framed V1 output, write visual pos to fV1_allpos
@@ -78,7 +79,7 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 	    if stage == 2
 	    	peakRate = 0.5; % active cell percentage during wave
 	    	% corresponds to the parameters set in ext_input.py
-	    	nOri = 2; % number of orientation for the input waves
+	    	nOri = 32; % number of orientation for the input waves
 	    	nRep = 1; % repeat of each orientation
 	    	framesPerStatus = 225; % frames for each wave
 	    	framesToFinish = ceil(62.1); % frames for the ending phase of the last wave
@@ -378,51 +379,56 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 	fV1_gapMat = [fdr, 'V1_gapMat', suffix, '.bin']; % zeros
 	fV1_gapVec = [fdr, 'V1_gapVec', suffix, '.bin']; % zeros
 	
-	nearNeighborBlock = 1; % self-only
-	fid = fopen(fV1_conMat, 'w');
-	fwrite(fid, nearNeighborBlock , 'uint');
-	            %(post, pre)
-	conMat = zeros(nV1,nV1);
-	conIE = zeros(mI,mE);
-	for i = 1:mI
-	    ied = randperm(mE, nE);
-	    conIE(i,ied) = ieStrength;
-	end
-	conEI = zeros(mE,mI);
-	for i = 1:mE
-	    eid = randperm(mI, nI);
-	    conEI(i,eid) = eiStrength;
-	end
-	conMat(1:mE,(mE+1):blockSize) = conEI;
-	conMat((mE+1):blockSize,1:mE) = conIE;
-	fwrite(fid, conMat , 'float');
-	fclose(fid);
-	
-	fid = fopen(fV1_gapMat, 'w');
-	fwrite(fid, nearNeighborBlock , 'uint');
-	gapMat = zeros(mI*nblock,mI*nblock);
-	fwrite(fid, gapMat , 'float');
-	fclose(fid);
-	
-	
-	fid = fopen(fV1_delayMat, 'w');
-	fwrite(fid, nearNeighborBlock , 'uint');
-	delayMat = zeros(nV1);
-	% not necessary to calc distance
-	for i=1:nV1
-	    for j=1:nV1
-	        delayMat(i,j) = norm(V1_pos(i,:) - V1_pos(j,:), 2);
-	        delayMat(j,i) = delayMat(i,j);
-	    end
-	end
-	%
-	fwrite(fid, delayMat , 'float');
-	fclose(fid);
+	nearNeighborBlock = nblock;
+	cid = fopen(fV1_conMat, 'w');
+	did = fopen(fV1_delayMat, 'w');
+	gid = fopen(fV1_gapMat, 'w');
+	fwrite(cid, nearNeighborBlock , 'uint');
+	fwrite(gid, nearNeighborBlock , 'uint');
+	fwrite(did, nearNeighborBlock , 'uint');
+    for iblock = 1:nblock
+	    conMat = zeros(blockSize,blockSize,nearNeighborBlock);
+	    delayMat = zeros(blockSize,blockSize,nearNeighborBlock);
+        for iNeighbor = 1:nearNeighborBlock
+	                   %(post, pre)
+	        conIE = zeros(mI,mE);
+	        for i = 1:mI
+	            ied = randperm(mE, nE);
+	            conIE(i,ied) = ieStrength;
+	        end
+	        conEI = zeros(mE,mI);
+	        for i = 1:mE
+	            eid = randperm(mI, nI);
+	            conEI(i,eid) = eiStrength;
+	        end
+	        conMat(1:mE,(mE+1):blockSize,iNeighbor) = conEI;
+	        conMat((mE+1):blockSize,1:mE,iNeighbor) = conIE;
+	        % not necessary to calc distance
+	        for i = 1:blockSize
+	            for j = 1:blockSize
+                    id_i = (iblock-1)*blockSize + i;
+                    id_j = (iNeighbor-1)*blockSize + j;
+	                delayMat(i,j) = norm(V1_pos(id_i,:) - V1_pos(id_j,:), 2);
+	                delayMat(j,i) = delayMat(i,j);
+	            end
+	        end
+        end
+	    fwrite(cid, conMat , 'float');
+	    gapMat = zeros(mI,mI,nearNeighborBlock);
+	    fwrite(gid, gapMat , 'float');
+	    fwrite(did, delayMat , 'float');
+    end
+	fclose(cid);
+	fclose(gid);
+	fclose(did);
 	
 	fid = fopen(fNeighborBlock, 'w');
-	nNeighborBlock = [1];
+	nNeighborBlock = zeros(nblock)+nearNeighborBlock;
 	fwrite(fid, nNeighborBlock, 'uint'); % number of neighbor
-	nBlockId = [[0]]
+	nBlockId = zeros(nearNeighborBlock, nblock);
+    for i = 1:nblock
+        nBlockId(:,i) = 1:nearNeighborBlock;
+    end
 	fwrite(fid, nBlockId, 'uint'); % id of neighbor
 	fclose(fid);
 	

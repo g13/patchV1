@@ -37,8 +37,8 @@ void pixelizeOutput(
 	}
 }
 
-// From nChunks of [chunkSize, ngTypeE+ngTypeI, blockSize] -> [ngTypeE+ngTypeI, nV1], where nV1 = nChunk*chunkSize*blockSize
-void reshape_chunk_and_write(Float chunk[], ofstream &fRawData, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, Size nGap, bool hWrite)
+// From nChunks of [chunkSize, ngTypeE+ngTypeI, neuronPerBlock] -> [ngTypeE+ngTypeI, nV1], where nV1 = nChunk*chunkSize*neuronPerBlock
+void reshape_chunk_and_write(Float chunk[], ofstream &fRawData, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, Size neuronPerBlock, Size nGap, bool hWrite)
 {
     PosIntL offset = 0;
     size_t outputSize;
@@ -55,37 +55,37 @@ void reshape_chunk_and_write(Float chunk[], ofstream &fRawData, Size maxChunkSiz
         PosIntL offset_f; // flattened neuron id offset before current chunk
         if (i >= iSizeSplit) {
             chunkSize = remainChunkSize;
-            offset_f = (iSizeSplit*maxChunkSize + (i-iSizeSplit)*chunkSize)*blockSize;
+            offset_f = (iSizeSplit*maxChunkSize + (i-iSizeSplit)*chunkSize)*neuronPerBlock;
         } else {
-            offset_f = i*maxChunkSize*blockSize;
+            offset_f = i*maxChunkSize*neuronPerBlock;
         }
         for (PosInt j=0; j<nE; j++) {
-            for (PosInt k=0; k<chunkSize*blockSize; k++) {
+            for (PosInt k=0; k<chunkSize*neuronPerBlock; k++) {
                 flatten[j*nV1 + offset_f + k] = chunk[offset];
                 offset++;
             }
         }
         for (PosInt j=0; j<nI; j++) {
-            for (PosInt k=0; k<chunkSize*blockSize; k++) {
+            for (PosInt k=0; k<chunkSize*neuronPerBlock; k++) {
                 flatten[(nE+j)*nV1 + offset_f + k] = chunk[offset];
                 offset++;
             }
         }
 		if (hWrite) {
         	for (PosInt j=0; j<nE; j++) {
-        	    for (PosInt k=0; k<chunkSize*blockSize; k++) {
+        	    for (PosInt k=0; k<chunkSize*neuronPerBlock; k++) {
         	        flatten[(nE+nI+j)*nV1 + offset_f + k] = chunk[offset];
         	        offset++;
         	    }
         	}
         	for (PosInt j=0; j<nI; j++) {
-        	    for (PosInt k=0; k<chunkSize*blockSize; k++) {
+        	    for (PosInt k=0; k<chunkSize*neuronPerBlock; k++) {
         	        flatten[(2*nE+nI+j)*nV1 + offset_f + k] = chunk[offset];
         	        offset++;
         	    }
         	}
 		} else {
-			offset += chunkSize*blockSize*(nE+nI);
+			offset += chunkSize*neuronPerBlock*(nE+nI);
 		}
     }
     assert(offset == nV1*(nE+nI)*2);
@@ -105,7 +105,7 @@ void getLGN_V1_surface(vector<int> &xy, vector<vector<PosInt>> &LGN_V1_ID, int s
         nLGNperV1[i] = LGN_V1_ID[i].size();
         assert(nLGNperV1[i] <= max_LGNperV1);
         for (PosInt j=0; j<nLGNperV1[i]; j++) {
-            PosInt xid = i*max_LGNperV1 + j;
+            PosInt xid = j*nV1 + i; // transposed
             surface_xy[xid] = xy[LGN_V1_ID[i][j]]; // x
             PosInt yid = nV1*max_LGNperV1 + xid;
             surface_xy[yid] = xy[nLGN + LGN_V1_ID[i][j]]; // y

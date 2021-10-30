@@ -29,7 +29,7 @@ void rand_spInit(Float* __restrict__ tBack,
         Size iLGN = nLGNperV1[id];
         Size type;
         for (PosInt i=0; i<nType; i++) {
-            if (id%blockSize < typeAcc[i]) {
+            if (id%blockDim.x < typeAcc[i]) {
                 type = i;
                 break;
             }
@@ -162,7 +162,7 @@ void recal_G_vec(
         std::vector<Size> &nVec,  std::vector<std::vector<PosInt>> &vecID, std::vector<std::vector<Float>> &conVec, std::vector<std::vector<Float>> &delayVec,
         Float gE[], Float gI[], Float hE[], Float hI[], Float pE[], Float pI[], Size typeAcc[],
         std::default_random_engine *rGenCond, Float synFail[], Float synPerCon[],
-        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, Size nType, Size nE, Size nI, Size nV1, Float speedOfThought, Size chunkSize, bool noFarDelay, PosInt it) 
+        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt block_offset, Size nType, Size nE, Size nI, Size nV1, Float speedOfThought, Size chunkSize, bool noFarDelay, PosInt it, Size neuronPerBlock) 
 {
     Float ipE[max_ngTypeE];
     Float ipI[max_ngTypeI];
@@ -170,15 +170,15 @@ void recal_G_vec(
     Float local_hE[max_ngTypeE];
     Float local_gI[max_ngTypeI];
     Float local_hI[max_ngTypeI];
-    PosInt i0 = block_offset*blockSize;
+    PosInt i0 = block_offset*neuronPerBlock;
     std::normal_distribution<Float> normal_dist(0.0, 1.0);
     std::uniform_real_distribution<Float> uniform_dist(0.0, 1.0);
-    for (PosInt i=0; i<chunkSize*blockSize; i++) {
+    for (PosInt i=0; i<chunkSize*neuronPerBlock; i++) {
         // initialize
         PosInt itype;
         #pragma unroll max_nType
         for (PosInt j=0; j<nType; j++) {
-            if (i%blockSize < typeAcc[j]) {
+            if (i%neuronPerBlock< typeAcc[j]) {
                 itype = j;
                 break;
             }
@@ -199,7 +199,7 @@ void recal_G_vec(
         	if (nVec[i0 + i] == 0) {
         		for (PosInt j = 0; j < nVec[i0+i]; j++) {
         		    PosInt ipre = vecID[i0+i][j];
-        		    PosInt tid = ipre%blockSize; 
+        		    PosInt tid = ipre%neuronPerBlock; 
         		    Float strength = conVec[i0+i][j];
         		    Float *local_g;
         		    Float *local_h;
@@ -233,7 +233,7 @@ void recal_G_vec(
 						strength *= 1-p + normed_std*rand;
 					}
 					if (strength > 0) {
-						Size bid = ipre/blockSize;
+						Size bid = ipre/neuronPerBlock;
 						Size block_ngType = (ngTypeE*nE + ngTypeI*nI)*bid;
 						PosInt id;
         				if (tid < nE) {
@@ -257,7 +257,7 @@ void recal_G_vec(
         	#pragma unroll 4
         	for (PosInt j = 0; j < nVec[i0+i]; j++) {
         	    PosInt ipre = vecID[i0+i][j];
-        	    PosInt tid = ipre%blockSize; 
+        	    PosInt tid = ipre%neuronPerBlock; 
         	    Float strength = conVec[i0+i][j];
         	    Float time2post = delayVec[i0+i][j]/speedOfThought;
         	    Float *local_g;
@@ -328,7 +328,7 @@ void recal_G_vec(
         // output
         #pragma unroll max_ngTypeE
         for (PosInt ig=0; ig<ngTypeE; ig++) {
-            PosInt gid = ig*chunkSize*blockSize + i;
+            PosInt gid = ig*chunkSize*neuronPerBlock + i;
 			//if (i0+i == 8*1024+180) {
 			//	printf("it:%u, far gE0: %f\n", it, gE[gid]);
 			//}
@@ -342,7 +342,7 @@ void recal_G_vec(
         }
         #pragma unroll max_ngTypeI
         for (PosInt ig=0; ig<ngTypeI; ig++) {
-            PosInt gid = ig*chunkSize*blockSize + i;
+            PosInt gid = ig*chunkSize*neuronPerBlock + i;
             gI[gid] = local_gI[ig];
             hI[gid] = local_hI[ig];
 			assert(!isnan(local_gI[ig])); 
@@ -355,7 +355,7 @@ void recal_Gap_vec(
         std::vector<std::vector<std::vector<Float>>> &gapTrain, std::vector<std::vector<Size>> &gapDepth, std::vector<std::vector<PosInt>> &gap_currentTimeSlot,
         std::vector<Size> &nGapVec, std::vector<std::vector<PosInt>> &gapVecID, std::vector<std::vector<Float>> &gapVec, std::vector<std::vector<Float>> &gapDelayVec,
 		std::vector<Float> &vThres, Float gap[], Size typeAcc[],
-        Float dt, PosInt block_offset, Size nType, Size nTypeE, Size nI, Float speedOfThought, Size chunkSize, bool noFarDelay)
+        Float dt, PosInt block_offset, Size nType, Size nTypeE, Size nI, Float speedOfThought, Size chunkSize, bool noFarDelay, Size neuronPerBlock)
 {
     PosInt i0 = block_offset*nI;
     for (PosInt i=0; i<chunkSize*nI; i++) {
@@ -366,7 +366,7 @@ void recal_Gap_vec(
 				PosInt jtype;
     			//#pragma unroll (max_nType)
     			for (PosInt k=nTypeE; k<nType; k++) {
-    			    if (ipre%blockSize < typeAcc[k]) {
+    			    if (ipre%neuronPerBlock < typeAcc[k]) {
     			        jtype = k;
     			        break;
     			    }
@@ -383,7 +383,7 @@ void recal_Gap_vec(
 				PosInt ipre = gapVecID[i0+i][j];
 				PosInt jtype;
     			for (PosInt k=nTypeE; k<nType; k++) {
-    			    if (ipre%blockSize < typeAcc[k]) {
+    			    if (ipre%neuronPerBlock < typeAcc[k]) {
     			        jtype = k;
     			        break;
     			    }
@@ -626,7 +626,7 @@ void compute_V_collect_spike_learnFF(
 		//		input part
     	#pragma unroll (4)
     	for (PosInt i = 0; i<m; i++) {
-    	    PosInt lid = tid*max_nLGN + i;
+            PosInt lid = i*nV1 + tid; //transposed
 			if (model.spikeCount == 0) {
 				f[i] = sLGN[lid];
 			}
@@ -811,10 +811,7 @@ void compute_V_collect_spike_learnFF(
 
 	v[tid] = model.v;
 	if (iModel == 1) {
-		Float** var = new Float*[1];
-		var[0] = w+tid;
-		model.update(var);
-		delete []var;
+		w[tid] = model.w;
 	}
     tBack[tid] = model.tBack;
 
@@ -978,7 +975,7 @@ void compute_V_collect_spike_learnFF(
             // learn LGN connection and update LGN lVars
             // learn
             for (PosInt i = 0; i<m; i++) {
-                PosInt lid = tid*max_nLGN + i;
+                PosInt lid = i*nV1 + tid; //transposed
                 Float f = sLGN[lid];
                 // pruning process not revertible
                 if (f == 0) {
@@ -1270,7 +1267,7 @@ void recal_G_mat(
     // TODO: cortical learning
     //Float trip_post[2*max_nLearnTypeE];
     //Float LTD_post[2*max_nLearnTypeE];
-    PosInt ipost = (block_offset+blockIdx.x)*blockSize + threadIdx.x;
+    PosInt ipost = (block_offset+blockIdx.x)*blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = rGenCond[ipost];
     Float post_sInfo = spikeTrain[nV1*currentTimeSlot + ipost];
     Float postNsp = flooring(post_sInfo);
@@ -1291,11 +1288,11 @@ void recal_G_mat(
 		PosInt bid = neighborBlockId[local_bid];
         // check for old spikes
         #pragma unroll
-        for (PosInt i=0; i<blockSize; i++) {
-			PosInt ipre = bid*blockSize + i;
+        for (PosInt i=0; i<blockDim.x; i++) {
+			PosInt ipre = bid*blockDim.x + i;
             // access each presynaptic neurons in stride
             // conMat: [nblock,nearNeighborBlock,blockDim.x,blockDim.x] last dim is the post-id: second-last pre-id
-            PosIntL mid = static_cast<PosIntL>((local_bid*blockSize + i)*blockSize + threadIdx.x);
+            PosIntL mid = static_cast<PosIntL>((local_bid*blockDim.x + i)*blockDim.x + threadIdx.x);
             Float strength = static_cast<Float>(conMat[mid]);
             if (strength != 0) {
 				PosInt jtype;
@@ -1387,7 +1384,7 @@ void recal_G_mat(
     				        break;
     				    }
     				}
-            		PosIntL mid = static_cast<PosIntL>((local_bid*blockSize + i)*blockSize + threadIdx.x);
+            		PosIntL mid = static_cast<PosIntL>((local_bid*blockDim.x + i)*blockDim.x + threadIdx.x);
                 	Float time2post = static_cast<Float>(delayMat[mid])/speedOfThought;
             	    PosInt it2post = static_cast<PosInt>(ceiling(time2post/dt));
             	    time2post = it2post*dt - time2post;
@@ -1422,7 +1419,7 @@ void recal_G_mat(
         }
     }
 
-    PosInt id = blockIdx.x*blockSize + threadIdx.x;
+    PosInt id = blockIdx.x*blockDim.x + threadIdx.x;
     //#pragma unroll (ntimesE)
     #pragma unroll (max_ngTypeE)
     for (PosInt ig=0; ig<ngTypeE; ig++) {
@@ -1574,7 +1571,7 @@ void recal_G_mat_nd( // no distance involved for close-range connections, i.e., 
     // TODO: cortical learning
     //Float trip_post[2*max_nLearnTypeE];
     //Float LTD_post[2*max_nLearnTypeE];
-    PosInt ipost = (block_offset+blockIdx.x)*blockSize + threadIdx.x;
+    PosInt ipost = (block_offset+blockIdx.x)*blockDim.x + threadIdx.x;
     curandStateMRG32k3a localState = rGenCond[ipost];
     Float post_sInfo = spikeTrain[ipost];
     Float postNsp = flooring(post_sInfo);
@@ -1595,11 +1592,11 @@ void recal_G_mat_nd( // no distance involved for close-range connections, i.e., 
 		PosInt bid = neighborBlockId[local_bid];
         // check for old spikes
         #pragma unroll
-        for (PosInt i=0; i<blockSize; i++) {
-			PosInt ipre = bid*blockSize + i;
+        for (PosInt i=0; i<blockDim.x; i++) {
+			PosInt ipre = bid*blockDim.x + i;
             // access each presynaptic neurons in stride
             // conMat: [nblock,nearNeighborBlock,blockDim.x,blockDim.x] last dim is the post-id: second-last pre-id
-            PosIntL mid = static_cast<PosIntL>((local_bid*blockSize + i)*blockSize + threadIdx.x);
+            PosIntL mid = static_cast<PosIntL>((local_bid*blockDim.x + i)*blockDim.x + threadIdx.x);
             Float strength = static_cast<Float>(conMat[mid]);
             if (strength != 0  && spikeTrain[ipre] > 0) {
 				PosInt jtype;	
@@ -1706,7 +1703,7 @@ void recal_G_mat_nd( // no distance involved for close-range connections, i.e., 
         }
     }
 
-    PosInt id = blockIdx.x*blockSize + threadIdx.x;
+    PosInt id = blockIdx.x*blockDim.x + threadIdx.x;
     //#pragma unroll (ntimesE)
     #pragma unroll (max_ngTypeE)
     for (PosInt ig=0; ig<ngTypeE; ig++) {

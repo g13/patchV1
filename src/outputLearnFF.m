@@ -113,7 +113,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	fid = fopen(f_sLGN, 'r');
 	fseek(fid, 6*4, 0); % skip till time
 	fseek(fid, max_LGNperV1*nV1*int64(nt_-1)*4, 0); % skip till time
-	sLGN = fread(fid, [max_LGNperV1, nV1], 'float');
+	sLGN = fread(fid, [nV1, max_LGNperV1], 'float')'; % transposed
     fclose(fid);
 
 	nLGN_1D = sqrt(double(nLGN/2))
