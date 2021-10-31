@@ -225,6 +225,66 @@ void compute_V_collect_spike_learnFF(
         LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo
 );
 
+__global__ 
+void compute_V_collect_spike_learnFF_fast(
+        Float* __restrict__ v,
+        Float* __restrict__ dep,
+        Float* __restrict__ w, // AdEx
+        Float* __restrict__ gapS, // gap junction strength
+        Float* __restrict__ gFF, // not in chunks
+        Float* __restrict__ hFF,
+        Float** __restrict__ gE, // in chunks
+        Float** __restrict__ gI,
+        Float** __restrict__ hE,
+        Float** __restrict__ hI,
+        Float** __restrict__ gap,
+        Size* __restrict__ nLGN,
+        Float* __restrict__ sLGN,
+        int* __restrict__ LGN_idx,
+        int* __restrict__ LGN_idy,
+        Float* __restrict__ tBack,
+        Float* __restrict__ spikeTrain, //         [                depth, nblock, blockSize  ]
+        Float* __restrict__ vLTD_FF_E, //    post, [nLearnTypeFF_E,        nblock, nE         ]
+        Float* __restrict__ vTrip_FF_E, //   post, [nLearnTypeFF_E,        nblock, nE         ]
+        Float* __restrict__ vLTD_FF_I, //    post, [nLearnTypeFF_I,        nblock, nI         ]
+        Float* __restrict__ vTrip_FF_I, //   post, [nLearnTypeFF_I,        nblock, nI         ]
+        Float* __restrict__ vAvgE, //        post, [                       nblock, nE,       2]
+        Float* __restrict__ vAvgI, //        post, [                       nblock, nI,        ]
+        Float* __restrict__ vLTP_E, //        pre, [nLearnTypeE,    depth, nblock, nE,       2]
+        Float* __restrict__ vLTD_E, //       post, [nLearnTypeE,           nblock, nE,       2]
+        Float* __restrict__ vTripE, //       post, [nLearnTypeE,           nblock, nE,       2]
+        Float* __restrict__ vSTDP_QE,  //  E post, [nLearnTypeQ,           nblock, nE        2]
+        Float* __restrict__ vSTDP_QI,  //   I pre, [nLearnTypeQ,    depth, nblock, nI,       2]
+        Float* __restrict__ pFF, // LIF
+        Float* __restrict__ vR,
+        Float* __restrict__ vThres,
+        Float* __restrict__ gL,
+        Float* __restrict__ C,
+        Float* __restrict__ tRef,
+        Float* __restrict__ tonicDep,
+        Float* __restrict__ vT, // AdEx
+        Float* __restrict__ deltaT,
+        Float* __restrict__ tau_w,
+        Float* __restrict__ a,
+        Float* __restrict__ b,
+        Size* __restrict__ typeAcc,
+        curandStateMRG32k3a* __restrict__ rGenCond,
+        Float* __restrict__ synFailFF,
+        Float* __restrict__ synPerConFF,
+        curandStateMRG32k3a* __restrict__ rNoisy,
+        Float* __restrict__ noisyDep,
+        Float* __restrict__ last_noise,
+        Float* __restrict__ output_g,
+        Float* __restrict__ output_h,
+        Float* __restrict__ totalFF,
+        Float* __restrict__ totalFF_inf,
+        Float tau_noise, PosInt currentTimeSlot, Size trainDepth, Size max_nLGN, Size ngTypeFF, Size ngTypeE, Size ngTypeI, ConductanceShape condFF, ConductanceShape condE, ConductanceShape condI, Float dt, Size maxChunkSize, Size remainChunkSize, PosInt iSizeSplit, Size nChunk, Size nE, Size nI, Size nV1, int learning, int varSlot, Size nType,
+		cudaSurfaceObject_t LGNspikeSurface,
+        LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
+        LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
+        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo
+);
+
 //template<int ntimesE, int ntimesI> extern
 __global__  
 void recal_G_mat( // <<< nblock[partial], blockSize >>>

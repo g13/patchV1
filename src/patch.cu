@@ -887,6 +887,13 @@ int main(int argc, char** argv) {
 			return EXIT_FAILURE;
         }
     }
+
+    Float min_tRef = tRef[0];
+    for (PosInt i=1; i<nType; i++) {
+        if (min_tRef > tRef[i]) {
+            min_tRef = tRef[i];
+        }
+    }
 	if (print_log) {
     	cout << "tRef: ";
         for (PosInt i=0; i<nType; i++) {
@@ -2478,6 +2485,8 @@ int main(int argc, char** argv) {
 
 	// malloc for LGN
 	size_t spikeGenSize = (2*sizeof(int) + 2*sizeof(Float) + sizeof(curandStateMRG32k3a)) * nLGN;
+    cout << "sizeof curandStateMRG32k3a" << sizeof(curandStateMRG32k3a) << "\n";
+    cout << "sizeof curandState" << sizeof(curandState) << "\n";
 
 	size_t outputB4V1Size;
     size_t B4V1_hostSize;
@@ -5899,20 +5908,39 @@ int main(int argc, char** argv) {
 
 		// TODO: block-wise compute_V
 		// simulate V1 response
-		compute_V_collect_spike_learnFF<<<nblock, neuronPerBlock, 0, mainStream>>> (
-				d_v, d_depC, d_w, d_gapS, d_gFF, d_hFF, dd_gE, dd_gI, dd_hE, dd_hI, dd_gap, // V1 neuron measurements
-				d_nLGNperV1, sLGN, LGN_idx, LGN_idy, // LGN->V1 connections
-				tBack, d_spikeTrain, // neuron spiking
-                vLTD_FF_E, vTrip_FF_E, vLTD_FF_I, vTrip_FF_I, // FF excitatory learning vars
-                vAvgE, vAvgI, // filtered spiking 
-                vLTP_E, vLTD_E, vTripE, // E->E learning vars
-                vSTDP_QE, vSTDP_QI, // I->E learning vars
-                d_pFF, d_vR, d_vThres, d_gL, d_C, d_tRef, d_tonicDep, d_vT, d_deltaT, d_tau_w, d_a, d_b, typeAcc, 
-                rGenCond, d_synFailFF, d_synPerConFF, rNoisy, d_noisyDep, last_noise, d_og, d_oh, d_totalFF, d_totalFF_inf,
-				tau_noise, currentTimeSlot, trainDepth, max_LGNperV1,
-				ngTypeFF, ngTypeE, ngTypeI, condFF, condE, condI,
-				dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, nE, nI, nV1, learning, varSlot, nType, LGNspikeSurface,
-                lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ, exp_homeo, iModel, noDelay, applyHomeo); // learning const structs 
+        if (dt > min_tRef) {
+		    compute_V_collect_spike_learnFF<<<nblock, neuronPerBlock, 0, mainStream>>> (
+		    		d_v, d_depC, d_w, d_gapS, d_gFF, d_hFF, dd_gE, dd_gI, dd_hE, dd_hI, dd_gap, // V1 neuron measurements
+		    		d_nLGNperV1, sLGN, LGN_idx, LGN_idy, // LGN->V1 connections
+		    		tBack, d_spikeTrain, // neuron spiking
+                    vLTD_FF_E, vTrip_FF_E, vLTD_FF_I, vTrip_FF_I, // FF excitatory learning vars
+                    vAvgE, vAvgI, // filtered spiking 
+                    vLTP_E, vLTD_E, vTripE, // E->E learning vars
+                    vSTDP_QE, vSTDP_QI, // I->E learning vars
+                    d_pFF, d_vR, d_vThres, d_gL, d_C, d_tRef, d_tonicDep, d_vT, d_deltaT, d_tau_w, d_a, d_b, typeAcc, 
+                    rGenCond, d_synFailFF, d_synPerConFF, rNoisy, d_noisyDep, last_noise, d_og, d_oh, d_totalFF, d_totalFF_inf,
+		    		tau_noise, currentTimeSlot, trainDepth, max_LGNperV1,
+		    		ngTypeFF, ngTypeE, ngTypeI, condFF, condE, condI,
+		    		dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, nE, nI, nV1, learning, varSlot, nType, LGNspikeSurface,
+                    lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ, exp_homeo, iModel, noDelay, applyHomeo); // learning const structs 
+            
+        } else {
+		    compute_V_collect_spike_learnFF_fast<<<nblock, neuronPerBlock, 0, mainStream>>> (
+		    		d_v, d_depC, d_w, d_gapS, d_gFF, d_hFF, dd_gE, dd_gI, dd_hE, dd_hI, dd_gap, // V1 neuron measurements
+		    		d_nLGNperV1, sLGN, LGN_idx, LGN_idy, // LGN->V1 connections
+		    		tBack, d_spikeTrain, // neuron spiking
+                    vLTD_FF_E, vTrip_FF_E, vLTD_FF_I, vTrip_FF_I, // FF excitatory learning vars
+                    vAvgE, vAvgI, // filtered spiking 
+                    vLTP_E, vLTD_E, vTripE, // E->E learning vars
+                    vSTDP_QE, vSTDP_QI, // I->E learning vars
+                    d_pFF, d_vR, d_vThres, d_gL, d_C, d_tRef, d_tonicDep, d_vT, d_deltaT, d_tau_w, d_a, d_b, typeAcc, 
+                    rGenCond, d_synFailFF, d_synPerConFF, rNoisy, d_noisyDep, last_noise, d_og, d_oh, d_totalFF, d_totalFF_inf,
+		    		tau_noise, currentTimeSlot, trainDepth, max_LGNperV1,
+		    		ngTypeFF, ngTypeE, ngTypeI, condFF, condE, condI,
+		    		dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, nE, nI, nV1, learning, varSlot, nType, LGNspikeSurface,
+                    lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ, exp_homeo, iModel, noDelay, applyHomeo); // learning const structs 
+        }
+
         #ifdef CHECK
 		    getLastCudaError("compute_V_collect_spike failed");
         #endif
