@@ -846,6 +846,12 @@ int main(int argc, char** argv) {
 			return EXIT_FAILURE;
         }
     }
+    for (PosInt i=0; i<nType; i++) {
+        if (vThres[i] > 0){
+            cout << "all vThres need to be non-positive, vThres[" << i << "] = " << vThres[i] << "\n";
+			return EXIT_FAILURE;
+		}
+    }
 
     if (iModel == 0) {
         cout << "using LIF model vT(ignored) is equivalent with vThres.\n";

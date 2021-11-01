@@ -563,11 +563,13 @@ void compute_V_collect_spike_learnFF(
 	Float h0[max_ngTypeFF];
 	Float g1[max_ngTypeFF];
 	Float h1[max_ngTypeFF];
+    Float p_FF[max_ngTypeFF]; // receptor type proportion 
     #pragma unroll (max_ngTypeFF) //(ntimesFF)
     for (PosInt ig=0; ig<ngTypeFF; ig++) {
         PosInt gid = nV1*ig + tid; // not in chunks
         g1[ig] = gFF[gid]; // g1, all input and decay
         h1[ig] = hFF[gid];
+        p_FF[ig] = pFF[itype*ngTypeFF + ig];
         g0[ig] = g1[ig]; // only before tBack
         h0[ig] = h1[ig];
 
@@ -651,14 +653,14 @@ void compute_V_collect_spike_learnFF(
 						}
     					#pragma unroll (max_ngTypeFF) //(ntimesFF)
     					for (PosInt ig=0; ig<ngTypeFF; ig++) {
-    			    		Float str = f[i] * pFF[itype*ngTypeFF + ig];
+    			    		Float str = f[i] * p_FF[ig];
 							if (backingUpFromRef) {
 								if (ddt > 0) { // before tBack
     			    				condFF.compute_single_input_conductance(g0[ig], h0[ig], str*nsp_FF, ddt, ig);
     			    			}
 							}
 							if (model.spikeCount == 0) { // all inputs
-    			    			condFF.compute_single_input_conductance(g1[ig], h1[ig], str*nsp_FF, dt*(1-tsp_FF), ig);
+    			    			condFF.compute_single_input_conductance(g1[ig], h1[ig], str*nsp_FF, dt-tsp_FF, ig);
 							}
 						}
 					}
@@ -786,13 +788,11 @@ void compute_V_collect_spike_learnFF(
 
     if (model.spikeCount > 0) {
 		sInfo /= model.spikeCount*dt; //decimal part: tsp (normalize by dt)
-	}
-    sInfo += model.spikeCount; // integer part: nsp
-	if (sInfo > 0) {
-    	spikeTrain[nV1*currentTimeSlot + tid] = sInfo;
+        sInfo += model.spikeCount; // integer part: nsp
 	} else {
-    	spikeTrain[nV1*currentTimeSlot + tid] = model.v;
-	}
+        sInfo = model.v;
+	} 
+    spikeTrain[nV1*currentTimeSlot + tid] = sInfo;
 	/*
 	if (tid == 8*1024 + 180 || tid == 26959) {
 		if (sInfo > 0) {
@@ -815,9 +815,14 @@ void compute_V_collect_spike_learnFF(
     tBack[tid] = model.tBack;
 
     if (learning && learning < 4) {
-        Float nsp = flooring(sInfo);
-		if (sInfo < 0) assert(nsp < 0);
-        Float tsp = (sInfo>0? sInfo - nsp: 1)*dt;
+		Float nsp, tsp;
+		if (sInfo > 0) {
+			nsp = flooring(sInfo);
+			tsp = (sInfo - nsp)*dt;
+		} else {
+			nsp = 0;
+			tsp = 1;
+		}
         // will compute ff learning, first row at start of time step, second row at tsp
         Float lFF[2*2*max_nLearnTypeFF]; // row 0: start, row 1: sp
         Float lAvg[2];
@@ -993,7 +998,7 @@ void compute_V_collect_spike_learnFF(
                 float sInfo_FF;
                 surf2DLayeredread(&sInfo_FF, LGNspikeSurface, 4*x, y, 0);
                 Size nsp_FF = static_cast<Size>(flooring(sInfo_FF));
-                Float tsp_FF = sInfo_FF > 0? sInfo_FF - nsp_FF: 1;
+                Float tsp_FF = (sInfo_FF > 0? sInfo_FF - nsp_FF: 1)*dt;
                 if (nsp_FF > 0) { // LTD, regarless of post spike
                     PosInt cPick;
                     Float delta_t;
@@ -1163,13 +1168,11 @@ void compute_V_collect_spike_learnFF(
     }
 
 	if (noDelay && sInfo > 0) {
-        Float nsp = flooring(sInfo);
-		if (sInfo < 0) assert(nsp < 0);
-        Float tsp = sInfo>0? sInfo - nsp: 1;
-		Size block_ngType = (ngTypeE*nE + ngTypeI*nI)*blockIdx.x;
         ConductanceShape *cond;
-		PosInt i = block_ngType;
         Size ngType; 
+        Float nsp = flooring(sInfo);
+		Size block_ngType = (ngTypeE*nE + ngTypeI*nI)*blockIdx.x;
+		PosInt i = block_ngType;
         if (threadIdx.x < nE) {
             ngType = ngTypeE;
         	cond = &condE;
@@ -1179,15 +1182,14 @@ void compute_V_collect_spike_learnFF(
             cond = &condI;
 			i += nE*ngTypeE + (threadIdx.x-nE)*ngTypeI;
         }
+        Float tsp = (sInfo - nsp)*dt;
         #pragma unroll (max_ngType)
         for (PosInt ig=0; ig<ngType; ig++) {
         	Float local_g = 0;
         	Float local_h = 0;
-			if (nsp > 0) {
-        		cond->compute_single_input_conductance(local_g, local_h, nsp, dt*(1-tsp), ig);
-			}
-			output_g[i + ig] = local_g;
-			output_h[i + ig] = local_h;
+        	cond->compute_single_input_conductance(local_g, local_h, nsp, dt-tsp, ig);
+			output_g[i + ig] = local_g; // no need to initialize, as spikeTrain array work as a pointer to updated output vectors only
+			output_h[i + ig] = local_h; 
 			assert(output_g[i + ig] >= 0);
 			assert(output_h[i + ig] >= 0);
         }
@@ -1565,8 +1567,14 @@ void compute_V_collect_spike_learnFF_fast(
     tBack[tid] = model.tBack;
 
     if (learning && learning < 4) {
-        Float nsp = flooring(sInfo);
-        Float tsp = (sInfo>0? sInfo - nsp: 1)*dt;
+		Float nsp, tsp;
+		if (sInfo > 0) {
+			nsp = flooring(sInfo);
+			tsp = (sInfo - nsp)*dt;
+		} else {
+			nsp = 0;
+			tsp = 1;
+		}
         // will compute ff learning, first row at start of time step, second row at tsp
         Float lFF[2*2*max_nLearnTypeFF]; // row 0: start, row 1: sp
         Float lAvg[2];
@@ -1912,13 +1920,11 @@ void compute_V_collect_spike_learnFF_fast(
     }
 
 	if (noDelay && sInfo > 0) {
-        Float nsp = flooring(sInfo);
-		if (sInfo < 0) assert(nsp < 0);
-        Float tsp = sInfo>0? sInfo - nsp: 1;
-		Size block_ngType = (ngTypeE*nE + ngTypeI*nI)*blockIdx.x;
         ConductanceShape *cond;
-		PosInt i = block_ngType;
         Size ngType; 
+        Float nsp = flooring(sInfo);
+		Size block_ngType = (ngTypeE*nE + ngTypeI*nI)*blockIdx.x;
+		PosInt i = block_ngType;
         if (threadIdx.x < nE) {
             ngType = ngTypeE;
         	cond = &condE;
@@ -1928,14 +1934,13 @@ void compute_V_collect_spike_learnFF_fast(
             cond = &condI;
 			i += nE*ngTypeE + (threadIdx.x-nE)*ngTypeI;
         }
+        Float tsp = (sInfo - nsp)*dt;
         #pragma unroll (max_ngType)
         for (PosInt ig=0; ig<ngType; ig++) {
         	Float local_g = 0;
         	Float local_h = 0;
-			if (nsp > 0) {
-        		cond->compute_single_input_conductance(local_g, local_h, nsp, dt*(1-tsp), ig);
-			}
-			output_g[i + ig] = local_g;
+        	cond->compute_single_input_conductance(local_g, local_h, nsp, dt-tsp, ig);
+			output_g[i + ig] = local_g; // no need to initialize, as spikeTrain array work as a pointer to updated output vectors only
 			output_h[i + ig] = local_h;
 			assert(output_g[i + ig] >= 0);
 			assert(output_h[i + ig] >= 0);

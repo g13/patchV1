@@ -1,6 +1,9 @@
-function testLearnFF(isuffix, osuffix, res_fdr, data_fdr, fig_fdr, iV1)
-	nt_ = 0; % choose time steps to plot
-	targetfr = 5
+function testLearnFF(isuffix, osuffix, res_fdr, data_fdr, fig_fdr, iV1, nt_)
+	pLGN = [33, 32, 7, 8]
+	if nargin < 7
+		nt_ = 0; % plot full time duration.
+	end
+	targetfr = 6
 	nsub = 2 + 2;
 	thres = 0.5;  % as a percent of gmax
 	if ~isempty(isuffix) 
@@ -12,11 +15,14 @@ function testLearnFF(isuffix, osuffix, res_fdr, data_fdr, fig_fdr, iV1)
 	res_fdr = [res_fdr, '/'];
 	data_fdr = [data_fdr, '/'];
 	fig_fdr = [fig_fdr, '/'];
+
 	learnDataFn = [data_fdr, 'learnData_FF', osuffix, '.bin']
 	rawDataFn = [data_fdr, 'rawData', osuffix, '.bin']
-	LGN_V1_id_fn = [data_fdr, 'LGN_V1_idList', isuffix, '.bin']
 	f_sLGN = [data_fdr, 'sLGN', osuffix, '.bin']
 	f_LGNoutput = [data_fdr, 'outputB4V1', osuffix, '.bin']
+	f_LGNfr = [data_fdr, 'LGN_fr', osuffix, '.bin']
+
+	LGN_V1_id_fn = [res_fdr, 'LGN_V1_idList', isuffix, '.bin']
 	fLGN_vpos = [res_fdr, 'LGN_vpos', isuffix, '.bin']
 	%%
 	
@@ -62,7 +68,7 @@ function testLearnFF(isuffix, osuffix, res_fdr, data_fdr, fig_fdr, iV1)
 	    fread(rid, 1, 'uint'); % nV1
 	    iModel = fread(rid, 1, 'int')
 	    tmp_mI = fread(rid, 1, 'uint');
-		assert(tmp_mI == mI);
+		assert(tmp_mI == nI);
 	    haveH = fread(rid, 1, 'uint')
 	    ngTypeFF = fread(rid, 1, 'uint')
 	    ngTypeE = fread(rid, 1, 'uint')
@@ -316,27 +322,31 @@ function testLearnFF(isuffix, osuffix, res_fdr, data_fdr, fig_fdr, iV1)
 	end
 	if fstatus == 0
 	    format long
-	    %disp(size_t);
-	    %[~, id] = sort(sum(floor(iLGN_sInfo), 1), 'descend'); % pick the LGNs that fires the most
-	    %pLGN = id(1:nsub);
-	    %pLGN = randi(nLGN_V1(iV1), nsub,1)
-	    %nLGN_1D = int32(sqrt(nLGN));
-		pLGN = zeros(nsub,1);
-		[~, pLGN(1)] = max(sLGN(end,:) - sLGN(1,:));
-		[~, pLGN(3)] = min(sLGN(end,:) - sLGN(1,:));
-		if mod(iLGN(pLGN(1)),2) == 1
-			pLGN(2) = pLGN(1) + 1;
+		if ~exist('pLGN', 'var')
+			%disp(size_t);
+	    	%[~, id] = sort(sum(floor(iLGN_sInfo), 1), 'descend'); % pick the LGNs that fires the most
+	    	%pLGN = id(1:nsub);
+	    	%pLGN = randi(nLGN_V1(iV1), nsub,1)
+	    	%nLGN_1D = int32(sqrt(nLGN));
+			pLGN = zeros(nsub,1);
+			[~, pLGN(1)] = max(sLGN(end,:) - sLGN(1,:));
+			[~, pLGN(3)] = min(sLGN(end,:) - sLGN(1,:));
+			if mod(iLGN(pLGN(1)),2) == 1
+				pLGN(2) = pLGN(1) + 1;
+			else
+				pLGN(2) = pLGN(1) - 1;
+			end
+			if mod(iLGN(pLGN(3)),2) == 1
+				pLGN(4) = pLGN(3) + 1;
+			else
+				pLGN(4) = pLGN(3) - 1;
+			end
+			pLGN(pLGN > nLGN_V1(iV1)) = randi(nLGN_V1(iV1), sum(pLGN>nLGN_V1(iV1)),1);
+			pLGN
 		else
-			pLGN(2) = pLGN(1) - 1;
+	    	nsub = length(pLGN);
 		end
-		if mod(iLGN(pLGN(3)),2) == 1
-			pLGN(4) = pLGN(3) + 1;
-		else
-			pLGN(4) = pLGN(3) - 1;
-		end
-		pLGN(pLGN > nLGN_V1(iV1)) = randi(nLGN_V1(iV1), sum(pLGN>nLGN_V1(iV1)),1);
-	    %pLGN = [1,2,3]
-	    disp(iLGN(pLGN)');
+	    iLGN(pLGN)'
 	    f = figure;
 		titl = [ 'check-learnFF-', num2str(iV1), EI, osuffix];
 	    it = 1:nt_; % end points, spike times counts from start points, (iAvg as well, for now, TODO)
@@ -363,13 +373,13 @@ function testLearnFF(isuffix, osuffix, res_fdr, data_fdr, fig_fdr, iV1)
 	        gs = plot(t, ss, '-b');
 	        lines = [lines, gs];
 	        labels = [labels, 'LGN strength'];
-	        max_gFr = max(LGNfr(iLGN(pLGN(j)),:));
-	        gfr = plot(t, LGNfr(iLGN(pLGN(j)),:)./max_gFr*max_igFF, '-y');
+	        max_gFr = max(LGNfr(iLGN(i),:));
+	        gfr = plot(t, LGNfr(iLGN(i),:)./max_gFr*max_igFF, '-y');
 	        lines = [lines, gfr];
 	        labels = [labels, 'LGN fr'];
 	        xlim([0,t(end)]);
 	
-			title([titl, ': ', num2str(iLGN(pLGN(j))), ' type-', num2str(LGN_type(iLGN(pLGN(j))))]);
+			title([titl, ': ', num2str(iLGN(i)), ' type-', num2str(LGN_type(iLGN(i)))]);
 	        pick = iLGN_sInfo(:,i) > 0;
 	        if sum(pick) > 0
 	            gsp = plot((it(pick)-1+iLGN_sInfo(pick,i)' - floor(iLGN_sInfo(pick,i)'))*dt, zeros(sum(pick),1) + ss(pick), '*g', 'MarkerSize', 2.0);
@@ -433,7 +443,7 @@ function testLearnFF(isuffix, osuffix, res_fdr, data_fdr, fig_fdr, iV1)
 	    saveas(f, [fig_fdr, titl, '.png']) ;
 	end
 	
-	fid = fopen(['LGN_fr', osuffix, '.bin'], 'r');
+	fid = fopen(f_LGNfr, 'r');
 	fread(fid, 2, 'uint');
 	LGN_fr = fread(fid,[nLGN, nt_], 'float');
 	fclose(fid);
@@ -455,12 +465,12 @@ function testLearnFF(isuffix, osuffix, res_fdr, data_fdr, fig_fdr, iV1)
 	
 	thres = gmax*thres;
 	sLGN = zeros(nLGN, 2, nV1);
-	data = fread(fid, [max_LGNperV1, nV1], 'float');
+	data = fread(fid, [nV1, max_LGNperV1], 'float')'; %transposed;
 	for i=1:nV1
 	    sLGN(LGN_V1_ID(1:nLGN_V1(i),i),1,i) = data(:,i);
 	end
 	fseek(fid, max_LGNperV1*nV1*(nt-2)*4, 0); % skip till end 
-	data = fread(fid, [max_LGNperV1, nV1], 'float');
+	data = fread(fid, [nV1, max_LGNperV1], 'float')'; %transposed;
 	for i=1:nV1
 	    sLGN(LGN_V1_ID(1:nLGN_V1(i),i),2,i) = data(:,i);
 	end
@@ -491,6 +501,6 @@ function testLearnFF(isuffix, osuffix, res_fdr, data_fdr, fig_fdr, iV1)
 	plot(nsp./(nt_*dt/1000), nLGN_final, '*b');
 	xlabel('V1 fr Hz')
 	ylabel(['nLGN with s > ', num2str(thres)])
-	saveas(f, ['hist',osuffix], 'fig');
-	saveas(f, ['hist', osuffix,'.png']) ;
+	saveas(f, [fig_fdr, 'hist',osuffix], 'fig');
+	saveas(f, [fig_fdr, 'hist', osuffix,'.png']) ;
 end

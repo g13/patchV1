@@ -25,8 +25,8 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
     ns = 10
     seed = 657890
     np.random.seed(seed)
-    nt_ = 0
-    nstep = 10000
+    nt_ = 1000
+    nstep = 1000
     step0 = 0
     if nOri > 0:
         stiOri = np.pi*np.mod(iOri/nOri, 1.0)

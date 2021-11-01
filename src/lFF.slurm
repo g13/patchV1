@@ -1,7 +1,8 @@
 #!/bin/bash
 cd ${HOME}/repos/patchV1/src
 
-fdr0=/scratch/wd554/Jen
+#fdr0=/scratch/wd554/Jen
+fdr0=/scratch/wd554/patchV1
 res_fdr=${fdr0}/resource # inputFolder in cfg stimulus, V1-static, LGN-static and connectome files
 data_fdr=${fdr0} # outputFolder in cfg
 
@@ -17,14 +18,14 @@ if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 fi
 
 if [[ "${waveStage}" = "3" ]] ;then
-	fdr=wave_III/32x3_5-5_rLTD
-	op=32x3_5-5_rLTD-110%
+	fdr=test_32/wave_III
+	op=wave_III_32_fast
 	#fdr=wave_III/32x3_5-5_standard
 	#op=32x3_5-5_standard0
 	op_cfg=wave_III.cfg
 	new_setup=False
-	lgn=lFF_iii_5-5
-	res=lFF_iii_5-5
+	lgn=lFF_iii_5-5_32
+	res=lFF_iii_5-5_32
 fi
 
 if [[ "${waveStage}" = "5" ]] ;then
@@ -40,7 +41,7 @@ seed=1924784 # RANDOM SEED for post-analysis sampling and input randomization
 # for outputLearnFF.m
 st=2 # figures' output: 0 for temporal, 1 for spatial, 2 for both
 examSingle=true # output the spatiotemporal figure, tLGN_V1_single if true
-collectMeanDataOnly=True # not ploting samples of V1 response variable traces
+collectMeanDataOnly=False # not ploting samples of V1 response variable traces
 
 
 # NOT RELATED, leave alone
@@ -66,7 +67,7 @@ fi
 
 echo using ${op_cfg}
 echo outputs to ${fig_fdr}
-cp lFF.slurm ${fig_fdr}/lFF_${op}_slurm.bak
+cp lFF.slurm ${fig_fdr}/lFF_${op}.slurm
 
 readNewSpike=$1
 if [ -z "${readNewSpike}" ]; 
@@ -82,16 +83,14 @@ then
 fi
 echo plotOnly=${plotOnly}
 
-cp outputLearnFF.m outputLearnFF_${op}_m.bak
+cp outputLearnFF.m ${fig_fdr}/outputLearnFF_${op}.m
 if [ "${plotOnly}" = False ]
 then
 	gpu=1
-	cp ${op_cfg} ${op}_cfg.bak
-	cp inputLearnFF.m inputLearnFF_${op}_m.bak
-	mv ${op}_cfg.bak inputLearnFF_${op}_m.bak outputLearnFF_${op}_m.bak ${fig_fdr}
+	cp ${op_cfg} ${fig_fdr}/${op}.cfg
+	cp inputLearnFF.m ${fig_fdr}/inputLearnFF_${op}.m
 else
 	gpu=0
-	mv outputLearnFF_${op}_m.bak ${fig_fdr}
 fi
 
 if ! [ -d "log" ]
@@ -131,7 +130,7 @@ then
 		matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, 0, '${res}', ${waveStage}, '${res_fdr}');exit;"
 	fi
 	date
-	patch -c ${fig_fdr}/${op}_cfg.bak
+	patch -c ${fig_fdr}/${op}.cfg
 	date
 fi
 
@@ -139,14 +138,14 @@ fi
 #echo plotLGN_response.py ${op} ${lgn} ${res_fdr} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
 #plotLGN_response.py ${op} ${lgn} ${res_fdr} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
 
-echo plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} & 
-plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
+#echo plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} & 
+#plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
 
 echo matlab -nodisplay -nosplash -r "outputLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle});exit;" &
 matlab -nodisplay -nosplash -r "outputLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle});exit;" &
 
-#echo matlab -nodisplay -nosplash -r "testLearnFF('${lgn}', '${op}', '${data_fdr}');outputLearnFF('${lgn}', '${op}', '${data_fdr}', ${LGN_switch}, false);exit;" &
-#matlab -nodisplay -nosplash -r "testLearnFF('${lgn}', '${op}', '${data_fdr}');outputLearnFF('${lgn}', '${op}', '${data_fdr}', ${LGN_switch}, false);exit;" &
+echo matlab -nodisplay -nosplash -r "testLearnFF('${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', 233, 5000);exit;" &
+matlab -nodisplay -nosplash -r "testLearnFF('${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', 233, 5000);exit;" &
 
 #python patchOutput.py ${op} ${data_fdr} &
 

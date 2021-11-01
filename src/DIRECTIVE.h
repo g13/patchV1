@@ -19,6 +19,7 @@
     #define logarithmb log
 	#define exponentialb exp 
     #define log_gammab lgamma
+    #define minimumb fmin
 
     #define tangentb tan
     #define sineb sin 
@@ -44,6 +45,7 @@
     #define logarithmb logf
 	#define exponentialb expf
     #define log_gammab lgammaf
+    #define minimumb fminf
 
     #define tangentb tanf
     #define sineb sinf 
@@ -71,6 +73,7 @@
     #define logarithm logf
 	#define exponential expf
     #define log_gamma lgammaf
+    #define minimum fminf
 
     #define tangent tanf
     #define sine sinf 
@@ -96,6 +99,7 @@
     #define logarithm log
 	#define exponential exp 
     #define log_gamma lgamma
+    #define minimum fmin
 
     #define tangent tan
     #define sine sin 

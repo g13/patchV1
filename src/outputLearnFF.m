@@ -27,7 +27,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	nbins = 20; % bins for histogram
     nit0 = 20; % number of snapshot for the spatial figure and histogram in the temporal figure
 	ns = 10; % number for V1 neurons to be sampled.
-	%V1_pick = [1,10,100,999,1000]; % specify the IDs of V1 neurons to be sampled. If set, ns will be ignored.
+	V1_pick = [203,752,365,360,715,467,743]; % specify the IDs of V1 neurons to be sampled. If set, ns will be ignored.
 	%%%%%%%%%%%%  
 
 	f_sLGN = [data_fdr, 'sLGN', osuffix, '.bin']
@@ -102,7 +102,8 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	fclose(sid);
 
 	if ~exist('V1_pick', 'var') 
-		V1_pick = randi(768,[ns,1]);
+		%V1_pick = randi(768,[ns,1]);
+		V1_pick = randi(nV1,[ns,1]);
 	else
 		ns = length(V1_pick);
 	end
@@ -178,39 +179,49 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 
     nrow = double(idivide(int32(nit+nit0-1),int32(nit0)));
 	qt = int32(floor(linspace(step0, nt_, nit)))
-	for iq = 1:ns
-	    iV1 = V1_pick(iq)
 	    %disp(nLGN_V1(iV1));
 	    %disp(LGN_V1_ID(1:nLGN_V1(iV1),iV1)');
 	    
-	    if st == 2 || st == 1
-	        sLGN = zeros(nLGN, nit);
-	        fid = fopen(f_sLGN, 'r');
-	        fseek(fid, 6*4, 0); % skip till time
+	if st == 2 || st == 1
+	    sLGN_all = zeros(nLGN, nit, ns);
+	    fid = fopen(f_sLGN, 'r');
+	    fseek(fid, 6*4, 0); % skip till time
 	    
-	        % skip times
-	        %ht = round(nt/2);
-	        %it = [0, ht-1, nt-1 - (ht+1)]
-			
-	        fseek(fid, max_LGNperV1*nV1*int64(step0-1)*4, 0); % skip till time
-	        data = fread(fid, [max_LGNperV1, nV1], 'float');
-	        sLGN(LGN_V1_ID(1:nLGN_V1(iV1),iV1),1) = data(1:nLGN_V1(iV1),iV1);
+	    % skip times
+	    %ht = round(nt/2);
+	    %it = [0, ht-1, nt-1 - (ht+1)]
+		
+	    fseek(fid, max_LGNperV1*nV1*int64(step0-1)*4, 0); % skip till time
+	    data = fread(fid, [nV1, max_LGNperV1], 'float')'; % transposed
 
-	        it = diff(qt)-1;
-	        for j = 1:nit-1
-	            if it(j) > 0
-	                fseek(fid, max_LGNperV1*nV1*int64(it(j))*4, 0); % skip till time
-	            end
-	            data = fread(fid, [max_LGNperV1, nV1], 'float');
-	            sLGN(LGN_V1_ID(1:nLGN_V1(iV1),iV1),j+1) = data(1:nLGN_V1(iV1),iV1);
+	    for iq = 1:ns
+	        iV1 = V1_pick(iq);
+	        sLGN_all(LGN_V1_ID(1:nLGN_V1(iV1),iV1),1,iq) = data(1:nLGN_V1(iV1),iV1);
+        end
+
+	    it = diff(qt)-1;
+	    for j = 1:nit-1
+	        if it(j) > 0
+	            fseek(fid, max_LGNperV1*nV1*int64(it(j))*4, 0); % skip till time
 	        end
-	        fclose(fid);
-	        
+			data = fread(fid, [nV1, max_LGNperV1], 'float')'; % transposed
+	        for iq = 1:ns
+	            iV1 = V1_pick(iq);
+	            sLGN_all(LGN_V1_ID(1:nLGN_V1(iV1),iV1),j+1,iq) = data(1:nLGN_V1(iV1),iV1);
+            end
+	    end
+	    fclose(fid);
+	    for iq = 1:ns
+	        iV1 = V1_pick(iq);
+            sLGN = sLGN_all(:,:,iq);
+			gmax = max(abs(sLGN(:)));
+            if gmax == 0
+                continue;
+            end
 			if doubleOnOff == 0
 	        	f = figure('PaperPosition',[0, 0, nit, (2-mix)]);
 				set(f, 'PaperUnit', 'inches');
 	    	    sLGN = reshape(sLGN, [nLGN_1D, nLGN_1D, nit]);
-				gmax = max(abs(sLGN(:)));
 	    	    if mix
 	    	        clims = [-1, 1];
 	    	        for i = 1:nit
@@ -280,7 +291,6 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 				set(f, 'PaperUnit', 'inches');
 				assert(doubleOnOff == 1);
 				sLGN = reshape(sLGN, [nLGN_1D*2, nLGN_1D, nit]);
-				gmax = max(abs(sLGN(:)));
 	    	    clims = [0, 1];
 	    	    for itype = 1:ntype
                     row = 1;
@@ -341,30 +351,36 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	        	saveas(f, [fig_fdr,'sLGN_V1-',num2str(iV1), osuffix, '-sep',rtime,'.png']);
 			end
 	    end
-	    if st == 2 || st == 0
-	        
-	        tstep = int64(round(range_nt/nstep))
-	        it = step0:tstep:nt_;
-	        nstep = length(it)
-			qtt = int32(floor(linspace(1,nstep,nit)));
-	        tLGN = zeros(max_LGNperV1, nstep);
-	        
+    end
 
-	        fid = fopen(f_sLGN, 'r');
-	        fseek(fid, 6*4, 0); % skip till time
-	        fseek(fid, max_LGNperV1*nV1*int64(step0-1)*4, 0); % skip till time
-	        data = fread(fid, [max_LGNperV1, nV1], 'float');
-	        tLGN(:,1) = data(:,iV1);
-	        
-	        for j = 2:nstep
-	            fseek(fid, max_LGNperV1*nV1*int64(tstep-1)*4, 0); % skip till time
-	            data = fread(fid, [max_LGNperV1, nV1], 'float');
-	            tLGN(:,j) = data(:,iV1);
-	        end
-	        fclose(fid);
-	       	gmax = max(tLGN(:));
-	       	gmin = min(tLGN(:));
+	if st == 2 || st == 0
+	    tstep = int64(round(range_nt/nstep))
+	    it = step0:tstep:nt_;
+	    nstep = length(it)
+		qtt = int32(floor(linspace(1,nstep,nit)));
+	    tLGN_all = zeros(max_LGNperV1, nstep, ns);
 
+	    fid = fopen(f_sLGN, 'r');
+	    fseek(fid, 6*4, 0); % skip till time
+	    fseek(fid, max_LGNperV1*nV1*int64(step0-1)*4, 0); % skip till time
+		data = fread(fid, [nV1, max_LGNperV1], 'float')'; % transposed
+	    tLGN_all(:,1,:) = data(:,V1_pick);
+	    
+	    for j = 2:nstep
+	        fseek(fid, max_LGNperV1*nV1*int64(tstep-1)*4, 0); % skip till time
+			data = fread(fid, [nV1, max_LGNperV1], 'float')'; % transposed
+	        tLGN_all(:,j,:) = data(:,V1_pick);
+	    end
+	    fclose(fid);
+
+	    for iq = 1:ns
+	        iV1 = V1_pick(iq);
+            tLGN = tLGN_all(:,:,iq);
+	        gmax = max(tLGN(:));
+            if gmax == 0
+                continue;
+            end
+	        gmin = min(tLGN(:));
 			if examSingle
 				f = figure('PaperPosition',[.1 .1 8 8]);
 				for i = 1:nLGN_V1(iV1)
