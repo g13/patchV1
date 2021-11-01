@@ -2569,7 +2569,8 @@ int main(int argc, char** argv) {
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
 	Size nLGN_block, nLGN_thread; // for LGN_nonlinear
-	nLGN_thread = blockSize;
+	//nLGN_thread = blockSize;
+	nLGN_thread = neuronPerBlock;
 	nLGN_block = (nLGN + nLGN_thread - 1)/nLGN_thread;
     cout << "logRand_init<<<" << nLGN_block << ", " << nLGN_thread << ">>>" << "\n";
 	logRand_init<<<nLGN_block, nLGN_thread>>>(lastNegLogRand, leftTimeRate, d_sx, d_sy, randState, LGNspikeSurface, seed, nLGN, nLearnTypeFF);
