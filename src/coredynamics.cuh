@@ -126,6 +126,10 @@ struct AdEx { //Adaptive Exponential IF
 	};
 };
 
+template <typename T>
+__device__ void block_collectID(bool exist, T &id, PosInt counter[], PosInt sep) {
+}
+
 __global__ 
 void rand_spInit(Float* __restrict__ tBack,
                  Float* __restrict__ spikeTrain,
@@ -145,7 +149,6 @@ void rand_spInit(Float* __restrict__ tBack,
                  curandStateMRG32k3a* __restrict__ rNoisy,
                  PosIntL seed, Size networkSize, Size nType, Size SCsplit, Size trainDepth, Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, Size nE, Size nI, int noDelay, bool iModel
 );
-
 
 __global__ void logRand_init(Float *logRand, Float *lTR, int* LGN_idx, int* LGN_idy, curandStateMRG32k3a *state, cudaSurfaceObject_t LGNspikeSurface, PosIntL seed, Size n, Size nFF);
 
@@ -274,6 +277,8 @@ void compute_V_collect_spike_learnFF_fast(
         curandStateMRG32k3a* __restrict__ rNoisy,
         Float* __restrict__ noisyDep,
         Float* __restrict__ last_noise,
+        PosInt* __restrict__ ipre,
+        Size* __restrict__ npre,
         Float* __restrict__ output_g,
         Float* __restrict__ output_h,
         Float* __restrict__ totalFF,
@@ -370,4 +375,36 @@ void recal_G_mat_nd( // <<< nblock[partial], blockSize >>>
         LearnVarShapeE lE, LearnVarShapeQ lQ, PosInt iChunk, PosInt it
 );
 
+__global__  
+void recal_G_mat_nd_fast( // <<< nblock[partial], blockSize >>>
+        Float* __restrict__ spikeTrain, // [depth, nblock, blockSize]
+        PosInt* __restrict__ ipre, // [depth, nblock, nTypeHierarchy]
+        Size* __restrict__ npre, // [depth, nblock, nTypeHierarchy]
+        Float* __restrict__ output_g, // [depth, nblock, blockSize]
+        Float* __restrict__ output_h, // [depth, nblock, blockSize]
+        float* __restrict__ conMat, // [nblock, nearNeighborBlock, blockSize, blockSize]
+        float* __restrict__ gapMat, // [nblock, nearNeighborBlock, nI, nI]
+        Size* __restrict__ nNeighborBlock,
+        PosInt* __restrict__ neighborBlockId,
+        Float* __restrict__ gE, // [ngTypeE, nV1]
+        Float* __restrict__ gI, // [ngTypeI, nV1] 
+        Float* __restrict__ hE,
+        Float* __restrict__ hI,
+        Float* __restrict__ gap, // gap
+        Float* __restrict__ vAvgE, //        post, [                       nblock, nE,       2]
+        Float* __restrict__ vLTP_E, //        pre, [nLearnTypeE,    depth, nblock, nE,       2]
+        Float* __restrict__ vLTD_E, //       post, [nLearnTypeE,           nblock, nE,       2]
+        Float* __restrict__ vTripE, //       post, [nLearnTypeE,           nblock, nE,       2]
+        Float* __restrict__ vSTDP_QE,  //  E post, [nLearnTypeQ,           nblock, nE        2]
+        Float* __restrict__ vSTDP_QI,  //   I pre, [nLearnTypeQ,    depth, nblock, nI,       2]
+        Float* __restrict__ pE,
+        Float* __restrict__ pI,
+        Size* __restrict__ typeAcc,
+        curandStateMRG32k3a* __restrict__ rGenCond,
+        Float* __restrict__ synFail,
+        Float* __restrict__ synPerCon,
+		Float* __restrict__ vThres,
+        Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, Size nearNeighborBlock, Size nE, Size nI, Size nV1, int learning, PosInt block_offset, Size nType, Size nTypeE, Size nTypeI, Size nblock,
+        LearnVarShapeE lE, LearnVarShapeQ lQ, PosInt iChunk, PosInt it, bool InhGap
+);
 #endif

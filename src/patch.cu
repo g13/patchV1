@@ -1,6 +1,7 @@
 #include "patch.h"
 //TODO: gap junction and learning in cortex
 int main(int argc, char** argv) {
+    assert(sizeof(Float) == sizeof(PosInt));
 	namespace po = boost::program_options;
 	namespace bf = boost::filesystem;
 	using namespace std;
@@ -57,6 +58,7 @@ int main(int argc, char** argv) {
 	bool learnData_V1;
 	bool manual;
 	bool symQ;
+    bool InhGap;
 	bool flat_retina;
 	bool uniform_LGN;
 	bool LGN_switch;
@@ -220,6 +222,7 @@ int main(int argc, char** argv) {
 		("iModel", po::value<int>(&iModel)->default_value(0), "0: LIF, 1: AdEx")
 		("noDelay", po::value<int>(&noDelay)->default_value(1), "0: distance-dependent spike time. 1: distance-independent spike time")
 		("noFarDelay", po::value<int>(&noFarDelay)->default_value(1), "for farther connections, 0: distance-dependent spike time. 1: distance-independent spike time")
+		("InhGap", po::value<bool>(&InhGap)->default_value(false), "if consider gap junctions between inhibitory neurons")
 		("A_LGN", po::value<vector<Float>>(&A_LGN), "array of learning rate for feedforward connections")
 		("r_LTD", po::value<vector<Float>>(&r_LTD), "array of rate for LTD learning rate")
 		("A_V1", po::value<vector<Float>>(&A_V1), "array of learning rate for coritcal connections")
@@ -4036,17 +4039,19 @@ int main(int argc, char** argv) {
 	
 	// for spikeTrain D2H (only output the current slot to file)
 	
-	Float *d_ogh;
+	char *d_ogh;
 	Size ncond = (nE*ngTypeE + nI*ngTypeI)*nblock;
-	checkCudaErrors(cudaMalloc((void**)&d_ogh, 2*ncond*sizeof(Float)));
+	checkCudaErrors(cudaMalloc((void**)&d_ogh, nV1*sizeof(Size) + 2*ncond*sizeof(Float)+ 2*nblock*sizeof(Size)));
 	checkCudaErrors(cudaMemset(d_ogh, 0, 2*ncond*sizeof(Float)));
-	Float *d_og = d_ogh;
-	Float *d_oh = d_ogh + ncond;
-	Float *ogh = new Float[ncond*2];
-	Float *og = ogh;
-	Float *oh = ogh + ncond;
+	Float *d_og = (Float*) d_ogh;
+	Float *d_oh = d_og + ncond;
+    Size *d_npre = (Size*) (d_oh + ncond);
+    PosInt *d_ipre = (PosInt*) (d_npre + 2*nblock);
     usingGMem += 2*ncond*sizeof(Float);
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
+    Float *ogh = new Float[2*ncond];
+    Float *og = ogh;
+    Float *oh = ogh + ncond;
 
 	Size max_LGNperV1;
 	Float* LGN_V1_s;
@@ -5941,7 +5946,7 @@ int main(int argc, char** argv) {
                     vLTP_E, vLTD_E, vTripE, // E->E learning vars
                     vSTDP_QE, vSTDP_QI, // I->E learning vars
                     d_pFF, d_vR, d_vThres, d_gL, d_C, d_tRef, d_tonicDep, d_vT, d_deltaT, d_tau_w, d_a, d_b, typeAcc, 
-                    rGenCond, d_synFailFF, d_synPerConFF, rNoisy, d_noisyDep, last_noise, d_og, d_oh, d_totalFF, d_totalFF_inf,
+                    rGenCond, d_synFailFF, d_synPerConFF, rNoisy, d_noisyDep, last_noise, d_ipre, d_npre, d_og, d_oh, d_totalFF, d_totalFF_inf,
 		    		tau_noise, currentTimeSlot, trainDepth, max_LGNperV1,
 		    		ngTypeFF, ngTypeE, ngTypeI, condFF, condE, condI,
 		    		dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, nE, nI, nV1, learning, varSlot, nType, LGNspikeSurface,
@@ -6107,15 +6112,28 @@ int main(int argc, char** argv) {
             }
 
             if (noDelay) {
-			    recal_G_mat_nd<<< chunkSize, neuronPerBlock, 0, stream[i%matConcurrency]>>> (
-					    d_spikeTrain + nV1*currentTimeSlot, d_og, d_oh,
-			    		d_conMat, d_gapMat,
-			    		d_nNearNeighborBlock+block_offset, d_neighborBlockId + block_offset*nearNeighborBlock,
-			    		d_gE[i], d_gI[i], d_hE[i], d_hI[i], d_gap[i],
-                        vAvgE, vLTP_E, vLTD_E, vTripE, vSTDP_QE, vSTDP_QI, d_pE, d_pI, typeAcc,
-                        rGenCond, d_synFail, d_synPerCon, d_vThres,
-			    		dt, condE, condI, ngTypeE, ngTypeI,
-			    		nearNeighborBlock, nE, nI, nV1, learning, block_offset, nType, nTypeE, nTypeI, lE, lQ, i, it);
+                if (true) {
+                    size_t shared_size = nearNeighborBlock*2*sizeof(Size) + std::max(nE,nI)*sizeof(PosInt) + 2*(ngTypeE*nE+ngTypeI*nI)*sizeof(Float);
+			        recal_G_mat_nd_fast<<< chunkSize, neuronPerBlock, 0, stream[i%matConcurrency]>>> (
+				    	    d_spikeTrain + nV1*currentTimeSlot, d_ipre, d_npre, d_og, d_oh,
+			        		d_conMat, d_gapMat,
+			        		d_nNearNeighborBlock+block_offset, d_neighborBlockId + block_offset*nearNeighborBlock,
+			        		d_gE[i], d_gI[i], d_hE[i], d_hI[i], d_gap[i],
+                            vAvgE, vLTP_E, vLTD_E, vTripE, vSTDP_QE, vSTDP_QI, d_pE, d_pI, typeAcc,
+                            rGenCond, d_synFail, d_synPerCon, d_vThres,
+			        		dt, condE, condI, ngTypeE, ngTypeI,
+			        		nearNeighborBlock, nE, nI, nV1, learning, block_offset, nType, nTypeE, nTypeI, nblock, lE, lQ, i, it, InhGap);
+                } else {
+			        recal_G_mat_nd<<< chunkSize, neuronPerBlock, 0, stream[i%matConcurrency]>>> (
+				    	    d_spikeTrain + nV1*currentTimeSlot, d_og, d_oh,
+			        		d_conMat, d_gapMat,
+			        		d_nNearNeighborBlock+block_offset, d_neighborBlockId + block_offset*nearNeighborBlock,
+			        		d_gE[i], d_gI[i], d_hE[i], d_hI[i], d_gap[i],
+                            vAvgE, vLTP_E, vLTD_E, vTripE, vSTDP_QE, vSTDP_QI, d_pE, d_pI, typeAcc,
+                            rGenCond, d_synFail, d_synPerCon, d_vThres,
+			        		dt, condE, condI, ngTypeE, ngTypeI,
+			        		nearNeighborBlock, nE, nI, nV1, learning, block_offset, nType, nTypeE, nTypeI, lE, lQ, i, it);
+                }
             } else {
 			    recal_G_mat<<< chunkSize, neuronPerBlock, 0, stream[i%matConcurrency]>>> (
 					    d_spikeTrain,
@@ -6658,7 +6676,6 @@ int main(int argc, char** argv) {
         delete []h_rGenCond;
 		if (virtual_LGN) delete []frame;
 		else delete []LMS;
-		delete []ogh;
 		delete []cpu_chunk_V1pos;
         if (matConcurrency < nChunk) {
             delete []conDelayGapMat0;
@@ -6791,5 +6808,6 @@ int main(int argc, char** argv) {
 		cout << "memory trace cleaned\n";
 	}
 	delete [] gapS;
+	delete [] ogh;
 	return EXIT_SUCCESS;
 }
