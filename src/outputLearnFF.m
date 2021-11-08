@@ -102,8 +102,8 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	fclose(sid);
 
 	if ~exist('V1_pick', 'var') 
-		%V1_pick = randi(768,[ns,1]);
-		V1_pick = randi(nV1,[ns,1]);
+		V1_pick = randi(768,[ns,1]);
+		%V1_pick = randi(nV1,[ns,1]);
 	else
 		ns = length(V1_pick);
 	end
