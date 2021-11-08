@@ -1921,13 +1921,13 @@ void compute_V_collect_spike_learnFF_fast(
     }
     
     // count and id spikes
+    bool exist = sInfo >= 1;
     PosInt type, id;
     if (threadIdx.x < nE) {
         type = 0;
     } else {
         type = 1;
     }
-    bool exist = sInfo >= 1;
     if (exist) {
         id = atomicAdd_block(&counter[type], 1);
     }
@@ -1964,7 +1964,7 @@ void compute_V_collect_spike_learnFF_fast(
         ipre[blockIdx.x*blockDim.x + id] = threadIdx.x;
 	}
     if (threadIdx.x < 2) {
-        npre[threadIdx.x*blockDim.x + blockIdx.x] = counter[threadIdx.x];
+        npre[threadIdx.x*gridDim.x + blockIdx.x] = counter[threadIdx.x];
     }
 }
 
@@ -2607,24 +2607,23 @@ void recal_G_mat_nd_fast( // no distance involved for close-range connections, i
         ipI[ig] = pI[itype*ngTypeI + ig];
     }
 	Float gap_s = 0.0;
-    PosInt block_ngType = (ngTypeE*nE + ngTypeI*nI);
+    PosInt block_ngType = ngTypeE*nE + ngTypeI*nI;
     // TODO: cortical learning
     //Float trip_post[2*max_nLearnTypeE];
     //Float LTD_post[2*max_nLearnTypeE];
     __syncthreads();// sync shared memory save
     for (PosInt ib = 0; ib < nb; ib++) {
 		PosInt local_bid, bid;
-        Size npreE = shared_npre[2*ib+0];
-        Size npreI = shared_npre[2*ib+1];
+        Size npreE = shared_npre[ib];
+        Size npreI = shared_npre[nb+ib];
 		local_bid = blockIdx.x*nearNeighborBlock + ib;
         if (npreE > 0 || npreI > 0) {
 		    bid = neighborBlockId[local_bid];
-            block_ngType *= bid;
         }
         if (npreE > 0) {// exc neighbors in the block fired
             // branching is only loop-dependent, no thread-lock
             if (threadIdx.x < npreE) {
-		        PosInt id = block_ngType*bid + threadIdx.x;
+                PosInt id = block_ngType*bid + threadIdx.x;
                 shared_ipre[threadIdx.x] = ipre[bid*blockDim.x + threadIdx.x];
                 //#pragma unroll (max_ngTypeE)
                 for (PosInt ig=0; ig<ngTypeE; ig++) {
@@ -2664,7 +2663,7 @@ void recal_G_mat_nd_fast( // no distance involved for close-range connections, i
         }
         if (npreI > 0) {// inh neighbors in the block fired
             if (threadIdx.x < npreI) {
-			    PosInt id = block_ngType + nE*ngTypeE + threadIdx.x;
+			    PosInt id = block_ngType*bid + nE*ngTypeE + threadIdx.x;
                 shared_ipre[threadIdx.x] = ipre[bid*blockDim.x + threadIdx.x];
                 //#pragma unroll (max_ngTypeI)
                 for (PosInt ig=0; ig<ngTypeI; ig++) {

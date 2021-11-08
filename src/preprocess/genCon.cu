@@ -769,7 +769,7 @@ int main(int argc, char *argv[])
 	//shared_mem = sizeof(Size);
     // blocks -> blocks, threads -> cal neighbor blocks
 	Size* d_nNearNeighborBlock;
-    checkCudaErrors(cudaMalloc((void**)&d_nNearNeighborBlock, networkSize*sizeof(Size)));
+    checkCudaErrors(cudaMalloc((void**)&d_nNearNeighborBlock, nblock*sizeof(Size)));
 
     get_neighbor_blockId<<<nblock, neuronPerBlock, maxNeighborBlock*(sizeof(PosInt)+sizeof(Float))>>>(
         d_block_x, d_block_y, 

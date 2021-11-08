@@ -3248,7 +3248,7 @@ int main(int argc, char** argv) {
 		cout << "Cannot open or find " << V1_conMat_filename + conV1_suffix <<" to read V1 cortical connection matrices.\n";
 		return EXIT_FAILURE;
 	} else {
-		cout << "reading connectome from " << V1_conMat_filename << "\n";
+		cout << "reading V1 connectomes from " << V1_conMat_filename + conV1_suffix << "\n";
 		fV1_conMat.read(reinterpret_cast<char*>(&nearNeighborBlock), sizeof(Size));
 	}
 	fV1_delayMat.open(V1_delayMat_filename + conV1_suffix, fstream::in | fstream::binary);
@@ -3298,9 +3298,14 @@ int main(int argc, char** argv) {
 				vector<PosInt> tmp(nNeighborBlock[i]);
 				fNeighborBlock.read(reinterpret_cast<char*>(&tmp[0]), nNeighborBlock[i]*sizeof(PosInt));
 				allNeighborBlockId[i] = tmp;
+                // read only near neighbor blockIds
+		        if (*max_element(allNeighborBlockId[i].begin(), allNeighborBlockId[i].end()) >= nblock) {
+		        	cout << "conMat neighbor blockID exceeds nblock\n";
+		        	return EXIT_FAILURE;
+		        }
 				memcpy(&nBlockId[i*nearNeighborBlock], &tmp[0], nNearNeighborBlock[i]*sizeof(PosInt));
 			}
-            // assert copy success
+			////assert copy success
             //cout << "block " << i << " has " << nNeighborBlock[i] << " neighbors:\n";
             //for (PosInt j=0; j<nNeighborBlock[i]; j++) {
             //    cout << nBlockId[i*nearNeighborBlock + j];
@@ -3314,12 +3319,10 @@ int main(int argc, char** argv) {
 	size_t neighborInfo_size = nblock*sizeof(Size) + nblock*nearNeighborBlock*sizeof(PosInt) + nV1*sizeof(Size);
 	checkCudaErrors(cudaMalloc((void**)&d_neighborInfo, neighborInfo_size));
 	Size* d_nNearNeighborBlock = d_neighborInfo;
-	Size* d_nNeighborBlock = d_nNearNeighborBlock+ nblock;
 	PosInt* d_neighborBlockId = (PosInt*) (d_nNearNeighborBlock + nblock);
 	Size* d_nVec = (Size*) (d_neighborBlockId + nblock*nearNeighborBlock);
 
 	checkCudaErrors(cudaMemcpy(d_nNearNeighborBlock, &(nNearNeighborBlock[0]), nblock*sizeof(Size), cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_nNeighborBlock, &(nNeighborBlock[0]), nblock*sizeof(Size), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_neighborBlockId, nBlockId, nblock*nearNeighborBlock*sizeof(PosInt), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_nVec, &(nVec[0]), nV1*sizeof(Size), cudaMemcpyHostToDevice));
 
@@ -5920,6 +5923,7 @@ int main(int argc, char** argv) {
 
 		// TODO: block-wise compute_V
 		// simulate V1 response
+        //if (true) {
         if (dt > min_tRef) {
 		    compute_V_collect_spike_learnFF<<<nblock, neuronPerBlock, 0, mainStream>>> (
 		    		d_v, d_depC, d_w, d_gapS, d_gFF, d_hFF, dd_gE, dd_gI, dd_hE, dd_hI, dd_gap, // V1 neuron measurements
@@ -6114,7 +6118,7 @@ int main(int argc, char** argv) {
             if (noDelay) {
                 if (true) {
                     size_t shared_size = nearNeighborBlock*2*sizeof(Size) + std::max(nE,nI)*sizeof(PosInt) + 2*(ngTypeE*nE+ngTypeI*nI)*sizeof(Float);
-			        recal_G_mat_nd_fast<<< chunkSize, neuronPerBlock, 0, stream[i%matConcurrency]>>> (
+			        recal_G_mat_nd_fast<<< chunkSize, neuronPerBlock, shared_size, stream[i%matConcurrency]>>> (
 				    	    d_spikeTrain + nV1*currentTimeSlot, d_ipre, d_npre, d_og, d_oh,
 			        		d_conMat, d_gapMat,
 			        		d_nNearNeighborBlock+block_offset, d_neighborBlockId + block_offset*nearNeighborBlock,

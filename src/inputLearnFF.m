@@ -423,11 +423,13 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 	fclose(did);
 	
 	fid = fopen(fNeighborBlock, 'w');
-	nNeighborBlock = zeros(nblock)+nearNeighborBlock;
-	fwrite(fid, nNeighborBlock, 'uint'); % number of neighbor
+	nNearNeighborBlock = zeros(nblock,1)+nearNeighborBlock;
+	nNeighborBlock = zeros(nblock,1)+nearNeighborBlock;
+	fwrite(fid, nNearNeighborBlock, 'uint'); % number of near neighbor
+	fwrite(fid, nNeighborBlock, 'uint'); % number of all (near + far[vec]) neighbor
 	nBlockId = zeros(nearNeighborBlock, nblock);
     for i = 1:nblock
-        nBlockId(:,i) = 1:nearNeighborBlock;
+        nBlockId(:,i) = 0:(nearNeighborBlock-1);
     end
 	fwrite(fid, nBlockId, 'uint'); % id of neighbor
 	fclose(fid);
