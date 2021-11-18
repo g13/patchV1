@@ -6,7 +6,6 @@ fdr0=/scratch/wd554/patchV1
 res_fdr=${fdr0}/resource # inputFolder in cfg stimulus, V1-static, LGN-static and connectome files
 data_fdr=${fdr0} # outputFolder in cfg
 
-patch=patch_fast
 waveStage=3 # set stage number
 
 if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
@@ -20,10 +19,10 @@ fi
 
 if [[ "${waveStage}" = "3" ]] ;then
 	fdr=test_32/wave_III
-	op=wave_III_32_fast
+	op=profile_III
 	#fdr=wave_III/32x3_5-5_standard
 	#op=32x3_5-5_standard0
-	op_cfg=wave_III.cfg
+	op_cfg=profile_III.cfg
 	new_setup=False
 	lgn=lFF_iii_5-5_32
 	res=lFF_iii_5-5_32
@@ -107,7 +106,7 @@ sbatch <<EOT
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=64GB
-#SBATCH --time=03:00:00
+#SBATCH --time=00:30:00
 #SBATCH -o log/pLearn_%J.out
 #SBATCH --mail-user=wd554@nyu.edu
 #SBATCH --mail-type=END
@@ -121,46 +120,12 @@ module load matlab/2020b
 module list
 
 cd ${fdr0}
+
+date
+#ncu --export profile_fast_%i --force-overwrite --target-processes all --replay-mode kernel --kernel-name compute_V_collect_spike_learnFF_fast --kernel-name-base function --launch-skip-before-match 0 --section ComputeWorkloadAnalysis --section InstructionStats --section LaunchStats --section MemoryWorkloadAnalysis --section MemoryWorkloadAnalysis_Chart --section MemoryWorkloadAnalysis_Tables --section Occupancy --section SchedulerStats --section SourceCounters --section SpeedOfLight --section SpeedOfLight_RooflineChart --section WarpStateStats --sampling-interval auto --sampling-max-passes 5 --sampling-buffer-size 33554432 --profile-from-start 1 --cache-control all --clock-control base --apply-rules yes --import-source yes --check-exit-code yes patch -c ${fig_fdr}/${op}.cfg
+
+nsys profile -o fast_V1.qdrep --force-overwrite=true --cuda-flush-interval=0 patch -c ${fig_fdr}/${op}.cfg
+
 date
 
-if [ "${plotOnly}" = False ];
-then
-	if [ "${new_setup}" = True ];
-	then
-		echo matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, 0, '${res}', ${waveStage}, '${res_fdr}');exit;"
-		matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, 0, '${res}', ${waveStage}, '${res_fdr}');exit;"
-	fi
-	date
-	${patch} -c ${fig_fdr}/${op}.cfg
-	date
-fi
-
-
-#echo plotLGN_response.py ${op} ${lgn} ${res_fdr} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
-#plotLGN_response.py ${op} ${lgn} ${res_fdr} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
-
-echo plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} & 
-plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
-
-echo matlab -nodisplay -nosplash -r "outputLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle});exit;" &
-matlab -nodisplay -nosplash -r "outputLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle});exit;" &
-
-echo matlab -nodisplay -nosplash -r "testLearnFF('${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', 233, 5000);exit;" &
-matlab -nodisplay -nosplash -r "testLearnFF('${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', 233, 5000);exit;" &
-
-#python patchOutput.py ${op} ${data_fdr} &
-
-#echo python getReceptiveField_lFF.py collecting ${op} ${lgn} ${data_fdr} ${isuffix} 1
-#python getReceptiveField_lFF.py collecting ${op} ${lgn} ${data_fdr} ${isuffix} 1
-#echo python getReceptiveField_lFF.py plotting ${isuffix} ${op} ${res} ${lgn} ${data_fdr} ${nOri} ${isuffix}
-#python getReceptiveField_lFF.py plotting ${isuffix} ${op} ${res} ${lgn} ${data_fdr} ${nOri} ${isuffix}
-#
-#isuffix=1
-#echo python getReceptiveField_lFF.py collecting ${op} ${lgn} ${data_fdr} ${isuffix} 1
-#python getReceptiveField_lFF.py collecting ${op} ${lgn} ${data_fdr} ${isuffix} 1
-#echo python getReceptiveField_lFF.py plotting ${isuffix} ${op} ${res} ${lgn} ${data_fdr} ${nOri} ${isuffix}
-#python getReceptiveField_lFF.py plotting ${isuffix} ${op} ${res} ${lgn} ${data_fdr} $nOri $isuffix
-
-wait
-date
 EOT

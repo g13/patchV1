@@ -33,7 +33,7 @@ nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -std=c++11 -$o
 rm -f condShape.o
 nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -std=c++11 -$optflag -c condShape.cu
 
-nvcc -arch=$sm -lcudadevrt -lcudart -lboost_program_options -lboost_filesystem condShape.o patch.o cuda_util.o stats.o discrete_input_convol.o coredynamics.o -$optflag -o /home/wd554/bin/patch
+nvcc -arch=$sm -lcudadevrt -lcudart -lboost_program_options -lboost_filesystem condShape.o patch.o cuda_util.o stats.o discrete_input_convol.o coredynamics.o -$optflag -o /home/wd554/bin/patch_fast
 
 #rm -f patch.o 
 #nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c patch.cu
