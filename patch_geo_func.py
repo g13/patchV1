@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from scipy import integrate
 from scipy import special
 from cmath import *
-import sobol_seq as ss
+from scipy.stats import qmc
 import os
 os.environ['NUMBAPRO_CUDALIB']='C:/Users/gueux/Miniconda3/envs/py36_7/Library/bin'
 np.seterr(all='raise')
@@ -202,14 +202,16 @@ def get_pos_3d(x,y,area,n,skip=602):
     i = 0
     count = 0
     max_trial = 10
+    sampler = qmc.Sobol(d=3)
     while count < max_trial:
         #irands = np.empty((2,ntmp), dtype='uint32')
         #print(f'generating {count}: ({i}+{ntmp})/{n}')
         # sobol sequence
         if sobol_set:
-            rands = ss.i4_sobol_generate(3, ntmp, skip=skip) 
+            rands = sampler.random(ntmp)
+            # rands = ss.i4_sobol_generate(3, ntmp, skip=skip)
             # add noise to avoid complete overlap
-            rands = rands * (1 + np.random.normal(0, 0.001, (ntmp,3)))
+            # rands = rands * (1 + np.random.normal(0, 0.001, (ntmp,3)))
         else:
             rands = np.random.rand(ntmp, 3) # transformed compared with sobol
 
