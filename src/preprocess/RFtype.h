@@ -13,11 +13,11 @@
 #define nInputType 6
 
 enum class RFtype: PosInt {
-	nonOppopent_gabor = 0,  // different cone input correlates, i.e., have the same sign, in gabor form, find in V1
-	nonOppopent_cs = 1,  // different cone input correlates, i.e., have the same sign, in center surround form not necessarily concentric, find in V1
-	singleOppopent = 2, // center surround cone opponency, LGN and V1
-	doubleOppopent_cs = 3, // center surround cone and spatial opponency, V1
-    doubleOppopent_gabor = 4 // cone and spatial opponency in Gabor profile, V1
+	nonOppopent_gabor = 0,  // different cone input correlates, i.e., have the same sign, in gabor form, V1 4Calpha
+	nonOppopent_cs = 1,  // different cone input correlates, i.e., have the same sign, in center surround form not necessarily concentric, magno LGN
+	singleOppopent = 2, // center surround cone opponency, parvo LGN and V1 4Cbeta
+	doubleOppopent_cs = 3, // center surround cone and spatial opponency, V1 4Cbeta
+    doubleOppopent_gabor = 4, // cone and spatial opponency in Gabor profile, V1
 };
 
 enum class OutputType: PosInt { // V1 local RF subregion
