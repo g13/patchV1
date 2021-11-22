@@ -1,5 +1,0 @@
-#!/bin/bash
-#module load cuda
-rm -f test
-nvcc -arch=compute_70 -rdc=true -Xcompiler -rdynamic -lineinfo -std=c++11 -O0 test.cu -o test -lcudadevrt -lcudart
-#nvcc -arch=compute_70 -Xcompiler -Wall,-pedantic test.o coredynamics.o -lcudadevrt -lcudart -o test

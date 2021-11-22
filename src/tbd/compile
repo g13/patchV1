@@ -1,5 +1,0 @@
-#!/bin/bash
-
-g++ -std=c++11 func.cpp -c -o func.o
-g++ -std=c++11 test.cpp -c -o main.o
-g++ main.o func.o -o randTest
