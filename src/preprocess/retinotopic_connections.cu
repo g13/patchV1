@@ -355,6 +355,7 @@ void vf_pool_CUDA( // for each eye
 vector<vector<Size>> retinotopic_vf_pool(
         pair<vector<Float>,vector<Float>> &cart,
         pair<vector<Float>,vector<Float>> &cart0,
+        vector<PosInt> &layerMatch,
         vector<Float> &VFposEcc,
         bool useCuda,
         RandomEngine &rGen,
@@ -363,8 +364,8 @@ vector<vector<Size>> retinotopic_vf_pool(
         vector<Float> &theta,
         vector<Int> &LR,
         Size nL,
-        Size mL,
-        Size m,
+        vector<Size> &mL,
+        vector<Size> &m,
         Size maxLGNperV1pool,
 		BigSize seed,
 		Float LGN_V1_RFratio
@@ -493,9 +494,11 @@ vector<vector<Size>> retinotopic_vf_pool(
 int main(int argc, char *argv[]) {
 	namespace po = boost::program_options;
     bool readFromFile, useCuda;
-	Float p_n_LGNeff;
+    Size nLayer, mLayer;
 	Size max_LGNeff;
-	Size maxLGNperV1pool;
+	vector<Size> maxLGNperV1pool;
+	vector<Size> nType;
+	vector<Float> p_n_LGNeff;
     Int SimpleComplex;
 	Float conThres;
 	Float ori_tol;
@@ -504,12 +507,14 @@ int main(int argc, char *argv[]) {
 	bool top_pick;
     vector<Float> pureComplexRatio;
 	vector<Size> typeAccCount;
+    vector<PosInt> layerMatch;
     Float LGN_V1_RFratio;
     Float envelopeSig;
     BigSize seed;
     vector<Size> nRefTypeV1_RF, V1_RefTypeID;
     vector<Float> V1_RFtypeAccDist, V1_RefTypeDist;
-	string LGN_vpos_filename, V1_vpos_filename, V1_RFpreset_filename, V1_feature_filename, suffix;
+	string LGN_vpos_filename, V1_vpos_filename, V1_RFpreset_filename, V1_feature_filename, conLGN_suffix;
+    string res_suffix;
 	po::options_description generic("generic options");
 	generic.add_options()
 		("help,h", "print usage")
@@ -520,11 +525,15 @@ int main(int argc, char *argv[]) {
 
 	po::options_description input_opt("input options");
 	input_opt.add_options()
-		("p_n_LGNeff", po::value<Float>(&p_n_LGNeff)->default_value(10), "LGN conneciton probability [-1,0], or number of connections [0,n]")
+		("res_suffix", po::value<string>(&res_suffix)->default_value(""), "conLGN_suffix for resource files")
+		("nLayer", po::value<int>(&nLayer)->default_value(1), "number of layers in V1, to cross check with the corresponding V1_allpos*.bin")
+		("nLayer", po::value<vector<Size>>(&nType), "number of types per layer in V1, to cross check with the corresponding V1_allpos*.bin")
+		("mLayer", po::value<int>(&mLayer)->default_value(1), "number of layers in LGN, to cross check with the corresponding LGN_vpos*.bin")
+		("p_n_LGNeff", po::value<vector<Float>>(&p_n_LGNeff), "LGN conneciton probability [-1,0], or number of connections [0,n]")
 		("top_pick", po::value<bool>(&top_pick)->default_value(true), "preset number of connection, n, and connect to the neurons with the top n prob")
 		("max_LGNeff", po::value<Size>(&max_LGNeff)->default_value(10), "max realizable number of connections [0,n]")
 		("LGN_V1_RFratio,r", po::value<Float>(&LGN_V1_RFratio)->default_value(1.0), "LGN's contribution to the total RF size")
-		("maxLGNperV1pool,m", po::value<Size>(&maxLGNperV1pool)->default_value(100), "maximum pooling of LGN neurons per V1 neuron")
+		("maxLGNperV1pool", po::value<vector<Size>>(&maxLGNperV1pool), "maximum pooling of LGN neurons per V1 neuron, array of nLayers")
 		("envelopeSig", po::value<Float>(&envelopeSig)->default_value(1.177), "LGN's pools connection probability envelope sigma on distance")
 		("SimpleComplex", po::value<Int>(&SimpleComplex)->default_value(1), "determine how simple complex is implemented, through modulation modAmp_nCon(0) or number of LGN connection(1)")
 		("conThres", po::value<Float>(&conThres)->default_value(-1), "connect to LGN using conThres")
@@ -537,6 +546,7 @@ int main(int argc, char *argv[]) {
 		("nRefTypeV1_RF", po::value<vector<Size>>(&nRefTypeV1_RF), "determine the number of cone/ON-OFF combinations for each V1 RF type")
 		("V1_RefTypeID", po::value<vector<Size>>(&V1_RefTypeID), "determine the ID of the available cone/ON-OFF combinations in each V1 RF type")
 		("V1_RefTypeDist", po::value<vector<Float>>(&V1_RefTypeDist), "determine the relative portion of the available cone/ON-OFF combinations in each V1 RF type")
+        ("V1_LGN_layer_match", po::value<vector<PosInt>>(&layerMatch), "nLayer arrays of how each V1 layer recieve inputs from the LGN layers (mLayer)")
 		("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file that stores V1 neurons' parameters")
 		("fV1_RFpreset", po::value<string>(&V1_RFpreset_filename)->default_value("V1_RFpreset.bin"), "file that stores V1 neurons' parameters")
 		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"), "file that stores LGN position in visual field (and on-cell off-cell label)")
@@ -545,7 +555,7 @@ int main(int argc, char *argv[]) {
     string V1_RFprop_filename, idList_filename, sList_filename, output_cfg_filename;
 	po::options_description output_opt("output options");
 	output_opt.add_options()
-		("suffix", po::value<string>(&suffix)->default_value(""), "suffix for output file")
+		("conLGN_suffix", po::value<string>(&conLGN_suffix)->default_value(""), "conLGN_suffix for output file")
 		("fV1_RFprop", po::value<string>(&V1_RFprop_filename)->default_value("V1_RFprop"), "file that stores V1 neurons' information")
 		("fLGN_V1_ID", po::value<string>(&idList_filename)->default_value("LGN_V1_idList"), "file stores LGN to V1 connections")
 		("fLGN_V1_s", po::value<string>(&sList_filename)->default_value("LGN_V1_sList"), "file stores LGN to V1 connection strengths")
@@ -573,10 +583,15 @@ int main(int argc, char *argv[]) {
 	}
 	po::notify(vm);
     
-    if (!suffix.empty()) {
-        suffix = '_' + suffix;
+    if (!conLGN_suffix.empty()) {
+        conLGN_suffix = '_' + conLGN_suffix;
     }
-    suffix = suffix + ".bin";
+    conLGN_suffix = conLGN_suffix + ".bin";
+
+    if (!res_suffix.empty())  {
+        res_suffix = "_" + res_suffix;
+    }
+    res_suffix = res_suffix + ".bin";
 
     if (useCuda) {
         cudaDeviceProp deviceProps;
@@ -596,110 +611,102 @@ int main(int argc, char *argv[]) {
         cout << "\n";
     }
     
-
+	Size* nblock = new Size[nLayer];
+    Size* neuronPerBlock = new Size[nLayer];
+    Size* n = new Size[nLayer];
+	vector<pair<vector<Float>, vector<Float>>> cart(nLayer), // V1 VF position (preset)
+	vector<vector<Float>> VFposEcc(nLayer);
 	ifstream fV1_vpos;
-	fV1_vpos.open(V1_vpos_filename, fstream::in | fstream::binary);
+	fV1_vpos.open(V1_vpos_filename + res_suffix, fstream::in | fstream::binary);
 	if (!fV1_vpos) {
-		cout << "Cannot open or find " << V1_vpos_filename <<"\n";
+		cout << "Cannot open or find " << V1_allpos_filename + res_suffix <<" to read V1 positions.\n";
 		return EXIT_FAILURE;
-	}
-	Size n;
-	Size* size_pointer = &n;
-	fV1_vpos.read(reinterpret_cast<char*>(size_pointer), sizeof(Size));
-    cout << n << " post-synaptic neurons\n";
-	//temporary vectors to get coordinate pairs
-	vector<double> decc(n);
-	vector<double> dpolar(n);
-	// ecc first, polar second; opposite to LGN
-	fV1_vpos.read(reinterpret_cast<char*>(&decc[0]), n * sizeof(double)); 
-	fV1_vpos.read(reinterpret_cast<char*>(&dpolar[0]), n * sizeof(double));
-    auto double2Float = [](double x) {
-        return static_cast<Float>(x);
-	};
-
-	vector<Float> VFposEcc(n);
-    transform(decc.begin(), decc.end(), VFposEcc.begin(), double2Float);
-	vector<Float> x(n);
-	vector<Float> y(n);
-	auto polar2xD2F = [] (double ecc, double polar) {
-		return static_cast<Float>(ecc*cos(polar));
-	};
-	auto polar2yD2F = [] (double ecc, double polar) {
-		return static_cast<Float>(ecc*sin(polar));
-	};
-	transform(decc.begin(), decc.end(), dpolar.begin(), x.begin(), polar2xD2F);
-	transform(decc.begin(), decc.end(), dpolar.begin(), y.begin(), polar2yD2F);
-	vector<double>().swap(decc); // release memory from temporary vectors
-	vector<double>().swap(dpolar);
-
-    cout << "V1_x: [" << *min_element(x.begin(), x.end()) << ", " << *max_element(x.begin(), x.end()) << "]\n";
-    cout << "V1_y: [" << *min_element(y.begin(), y.end()) << ", " << *max_element(y.begin(), y.end()) << "]\n";
-	auto cart = make_pair(x, y);
-	vector<Float>().swap(x); // release memory from temporary vectors
-	vector<Float>().swap(y);
+	} else {
+        Size _nLayer;
+		fV1_vpos.read(reinterpret_cast<char*>(&_nLayer), sizeof(Size));
+        if (_nLayer != nLayer) {
+            cout << "nLayer = " << nLayer << " is not consistent with nLayer(" << _nLayer << ") in V1_allpos.bin"
+            return EXIT_FAILURE;
+        }
+		fV1_vpos.read(reinterpret_cast<char*>(&nblock[0]), sizeof(Size)*nLayer);
+		fV1_vpos.read(reinterpret_cast<char*>(&neuronPerBlock[0]), sizeof(Size)*nLayer);
+        auto double2Float = [](double x) {
+            return static_cast<Float>(x);
+	    };
+	    auto polar2xD2F = [] (double ecc, double polar) {
+	    	return static_cast<Float>(ecc*cos(polar));
+	    };
+	    auto polar2yD2F = [] (double ecc, double polar) {
+	    	return static_cast<Float>(ecc*sin(polar));
+	    };
+        for (int iLayer = 0; iLayer < nLayer; i++) {
+            n[iLayer] = nblock[iLayer] * neuronPerBlock[iLayer];
+            vector<double> decc(n[iLayer]);
+	        vector<double> dpolar(n[iLayer]);
+            VFposEcc[iLayer].reserve(n[iLayer]);
+	        fV1_vpos.read(reinterpret_cast<char*>(&decc[0]), n * sizeof(double)); 
+	        fV1_vpos.read(reinterpret_cast<char*>(&dpolar[0]), n * sizeof(double));
+            transform(decc.begin(), decc.end(), VFposEcc[iLayer].begin(), double2Float);
+	        vector<Float> x(n);
+	        vector<Float> y(n);
+	        transform(decc.begin(), decc.end(), dpolar.begin(), x.begin(), polar2xD2F);
+	        transform(decc.begin(), decc.end(), dpolar.begin(), y.begin(), polar2yD2F);
+            cout << n[iLayer] << "V1 neurons for layer " << iLayer << "\n";
+            cout << "V1_x: [" << *min_element(x.begin(), x.end()) << ", " << *max_element(x.begin(), x.end()) << "]\n";
+            cout << "V1_y: [" << *min_element(y.begin(), y.end()) << ", " << *max_element(y.begin(), y.end()) << "]\n";
+	        cart[iLayer] = make_pair(x, y);
+        }
+    }
 	fV1_vpos.close();
 
-
+	Size* mL;
+	Size* mR;
+    Size* m;
+	Float max_ecc;
+	vector<vector<InputType>> LGNtype(mLayer);
+    vector<pair<vector<Float>, vector<Float>>> cart0(mLayer), // V1 VF position (preset)
 	ifstream fLGN_vpos;
 	fLGN_vpos.open(LGN_vpos_filename, fstream::in | fstream::binary);
 	if (!fLGN_vpos) {
 		cout << "Cannot open or find " << LGN_vpos_filename << "\n";
 		return EXIT_FAILURE;
-	}
-	Size mL;
-	Size mR;
-    Size m;
-	Float max_ecc;
-	size_pointer = &mL;
-	fLGN_vpos.read(reinterpret_cast<char*>(size_pointer), sizeof(Size));
-	size_pointer = &mR;
-	fLGN_vpos.read(reinterpret_cast<char*>(size_pointer), sizeof(Size));
-	fLGN_vpos.read(reinterpret_cast<char*>(&max_ecc), sizeof(Float));
-    m = mL + mR;
-	{// not used
-		Float tmp;
-		fLGN_vpos.read(reinterpret_cast<char*>(&tmp), sizeof(Float)); // x0
-		fLGN_vpos.read(reinterpret_cast<char*>(&tmp), sizeof(Float)); // xspan
-		fLGN_vpos.read(reinterpret_cast<char*>(&tmp), sizeof(Float)); // y0
-		fLGN_vpos.read(reinterpret_cast<char*>(&tmp), sizeof(Float)); // yspan
-	}
-    cout << m << " LGN neurons, " << mL << " from left eye, " << mR << " from right eye.\n";
-	cout << "need " << 3 * m * sizeof(Float) / 1024 / 1024 << "mb\n";
-	vector<Float> x0(m);
-	vector<Float> y0(m);
-	fLGN_vpos.read(reinterpret_cast<char*>(&x0[0]), m*sizeof(Float));
-	fLGN_vpos.read(reinterpret_cast<char*>(&y0[0]), m*sizeof(Float));
-
-	vector<InputType> LGNtype(m);
-	fLGN_vpos.read(reinterpret_cast<char*>(&LGNtype[0]), m * sizeof(PosInt));
-    //for (PosInt i = 0; i < m; i++) {
-    //    cout << 
-    //    assert(static_cast<PosInt>(LGNtype[i]) < 4);
-    //    assert(static_cast<PosInt>(LGNtype[i]) >= 0);
-    //}
-	/*** now read from file directly
-		//temporary vectors to get cartesian coordinate pairs
-		vector<Float> polar0(m);
-		vector<Float> ecc0(m);
-		fLGN_vpos.read(reinterpret_cast<char*>(&polar0[0]), m*sizeof(Float));
-		fLGN_vpos.read(reinterpret_cast<char*>(&ecc0[0]), m*sizeof(Float));
-		auto polar2x = [] (Float polar, Float ecc) {
-			return ecc*cos(polar);
-		};
-		auto polar2y = [] (Float polar, Float ecc) {
-			return ecc*sin(polar);
-		};
-		transform(polar0.begin(), polar0.end(), ecc0.begin(), x0.begin(), polar2x);
-		transform(polar0.begin(), polar0.end(), ecc0.begin(), y0.begin(), polar2y);
-		// release memory from temporary vectors
-		vector<Float>().swap(polar0);
-		vector<Float>().swap(ecc0);
-	*/
-    cout << "LGN_x: [" << *min_element(x0.begin(), x0.end()) << ", " << *max_element(x0.begin(), x0.end()) << "]\n";
-    cout << "LGN_y: [" << *min_element(y0.begin(), y0.end()) << ", " << *max_element(y0.begin(), y0.end()) << "]\n";
-	auto cart0 = make_pair(x0, y0);
-	vector<Float>().swap(x0);
-	vector<Float>().swap(y0); 
+	} else {
+        Size _mLayer;
+	    fLGN_vpos.read(reinterpret_cast<char*>(&_mLayer), sizeof(Size));
+        if (_mLayer != mLayer) {
+            cout << "mLayer = " << mLayer << " is inconsistent with mLayer(" << _mLayer << ") in LGN_vpos.bin"
+            return EXIT_FAILURE;
+        }
+	    fLGN_vpos.read(reinterpret_cast<char*>(&max_ecc), sizeof(Float));
+	    mL = new Size[mLayer];
+	    mR = new Size[mLayer];
+        m = new Size[mLayer];
+	    fLGN_vpos.read(reinterpret_cast<char*>(mL), mLayer*sizeof(Size));
+	    fLGN_vpos.read(reinterpret_cast<char*>(mR), mLayer*sizeof(Size));
+	    {// not used
+	    	Float tmp;
+	    	fLGN_vpos.read(reinterpret_cast<char*>(&tmp), sizeof(Float)); // x0
+	    	fLGN_vpos.read(reinterpret_cast<char*>(&tmp), sizeof(Float)); // xspan
+	    	fLGN_vpos.read(reinterpret_cast<char*>(&tmp), sizeof(Float)); // y0
+	    	fLGN_vpos.read(reinterpret_cast<char*>(&tmp), sizeof(Float)); // yspan
+	    }
+        Size m_total = 0;
+        for (iLayer = 0; iLayer < mLayer; iLayer++) {
+            m[iLayer] = mL[iLayer] + mR[iLayer];
+	        vector<Float> x0(m[iLayer]);
+	        vector<Float> y0(m[iLayer]);
+	        LGNtype[iLayer].resize(m[iLayer]);
+	        fLGN_vpos.read(reinterpret_cast<char*>(&x0[0]), m[iLayer]*sizeof(Float));
+	        fLGN_vpos.read(reinterpret_cast<char*>(&y0[0]), m[iLayer]*sizeof(Float));
+	        fLGN_vpos.read(reinterpret_cast<char*>(&LGNtype[iLayer][0]), m[iLayer] * sizeof(PosInt));
+            m_total += m[iLayer];
+            cout << m[iLayer] << " LGN neurons, " << mL[iLayer] << " from left eye, " << mR[iLayer] << " from right eye in layer " << iLayer << ".\n";
+            cout << "LGN_x: [" << *min_element(x0.begin(), x0.end()) << ", " << *max_element(x0.begin(), x0.end()) << "]\n";
+            cout << "LGN_y: [" << *min_element(y0.begin(), y0.end()) << ", " << *max_element(y0.begin(), y0.end()) << "]\n";
+	        cart0[iLayer] = make_pair(x0, y0);
+        }
+	    cout << "need " << 3 * m_total * sizeof(Float) / 1024 / 1024 << "Mb mem\n";
+    }
 	fLGN_vpos.close();
 
 	cout << "carts ready\n";
@@ -707,160 +714,197 @@ int main(int argc, char *argv[]) {
     seed_seq seq(seeds.begin(), seeds.end());
     RandomEngine rGen(seq);
 
+	Size nFeature; // not used here
+	vector<vector<Int>> featureLayer(nLayer);
+	vector<vector<Int>> LR(nLayer);
+	vector<vector<Float>> theta(nLayer); // [0, 1] control the LGN->V1 RF orientation
+	vector<vector<Float>> OD(nLayer);
+    vector<vector<Float>>* feature[2] = {&OD, &theta};
     ifstream fV1_feature;
     fV1_feature.open(V1_feature_filename, ios::in|ios::binary);
 	if (!fV1_feature) {
 		cout << "failed to open pos file:" << V1_feature_filename << "\n";
 		return EXIT_FAILURE;
-	}
-	Size nFeature; // not used here
-    fV1_feature.read(reinterpret_cast<char*>(&nFeature), sizeof(Size));
-	vector<Float> OD(n);
-	fV1_feature.read(reinterpret_cast<char*>(&OD[0]), n * sizeof(Float));
-	vector<Int> LR(n);
-	vector<Float> theta(n); // [0, 1] control the LGN->V1 RF orientation
-	fV1_feature.read(reinterpret_cast<char*>(&theta[0]), n * sizeof(Float));
-    Size nL = 0;
-    Size nR = 0;
-    for (Size i = 0; i<n; i++) {
-        if (OD[i] < 0) {
-            LR[i] = -1;
-            nL++;
-        } else {
-            LR[i] = 1;
-            nR++;
+	} else {
+        fV1_feature.read(reinterpret_cast<char*>(&nFeature), sizeof(Size));
+        for (int i=0; i<2; i++) { // only care OD and theta
+            Size nfl;
+            fV1_feature.read(reinterpret_cast<char*>(&nfl), sizeof(Size));
+            fV1_feature.read(reinterpret_cast<char*>(&featureLayer[i]), nfl*sizeof(Size));
+            vector<Size> _n(nfl); 
+            fV1_feature.read(reinterpret_cast<char*>(&_n[0]), nfl*sizeof(Size));
+            for (int j=0; j<nfl; j++) {
+                PosInt iLayer = featureLayer[i];
+                if (n[iLayer] != _n[j]) {
+                    cout << "feature size in layer " << iLayer << " is " << _n[j] << ", inconsistent with the size from V1_vpos.bin, " << n[iLayer] << "\n";
+                    return EXIT_FAILURE;
+                } else {
+                    (*(feature[i])->at(iLayer).resize(_n[j]);
+	                fV1_feature.read(reinterpret_cast<char*>(&(*feature[i])->(iLayer)[0], _n[j] * sizeof(Float));
+                }
+            }
         }
-        theta[i] = (theta[i]-0.5)*M_PI;
     }
 	fV1_feature.close();
-    cout << "left eye: " << nL << " V1 neurons\n";
-    cout << "right eye: " << nR << " V1 neurons\n";
 
-    vector<Float> a; // radius of the VF, to be filled
-	vector<Float> baRatio = generate_baRatio(n, rGen);
-    cout << "max pool of LGN = " << maxLGNperV1pool << "\n";
-    vector<vector<Size>> poolList = retinotopic_vf_pool(cart, cart0, VFposEcc, useCuda, rGen, baRatio, a, theta, LR, nL, mL, m, maxLGNperV1pool, seed, LGN_V1_RFratio);
-    Size minPool_L = maxLGNperV1pool; 
-    Size maxPool_L = 0; 
-    Float meanPool_L = 0; 
-    Size zeroPool_L = 0;
+    for (iLayer = 0; iLayer < nLayer; iLayer++) {
+        cout << "layer " << iLayer << "\n";  
+        Size nL = 0;
+        Size nR = 0;
+        for (PosInt i = 0; i<n[iLayer]; i++) {
+            if (OD[iLayer][i] < 0) {
+                LR[iLayer][i] = -1;
+                nL++;
+            } else {
+                LR[iLayer][i] = 1;
+                nR++
+            }
+            theta[iLayer][i] = (theta[iLayer][i]-0.5)*M_PI;
+        }
+        cout << "   left eye: " << nL << " V1 neurons\n";
+        cout << "   right eye: " << nR << " V1 neurons\n";
+        vector<Float> a; // radius of the VF, to be filled
+	    vector<Float> baRatio = generate_baRatio(n[iLayer], rGen);
+        cout << "   max pool of LGN = " << maxLGNperV1pool[iLayer] << "\n";
+        vector<vector<Size>> poolList = retinotopic_vf_pool(cart[iLayer], cart0, layerMatch, VFposEcc[iLayer], useCuda, rGen, baRatio, a, theta[iLayer], LR[iLayer], nL, mL, m, maxLGNperV1pool[iLayer], seed, LGN_V1_RFratio);
+        Size minPool_L = maxLGNperV1pool[iLayer]; 
+        Size maxPool_L = 0; 
+        Float meanPool_L = 0; 
+        Size zeroPool_L = 0;
 
-    Size minPool_R = maxLGNperV1pool; 
-    Size maxPool_R = 0; 
-    Float meanPool_R = 0; 
-    Size zeroPool_R = 0;
+        Size minPool_R = maxLGNperV1pool[iLayer]; 
+        Size maxPool_R = 0; 
+        Float meanPool_R = 0; 
+        Size zeroPool_R = 0;
 
-    Float rzeroL = 0;
-    Float rmeanL = 0;
-    Float rzeroR = 0;
-    Float rmeanR = 0;
-	
-	Int jL = 0;
-	Int jR = 0;
-    for (PosInt i=0; i<n; i++) {
-		Int iLR;
-		if (LR[i] < 0) {
-			iLR = jL;
-			jL++;
-		} else {
-			iLR = nL + jR;
-			jR++;
-		}
-        Size iSize = poolList[i].size();
-		for (PosInt j=0; j<iSize; j++) {
-			Float dx = (cart0.first[poolList[i][j]] - cart.first[i]);
-			Float dy = (cart0.second[poolList[i][j]] - cart.second[i]);
-			PosInt lgn_id = poolList[i][j];
-			Float value;
-			if (!inside_ellipse(dx, dy, theta[i], a[i], a[i]*baRatio[i], value)) {
-			//if (iLR == 30550) {
-    			Float tx = cosine(theta[i]) * dx + sine(theta[i]) * dy;
-				Float ty = -sine(theta[i]) * dx + cosine(theta[i]) * dy;
-				cout << "#" << iLR << "-" << j << "(" << poolList[i][j]<< "): x = " << dx << ", y = " << dy << ", theta = " << theta[i]*180/M_PI << ", a = " << a[i] << ", b = " << a[i]*baRatio[i] << "\n";
-				cout << "1-value = " << 1-value << "\n";
-				cout << "lgnx = " << cart0.first[lgn_id] << ", lgny = " << cart0.second[lgn_id] << "\n";
-				cout << "v1x = " << cart.first[i] << ", v1y = " << cart.second[i] << "\n";
-				cout << "tx = " << tx << ", ty = " << ty << "\n";
-				assert(inside_ellipse(dx, dy, theta[i], a[i], a[i]*baRatio[i], value));
-			}
-		}
+        Float rzeroL = 0;
+        Float rmeanL = 0;
+        Float rzeroR = 0;
+        Float rmeanR = 0;
+	    
+	    Int jL = 0;
+	    Int jR = 0;
+        for (PosInt i=0; i<n; i++) {
+	    	Int iLR;
+	    	if (LR[i] < 0) {
+	    		iLR = jL;
+	    		jL++;
+	    	} else {
+	    		iLR = nL + jR;
+	    		jR++;
+	    	}
+            Size iSize = poolList[i].size();
+	    	for (PosInt j=0; j<iSize; j++) {
+	    		Float dx = (cart0.first[poolList[i][j]] - cart[iLayer].first[i]);
+	    		Float dy = (cart0.second[poolList[i][j]] - cart[iLayer].second[i]);
+	    		PosInt lgn_id = poolList[i][j];
+	    		Float value;
+	    		if (!inside_ellipse(dx, dy, theta[i], a[i], a[i]*baRatio[i], value)) {
+        			Float tx = cosine(theta[i]) * dx + sine(theta[i]) * dy;
+	    			Float ty = -sine(theta[i]) * dx + cosine(theta[i]) * dy;
+	    			cout << "#" << iLR << "-" << j << "(" << poolList[i][j]<< "): x = " << dx << ", y = " << dy << ", theta = " << theta[i]*180/M_PI << ", a = " << a[i] << ", b = " << a[i]*baRatio[i] << "\n";
+	    			cout << "1-value = " << 1-value << "\n";
+	    			cout << "lgnx = " << cart0.first[lgn_id] << ", lgny = " << cart0.second[lgn_id] << "\n";
+	    			cout << "v1x = " << cart.first[i] << ", v1y = " << cart.second[i] << "\n";
+	    			cout << "tx = " << tx << ", ty = " << ty << "\n";
+	    			assert(inside_ellipse(dx, dy, theta[i], a[i], a[i]*baRatio[i], value));
+	    		}
+	    	}
 
-        Float r = a[i]*square_root(baRatio[i]*baRatio[i] + 1);
-		if (LR[i] > 0) {
-        	if (iSize > maxPool_R) maxPool_R = iSize;
-        	if (iSize < minPool_R) minPool_R = iSize;
-        	if (iSize == 0) {
-        	    zeroPool_R++;
-        	    rzeroR += r;
-        	}
-        	rmeanR += r;
-        	meanPool_R += iSize;
-		} else {
-        	if (iSize > maxPool_L) maxPool_L = iSize;
-        	if (iSize < minPool_L) minPool_L = iSize;
-        	if (iSize == 0) {
-        	    zeroPool_L++;
-        	    rzeroL += r;
-        	}
-        	rmeanL += r;
-        	meanPool_L += iSize;
-		}
+            Float r = a[i]*square_root(baRatio[i]*baRatio[i] + 1);
+	    	if (LR[i] > 0) {
+            	if (iSize > maxPool_R) maxPool_R = iSize;
+            	if (iSize < minPool_R) minPool_R = iSize;
+            	if (iSize == 0) {
+            	    zeroPool_R++;
+            	    rzeroR += r;
+            	}
+            	rmeanR += r;
+            	meanPool_R += iSize;
+	    	} else {
+            	if (iSize > maxPool_L) maxPool_L = iSize;
+            	if (iSize < minPool_L) minPool_L = iSize;
+            	if (iSize == 0) {
+            	    zeroPool_L++;
+            	    rzeroL += r;
+            	}
+            	rmeanL += r;
+            	meanPool_L += iSize;
+	    	}
+        }
+        meanPool_L /= nL;
+        rzeroL /= zeroPool_L;
+        rmeanL /= nL;
+        meanPool_R /= nL;
+        rzeroR /= zeroPool_R;
+        rmeanR /= nR;
+        cout << "right poolSizes: [" << minPool_R << ", " << meanPool_R << ", " << maxPool_R << " < " << maxLGNperV1pool[iLayer] << "]\n";
+        cout << "among them " << zeroPool_R << " would have no connection from LGN, whose average radius is " << rzeroR << ", compared to population mean " <<  rmeanR << "\n";
+
+        cout << "left poolSizes: [" << minPool_L << ", " << meanPool_L << ", " << maxPool_L << " < " << maxLGNperV1pool[iLayer] << "]\n";
+        cout << "among them " << zeroPool_L << " would have no connection from LGN, whose average radius is " << rzeroL << ", compared to population mean " <<  rmeanL << "\n";
+
+	    cout << "poolList and R ready for layer " << iLayer << "\n";
     }
-    meanPool_L /= nL;
-    rzeroL /= zeroPool_L;
-    rmeanL /= nL;
-    meanPool_R /= nL;
-    rzeroR /= zeroPool_R;
-    rmeanR /= nR;
-    cout << "right poolSizes: [" << minPool_R << ", " << meanPool_R << ", " << maxPool_R << " < " << maxLGNperV1pool << "]\n";
-    cout << "among them " << zeroPool_R << " would have no connection from LGN, whose average radius is " << rzeroR << ", compared to population mean " <<  rmeanR << "\n";
 
-    cout << "left poolSizes: [" << minPool_L << ", " << meanPool_L << ", " << maxPool_L << " < " << maxLGNperV1pool << "]\n";
-    cout << "among them " << zeroPool_L << " would have no connection from LGN, whose average radius is " << rzeroL << ", compared to population mean " <<  rmeanL << "\n";
-
-	cout << "poolList and R ready\n";
-
-	vector<RFtype> V1Type(n); // defined in RFtype.h [0..4], RF shapes
-	vector<OutputType> RefType(n); // defined in in RFtype.h [0..3] conetype placements
-	vector<Float> phase(n); // [0, 2*pi], control the phase
+	vector<vector<RFtype>> V1Type(nLayer); // defined in RFtype.h [0..4], RF shapes
+	vector<vector<OutputType>> RefType(nLayer); // defined in in RFtype.h [0..3] conetype placements
+	vector<vector<Float>> phase(nLayer); // [0, 2*pi], control the phase
     // theta is read from fV1_feature
-	vector<Float> modAmp_nCon(n); // [0,1] controls simple complex ratio, through subregion overlap ratio, or number of LGN connected.
-	Size nType = typeAccCount.size();
-	if (nType > max_nType) {
-		cout << "the accumulative distribution of neuronal type <typeAccCount> has size of " << nType << " > " << max_nType << "\n";
-		return EXIT_FAILURE;
-	}
+	vector<vector<Float>> modAmp_nCon(nLayer); // [0,1] controls simple complex ratio, through subregion overlap ratio, or number of LGN connected.
+	vector<Size> nType(nLayer);
+	vector<vector<Size>> typeAcc0(nLayer);
 
-	vector<Size> typeAcc0;
-	typeAcc0.push_back(0);
-	for (PosInt i=0; i<nType; i++) {
-		typeAcc0.push_back(typeAccCount[i]);
-	}
-
-	Size nblock = n/blockSize;
-	if (typeAccCount.back() != blockSize) {
-		cout << "neuron per block != " << blockSize << "\n";
-		return EXIT_FAILURE;
-	}
-	if (nblock * blockSize != n) {
-		cout << "number of V1 neuron cannot be divided by " << blockSize << "\n";
-		return EXIT_FAILURE;
-	}
-
+    
     if (readFromFile) {
         fstream fV1_RFpreset(V1_RFpreset_filename, fstream::in | fstream::binary);
 	    if (!fV1_RFpreset) {
 	    	cout << "Cannot open or find " << V1_RFpreset_filename <<"\n";
 	    	return EXIT_FAILURE;
-	    }
-	    fV1_RFpreset.read(reinterpret_cast<char*>(&nType), sizeof(Size));
-	    fV1_RFpreset.read(reinterpret_cast<char*>(&typeAccCount[0]), nType*sizeof(Size));
-	    fV1_RFpreset.read(reinterpret_cast<char*>(&V1Type[0]), n * sizeof(RFtype_t));
-	    fV1_RFpreset.read(reinterpret_cast<char*>(&RefType[0]), n * sizeof(OutputType_t));
-	    fV1_RFpreset.read(reinterpret_cast<char*>(&phase[0]), n * sizeof(Float));
-	    fV1_RFpreset.read(reinterpret_cast<char*>(&modAmp_nCon[0]), n * sizeof(Float));
-        fV1_RFpreset.close();
+	    } else {
+            Size _nLayer;
+	        fV1_RFpreset.read(reinterpret_cast<char*>(&_nLayer), sizeof(Size));
+            vector<Size> _n(_nLayer);
+		    fV1_RFpreset.read(reinterpret_cast<char*>(&_n[0]), sizeof(Size)*nLayer);
+            if (_nLayer != nLayer) {
+                cout << "nLayer = " << nLayer << " is inconsistent with nLayer(" << _nLayer << ") in V1_allpos.bin"
+                return EXIT_FAILURE;
+            }
+            for (int iLayer = 0; iLayer<nLayer; iLayer++) {
+                if (n[iLayer] != _n[iLayer]) {
+                    cout << "feature size in layer " << iLayer << " is " << _n[iLayer] << ", inconsistent with the size from V1_vpos.bin, " << n[iLayer] << "\n";
+                    return EXIT_FAILURE;
+                }
+	            fV1_RFpreset.read(reinterpret_cast<char*>(&nType), sizeof(Size));
+	            fV1_RFpreset.read(reinterpret_cast<char*>(&typeAccCount[0]), nType*sizeof(Size));
+
+	            fV1_RFpreset.read(reinterpret_cast<char*>(&V1Type[0]), n * sizeof(RFtype_t));
+	            fV1_RFpreset.read(reinterpret_cast<char*>(&RefType[0]), n * sizeof(OutputType_t));
+	            fV1_RFpreset.read(reinterpret_cast<char*>(&phase[0]), n * sizeof(Float));
+	            fV1_RFpreset.read(reinterpret_cast<char*>(&modAmp_nCon[0]), n * sizeof(Float));
+            }
+            fV1_RFpreset.close();
     } else {
+        nType = typeAccCount.size();
+	    if (nType > max_nType) {
+	    	cout << "the accumulative distribution of neuronal type <typeAccCount> has size of " << nType << " > " << max_nType << "\n";
+	    	return EXIT_FAILURE;
+	    }
+
+	    typeAcc0.push_back(0);
+	    for (PosInt i=0; i<nType; i++) {
+	    	typeAcc0.push_back(typeAccCount[i]);
+	    }
+
+	    Size nblock = n/blockSize;
+	    if (typeAccCount.back() != blockSize) {
+	    	cout << "neuron per block != " << blockSize << "\n";
+	    	return EXIT_FAILURE;
+	    }
+	    if (nblock * blockSize != n) {
+	    	cout << "number of V1 neuron cannot be divided by " << blockSize << "\n";
+	    	return EXIT_FAILURE;
+	    }
         // discrete portions randomly distributed
         uniform_real_distribution<Float> uniform_01(0,1.0);
         normal_distribution<Float> norm_01(0,1.0);
@@ -1007,9 +1051,9 @@ int main(int argc, char *argv[]) {
         fV1_RFpreset.close();
     }
 
-	ofstream fV1_RFprop(V1_RFprop_filename + suffix, fstream::out | fstream::binary);
+	ofstream fV1_RFprop(V1_RFprop_filename + conLGN_suffix, fstream::out | fstream::binary);
 	if (!fV1_RFprop) {
-		cout << "Cannot open or find V1." << V1_RFprop_filename + suffix <<"\n";
+		cout << "Cannot open or find V1." << V1_RFprop_filename + conLGN_suffix <<"\n";
 		return EXIT_FAILURE;
 	}
     fV1_RFprop.write((char*)&n, sizeof(Size));
@@ -1046,11 +1090,11 @@ int main(int argc, char *argv[]) {
 	sfreq2 /= nonZero;
     cout << "std SF suggested after connection: " << square_root(sfreq2 - mean_sfreq*mean_sfreq) << " cpd\n";
 
-    Size nonZeroMinPool = maxLGNperV1pool; 
+    Size nonZeroMinPool = maxLGNperV1pool[iLayer]; 
     Float nonZeroMeanPool = 0; 
     Size nonZeroMaxPool = 0;
 
-    Size minPool = maxLGNperV1pool; 
+    Size minPool = maxLGNperV1pool[iLayer]; 
     Size maxPool = 0; 
     Float meanPool = 0; 
     Size zeroPool = 0;
@@ -1128,11 +1172,11 @@ int main(int argc, char *argv[]) {
 	} */
 
     // write poolList to disk, to be used in ext_input.cu and genCon.cu
-	write_listOfList<Size>(idList_filename + suffix, poolList, false);
-	write_listOfListForArray<Float>(sList_filename + suffix, srList, false); // read with read_listOfListToArray
-	ofstream fLGN_V1_cfg(output_cfg_filename + suffix, fstream::out | fstream::binary);
+	write_listOfList<Size>(idList_filename + conLGN_suffix, poolList, false);
+	write_listOfListForArray<Float>(sList_filename + conLGN_suffix, srList, false); // read with read_listOfListToArray
+	ofstream fLGN_V1_cfg(output_cfg_filename + conLGN_suffix, fstream::out | fstream::binary);
 	if (!fLGN_V1_cfg) {
-		cout << "Cannot open or find " << output_cfg_filename + suffix <<"\n";
+		cout << "Cannot open or find " << output_cfg_filename + conLGN_suffix <<"\n";
 		return EXIT_FAILURE;
 	} else {
 		fLGN_V1_cfg.write((char*) &p_n_LGNeff, sizeof(Float));

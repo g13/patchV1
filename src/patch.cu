@@ -600,6 +600,7 @@ int main(int argc, char** argv) {
 		cout << "Cannot open or find " << V1_allpos_filename + res_suffix <<" to read V1 positions.\n";
 		return EXIT_FAILURE;
 	} else {
+		fV1_allpos.read(reinterpret_cast<char*>(&nLayer), sizeof(Size));
 		fV1_allpos.read(reinterpret_cast<char*>(&nblock), sizeof(Size));
 		fV1_allpos.read(reinterpret_cast<char*>(&neuronPerBlock), sizeof(Size));
 		assert(neuronPerBlock <= blockSize);
