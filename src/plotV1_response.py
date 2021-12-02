@@ -421,6 +421,17 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, data_f
         ns = sample.size
         print(f'sampling {[(s//blockSize, np.mod(s,blockSize)) for s in sample]}') 
     
+    tTF = 1000/TF
+    dtTF = tTF/TFbins
+    n_stacks = int(np.floor(nt_*dt / tTF))
+    r_stacks = np.mod(nt_*dt, tTF)
+    stacks = np.zeros(TFbins) + n_stacks
+    i_stack = np.int(np.floor(r_stacks/dtTF))
+    j_stack = np.mod(r_stacks, dtTF)
+    stacks[:i_stack] += 1
+    stacks[i_stack] += j_stack/dtTF
+    print(f'stacks: {stacks}')
+    
     # read voltage and conductances
     if pVoltage or pCond or plotLGNsCorr or plotSample or plotDepC or (plotTempMod and pCond):
         print('reading rawData..')
@@ -442,7 +453,6 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, data_f
         s_gI = np.zeros(nV1)
         s_gap = np.zeros(mI)
     
-        tTF = 1000/TF
         _nstep = int(round(tTF/dt))
         stepsPerBin = _nstep//TFbins
         if stepsPerBin != _nstep/TFbins:
@@ -452,16 +462,6 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, data_f
         print(f'steps per TFbin is {stepsPerBin}, tstep = {tstep}, tTF = {tTF}, TFbins = {TFbins}')
 
         if plotTempMod and pCond:
-            dtTF = tTF/TFbins
-            n_stacks = int(np.floor(nt_*dt / tTF))
-            r_stacks = np.mod(nt_*dt, tTF)
-            stacks = np.zeros(TFbins) + n_stacks
-            i_stack = np.int(np.floor(r_stacks/dtTF))
-            j_stack = np.mod(r_stacks, dtTF)
-            stacks[:i_stack] += 1
-            stacks[i_stack] += j_stack/dtTF
-            print(f'stacks: {stacks}')
-    
             per_gFF = np.zeros((nV1,TFbins))
             per_gE = np.zeros((nV1,TFbins))
             per_gI = np.zeros((nV1,TFbins))

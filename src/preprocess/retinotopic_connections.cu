@@ -80,8 +80,6 @@ vector<vector<Float>> retinotopic_connection(
         vector<Float> &cx, // V1 VF position (final)
         vector<Float> &cy,
         const vector<Float> &ecc,
-        Size qn,
-        Size n,
         Int SimpleComplex,
         Float conThres,
         Float ori_tol,
@@ -203,8 +201,8 @@ vector<Size> draw_from_radius(
         const Float x0,
         const Float y0, 
         const pair<vector<Float>,vector<Float>> &cart,
-        const vector<Size> &m;
-        const vector<Size> &idOffset;
+        const vector<Size> &m,
+        const vector<Size> &idOffset,
         const Float radius) {
     vector<Size> index;
 
@@ -325,8 +323,8 @@ void vf_pool_CUDA( // for each eye
                         }
                     }
                     if (LGN_id >= idOffset[mLayer-1] + id[mLayer]) {
-                        printf("%u/%u, LGN_id:%u < j0(%u) + m(%u); nRemain = %u, nLGN = %u\n", iPatch, nPatch, LGN_id, j0, m, nRemain, nLGN); 
-                        assert(LGN_id < j0+m);
+                        printf("%u/%u, LGN_id:%u < j0(%u) + m(%u); nRemain = %u, nLGN = %u\n", iPatch, nPatch, LGN_id, idOffset[mLayer-1], id[mLayer], nRemain, nLGN); 
+                        assert(LGN_id < idOffset[mLayer-1] + id[mLayer]);
                     }
                     PosIntL pid = static_cast<PosIntL>(V1_id)*maxLGNperV1pool + iPool;
                     poolList[pid] = LGN_id;
@@ -379,7 +377,7 @@ void vf_pool_CUDA( // for each eye
 
 vector<vector<Size>> retinotopic_vf_pool(
         pair<vector<Float>,vector<Float>> &cart,
-        vector<pair<vector<Float>,vector<Float>>> &cart0,
+        pair<vector<Float>,vector<Float>> &cart0,
         vector<PosInt> &layerMatch,
         vector<Float> &VFposEcc,
         bool useCuda,
@@ -436,7 +434,7 @@ vector<vector<Size>> retinotopic_vf_pool(
             m_max_total = mL_total;
         }
 
-        size_t d_memSize = ((2+4)*n + 2*m_max_total)*sizeof(Float) + static_cast<size_t>(n)*maxLGNperV1pool*sizeof(PosInt) + n*sizeof(Size) + (mL_layer*2+1)*sizeof(Size);
+        size_t d_memSize = ((2+4)*n + 2*m_max_total)*sizeof(Float) + static_cast<size_t>(n)*maxLGNperV1pool*sizeof(PosInt) + n*sizeof(Size) + (nPickLayer*2+1)*sizeof(Size);
 		cout << "poolList need memory of " << n << "x" << maxLGNperV1pool << "x" << sizeof(PosInt) << " = " << static_cast<PosIntL>(n)*maxLGNperV1pool*sizeof(PosInt) << " = " << static_cast<PosIntL>(n)*maxLGNperV1pool*sizeof(PosInt) / 1024.0 / 1024.0 << "mb\n";
         checkCudaErrors(cudaMalloc((void **) &d_memblock, d_memSize));
 		cout << "need global memory of " << d_memSize / 1024.0 / 1024.0 << "mb in total\n";
@@ -448,8 +446,8 @@ vector<vector<Size>> retinotopic_vf_pool(
         Float* d_a = d_baRatio + n; // to be filled
         Float* d_theta = d_a + n;
         Float* d_VFposEcc = d_theta + n;
-        Float* d_id = d_VFposEcc + n;
-        Float* d_idOffset = d_id + mL_layer+1;
+        PosInt* d_id = (PosInt*) (d_VFposEcc + n);
+        PosInt* d_idOffset = d_id + nPickLayer+1;
 		// to be filled
         PosInt* d_poolList = (PosInt*) (d_VFposEcc + n);
         Size* d_nPool = (Size*) (d_poolList + n*maxLGNperV1pool); // count of LGN connected
@@ -460,16 +458,16 @@ vector<vector<Size>> retinotopic_vf_pool(
         checkCudaErrors(cudaMemcpy(d_baRatio, &(baRatioLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpy(d_VFposEcc, &(VFposEccLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpy(d_theta, &(thetaLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
-        for (PosInt i = 0; i < mL_layer; i++) {
+        for (PosInt i = 0; i < nPickLayer; i++) {
             checkCudaErrors(cudaMemcpy(d_x0 + lidOffset[i], &(cart0.first[lidOffset[i]+lid[i]]), mL[pickLayer[i]]*sizeof(Float), cudaMemcpyHostToDevice));
             checkCudaErrors(cudaMemcpy(d_y0 + lidOffset[i], &(cart0.second[lidOffset[i]+lid[i]]), mL[pickLayer[i]]*sizeof(Float), cudaMemcpyHostToDevice));
         }
-        checkCudaErrors(cudaMemcpy(d_id, &(lid[0]), (mL_layer+1)*sizeof(Size), cudaMemcpyHostToDevice));
-        checkCudaErrors(cudaMemcpy(d_idOffset, &(lidOffset[0]), mL_layer*sizeof(Size), cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(d_id, &(lid[0]), (nPickLayer+1)*sizeof(Size), cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(d_idOffset, &(lidOffset[0]), nPickLayer*sizeof(Size), cudaMemcpyHostToDevice));
         // TODO: stream kernels in chunks for large network
         Size nblock = (nL + blockSize-1)/blockSize;
         cout <<  "<<<" << nblock << ", " << blockSize << ">>>\n";
-        vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_theta, d_poolList, d_nPool, d_id, d_idOffset, 0, nL + nB, mL_total, mL_layer, seed, LGN_V1_RFratio, maxLGNperV1pool);
+        vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_theta, d_poolList, d_nPool, d_id, d_idOffset, 0, nL + nB, mL_total, nPickLayer, seed, LGN_V1_RFratio, maxLGNperV1pool);
         getLastCudaError("vf_pool for the left eye failed");
         cudaDeviceSynchronize();
 
@@ -488,17 +486,19 @@ vector<vector<Size>> retinotopic_vf_pool(
             }
         }
 
-        for (PosInt i = 0; i < mL_layer; i++) {
-            checkCudaErrors(cudaMemcpy(d_x0 + ridOffset[i], &(cart0.first[ridOffset[i] + rid[i]]), mR[pickLayer[i]]*sizeof(Float), cudaMemcpyHostToDevice));
-            checkCudaErrors(cudaMemcpy(d_y0 + ridOffset[i], &(cart0.second[ridOffset[i] + rid[i]]), mR[pickLayer[i]]*sizeof(Float), cudaMemcpyHostToDevice));
-        }
-        checkCudaErrors(cudaMemcpy(d_id, &(rid[0]), (mL_layer+1)*sizeof(Size), cudaMemcpyHostToDevice));
-        checkCudaErrors(cudaMemcpy(d_idOffset, &(ridOffset[0]), mL_layer*sizeof(Size), cudaMemcpyHostToDevice));
+		if (mR_total > 0 && (n-nL)> 0) {
+			for (PosInt i = 0; i < nPickLayer; i++) {
+        	    checkCudaErrors(cudaMemcpy(d_x0 + ridOffset[i], &(cart0.first[ridOffset[i] + rid[i]]), mR[pickLayer[i]]*sizeof(Float), cudaMemcpyHostToDevice));
+        	    checkCudaErrors(cudaMemcpy(d_y0 + ridOffset[i], &(cart0.second[ridOffset[i] + rid[i]]), mR[pickLayer[i]]*sizeof(Float), cudaMemcpyHostToDevice));
+        	}
+        	checkCudaErrors(cudaMemcpy(d_id, &(rid[0]), (nPickLayer+1)*sizeof(Size), cudaMemcpyHostToDevice));
+        	checkCudaErrors(cudaMemcpy(d_idOffset, &(ridOffset[0]), nPickLayer*sizeof(Size), cudaMemcpyHostToDevice));
 
-		nblock = (n-nL + blockSize-1) / blockSize;
-        cout <<  "<<<" << nblock << ", " << blockSize << ">>>\n";
-        vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_theta, d_poolList, d_nPool, nL, n-nL, mL, m-mL, seed, LGN_V1_RFratio, maxLGNperV1pool);
-        getLastCudaError("vf_pool for the right eye failed");
+			nblock = (n-nL + blockSize-1) / blockSize;
+        	cout <<  "<<<" << nblock << ", " << blockSize << ">>>\n";
+        	vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_theta, d_poolList, d_nPool, d_id, d_idOffset, nL, n-nL, mR_total, nPickLayer, seed, LGN_V1_RFratio, maxLGNperV1pool);
+        	getLastCudaError("vf_pool for the right eye failed");
+		}
 		vector<vector<PosInt>> poolListLR;
         size_t largeSize = static_cast<BigSize>(n)*maxLGNperV1pool;
         PosInt* poolListArray = new Size[largeSize];
@@ -557,7 +557,7 @@ vector<vector<Size>> retinotopic_vf_pool(
                 lidOffset.push_back(offset);
                 bidOffset.push_back(offset);
                 mL_pick.push_back(mL[i]);
-                m.push_back(mL[i]);
+                m_pick.push_back(mL[i]);
             }
             offset += mL[i];
         }
@@ -568,7 +568,7 @@ vector<vector<Size>> retinotopic_vf_pool(
             if (layerMatch[iLayer*mLayer + i] == 1) {
                 bidOffset.push_back(offset);
                 ridOffset.push_back(offset);
-                m.push_back(mR[i]);
+                m_pick.push_back(mR[i]);
                 mR_pick.push_back(mR[i]);
             }
             offset += mR[i];
@@ -651,12 +651,12 @@ int main(int argc, char *argv[]) {
 		("disLGN", po::value<Float>(&disLGN)->default_value(1.0), "average visual distance between LGN cells")
 		("strictStrength", po::value<bool>(&strictStrength)->default_value(true), "make nLGN*sLGN strictly as preset")
 		("pureComplexRatio", po::value<vector<Float>>(&pureComplexRatio), "determine the proportion of simple and complex in each input layer, with size of nType")
-		("typeAccCount",po::value<vector<Size>>(&typeAccCount), "neuronal types' discrete accumulative distribution size of nType")
 		("V1_RFtypeAccDist", po::value<vector<Float>>(&V1_RFtypeAccDist), "determine the relative portion of each V1 RF type")
 		("nRefTypeV1_RF", po::value<vector<Size>>(&nRefTypeV1_RF), "determine the number of cone/ON-OFF combinations for each V1 RF type")
 		("V1_RefTypeID", po::value<vector<Size>>(&V1_RefTypeID), "determine the ID of the available cone/ON-OFF combinations in each V1 RF type")
 		("V1_RefTypeDist", po::value<vector<Float>>(&V1_RefTypeDist), "determine the relative portion of the available cone/ON-OFF combinations in each V1 RF type")
         ("inputLayer", po::value<vector<PosInt>>(&inputLayer), "array of V1 layer IDs that recieve inputs from the LGN layers with size nInputLayer")
+		("typeAccCount",po::value<vector<Size>>(&typeAccCount), "neuronal types' discrete accumulative distribution size of nType for input layers only")
 		("max_LGNeff", po::value<vector<Size>>(&max_LGNeff), "max realizable number of connections [0,n] for inputLayers")
 		("p_n_LGNeff", po::value<vector<Float>>(&p_n_LGNeff), "LGN conneciton probability [-1,0], or number of connections [0,n] for inputLayers")
         ("V1_LGN_layer_match", po::value<vector<PosInt>>(&layerMatch), "nInputLayer arrays of how each V1 layer recieve inputs from the LGN layers (mLayer)")
@@ -754,17 +754,17 @@ int main(int argc, char *argv[]) {
 	    auto polar2yD2F = [] (double ecc, double polar) {
 	    	return static_cast<Float>(ecc*sin(polar));
 	    };
-        for (int iLayer = 0; iLayer < nLayer; i++) {
+        for (int iLayer = 0; iLayer < nLayer; iLayer++) {
             n[iLayer] = nblock[iLayer]*neuronPerBlock[iLayer];
             vector<double> decc(n[iLayer]);
 	        vector<double> dpolar(n[iLayer]);
             VFposEcc[iLayer].reserve(n[iLayer]);
-	        fV1_allpos.seekg(2*n[iLayer]*sizeof(double), fStimulus.cur); // skip cortical positions
+	        fV1_allpos.seekg(2*n[iLayer]*sizeof(double), fV1_allpos.cur); // skip cortical positions
 	        fV1_allpos.read(reinterpret_cast<char*>(&decc[0]), n[iLayer] * sizeof(double)); 
 	        fV1_allpos.read(reinterpret_cast<char*>(&dpolar[0]), n[iLayer] * sizeof(double));
             transform(decc.begin(), decc.end(), VFposEcc[iLayer].begin(), double2Float);
-	        vector<Float> x(n);
-	        vector<Float> y(n);
+	        vector<Float> x(n[iLayer]);
+	        vector<Float> y(n[iLayer]);
 	        transform(decc.begin(), decc.end(), dpolar.begin(), x.begin(), polar2xD2F);
 	        transform(decc.begin(), decc.end(), dpolar.begin(), y.begin(), polar2yD2F);
             cout << n[iLayer] << "V1 neurons for layer " << iLayer << "\n";
@@ -792,9 +792,9 @@ int main(int argc, char *argv[]) {
 		return EXIT_FAILURE;
 	} else {
 	    fLGN_vpos.read(reinterpret_cast<char*>(&mLayer), sizeof(Size));
-	    mL.resize[mLayer];
-	    mR.resize[mLayer];
-        m.resize[mLayer];
+	    mL.resize(mLayer);
+	    mR.resize(mLayer);
+        m.resize(mLayer);
 
 	    fLGN_vpos.read(reinterpret_cast<char*>(&max_ecc), sizeof(Float));
 	    fLGN_vpos.read(reinterpret_cast<char*>(&mL[0]), mLayer*sizeof(Size));
@@ -809,7 +809,7 @@ int main(int argc, char *argv[]) {
         m_total = 0;
 	    vector<Float> x0;
 	    vector<Float> y0;
-        for (iLayer = 0; iLayer < mLayer; iLayer++) {
+        for (PosInt iLayer = 0; iLayer < mLayer; iLayer++) {
             m[iLayer] = mL[iLayer] + mR[iLayer];
             m_total += m[iLayer];
             mL_total += mL[iLayer];
@@ -825,7 +825,7 @@ int main(int argc, char *argv[]) {
             y0.insert(y0.end(), std::make_move_iterator(y.begin()),std::make_move_iterator(y.end()));
         }
         if (mR_total > 0) {
-            for (iLayer = 0; iLayer < mLayer; iLayer++) {
+            for (PosInt iLayer = 0; iLayer < mLayer; iLayer++) {
 	            vector<Float> x;
 	            vector<Float> y;
 	            fLGN_vpos.read(reinterpret_cast<char*>(&x[0]), mR[iLayer]*sizeof(Float));
@@ -849,51 +849,7 @@ int main(int argc, char *argv[]) {
     seed_seq seq(seeds.begin(), seeds.end());
     RandomEngine rGen(seq);
 
-	Size nFeature; // not used here
-	vector<vector<Int>> featureLayer(nLayer);
-	vector<vector<Float>> theta(nLayer); // [0, 1] control the LGN->V1 RF orientation
-	vector<vector<Float>> OD(nLayer);
-    vector<vector<Float>>* feature[2] = {&OD, &theta};
-    ifstream fV1_feature;
-    fV1_feature.open(V1_feature_filename, ios::in|ios::binary);
-	if (!fV1_feature) {
-		cout << "failed to open pos file:" << V1_feature_filename << "\n";
-		return EXIT_FAILURE;
-	} else {
-        fV1_feature.read(reinterpret_cast<char*>(&nFeature), sizeof(Size));
-        for (int i=0; i<2; i++) { // only care OD and theta
-            Size nfl;
-            fV1_feature.read(reinterpret_cast<char*>(&nfl), sizeof(Size));
-            fV1_feature.read(reinterpret_cast<char*>(&featureLayer[i]), nfl*sizeof(Size));
-            for (int j=0; j<nInputLayer; j++) { // the first two feature are input-related
-                bool contained = false;
-                for (int k=0; k<nfl; k++) {
-                    if (inputLayer[j] == featureLayer[k]) {
-                        contained = true;
-                        break
-                    }
-                }
-                if (!contained) {
-                    cout << "inputLayer " << inputLayer[j] << " not having input feature" << i << "\n";
-                }
-            }
-            vector<Size> _n(nfl); 
-            fV1_feature.read(reinterpret_cast<char*>(&_n[0]), nfl*sizeof(Size));
-            for (int j=0; j<nfl; j++) {
-                PosInt iLayer = featureLayer[i];
-                if (n[iLayer] != _n[j]) {
-                    cout << "feature size in layer " << iLayer << " is " << _n[j] << ", inconsistent with the size from V1_allpos.bin, " << n[iLayer] << "\n";
-                    return EXIT_FAILURE;
-                } else {
-                    (*(feature[i])->at(iLayer).resize(_n[j]);
-	                fV1_feature.read(reinterpret_cast<char*>(&(*feature[i])->at(iLayer)[0], _n[j] * sizeof(Float));
-                }
-            }
-        }
-    }
-	fV1_feature.close();
-
-    vector<RFtype> V1Type; // defined in RFtype.h [0..4], RF shapes
+	vector<RFtype> V1Type; // defined in RFtype.h [0..4], RF shapes
 	vector<OutputType> RefType; // defined in in RFtype.h [0..3] conetype placements
 	vector<Float> phase; // [0, 2*pi], control the phase
     // theta is read from fV1_feature
@@ -912,7 +868,7 @@ int main(int argc, char *argv[]) {
 	    } else {
 	        fV1_RFpreset.read(reinterpret_cast<char*>(&nInputLayer), sizeof(Size));
             if (nInputLayer > nLayer) {
-                cout << "nInputLayer = " << nInputLayer << " is larger than the number of V1 layers available nLayer(" << nLayer << ")"
+                cout << "nInputLayer = " << nInputLayer << " is larger than the number of V1 layers available nLayer(" << nLayer << ")";
                 return EXIT_FAILURE;
             }
 	        nType.resize(nInputLayer);
@@ -930,7 +886,7 @@ int main(int argc, char *argv[]) {
                 totalType += nType[iLayer];
             }
 
-            typeAccount.resize(totalType);
+            typeAccCount.resize(totalType);
 	        fV1_RFpreset.read(reinterpret_cast<char*>(&typeAccCount[0]), totalType*sizeof(Size));
             V1Type.resize(input_ntotal);
             RefType.resize(input_ntotal);
@@ -989,7 +945,7 @@ int main(int argc, char *argv[]) {
 	        	return EXIT_FAILURE;
 	        }
 	        typeAcc0[iLayer].push_back(0);
-	        for (PosInt i=0; i<nType[j]; i++) {
+	        for (PosInt i=0; i<nType[iLayer]; i++) {
 	        	typeAcc0[iLayer].push_back(typeAccCount[iType+i]);
 	        }
             iType += nType[iLayer];
@@ -1033,7 +989,7 @@ int main(int argc, char *argv[]) {
     	    
 		    for (PosInt i = 0; i<nblock[jLayer]; i++) {
 		    	for (PosInt j=0; j<nType[iLayer]; j++) { 
-		    		Float ratio = pureComplexRatio[j];
+		    		Float ratio = pureComplexRatio[totalType + j];
 		    		if (SimpleComplex == 1) { // ** else == 1 not implemented
 		    			// uniformly distribute simple cell's modulation ratio
             			auto genModAmp_nCon = [&uniform_01, &rGen, &ratio] () {
@@ -1074,23 +1030,66 @@ int main(int argc, char *argv[]) {
 		    				Float v;
             			    return v;
             			};
-            			generate(modAmp_nCon.begin() + i*blockSize + typeAcc0[j], modAmp_nCon.begin() + i*blockSize + typeAcc0[j+1], genModAmp_nCon);
+            			generate(modAmp_nCon.begin() + i*blockSize + typeAcc0[iLayer][j], modAmp_nCon.begin() + i*blockSize + typeAcc0[iLayer][j+1], genModAmp_nCon);
 		    			*/
 		    		}
 		    	}
             }
             qn += n[jLayer];
-		}
-        for (int iLayer = 0; iLayer<nInputLayer; iLayer++) {
             input_ntotal += n[jLayer];
             totalType += nType[iLayer];
-        }
+		}
     }
 
     vector<Size> input_n(nInputLayer);
     for (int iLayer = 0; iLayer<nInputLayer; iLayer++) {
-        input_n[iLayer] = n[inputLayer[iLayer]]
+        input_n[iLayer] = n[inputLayer[iLayer]];
     }
+
+	Size nFeature; // not used here
+	vector<vector<PosInt>> featureLayer(nLayer);
+	vector<vector<Float>> theta(nLayer); // [0, 1] control the LGN->V1 RF orientation
+	vector<vector<Float>> OD(nLayer);
+    vector<vector<Float>>* feature[2] = {&OD, &theta};
+    ifstream fV1_feature;
+    fV1_feature.open(V1_feature_filename, ios::in|ios::binary);
+	if (!fV1_feature) {
+		cout << "failed to open pos file:" << V1_feature_filename << "\n";
+		return EXIT_FAILURE;
+	} else {
+        fV1_feature.read(reinterpret_cast<char*>(&nFeature), sizeof(Size));
+        for (int i=0; i<2; i++) { // only care OD and theta
+            Size nfl;
+            fV1_feature.read(reinterpret_cast<char*>(&nfl), sizeof(Size));
+            fV1_feature.read(reinterpret_cast<char*>(&featureLayer[i]), nfl*sizeof(PosInt));
+            for (int j=0; j<nInputLayer; j++) { // the first two feature are input-related
+                bool contained = false;
+                for (int k=0; k<nfl; k++) {
+                    if (inputLayer[j] == featureLayer[i][k]) {
+                        contained = true;
+                        break;
+                    }
+                }
+                if (!contained) {
+                    cout << "inputLayer " << inputLayer[j] << " not having input feature" << i << "\n";
+                }
+            }
+            vector<Size> _n(nfl); 
+            fV1_feature.read(reinterpret_cast<char*>(&_n[0]), nfl*sizeof(Size));
+            for (int j=0; j<nfl; j++) {
+                PosInt iLayer = featureLayer[i][j];
+                if (n[iLayer] != _n[j]) {
+                    cout << "feature size in layer " << iLayer << " is " << _n[j] << ", inconsistent with the size from V1_allpos.bin, " << n[iLayer] << "\n";
+                    return EXIT_FAILURE;
+                } else {
+                    (*feature[i]).at(iLayer).resize(_n[j]);
+	                fV1_feature.read(reinterpret_cast<char*>(&(*feature[i]).at(iLayer)[0]), _n[j] * sizeof(Float));
+                }
+            }
+        }
+    }
+	fV1_feature.close();
+
 
     if (layerMatch.size() != nInputLayer*mLayer) {
         cout << "array size of V1_LGN_layer_match (" << layerMatch.size() << ") is incorrect, should be " << nInputLayer << "(nInputLayer) x " << mLayer << "(mLayer)\n";
@@ -1098,13 +1097,14 @@ int main(int argc, char *argv[]) {
     }
 	cout << "V1 RF properties preset.\n";
 
-    for (PosInt i=0; i<nLayer; i++) {
-        assert(p_n_LGNeff != 0);
-        assert(p_n_LGNeff >= -1);
+    for (PosInt i=0; i<nInputLayer; i++) {
+        assert(p_n_LGNeff[i] != 0);
+        assert(p_n_LGNeff[i] >= -1);
     }
 
+	ofstream fV1_RFpreset;
     if (!readFromFile) {
-        ofstream fV1_RFpreset(V1_RFpreset_filename, fstream::out | fstream::binary);
+        fV1_RFpreset.open(V1_RFpreset_filename, fstream::out | fstream::binary);
 	    if (!fV1_RFpreset) {
 	    	cout << "Cannot open or find " << V1_RFpreset_filename <<"\n";
 	    	return EXIT_FAILURE;
@@ -1146,16 +1146,17 @@ int main(int argc, char *argv[]) {
     vector<Float> meanPool(nInputLayer);
     vector<Float> meanSum(nInputLayer);
     Size qn = 0;
-    for (iLayer = 0; iLayer < nInputLayer; iLayer++) {
+	Size qType = 0;
+    for (PosInt iLayer = 0; iLayer < nInputLayer; iLayer++) {
         PosInt jLayer = inputLayer[iLayer];
-        cout << "layer " << jLayer << "\n";  
+        cout << "layer " << jLayer << "\n";
         Size nL = 0;
         Size nR = 0;
         Size nB = 0;
 	    vector<Int> LR(n[iLayer]);
         if (OD[jLayer].size() != input_n[iLayer] || theta[jLayer].size() != input_n[iLayer]) {
             cout << "input layers have to have OD and theta features, size of OD/theta is " << OD[jLayer].size() << "\n";
-            assert(OD[jLayer].size() == theta[jLayer].size())
+            assert(OD[jLayer].size() == theta[jLayer].size());
             return EXIT_FAILURE;
         }
         for (PosInt i = 0; i<n[iLayer]; i++) {
@@ -1168,7 +1169,7 @@ int main(int argc, char *argv[]) {
                     nB++;
                 } else {
                     LR[i] = 1;
-                    nR++
+                    nR++;
                 }
             }
             theta[jLayer][i] = (theta[jLayer][i]-0.5)*M_PI;
@@ -1356,8 +1357,8 @@ int main(int argc, char *argv[]) {
         }
 	    if (SimpleComplex == 1) {
 	    	Float nonzeroN = 0;
-	    	for (PosInt i=0; i<nType; i++) {
-	    		nonzeroN += nblock[inputLayer[iLayer]]*(typeAcc0[i+1]-typeAcc0[i])*(1-pureComplexRatio[i]);
+	    	for (PosInt j=0; j<nType[iLayer]; j++) {
+	    		nonzeroN += nblock[inputLayer[iLayer]]*(typeAcc0[iLayer][j+1]-typeAcc0[iLayer][j])*(1-pureComplexRatio[qType + j]);
 	    	}
 	    	cout << nonzeroN << " nonzero LGN cells\n";
 	    	meanSum[iLayer] /= nonzeroN;
@@ -1365,14 +1366,14 @@ int main(int argc, char *argv[]) {
 	    	sum2 /= nonzeroN;
 	    	pool2 /= nonzeroN;
 	    } else {
-	    	meanSum[iLayer] /= n;
-        	meanPool[iLayer] /= n;
-	    	sum2 /= n;
-	    	pool2 /= n;
+	    	meanSum[iLayer] /= n[jLayer];
+        	meanPool[iLayer] /= n[jLayer];
+	    	sum2 /= n[jLayer];
+	    	pool2 /= n[jLayer];
 	    }
         cout << "# connections: [" << minPool << ", " << meanPool[iLayer] << ", " << maxPool << "]\n";
         cout << "among them " << zeroPool << " would have no connection from LGN\n";
-        cout << "# nonzero connections: [" << nonZeroMinPool << ", " << nonZeroMeanPool/(n-zeroPool) << ", " << nonZeroMaxPool << "]\n";
+        cout << "# nonzero connections: [" << nonZeroMinPool << ", " << nonZeroMeanPool/(n[jLayer]-zeroPool) << ", " << nonZeroMaxPool << "]\n";
         cout << "# totalConnectionStd: " << square_root(pool2 - meanPool[iLayer]*meanPool[iLayer]) << "\n";
         cout << "# totalStrength: [" << minSum << ", " << meanSum[iLayer] << ", " << maxSum << "]\n";
         cout << "# totalStrengthStd: " << square_root(sum2 - meanSum[iLayer]*meanSum[iLayer]) << "\n";
@@ -1396,6 +1397,7 @@ int main(int argc, char *argv[]) {
 
 	    write_listOfList<Size>(idList_filename + conLGN_suffix, poolList, true);
 	    write_listOfListForArray<Float>(srList_filename + conLGN_suffix, srList, true); // read with read_listOfListToArray
+		qType += nType[iLayer];
     }
 
 	ofstream fLGN_V1_cfg(output_cfg_filename + conLGN_suffix, fstream::out | fstream::binary);

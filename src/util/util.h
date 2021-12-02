@@ -180,7 +180,7 @@ void write_listOfListForArray(std::string filename, std::vector<std::vector<T>> 
             assert(nList0 >= nList);
             input_file.read(reinterpret_cast<char*>(&maxList0), sizeof(Size));
         }
-        input_file.close()
+        input_file.close();
 
 		output_file.open(filename, std::fstream::out|std::fstream::app|std::fstream::binary);
 	} else {
@@ -198,10 +198,10 @@ void write_listOfListForArray(std::string filename, std::vector<std::vector<T>> 
     }
     if (append) {
         if (maxList > maxList0) {
-            output_file.seekp(sizeof(Size), output_file.beg)
+            output_file.seekp(sizeof(Size), output_file.beg);
             output_file.write((char*)&maxList, sizeof(Size));
             std::cout << "maxList changed to " << maxList << "\n";
-            output_file.seekp(0, output_file.end)
+            output_file.seekp(0, output_file.end);
         }
     } else{
         output_file.write((char*)&nList, sizeof(Size));

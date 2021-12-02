@@ -4,7 +4,7 @@
 % stdratio: initial connections weights to be gaussian distributed if nonzero
 % suffix0: theme string %lgn0 in lFF.slurm
 % stage: retinal wave stages, takes 2 or 3
-function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
+function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr, squareOrCircle, sInput, relay)
 
 	fdr = [fdr,'/'] %inputFolder in cfg
 
@@ -17,7 +17,7 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 	%%%% HERE %%%%%%%%
 	if stage == 5
 		nother = 1; % set the number of temporal-variable learning parameters, such as rLTD 
-		set_other = [[0.25, 1.0]]; % rLTD
+		set_other = [[0.25, 1.00]]; % rLTD
 	else
 		nother = 0;
 	end
@@ -28,9 +28,15 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 		max_ecc = 10; % radius of the visual field spanned by all the LGN
 	end
 	if stage == 3
-		pCon = 0.8
-		nLGN_1D = 7;
-		max_ecc = 5;
+		if relay
+			pCon = 0.9 % initial sparsity
+			nLGN_1D = 14; % sqrt of the total number of On/Off LGN cells
+			max_ecc = 10; % radius of the visual field spanned by all the LGN
+		else
+			pCon = 0.8
+			nLGN_1D = 7;
+			max_ecc = 5;
+		end
     end
 	%%%%%%%%
 
@@ -89,8 +95,13 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 	    	absentRate = 1.0; % active cell percentage when being "absent"/not dominating
 	    	nOri = 32;
 	    	nRep = 3;
-	    	framesPerStatus = 132;
-	    	framesToFinish = ceil(24.9);
+			if relay
+				framesPerStatus = 192;
+	    		framesToFinish = ceil(49.7);
+			else
+				framesPerStatus = 132;
+	    		framesToFinish = ceil(24.9);
+			end
 	    	%framesPerStatus = 192;
 	    	%framesToFinish = ceil(49.7);
 	    end
@@ -133,16 +144,16 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 	    framesPerStatus = [225, 192]; % frames for each wave
 	    framesToFinish = [ceil(62.1), ceil(49.7)]; % frames for the ending phase of the last wave
 	    absentRate = 1.0; % active cell percentage when being "absent"/not dominating
-	    nStatus = sum(nOri.*nRep);
+	    nStatus = sum(nOri.*nRep)
 	    status = zeros(6,nStatus);
 	    statusFrame = zeros(nStatus,1);
         others = zeros(nStatus,nother);
-        iFrame = 0;
+        iStatus = 0;
         for k = 1:length(nOri)
             for i=1:nother
-                others(iFrame+1:nOri(k)*nRep(k),i) = set_other(i, k);
+                others(iStatus+1:iStatus+nOri(k)*nRep(k),i) = set_other(i, k);
             end
-            iFrame = iFrame + nOri(k)*nRep(k);
+            iStatus = iStatus + nOri(k)*nRep(k);
         end
         others
 	    %%%%%%%%%%%%%
@@ -204,8 +215,12 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 	LGN_y = (LGN_idy(:)-nLGN_1D/2+0.5)./nLGN_1D.*max_ecc./0.5;
 	LGN_vpos0 = [LGN_x(1:2:nLGN), LGN_y(1:2:nLGN)];
 
-	nLGN_circ = sum(sum(LGN_vpos0.*LGN_vpos0,2) <= max_ecc.*max_ecc);
-	nLGNperV1 = round(nLGN_circ*2 * pCon);
+    if squareOrCircle
+	    nLGNperV1 = round(nLGN_1D*nLGN_1D*2*pCon);
+    else
+	    nLGN_circ = sum(sum(LGN_vpos0.*LGN_vpos0,2) <= max_ecc.*max_ecc);
+	    nLGNperV1 = round(nLGN_circ*2 * pCon);
+    end
 	if mod(nLGNperV1,2) == 1
 		nLGNperV1 = nLGNperV1 + 1;
 	end
@@ -222,7 +237,7 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 	    fwrite(fid, nLGNperV1, 'uint');
 		if doubleOnOff 
 			if i == 1 || ~same
-				ids_on = randq(nLGN_1D*nLGN_1D, nLGNperV1/2, LGN_vpos0, max_ecc, max_ecc*stdratio); % index start from 0
+				ids_on = randq(nLGN_1D*nLGN_1D, nLGNperV1/2, LGN_vpos0, max_ecc, max_ecc*stdratio, squareOrCircle); % index start from 0
 			end
 			idi	= zeros(nLGNperV1,1);
 			current_id = 1;
@@ -232,7 +247,7 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 				current_id = current_id+length(idj);
 			end
 			if i == 1 || ~same
-				ids_off = randq(nLGN_1D*nLGN_1D, nLGNperV1/2, LGN_vpos0, max_ecc, max_ecc*stdratio); % index start from 0
+				ids_off = randq(nLGN_1D*nLGN_1D, nLGNperV1/2, LGN_vpos0, max_ecc, max_ecc*stdratio, squareOrCircle); % index start from 0
 			end
 			for j = 1:nLGN_1D
 				idj = ids_off(ids_off >= nLGN_1D*(j-1) & ids_off < nLGN_1D*j);
@@ -349,21 +364,41 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 	fwrite(fid, doubleOnOff, 'int'); % be read by outputLearnFF not used in patch.cu
 	fclose(fid);
 	
-	if normed
-	    sLGN = zeros(nLGNperV1, nV1);
-	    for i = 1:nV1
-	        ss = exp(-(LGN_ecc(id(:,i)+1) ./ (max_ecc*iCS_std)).^2);
-	        sLGN(:,i) = ss./sum(ss)*initialConnectionStrength*nLGNperV1;
-	    end
+	if ~isempty(sInput)
+		fid = fopen(sInput, 'r');
+        nt_ = fread(fid, 1, 'uint');
+        nV1_ = fread(fid, 1, 'uint');
+        assert(nV1_ == nV1);
+        max_LGNperV1 = fread(fid, 1, 'uint');
+		if max_LGNperV1 <= nLGNperV1
+			disp(max_LGNperV1)
+			disp(nLGNperV1)
+			assert(nLGNperV1 == max_LGNperV1);	
+		end
+        fseek(fid, 3*4, 0); % skip till time
+        fseek(fid, max_LGNperV1*nV1*int64(nt_-1)*4, 0); % skip till time
+        sLGN = fread(fid, [nV1_, max_LGNperV1], 'float')'; % transposed
+        fclose(fid);
 	else
-	    sLGN = randn(nLGNperV1,nV1)*iCS_std+initialConnectionStrength;
+		if normed
+		    sLGN = zeros(nLGNperV1, nV1);
+		    for i = 1:nV1
+		        ss = exp(-(LGN_ecc(id(:,i)+1) ./ (max_ecc*iCS_std)).^2);
+		        sLGN(:,i) = ss./sum(ss)*initialConnectionStrength*nLGNperV1;
+		    end
+		else
+		    sLGN = randn(nLGNperV1,nV1)*iCS_std+initialConnectionStrength;
+		end
 	end
 	fid = fopen(fLGN_V1_s, 'w'); % format follows function read_LGN in patch.h
 	fwrite(fid, nV1, 'uint');
 	fwrite(fid, nLGNperV1, 'uint');
 	for i = 1:nV1
 	    fwrite(fid, nLGNperV1, 'uint');
-	    fwrite(fid, sLGN(:, i), 'float');
+	    fwrite(fid, sLGN(1:nLGNperV1, i), 'float');
+		if i == 1
+			disp(sLGN(:,i)');
+		end
 	end
 	fclose(fid);
 	
@@ -483,12 +518,17 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 	fwrite(fid, ones(nV1,1), 'float');
 	fclose(fid);
 end
-function ids = randq(m,n,pos,r0,stdev)	
+function ids = randq(m,n,pos,r0,stdev, squareOrCircle)
 	r2 = sum(pos.*pos,2);
 	ndiscard = m-n;
 	id = 1:m;
-	ndm = sum(r2>r0*r0);
-	pick = r2<=r0*r0;
+    if squareOrCircle
+        ndm = 0;
+		pick = true(m,1);
+    else
+	    ndm = sum(r2>r0*r0);
+		pick = r2<=r0*r0;
+    end
 	id_left = id(pick);
 	if stdev <= 0
 		ids = id_left(randperm(m-ndm,n));

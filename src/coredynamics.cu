@@ -1714,7 +1714,11 @@ void compute_V_collect_spike_learnFF_fast(
 			if (applyHomeo) {
 				local_totalFF0 = totalFF[tid];
             	local_totalFF_inf = totalFF_inf[tid];
-            	new_totalFF0 = (local_totalFF0-local_totalFF_inf)*exp_homeo + local_totalFF_inf;
+				if (local_totalFF0 <= local_totalFF_inf)  {
+					new_totalFF0 = local_totalFF0;
+				} else {
+					new_totalFF0 = (local_totalFF0-local_totalFF_inf)*exp_homeo + local_totalFF_inf;
+				}
 				switch (applyHomeo) {	
 					case 1: 
 						homeostatic_change = new_totalFF0/local_totalFF0;
