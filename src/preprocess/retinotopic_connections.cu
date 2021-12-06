@@ -7,47 +7,90 @@ using namespace std;
 */
 
 template<typename T>
-void original2LR(vector<T> &original, vector<T> &seqByLR, vector<Int> LR, Size nL, Size nB) {
-    seqByLR.assign(LR.size(), 0);
-    Size jL = 0;
-    Size jR = 0;
-    Size jB = 0;
-    for (Size i = 0; i<LR.size(); i++) {
-        if (LR[i] < 0) {
-            seqByLR[jL] = original[i];
-            jL++;
-        } else{
-            if (LR[i] == 0) {
-                seqByLR[nL + jB] = original[i];
-                jB++;
-            } else {
-                seqByLR[nL + nB + jR] = original[i];
-                jR++;
-            }
-        }
+void original2typeLR(Size n, vector<PosInt> &seqByTypeLR, vector<T> &original, vector<T> &typeLR) {
+    assert(n == original.size());
+    for (PosInt i=0; i<n; i++) {
+        typeLR[i] = original[seqByTypeLR[i]];
     }
 }
+
 template<typename T>
-void LR2original(vector<T> &seqByLR, vector<T> &original, vector<Int> LR, Size nL, Size nB) {
-    assert(seqByLR.size() == LR.size());
-    Size jL = 0;
-    Size jR = 0;
-    Size jB = 0;
-    for (Size i = 0; i<LR.size(); i++) {
+void typeLR2original(Size n, vector<PosInt> &seqByTypeLR, vector<T> &typeLR, vector<T> &original) {
+    assert(seqByTypeLR.size() == typeLR.size());
+    assert(original.size() == typeLR.size());
+    assert(n == seqByTypeLR.size());
+    for (PosInt i = 0; i<n; i++) {
+        original[seqByTypeLR[i]] = typeLR[i];
+    }
+}
+
+void seqTypeLR(Size n, vector<PosInt> &seqByTypeLR, vector<PosInt> &type, vector<Int> &LR, vector<Size> &accTypeL, vector<Size> &accTypeR, vector<Size> &accType, Size nType, Size nL, Size nB) {
+    assert(n == seqByTypeLR.size());
+
+    vector<Size> jL(nType,0);
+    vector<Size> jR(nType,0);
+    vector<Size> jB(nType,0);
+    vector<Size> accTypeB(nType,0);
+    for (PosInt i = 0; i<type.size(); i++) {
         if (LR[i] < 0) {
-            original.push_back(seqByLR[jL]);
-            jL ++;
+            accTypeL[type[i]]++;
         } else {
             if (LR[i] == 0) {
-                original.push_back(seqByLR[nL + jB]);
-                jB ++;
+                accTypeB[type[i]]++;
             } else {
-                original.push_back(seqByLR[nL + nB + jR]);
-                jR ++;
+                accTypeR[type[i]]++;
             }
         }
     }
-    assert(seqByLR.size() == original.size());
+    for (PosInt i = 0; i<nType; i++) {
+        for (PosInt j = i+1; j<nType; j++) {
+            accTypeL[j] += accTypeL[i];
+        }
+    }
+    accTypeL.insert(accTypeL.begin(),0);
+    for (PosInt i = 0; i<nType; i++) {
+        for (PosInt j = i+1; j<nType; j++) {
+            accTypeB[j] += accTypeB[i];
+        }
+    }
+    accTypeB.insert(accTypeB.begin(),0);
+    Size _nL = accTypeL.back();
+    assert(_nL == nL);
+    for (PosInt i = 0; i<nType+1; i++) {
+        accTypeB[i] += _nL;
+    }
+    for (PosInt i = 0; i<nType; i++) {
+        for (PosInt j = i+1; j<nType; j++) {
+            accTypeR[j] += accTypeR[i];
+        }
+    }
+    accTypeR.insert(accTypeR.begin(),0);
+    Size _nB = accTypeB.back();
+    assert(_nB == nB + nL);
+    for (PosInt i = 0; i<nType+1; i++) {
+        accTypeR[i] += _nB;
+    }
+    for (Size i = 0; i<LR.size(); i++) {
+        if (LR[i] < 0) {
+            seqByTypeLR[accTypeL[type[i]] + jL[type[i]]] = i;
+            jL[type[i]]++;
+        } else{
+            if (LR[i] == 0) {
+                seqByTypeLR[accTypeB[type[i]] + jB[type[i]]] = i;
+                jB[type[i]]++;
+            } else {
+                seqByTypeLR[accTypeR[type[i]] + jR[type[i]]] = i;
+                jR[type[i]]++;
+            }
+        }
+    }
+    accTypeL.pop_back();
+    accTypeL.insert(accTypeL.end(), accTypeB.begin(), accTypeB.end());
+    accType.insert(accType.end(), accTypeL.begin(), accTypeL.end());
+    accType.pop_back();
+    accTypeB.pop_back();
+    accTypeR.insert(accTypeR.end(), accTypeB.begin(), accTypeB.end());
+    accType.insert(accType.end(), accTypeB.begin(), accTypeB.end());
 }
 
 Float get_acuity(Float ecc) {
@@ -61,14 +104,16 @@ Float get_acuity(Float ecc) {
 vector<vector<Float>> retinotopic_connection(
         vector<vector<Size>> &poolList,
         RandomEngine &rGen,
-        Float p_n_LGNeff,
-        Size max_LGNeff,
+        Float p_n_LGNeff[], // size: nType
+        Size max_LGNeff[], // size: nType
         Float envelopeSig,
         Size qn,
+        PosInt nType,
         const Size n,
 		const pair<vector<Float>, vector<Float>> &cart, // V1 VF position (tentative)
         const pair<vector<Float>,vector<Float>> &cart0, // LGN VF position
 		const vector<RFtype> &V1Type,
+		const vector<PosInt> &type,
         const vector<Float> &theta,
         vector<Float> &phase,
         vector<Float> &sfreq,
@@ -144,11 +189,12 @@ vector<vector<Float>> retinotopic_connection(
 			}
 			// construct pooled LGN neurons' connection to the V1 neuron
 			vector<Float> strengthList;
-            bool percentOrNumber = p_n_LGNeff < 0;
+            Float p = p_n_LGNeff[type[i]];
+            bool percentOrNumber = p < 0;
             if (percentOrNumber) {
-                p_n_LGNeff = -p_n_LGNeff; 
+                p = -p;
             }
-			Size maxN = max_LGNeff > poolList[i].size()? poolList.size(): max_LGNeff;
+			Size maxN = max_LGNeff[type[i]] > poolList[i].size()? poolList.size(): max_LGNeff[type[i]];
 			if (conThres >= 0) {
 				Float qfreq;
 				RF->setup_param(m, sfreq[i], phase[i], 1.0, theta[i], a[i], baRatio[i], RefType[qn+i], strictStrength, envelopeSig);
@@ -158,10 +204,10 @@ vector<vector<Float>> retinotopic_connection(
 			} else {
             	if (SimpleComplex == 0) {
 				    RF->setup_param(m, sfreq[i], phase[qn+i], modAmp_nCon[qn+i], theta[i], a[i], baRatio[i], RefType[qn+i], strictStrength, envelopeSig);
-				    m = RF->construct_connection_N(x, y, iType, poolList[i], strengthList, rGen, p_n_LGNeff*1.0, percentOrNumber, maxN, top_pick);
+				    m = RF->construct_connection_N(x, y, iType, poolList[i], strengthList, rGen, p*1.0, percentOrNumber, maxN, top_pick);
             	} else {
 				    RF->setup_param(m, sfreq[i], phase[qn+i], 1.0, theta[i], a[i], baRatio[i], RefType[qn+i], strictStrength, envelopeSig);
-				    m = RF->construct_connection_N(x, y, iType, poolList[i], strengthList, rGen, p_n_LGNeff*modAmp_nCon[qn+i], percentOrNumber, maxN, top_pick);
+				    m = RF->construct_connection_N(x, y, iType, poolList[i], strengthList, rGen, p*modAmp_nCon[qn+i], percentOrNumber, maxN, top_pick);
             	}
 			}
             RefType[qn+i] = RF->oType;
@@ -263,10 +309,13 @@ void vf_pool_CUDA( // for each eye
     Size* __restrict__ nPool,
     PosInt* __restrict__ id, // for neuronal id in layers
     PosInt* __restrict__ idOffset,
+    Size* __restrict__ mLpVp, // LGN pool size per neuron (based on type)
+    Size* __restrict__ accType,
+    BigSize* __restrict__ accTypeN,
     Size i0, Size n, Size m, Size mLayer,
     BigSize seed,
     Float LGN_V1_RFratio,
-    Size maxLGNperV1pool // total LGN size to the eye
+    Size nType
 ) {
     __shared__ Float sx[blockSize]; 
     __shared__ Float sy[blockSize]; 
@@ -278,7 +327,16 @@ void vf_pool_CUDA( // for each eye
     curandStateMRG32k3a rGen;
     Float V1_x, V1_y;
     Size iPool;
+    PosIntL pool_id;
+    Size max_LGN;
     if (V1_id < i0+n) { // get radius
+        PosInt iType;
+        for (PosInt i=1; i<2*nType+1; i++) {
+            if (V1_id < accType[i]) {
+                iType = i-1;
+                break;
+            }
+        }
         Float ecc = VFposEcc[V1_id];
         Float baR = baRatio[V1_id];
         V1_x = x[V1_id];
@@ -286,10 +344,12 @@ void vf_pool_CUDA( // for each eye
 		curand_init(seed + V1_id, 0, 0, &rGen);
         Float R = mapping_rule_CUDA(ecc*60.0, rGen, LGN_V1_RFratio)/60.0;
         // R = sqrt(area)
+        max_LGN = mLpVp[iType];
         Float sqr = square_root(M_PI*baR);
 		Float local_a = R/sqr;
         a[V1_id] = local_a;
         iPool = nPool[V1_id]; // read from array, could be binocular
+        pool_id = (V1_id-accType[iType])*max_LGN + accTypeN[iType];
     }
     // scan and pooling LGN
     for (Size iPatch = 0; iPatch < nPatch; iPatch++) {
@@ -326,14 +386,15 @@ void vf_pool_CUDA( // for each eye
                         printf("%u/%u, LGN_id:%u < j0(%u) + m(%u); nRemain = %u, nLGN = %u\n", iPatch, nPatch, LGN_id, idOffset[mLayer-1], id[mLayer], nRemain, nLGN); 
                         assert(LGN_id < idOffset[mLayer-1] + id[mLayer]);
                     }
-                    PosIntL pid = static_cast<PosIntL>(V1_id)*maxLGNperV1pool + iPool;
+
+                    PosIntL pid = pool_id + static_cast<PosIntL>(iPool);
                     poolList[pid] = LGN_id;
 					//if (V1_id == 41652) {
                     //    printf("## %u-%u(%u):, dx = %f, dy = %f, theta = %f, a =%f, b = %f\n lgnx = %f, lgny = %f\n v1x = %f, v1y = %f\n 1-value = %e\n", V1_id, iPool, LGN_id, sx[iLGN]-V1_x, sy[iLGN]-V1_y, theta[V1_id]*180/M_PI, a[V1_id], a[V1_id]*baRatio[V1_id], sx[iLGN], sy[iLGN], V1_x, V1_y, 1-value); 
 					//}
-                    if (iPool > maxLGNperV1pool) {
-                        printf("%u > %u, a = %f, b = %f, theta = %f\n", iPool, maxLGNperV1pool, a[V1_id], a[V1_id]*baRatio[V1_id], theta[V1_id]*180/M_PI); 
-                        assert(iPool <= maxLGNperV1pool);
+                    if (iPool > max_LGN) {
+                        printf("%u > %u, a = %f, b = %f, theta = %f\n", iPool, max_LGN, a[V1_id], a[V1_id]*baRatio[V1_id], theta[V1_id]*180/M_PI); 
+                        assert(iPool <= max_LGN);
                     }
                     iPool++;
                 }
@@ -385,6 +446,7 @@ vector<vector<Size>> retinotopic_vf_pool(
         vector<Float> &baRatio,
         vector<Float> &a,
         vector<Float> &theta,
+        vector<PosInt> &type,
         vector<Int> &LR,
         Size nL,
         Size nB,
@@ -392,21 +454,31 @@ vector<vector<Size>> retinotopic_vf_pool(
         vector<Size> &mR,
         Size mLayer,
         PosInt iLayer,
-        Size maxLGNperV1pool,
+        Size maxLGNperV1pool[], // size of nType
 		BigSize seed,
-		Float LGN_V1_RFratio
+		Float LGN_V1_RFratio,
+        Size nType
 ) {
     vector<vector<PosInt>> poolList;
     const Size n = cart.first.size();
         
     poolList.reserve(n);
     if (useCuda) {
-		vector<Float> xLR, yLR, baRatioLR, VFposEccLR, thetaLR;
-		original2LR(cart.first, xLR, LR, nL, nB);
-		original2LR(cart.second, yLR, LR, nL, nB);
-		original2LR(baRatio, baRatioLR, LR, nL, nB);
-		original2LR(VFposEcc, VFposEccLR, LR, nL, nB);
-		original2LR(theta, thetaLR, LR, nL, nB);
+		vector<Float> xLR(n);
+        vector<Float> yLR(n);
+        vector<Float> baRatioLR(n);
+        vector<Float> VFposEccLR(n);
+        vector<Float> thetaLR(n);
+		vector<PosInt> seqByTypeLR(n);
+		vector<PosInt> accTypeL(nType,0);
+		vector<PosInt> accTypeR(nType,0);
+		vector<PosInt> accType;
+        seqTypeLR(n, seqByTypeLR, type, LR, accTypeL, accTypeR, accType, nType, nL, nB);
+		original2typeLR(n, seqByTypeLR, cart.first, xLR);
+		original2typeLR(n, seqByTypeLR, cart.second, yLR);
+		original2typeLR(n, seqByTypeLR, baRatio, baRatioLR);
+		original2typeLR(n, seqByTypeLR, VFposEcc, VFposEccLR);
+		original2typeLR(n, seqByTypeLR, theta, thetaLR);
         Float *d_memblock;
 
         Size mL_total = 0;
@@ -432,10 +504,71 @@ vector<vector<Size>> retinotopic_vf_pool(
         Size m_max_total;
         if (mL_total > mR_total) {
             m_max_total = mL_total;
+        } else {
+            m_max_total = mR_total;
         }
 
-        size_t d_memSize = ((2+4)*n + 2*m_max_total)*sizeof(Float) + static_cast<size_t>(n)*maxLGNperV1pool*sizeof(PosInt) + n*sizeof(Size) + (nPickLayer*2+1)*sizeof(Size);
-		cout << "poolList need memory of " << n << "x" << maxLGNperV1pool << "x" << sizeof(PosInt) << " = " << static_cast<PosIntL>(n)*maxLGNperV1pool*sizeof(PosInt) << " = " << static_cast<PosIntL>(n)*maxLGNperV1pool*sizeof(PosInt) / 1024.0 / 1024.0 << "mb\n";
+        vector<Size> mLpVp(nType*2);
+        vector<BigSize> accTypeL_N(nType*2+1);
+        vector<BigSize> accTypeR_N(nType*2+1);
+        vector<BigSize> accType_N;
+        BigSize poolSizeL = 0;
+        BigSize poolSizeR = 0;
+        for (PosInt i=0; i<nType*2; i++) {
+            accTypeL_N[i] = poolSizeL;
+            accTypeR_N[i] = poolSizeR;
+            mLpVp[i] = maxLGNperV1pool[i%nType];
+            poolSizeL += (accTypeL[i+1]- accTypeL[i])*mLpVp[i];
+            poolSizeR += (accTypeR[i+1]- accTypeR[i])*mLpVp[i];
+        }
+        accTypeL_N.push_back(poolSizeL);
+        accType_N.insert(accType_N.end(), accTypeL_N.begin(), accTypeL_N.end());
+        accType_N.pop_back();
+        accTypeR_N.push_back(poolSizeR);
+        for (PosInt i=0; i<nType*2+1; i++) {
+            accTypeR_N[i] += poolSizeL;
+            accType_N.push_back(accTypeR_N[i]);
+        }
+        BigSize poolSize = poolSizeL + poolSizeR;
+
+        cout << "nL = " << nL << "\n";
+        cout << "nB = " << nB << "\n";
+        cout << "n = " << n << "\n";
+
+        cout << "accTypeL:\n";
+        for (PosInt i=0; i<nType*2+1; i++) {
+            cout << "(" << accTypeL[i] << ", " << accTypeL_N[i] << ")";
+            if (i < nType*2) {
+                cout << ", ";
+            } else {
+                cout << "\n";
+            }
+        }
+        cout << "accTypeR:\n";
+        for (PosInt i=0; i<nType*2+1; i++) {
+            cout << "(" << accTypeR[i] << ", " << accTypeR_N[i] << ")";
+            if (i < nType*2) {
+                cout << ", ";
+            } else {
+                cout << "\n";
+            }
+        }
+
+        cout << "accType:\n";
+        for (PosInt i=0; i<nType*3+1; i++) {
+            cout << "(" << accType[i] << ", " << accType_N[i] << ")";
+            if (i < nType*3) {
+                cout << ", ";
+            } else {
+                cout << "\n";
+            }
+        }
+        cout << "poolSize = " << poolSize << "\n";
+        assert(poolSize == accType_N.back());
+
+
+        size_t d_memSize = ((2+4)*n + 2*m_max_total)*sizeof(Float) + static_cast<size_t>(poolSize)*sizeof(PosInt) + n*sizeof(Size) + (nPickLayer*2+1)*sizeof(Size) + (4*nType+1)*sizeof(Size) + (2*nType+1)*sizeof(BigSize);
+		cout << "poolList need "<< static_cast<size_t>(poolSize)*sizeof(PosInt)/1024.0/1024.0 << "mb memory.\n";
         checkCudaErrors(cudaMalloc((void **) &d_memblock, d_memSize));
 		cout << "need global memory of " << d_memSize / 1024.0 / 1024.0 << "mb in total\n";
         Float* d_x = d_memblock;
@@ -449,8 +582,11 @@ vector<vector<Size>> retinotopic_vf_pool(
         PosInt* d_id = (PosInt*) (d_VFposEcc + n);
         PosInt* d_idOffset = d_id + nPickLayer+1;
 		// to be filled
-        PosInt* d_poolList = (PosInt*) (d_VFposEcc + n);
-        Size* d_nPool = (Size*) (d_poolList + n*maxLGNperV1pool); // count of LGN connected
+        PosInt* d_poolList = (PosInt*) (d_idOffset + nPickLayer);
+        Size* d_nPool = (Size*) (d_poolList + poolSize); // count of LGN connected
+        Size* d_mLpVp = d_nPool + n;
+        Size* d_accType = d_mLpVp + nType*2;
+        BigSize* d_accTypeN = (BigSize*) (d_accType + nType*2+1);
 
         checkCudaErrors(cudaMemset(d_nPool, 0, n*sizeof(Size)));
         checkCudaErrors(cudaMemcpy(d_x, &(xLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
@@ -464,10 +600,13 @@ vector<vector<Size>> retinotopic_vf_pool(
         }
         checkCudaErrors(cudaMemcpy(d_id, &(lid[0]), (nPickLayer+1)*sizeof(Size), cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpy(d_idOffset, &(lidOffset[0]), nPickLayer*sizeof(Size), cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(d_mLpVp, &(mLpVp[0]), 2*nType*sizeof(Size), cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(d_accType, &(accTypeL[0]), (2*nType+1)*sizeof(Size), cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(d_accTypeN, &(accTypeL_N[0]), (2*nType+1)*sizeof(BigSize), cudaMemcpyHostToDevice));
         // TODO: stream kernels in chunks for large network
         Size nblock = (nL + blockSize-1)/blockSize;
         cout <<  "<<<" << nblock << ", " << blockSize << ">>>\n";
-        vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_theta, d_poolList, d_nPool, d_id, d_idOffset, 0, nL + nB, mL_total, nPickLayer, seed, LGN_V1_RFratio, maxLGNperV1pool);
+        vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_theta, d_poolList, d_nPool, d_id, d_idOffset, d_mLpVp, d_accType, d_accTypeN, 0, nL + nB, mL_total, nPickLayer, seed, LGN_V1_RFratio, nType);
         getLastCudaError("vf_pool for the left eye failed");
         cudaDeviceSynchronize();
 
@@ -493,34 +632,39 @@ vector<vector<Size>> retinotopic_vf_pool(
         	}
         	checkCudaErrors(cudaMemcpy(d_id, &(rid[0]), (nPickLayer+1)*sizeof(Size), cudaMemcpyHostToDevice));
         	checkCudaErrors(cudaMemcpy(d_idOffset, &(ridOffset[0]), nPickLayer*sizeof(Size), cudaMemcpyHostToDevice));
+            checkCudaErrors(cudaMemcpy(d_accType, &(accTypeR[0]), (2*nType+1)*sizeof(Size), cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(d_accTypeN, &(accTypeR_N[0]), (2*nType+1)*sizeof(BigSize), cudaMemcpyHostToDevice));
 
 			nblock = (n-nL + blockSize-1) / blockSize;
         	cout <<  "<<<" << nblock << ", " << blockSize << ">>>\n";
-        	vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_theta, d_poolList, d_nPool, d_id, d_idOffset, nL, n-nL, mR_total, nPickLayer, seed, LGN_V1_RFratio, maxLGNperV1pool);
+        	vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_theta, d_poolList, d_nPool, d_id, d_idOffset, d_mLpVp, d_accType, d_accTypeN, nL, n-nL, mR_total, nPickLayer, seed, LGN_V1_RFratio, nType);
         	getLastCudaError("vf_pool for the right eye failed");
 		}
 		vector<vector<PosInt>> poolListLR;
-        size_t largeSize = static_cast<BigSize>(n)*maxLGNperV1pool;
-        PosInt* poolListArray = new Size[largeSize];
+        PosInt* poolListArray = new Size[poolSize];
         Size* nPool = new Size[n];
 		vector<Float> aLR(n);
         checkCudaErrors(cudaMemcpy(&aLR[0], d_a, n*sizeof(Float), cudaMemcpyDeviceToHost));
-        checkCudaErrors(cudaMemcpy(poolListArray, d_poolList, largeSize*sizeof(PosInt), cudaMemcpyDeviceToHost));
+        checkCudaErrors(cudaMemcpy(poolListArray, d_poolList, poolSize*sizeof(PosInt), cudaMemcpyDeviceToHost));
         checkCudaErrors(cudaMemcpy(nPool, d_nPool, n*sizeof(Size), cudaMemcpyDeviceToHost));
         for (Size i=0; i<n; i++) {
-            vector<Size> iPool(nPool[i]);
-            for (Size j=0; j<nPool[i]; j++) {
-                size_t pid = static_cast<PosIntL>(i)*maxLGNperV1pool + j;
-                iPool[j] = poolListArray[pid];
+            PosInt iType;
+            for (Size j=1; j<nType*3+1; j++) {
+                if (i < accType[j]) {
+                    iType = j-1;
+                    break;
+                }
             }
+            size_t pid = static_cast<PosIntL>(i-accType[iType])*maxLGNperV1pool[iType] + accType_N[iType];
+            vector<Size> iPool(poolListArray+pid, poolListArray+pid+nPool[i]);
             poolListLR.push_back(iPool);
         }
         Size maxPool = *max_element(nPool, nPool+n);
         delete []poolListArray;
         delete []nPool;
-        assert(maxPool < maxLGNperV1pool);
-		LR2original(poolListLR, poolList, LR, nL, nB);
-		LR2original(aLR, a, LR, nL, nB);
+        assert(maxPool < *max_element(maxLGNperV1pool, maxLGNperV1pool+nType));
+		typeLR2original(n, seqByTypeLR, poolListLR, poolList);
+		typeLR2original(n, seqByTypeLR, aLR, a);
         checkCudaErrors(cudaFree(d_memblock));
     } else {
         vector<Float> normRand;
@@ -574,7 +718,7 @@ vector<vector<Size>> retinotopic_vf_pool(
             offset += mR[i];
         }
 
-        Size maxLGNperV1pool = 0;
+        Size _maxLGNperV1pool = 0;
         for (Size i=0; i<n; i++) {
             if (LR[i] > 0) {
                 poolList.push_back(draw_from_radius(cart.first[i], cart.second[i], cart0, mL_pick, lidOffset, rMap[i]));
@@ -585,9 +729,9 @@ vector<vector<Size>> retinotopic_vf_pool(
                     poolList.push_back(draw_from_radius(cart.first[i], cart.second[i], cart0, mR_pick, ridOffset, rMap[i]));
                 }
             }
-            if (poolList[i].size() > maxLGNperV1pool) maxLGNperV1pool = poolList[i].size();
+            if (poolList[i].size() > _maxLGNperV1pool) _maxLGNperV1pool = poolList[i].size();
         }
-        cout << "actual maxLGNperV1pool reaches " << maxLGNperV1pool << "\n";
+        cout << "max LGN per V1 pool reaches " << _maxLGNperV1pool << "\n";
     }
 	Float ecc_min = *min_element(VFposEcc.begin(), VFposEcc.end());
 	Float ecc_mean = accumulate(VFposEcc.begin(), VFposEcc.end(), 0.0)/VFposEcc.size();
@@ -628,8 +772,7 @@ int main(int argc, char *argv[]) {
     vector<Size> nRefTypeV1_RF, V1_RefTypeID;
     vector<PosInt> inputLayer;
     vector<Float> V1_RFtypeAccDist, V1_RefTypeDist;
-	string LGN_vpos_filename, V1_allpos_filename, V1_RFpreset_filename, V1_feature_filename, conLGN_suffix;
-    string res_suffix;
+	string LGN_vpos_filename, V1_allpos_filename, V1_RFpreset_filename, V1_feature_filename, conLGN_suffix, res_suffix, inputFolder, outputFolder;
 	po::options_description generic("generic options");
 	generic.add_options()
 		("help,h", "print usage")
@@ -641,9 +784,11 @@ int main(int argc, char *argv[]) {
 	po::options_description input_opt("input options");
 	input_opt.add_options()
 		("res_suffix", po::value<string>(&res_suffix)->default_value(""), "conLGN_suffix for resource files")
+		("inputFolder", po::value<string>(&inputFolder)->default_value(""), "Folder that stores the input files")
+		("outputFolder", po::value<string>(&outputFolder)->default_value(""), "Folder that stores the output files")
 		("top_pick", po::value<bool>(&top_pick)->default_value(true), "preset number of connection, n, and connect to the neurons with the top n prob")
 		("LGN_V1_RFratio,r", po::value<Float>(&LGN_V1_RFratio)->default_value(1.0), "LGN's contribution to the total RF size")
-		("maxLGNperV1pool", po::value<vector<Size>>(&maxLGNperV1pool), "maximum pooling of LGN neurons per V1 neuron, array of nLayers")
+		("maxLGNperV1pool", po::value<vector<Size>>(&maxLGNperV1pool), "maximum pooling of LGN neurons per V1 neuron, array of nInputLayer x nType")
 		("envelopeSig", po::value<Float>(&envelopeSig)->default_value(1.177), "LGN's pools connection probability envelope sigma on distance")
 		("SimpleComplex", po::value<Int>(&SimpleComplex)->default_value(1), "determine how simple complex is implemented, through modulation modAmp_nCon(0) or number of LGN connection(1)")
 		("conThres", po::value<Float>(&conThres)->default_value(-1), "connect to LGN using conThres")
@@ -655,15 +800,16 @@ int main(int argc, char *argv[]) {
 		("nRefTypeV1_RF", po::value<vector<Size>>(&nRefTypeV1_RF), "determine the number of cone/ON-OFF combinations for each V1 RF type")
 		("V1_RefTypeID", po::value<vector<Size>>(&V1_RefTypeID), "determine the ID of the available cone/ON-OFF combinations in each V1 RF type")
 		("V1_RefTypeDist", po::value<vector<Float>>(&V1_RefTypeDist), "determine the relative portion of the available cone/ON-OFF combinations in each V1 RF type")
+		("nType",po::value<vector<Size>>(&nType), "number of neuronal types per input layers")
         ("inputLayer", po::value<vector<PosInt>>(&inputLayer), "array of V1 layer IDs that recieve inputs from the LGN layers with size nInputLayer")
 		("typeAccCount",po::value<vector<Size>>(&typeAccCount), "neuronal types' discrete accumulative distribution size of nType for input layers only")
 		("max_LGNeff", po::value<vector<Size>>(&max_LGNeff), "max realizable number of connections [0,n] for inputLayers")
-		("p_n_LGNeff", po::value<vector<Float>>(&p_n_LGNeff), "LGN conneciton probability [-1,0], or number of connections [0,n] for inputLayers")
+		("p_n_LGNeff", po::value<vector<Float>>(&p_n_LGNeff), "LGN conneciton probability [-1,0], or number of connections [0,n] for nInputLayer x nType")
         ("V1_LGN_layer_match", po::value<vector<PosInt>>(&layerMatch), "nInputLayer arrays of how each V1 layer recieve inputs from the LGN layers (mLayer)")
-		("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file that stores V1 neurons' parameters")
-		("fV1_RFpreset", po::value<string>(&V1_RFpreset_filename)->default_value("V1_RFpreset.bin"), "file that stores V1 neurons' parameters")
-		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"), "file that stores LGN position in visual field (and on-cell off-cell label)")
-		("fV1_allpos", po::value<string>(&V1_allpos_filename)->default_value("V1_allpos.bin"), "file that stores V1 position in visual field)");
+		("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature"), "file that stores V1 neurons' parameters")
+		("fV1_RFpreset", po::value<string>(&V1_RFpreset_filename)->default_value("V1_RFpreset"), "file that stores V1 neurons' parameters")
+		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos"), "file that stores LGN position in visual field (and on-cell off-cell label)")
+		("fV1_allpos", po::value<string>(&V1_allpos_filename)->default_value("V1_allpos"), "file that stores V1 position in visual field)");
 
     string V1_RFprop_filename, idList_filename, srList_filename, output_cfg_filename;
 	po::options_description output_opt("output options");
@@ -731,7 +877,7 @@ int main(int argc, char *argv[]) {
 	vector<pair<vector<Float>, vector<Float>>> cart; // V1 VF position (preset)
 	vector<vector<Float>> VFposEcc;
 	ifstream fV1_allpos;
-	fV1_allpos.open(V1_allpos_filename + res_suffix, fstream::in | fstream::binary);
+	fV1_allpos.open(inputFolder + V1_allpos_filename + res_suffix, fstream::in | fstream::binary);
 	if (!fV1_allpos) {
 		cout << "Cannot open or find " << V1_allpos_filename + res_suffix <<" to read V1 positions.\n";
 		return EXIT_FAILURE;
@@ -756,9 +902,10 @@ int main(int argc, char *argv[]) {
 	    };
         for (int iLayer = 0; iLayer < nLayer; iLayer++) {
             n[iLayer] = nblock[iLayer]*neuronPerBlock[iLayer];
+            cout << n[iLayer] << " neurons for V1 layer " << iLayer << "\n";
             vector<double> decc(n[iLayer]);
 	        vector<double> dpolar(n[iLayer]);
-            VFposEcc[iLayer].reserve(n[iLayer]);
+            VFposEcc[iLayer].resize(n[iLayer]);
 	        fV1_allpos.seekg(2*n[iLayer]*sizeof(double), fV1_allpos.cur); // skip cortical positions
 	        fV1_allpos.read(reinterpret_cast<char*>(&decc[0]), n[iLayer] * sizeof(double)); 
 	        fV1_allpos.read(reinterpret_cast<char*>(&dpolar[0]), n[iLayer] * sizeof(double));
@@ -767,7 +914,6 @@ int main(int argc, char *argv[]) {
 	        vector<Float> y(n[iLayer]);
 	        transform(decc.begin(), decc.end(), dpolar.begin(), x.begin(), polar2xD2F);
 	        transform(decc.begin(), decc.end(), dpolar.begin(), y.begin(), polar2yD2F);
-            cout << n[iLayer] << "V1 neurons for layer " << iLayer << "\n";
             cout << "V1_x: [" << *min_element(x.begin(), x.end()) << ", " << *max_element(x.begin(), x.end()) << "]\n";
             cout << "V1_y: [" << *min_element(y.begin(), y.end()) << ", " << *max_element(y.begin(), y.end()) << "]\n";
 	        cart[iLayer] = make_pair(x, y);
@@ -786,7 +932,7 @@ int main(int argc, char *argv[]) {
 	vector<InputType> LGNtype;
     pair<vector<Float>, vector<Float>> cart0; // V1 VF position (preset)
 	ifstream fLGN_vpos;
-	fLGN_vpos.open(LGN_vpos_filename, fstream::in | fstream::binary);
+	fLGN_vpos.open(inputFolder + LGN_vpos_filename + res_suffix, fstream::in | fstream::binary);
 	if (!fLGN_vpos) {
 		cout << "Cannot open or find " << LGN_vpos_filename << "\n";
 		return EXIT_FAILURE;
@@ -861,7 +1007,7 @@ int main(int argc, char *argv[]) {
     Size totalType = 0;
     if (readFromFile) {
         cout << "ignoring inputLayer, nType, typeAccCount, V1Type, RefType in the config file\n";
-        fstream fV1_RFpreset(V1_RFpreset_filename, fstream::in | fstream::binary);
+        fstream fV1_RFpreset(inputFolder + V1_RFpreset_filename, fstream::in | fstream::binary);
 	    if (!fV1_RFpreset) {
 	    	cout << "Cannot open or find " << V1_RFpreset_filename <<"\n";
 	    	return EXIT_FAILURE;
@@ -1052,7 +1198,7 @@ int main(int argc, char *argv[]) {
 	vector<vector<Float>> OD(nLayer);
     vector<vector<Float>>* feature[2] = {&OD, &theta};
     ifstream fV1_feature;
-    fV1_feature.open(V1_feature_filename, ios::in|ios::binary);
+    fV1_feature.open(inputFolder + V1_feature_filename + res_suffix, ios::in|ios::binary);
 	if (!fV1_feature) {
 		cout << "failed to open pos file:" << V1_feature_filename << "\n";
 		return EXIT_FAILURE;
@@ -1098,13 +1244,17 @@ int main(int argc, char *argv[]) {
 	cout << "V1 RF properties preset.\n";
 
     for (PosInt i=0; i<nInputLayer; i++) {
-        assert(p_n_LGNeff[i] != 0);
-        assert(p_n_LGNeff[i] >= -1);
+        PosInt qType = 0;
+        for (PosInt j=0; j<nType[i]; j++) {
+            assert(p_n_LGNeff[qType + j] != 0);
+            assert(p_n_LGNeff[qType + j] >= -1);
+            qType += nType[i];
+        }
     }
 
 	ofstream fV1_RFpreset;
     if (!readFromFile) {
-        fV1_RFpreset.open(V1_RFpreset_filename, fstream::out | fstream::binary);
+        fV1_RFpreset.open(outputFolder + V1_RFpreset_filename, fstream::out | fstream::binary);
 	    if (!fV1_RFpreset) {
 	    	cout << "Cannot open or find " << V1_RFpreset_filename <<"\n";
 	    	return EXIT_FAILURE;
@@ -1118,7 +1268,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-	ofstream fV1_RFprop(V1_RFprop_filename + conLGN_suffix, fstream::out | fstream::binary);
+	ofstream fV1_RFprop(outputFolder + V1_RFprop_filename + conLGN_suffix, fstream::out | fstream::binary);
 	if (!fV1_RFprop) {
 		cout << "Cannot open or find V1." << V1_RFprop_filename + conLGN_suffix <<"\n";
 		return EXIT_FAILURE;
@@ -1127,7 +1277,7 @@ int main(int argc, char *argv[]) {
         fV1_RFprop.write((char*)&input_n, nInputLayer*sizeof(Size));
     }
 
-    ofstream f_idList(idList_filename + conLGN_suffix, fstream::out | fstream::binary);
+    ofstream f_idList(outputFolder + idList_filename + conLGN_suffix, fstream::out | fstream::binary);
 	if (!f_idList) {
 		cout << "Cannot open or find V1." << idList_filename + conLGN_suffix <<"\n";
 		return EXIT_FAILURE;
@@ -1135,7 +1285,7 @@ int main(int argc, char *argv[]) {
         f_idList.write((char*)&input_ntotal, sizeof(Size));
     }
 
-    ofstream f_srList(srList_filename + conLGN_suffix, fstream::out | fstream::binary);
+    ofstream f_srList(outputFolder + srList_filename + conLGN_suffix, fstream::out | fstream::binary);
 	if (!f_srList) {
 		cout << "Cannot open or find V1." << srList_filename + conLGN_suffix <<"\n";
 		return EXIT_FAILURE;
@@ -1143,8 +1293,8 @@ int main(int argc, char *argv[]) {
         f_srList.write((char*)&n, sizeof(Size));
     }
 
-    vector<Float> meanPool(nInputLayer);
-    vector<Float> meanSum(nInputLayer);
+    vector<Float> meanPool(totalType);
+    vector<Float> meanSum(totalType);
     Size qn = 0;
 	Size qType = 0;
     for (PosInt iLayer = 0; iLayer < nInputLayer; iLayer++) {
@@ -1159,104 +1309,121 @@ int main(int argc, char *argv[]) {
             assert(OD[jLayer].size() == theta[jLayer].size());
             return EXIT_FAILURE;
         }
+        vector<PosInt> type(n[jLayer]);
         for (PosInt i = 0; i<n[iLayer]; i++) {
-            if (OD[jLayer][i] < 0) {
+            for (PosInt j=0; j<nType[iLayer]; j++) {
+                if (i%neuronPerBlock[jLayer] < typeAccCount[qType + j]) {
+                    type[i] = j;
+                    break;
+                }
+            }
+            if (OD[jLayer][i] == 0) {
                 LR[i] = -1;
                 nL++;
             } else {
-                if (OD[jLayer][i] == 0) {
-                    LR[i] = 0;
-                    nB++;
-                } else {
+                if (OD[jLayer][i] == 1.0) {
                     LR[i] = 1;
                     nR++;
+                } else {
+                    LR[i] = 0;
+                    nB++;
                 }
             }
             theta[jLayer][i] = (theta[jLayer][i]-0.5)*M_PI;
         }
         cout << "   left eye: " << nL << " V1 neurons\n";
         cout << "   right eye: " << nR << " V1 neurons\n";
+        cout << "   binocular neurons: " << nB << "\n";
         vector<Float> a; // radius of the VF, to be filled
 	    vector<Float> baRatio = generate_baRatio(n[jLayer], rGen);
-        cout << "   max pool of LGN = " << maxLGNperV1pool[jLayer] << "\n";
-        vector<vector<Size>> poolList = retinotopic_vf_pool(cart[jLayer], cart0, layerMatch, VFposEcc[jLayer], useCuda, rGen, baRatio, a, theta[jLayer], LR, nL, nB, mL, mR, mLayer, jLayer, maxLGNperV1pool[jLayer], seed, LGN_V1_RFratio);
-        Size minPool_L = maxLGNperV1pool[jLayer]; 
-        Size maxPool_L = 0; 
-        Float meanPool_L = 0; 
-        Size zeroPool_L = 0;
-
-        Size minPool_R = maxLGNperV1pool[jLayer]; 
-        Size maxPool_R = 0; 
-        Float meanPool_R = 0; 
-        Size zeroPool_R = 0;
-
-        Float rzeroL = 0;
-        Float rmeanL = 0;
-        Float rzeroR = 0;
-        Float rmeanR = 0;
-	    
-	    Int jL = 0;
-	    Int jR = 0;
-        for (PosInt i=0; i<n[jLayer]; i++) {
-	    	Int iLR;
-	    	if (LR[i] <= 0) {
-	    		iLR = jL;
-	    		jL++;
-	    	}
-	    	if (LR[i] >= 0) {
-	    		iLR = nL + jR;
-	    		jR++;
-	    	}
-            Size iSize = poolList[i].size();
-	    	for (PosInt j=0; j<iSize; j++) {
-	    		Float dx = (cart0.first[poolList[i][j]] - cart[jLayer].first[i]);
-	    		Float dy = (cart0.second[poolList[i][j]] - cart[jLayer].second[i]);
-	    		PosInt lgn_id = poolList[i][j];
-	    		Float value;
-	    		if (!inside_ellipse(dx, dy, theta[jLayer][i], a[i], a[i]*baRatio[i], value)) {
-        			Float tx = cosine(theta[jLayer][i]) * dx + sine(theta[jLayer][i]) * dy;
-	    			Float ty = -sine(theta[jLayer][i]) * dx + cosine(theta[jLayer][i]) * dy;
-	    			cout << "#" << iLR << "-" << j << "(" << poolList[i][j]<< "): x = " << dx << ", y = " << dy << ", theta = " << theta[jLayer][i]*180/M_PI << ", a = " << a[i] << ", b = " << a[i]*baRatio[i] << "\n";
-	    			cout << "1-value = " << 1-value << "\n";
-	    			cout << "lgnx = " << cart0.first[lgn_id] << ", lgny = " << cart0.second[lgn_id] << "\n";
-	    			cout << "v1x = " << cart[jLayer].first[i] << ", v1y = " << cart[jLayer].second[i] << "\n";
-	    			cout << "tx = " << tx << ", ty = " << ty << "\n";
-	    			assert(inside_ellipse(dx, dy, theta[jLayer][i], a[i], a[i]*baRatio[i], value));
-	    		}
-	    	}
-
-            Float r = a[i]*square_root(baRatio[i]*baRatio[i] + 1);
-	    	if (LR[i] > 0) {
-            	if (iSize > maxPool_R) maxPool_R = iSize;
-            	if (iSize < minPool_R) minPool_R = iSize;
-            	if (iSize == 0) {
-            	    zeroPool_R++;
-            	    rzeroR += r;
-            	}
-            	rmeanR += r;
-            	meanPool_R += iSize;
-	    	} else {
-            	if (iSize > maxPool_L) maxPool_L = iSize;
-            	if (iSize < minPool_L) minPool_L = iSize;
-            	if (iSize == 0) {
-            	    zeroPool_L++;
-            	    rzeroL += r;
-            	}
-            	rmeanL += r;
-            	meanPool_L += iSize;
-	    	}
+        for (PosInt i=0; i<nType[iLayer]; i++) {
+            cout << "   max pool of LGN = " << maxLGNperV1pool[qType+i] << " for type " << i << "\n";
         }
-        meanPool_L /= nL;
-        rzeroL /= zeroPool_L;
-        rmeanL /= nL;
-        meanPool_R /= nL;
-        rzeroR /= zeroPool_R;
-        rmeanR /= nR;
-        cout << "right poolSizes: [" << minPool_R << ", " << meanPool_R << ", " << maxPool_R << " < " << maxLGNperV1pool[jLayer] << "]\n";
-        cout << "among them " << zeroPool_R << " would have no connection from LGN, whose average radius is " << rzeroR << ", compared to population mean " <<  rmeanR << "\n";
+        vector<vector<Size>> poolList = retinotopic_vf_pool(cart[jLayer], cart0, layerMatch, VFposEcc[jLayer], useCuda, rGen, baRatio, a, theta[jLayer], type, LR, nL, nB, mL, mR, mLayer, jLayer, &maxLGNperV1pool[qType], seed, LGN_V1_RFratio, nType[iLayer]);
 
-        cout << "left poolSizes: [" << minPool_L << ", " << meanPool_L << ", " << maxPool_L << " < " << maxLGNperV1pool[jLayer] << "]\n";
-        cout << "among them " << zeroPool_L << " would have no connection from LGN, whose average radius is " << rzeroL << ", compared to population mean " <<  rmeanL << "\n";
+
+        for (PosInt iType=0; iType<nType[iLayer]; iType++) {
+            cout << " pool stats for type " << iType << "\n";
+            Size minPool_L = maxLGNperV1pool[qType + iType];
+            Size maxPool_L = 0;
+            Float meanPool_L = 0;
+            Size zeroPool_L = 0;
+            Float rzeroL = 0; // RF radius
+            Float rmeanL = 0;
+
+            Size minPool_R = maxLGNperV1pool[qType + iType];
+            Size maxPool_R = 0;
+            Float meanPool_R = 0;
+            Size zeroPool_R = 0;
+            Float rzeroR = 0;
+            Float rmeanR = 0;
+	        
+	        Int jL = 0;
+	        Int jR = 0;
+            for (PosInt i=0; i<n[jLayer]; i++) {
+                if (i%neuronPerBlock[jLayer] >= typeAccCount[qType+iType]) {// pass if not the type
+                    continue;            
+                }
+	        	Int iLR;
+	        	if (LR[i] <= 0) {
+	        		iLR = jL;
+	        		jL++;
+	        	}
+	        	if (LR[i] >= 0) {
+	        		iLR = nL + jR;
+	        		jR++;
+	        	}
+                Size iSize = poolList[i].size();
+	        	for (PosInt j=0; j<iSize; j++) {
+	        		Float dx = (cart0.first[poolList[i][j]] - cart[jLayer].first[i]);
+	        		Float dy = (cart0.second[poolList[i][j]] - cart[jLayer].second[i]);
+	        		PosInt lgn_id = poolList[i][j];
+	        		Float value;
+	        		if (!inside_ellipse(dx, dy, theta[jLayer][i], a[i], a[i]*baRatio[i], value)) {
+            			Float tx = cosine(theta[jLayer][i]) * dx + sine(theta[jLayer][i]) * dy;
+	        			Float ty = -sine(theta[jLayer][i]) * dx + cosine(theta[jLayer][i]) * dy;
+	        			cout << "#" << iLR << "-" << j << "(" << poolList[i][j]<< "): x = " << dx << ", y = " << dy << ", theta = " << theta[jLayer][i]*180/M_PI << ", a = " << a[i] << ", b = " << a[i]*baRatio[i] << "\n";
+	        			cout << "1-value = " << 1-value << "\n";
+	        			cout << "lgnx = " << cart0.first[lgn_id] << ", lgny = " << cart0.second[lgn_id] << "\n";
+	        			cout << "v1x = " << cart[jLayer].first[i] << ", v1y = " << cart[jLayer].second[i] << "\n";
+	        			cout << "tx = " << tx << ", ty = " << ty << "\n";
+	        			assert(inside_ellipse(dx, dy, theta[jLayer][i], a[i], a[i]*baRatio[i], value));
+	        		}
+	        	}
+
+                Float r = a[i]*square_root(baRatio[i]*baRatio[i] + 1);
+	        	if (LR[i] > 0) {
+                	if (iSize > maxPool_R) maxPool_R = iSize;
+                	if (iSize < minPool_R) minPool_R = iSize;
+                	if (iSize == 0) {
+                	    zeroPool_R++;
+                	    rzeroR += r;
+                	}
+                	rmeanR += r;
+                	meanPool_R += iSize;
+	        	} else {
+                	if (iSize > maxPool_L) maxPool_L = iSize;
+                	if (iSize < minPool_L) minPool_L = iSize;
+                	if (iSize == 0) {
+                	    zeroPool_L++;
+                	    rzeroL += r;
+                	}
+                	rmeanL += r;
+                	meanPool_L += iSize;
+	        	}
+            }
+            meanPool_L /= jL;
+            rzeroL /= zeroPool_L;
+            rmeanL /= jL;
+            meanPool_R /= jL;
+            rzeroR /= zeroPool_R;
+            rmeanR /= jR;
+            cout << "right poolSizes: [" << minPool_R << ", " << meanPool_R << ", " << maxPool_R << " < " << maxLGNperV1pool[qType+iType] << "]\n";
+            cout << "among them " << zeroPool_R << " would have no connection from LGN, whose average radius is " << rzeroR << ", compared to population mean " <<  rmeanR << "\n";
+
+            cout << "left poolSizes: [" << minPool_L << ", " << meanPool_L << ", " << maxPool_L << " < " << maxLGNperV1pool[qType+iType] << "]\n";
+            cout << "among them " << zeroPool_L << " would have no connection from LGN, whose average radius is " << rzeroL << ", compared to population mean " <<  rmeanL << "\n";
+        }
 
 	    cout << "poolList and R ready for layer " << iLayer << "\n";
 	    vector<Float> sfreq = generate_sfreq(n[jLayer], rGen);
@@ -1270,12 +1437,11 @@ int main(int argc, char *argv[]) {
 
 	    vector<Float> cx(n[jLayer]);
 	    vector<Float> cy(n[jLayer]);
-        vector<vector<Float>> srList = retinotopic_connection(poolList, rGen, p_n_LGNeff[iLayer], max_LGNeff[iLayer], envelopeSig, qn, input_n[iLayer], cart[jLayer], cart0, V1Type, theta[jLayer], phase, sfreq, modAmp_nCon, baRatio, a, RefType, LGNtype, cx, cy, VFposEcc[jLayer], SimpleComplex, conThres, ori_tol, disLGN, strictStrength, top_pick);
+        vector<vector<Float>> srList = retinotopic_connection(poolList, rGen, &p_n_LGNeff[qType], &max_LGNeff[qType], envelopeSig, qn, nType[iLayer], input_n[iLayer], cart[jLayer], cart0, V1Type, type, theta[jLayer], phase, sfreq, modAmp_nCon, baRatio, a, RefType, LGNtype, cx, cy, VFposEcc[jLayer], SimpleComplex, conThres, ori_tol, disLGN, strictStrength, top_pick);
 
         if (!readFromFile) {
 	        fV1_RFpreset.write((char*)&phase[qn], n[jLayer] * sizeof(Float));
 	        fV1_RFpreset.write((char*)&modAmp_nCon[qn], n[jLayer] * sizeof(Float));
-            fV1_RFpreset.close();
         }
 
 
@@ -1285,98 +1451,105 @@ int main(int argc, char *argv[]) {
         fV1_RFprop.write((char*)&phase[qn], n[jLayer] * sizeof(Float));
 	    fV1_RFprop.write((char*)&sfreq[0], n[jLayer] * sizeof(Float));
         fV1_RFprop.write((char*)&baRatio[0], n[jLayer] * sizeof(Float));
-	    fV1_RFprop.close();
 
-        qn += n[jLayer];
 
-	    Float sfreq2 = 0;
-	    Float min_sfreq = 100.0; // 60 as max sfreq
-	    Float max_sfreq = 0.0;
-        Size nonZero = 0;
-	    for (PosInt i = 0; i<input_n[iLayer]; i++) {
-	    	if (sfreq[i] > 0 && poolList[i].size() > 0) {
-                Float sf = sfreq[i]/(mean_a*2);
-                if (sf < min_sfreq) {
-                    min_sfreq = sf; 
+        for (PosInt iType = 0; iType<nType[iLayer]; iType++) {
+            cout << " connected stats for type " << iType << "\n";
+	        Float sfreq2 = 0;
+	        Float min_sfreq = 100.0; // 60 as max sfreq
+	        Float max_sfreq = 0.0;
+            Size nonZero = 0;
+	        for (PosInt i = 0; i<input_n[iLayer]; i++) {
+                if (i%neuronPerBlock[jLayer] >= typeAccCount[qType+iType]) {// pass if not the type
+                    continue;            
                 }
-                if (sf > max_sfreq) {
-                    max_sfreq = sf; 
+	        	if (sfreq[i] > 0 && poolList[i].size() > 0) {
+                    Float sf = sfreq[i]/(mean_a*2);
+                    if (sf < min_sfreq) {
+                        min_sfreq = sf; 
+                    }
+                    if (sf > max_sfreq) {
+                        max_sfreq = sf; 
+                    }
+	        		sfreq2 += sf*sf;
+	        		mean_sfreq += sf;
+                    nonZero++;
+	        	}
+	        }
+	        mean_sfreq /= nonZero;
+            cout << "mean SF suggested after connection: " << mean_sfreq << " cpd\n";
+            cout << "min non-zero SF suggested after connection: " << min_sfreq << " cpd\n";
+            cout << "max SF suggested after connection: " << max_sfreq << " cpd\n";
+	        sfreq2 /= nonZero;
+            cout << "std SF suggested after connection: " << square_root(sfreq2 - mean_sfreq*mean_sfreq) << " cpd\n";
+
+            Size nonZeroMinPool = maxLGNperV1pool[qType+iType]; 
+            Float nonZeroMeanPool = 0; 
+            Size nonZeroMaxPool = 0;
+
+            Size maxPool = 0; 
+            Size zeroPool = 0;
+            Size minPool = maxLGNperV1pool[qType+iType];
+            meanPool[qType + iType] = 0; 
+	        Float minSum = max_LGNeff[qType + iType];;
+	        meanSum[qType + iType] = 0;
+            
+	        Float maxSum = 0;
+	        Float sum2 = 0;
+	        Float pool2 = 0;
+	        PosInt ic_max = 0;
+	        PosInt is_max = 0;
+            for (PosInt i=0; i<input_n[iLayer]; i++) {
+                if (i%neuronPerBlock[jLayer] >= typeAccCount[qType+iType]) {// pass if not the type
+                    continue;            
                 }
-	    		sfreq2 += sf*sf;
-	    		mean_sfreq += sf;
-                nonZero++;
-	    	}
-	    }
-	    mean_sfreq /= nonZero;
-        cout << "mean SF suggested after connection: " << mean_sfreq << " cpd\n";
-        cout << "min non-zero SF suggested after connection: " << min_sfreq << " cpd\n";
-        cout << "max SF suggested after connection: " << max_sfreq << " cpd\n";
-	    sfreq2 /= nonZero;
-        cout << "std SF suggested after connection: " << square_root(sfreq2 - mean_sfreq*mean_sfreq) << " cpd\n";
 
-        Size nonZeroMinPool = maxLGNperV1pool[jLayer]; 
-        Float nonZeroMeanPool = 0; 
-        Size nonZeroMaxPool = 0;
+                Size iSize = poolList[i].size();
+                if (iSize > maxPool) {
+	        		maxPool = iSize;
+	        		ic_max = i;
+	        	}
+                if (iSize < minPool) minPool = iSize;
+                if (iSize > 0) {
+                    if (iSize < nonZeroMinPool) nonZeroMinPool = iSize;
+                    nonZeroMeanPool += iSize;
+                    if (iSize > nonZeroMaxPool) nonZeroMaxPool = iSize;
+                }
 
-        Size minPool = maxLGNperV1pool[iLayer]; 
-        Size maxPool = 0; 
-        meanPool[iLayer] = 0; 
-        Size zeroPool = 0;
-	    Float minSum = max_LGNeff[iLayer];
-	    meanSum[iLayer] = 0;
-	    Float maxSum = 0;
-	    Float sum2 = 0;
-	    Float pool2 = 0;
-	    PosInt ic_max = 0;
-	    PosInt is_max = 0;
-        for (PosInt i=0; i<input_n[iLayer]; i++) {
-            Size iSize = poolList[i].size();
-            if (iSize > maxPool) {
-	    		maxPool = iSize;
-	    		ic_max = i;
-	    	}
-            if (iSize < minPool) minPool = iSize;
-            if (iSize > 0) {
-                if (iSize < nonZeroMinPool) nonZeroMinPool = iSize;
-                nonZeroMeanPool += iSize;
-                if (iSize > nonZeroMaxPool) nonZeroMaxPool = iSize;
+                meanPool[qType+iType] += iSize;
+                if (iSize == 0) zeroPool++;
+	        	assert(poolList[i].size() == srList[i].size());
+	        	Float strength = accumulate(srList[i].begin(), srList[i].end(), 0.0);
+	        	if (strength > maxSum) {
+	        		maxSum = strength;
+	        		is_max = i;
+	        	}
+	        	if (strength < minSum) minSum = strength;
+	        	meanSum[iLayer] += strength;
+	        	sum2 += strength * strength;
+	        	pool2 += iSize * iSize;
             }
-
-            meanPool[iLayer] += iSize;
-            if (iSize == 0) zeroPool++;
-	    	assert(poolList[i].size() == srList[i].size());
-	    	Float strength = accumulate(srList[i].begin(), srList[i].end(), 0.0);
-	    	if (strength > maxSum) {
-	    		maxSum = strength;
-	    		is_max = i;
-	    	}
-	    	if (strength < minSum) minSum = strength;
-	    	meanSum[iLayer] += strength;
-	    	sum2 += strength * strength;
-	    	pool2 += iSize * iSize;
+            Size iTypeN = nblock[jLayer]*(typeAcc0[iLayer][iType+1]-typeAcc0[iLayer][iType]);
+	        if (SimpleComplex == 1) {
+	        	Float nonzeroN = iTypeN*(1-pureComplexRatio[qType + iType]);
+	        	cout << nonzeroN << " nonzero LGN cells\n";
+	        	meanSum[qType+iType] /= nonzeroN;
+            	meanPool[qType+iType] /= nonzeroN;
+	        	sum2 /= nonzeroN;
+	        	pool2 /= nonzeroN;
+	        } else {
+	        	meanSum[qType+iType] /= iTypeN;
+            	meanPool[qType+iType] /= iTypeN;
+	        	sum2 /= iTypeN;
+	        	pool2 /= iTypeN;
+	        }
+            cout << "# connections: [" << minPool << ", " << meanPool[qType+iType] << ", " << maxPool << "]\n";
+            cout << "among them " << zeroPool << " would have no connection from LGN\n";
+            cout << "# nonzero connections: [" << nonZeroMinPool << ", " << nonZeroMeanPool/(iTypeN-zeroPool) << ", " << nonZeroMaxPool << "]\n";
+            cout << "# totalConnectionStd: " << square_root(pool2 - meanPool[qType+iType]*meanPool[qType+iType]) << "\n";
+            cout << "# totalStrength: [" << minSum << ", " << meanSum[qType+iType] << ", " << maxSum << "]\n";
+            cout << "# totalStrengthStd: " << square_root(sum2 - meanSum[qType+iType]*meanSum[qType+iType]) << "\n";
         }
-	    if (SimpleComplex == 1) {
-	    	Float nonzeroN = 0;
-	    	for (PosInt j=0; j<nType[iLayer]; j++) {
-	    		nonzeroN += nblock[inputLayer[iLayer]]*(typeAcc0[iLayer][j+1]-typeAcc0[iLayer][j])*(1-pureComplexRatio[qType + j]);
-	    	}
-	    	cout << nonzeroN << " nonzero LGN cells\n";
-	    	meanSum[iLayer] /= nonzeroN;
-        	meanPool[iLayer] /= nonzeroN;
-	    	sum2 /= nonzeroN;
-	    	pool2 /= nonzeroN;
-	    } else {
-	    	meanSum[iLayer] /= n[jLayer];
-        	meanPool[iLayer] /= n[jLayer];
-	    	sum2 /= n[jLayer];
-	    	pool2 /= n[jLayer];
-	    }
-        cout << "# connections: [" << minPool << ", " << meanPool[iLayer] << ", " << maxPool << "]\n";
-        cout << "among them " << zeroPool << " would have no connection from LGN\n";
-        cout << "# nonzero connections: [" << nonZeroMinPool << ", " << nonZeroMeanPool/(n[jLayer]-zeroPool) << ", " << nonZeroMaxPool << "]\n";
-        cout << "# totalConnectionStd: " << square_root(pool2 - meanPool[iLayer]*meanPool[iLayer]) << "\n";
-        cout << "# totalStrength: [" << minSum << ", " << meanSum[iLayer] << ", " << maxSum << "]\n";
-        cout << "# totalStrengthStd: " << square_root(sum2 - meanSum[iLayer]*meanSum[iLayer]) << "\n";
 
 	    /*
 	    cout << ic_max << "has max connections:\n";
@@ -1398,18 +1571,21 @@ int main(int argc, char *argv[]) {
 	    write_listOfList<Size>(idList_filename + conLGN_suffix, poolList, true);
 	    write_listOfListForArray<Float>(srList_filename + conLGN_suffix, srList, true); // read with read_listOfListToArray
 		qType += nType[iLayer];
+        qn += n[jLayer];
     }
+    fV1_RFpreset.close();
+	fV1_RFprop.close();
 
-	ofstream fLGN_V1_cfg(output_cfg_filename + conLGN_suffix, fstream::out | fstream::binary);
+	ofstream fLGN_V1_cfg(outputFolder + output_cfg_filename + conLGN_suffix, fstream::out | fstream::binary);
 	if (!fLGN_V1_cfg) {
 		cout << "Cannot open or find " << output_cfg_filename + conLGN_suffix <<"\n";
 		return EXIT_FAILURE;
 	} else {
 		fLGN_V1_cfg.write((char*) &nInputLayer, sizeof(Size));
-		fLGN_V1_cfg.write((char*) &p_n_LGNeff, nInputLayer*sizeof(Float));
-		fLGN_V1_cfg.write((char*) &max_LGNeff, nInputLayer*sizeof(Size));
 		fLGN_V1_cfg.write((char*) &nType, nInputLayer*sizeof(Size));
 		fLGN_V1_cfg.write((char*) &typeAccCount[0], totalType*sizeof(Size));
+		fLGN_V1_cfg.write((char*) &p_n_LGNeff, totalType*sizeof(Float));
+		fLGN_V1_cfg.write((char*) &max_LGNeff, totalType*sizeof(Size));
 		fLGN_V1_cfg.write((char*) &meanPool, nInputLayer*sizeof(Float));
 		fLGN_V1_cfg.write((char*) &meanSum, nInputLayer*sizeof(Float));
 		fLGN_V1_cfg.close();

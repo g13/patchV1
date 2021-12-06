@@ -57,13 +57,13 @@ int main(int argc, char *argv[])
         ("DisGauss", po::value<Float>(&disGauss), "if set true, conn. prob. based on distance will follow a 2D gaussian with a variance. of (raxn*raxn + rden*rden)/(2*ln(2))*disGauss, otherwise 0 will based on the overlap of the area specified by raxn and rden")
         ("strictStrength", po::value<bool>(&strictStrength), "strictly match preset summed connection")
         ("CmoreN", po::value<bool>(&CmoreN), "if true complex gets more connections otherwise stronger strength")
-        ("rDend", po::value<vector<Float>>(&rDend),  "a vector of dendritic extensions' radius, size of nType ")
-        ("rAxon", po::value<vector<Float>>(&rAxon),  "a vector of axonic extensions' radius, size of nType")
+        ("rDend", po::value<vector<Float>>(&rDend),  "a vector of dendritic extensions' radius, size of nType x nLayer ")
+        ("rAxon", po::value<vector<Float>>(&rAxon),  "a vector of axonic extensions' radius, size of nType x nLayer")
         ("dScale",po::value<Float>(&dScale)->default_value(1.0),"a scaling ratio of all the neurites' lengths <radius>")
         ("longRangeROI", po::value<Float>(&longRangeROI), "ROI of long-range cortical input")
         ("longRangeCorr", po::value<Float>(&longRangeCorr), "correlation between long-range cortical inputs that cortical cells receives")
-        ("dDend", po::value<vector<Float>>(&dDend), "vector of dendrites' densities, size of nType")
-        ("dAxon", po::value<vector<Float>>(&dAxon), "vector of axons' densities, size of nType")
+        ("dDend", po::value<vector<Float>>(&dDend), "vector of dendrites' densities, size of nType x nLayer")
+        ("dAxon", po::value<vector<Float>>(&dAxon), "vector of axons' densities, size of nType x nLayer")
         ("synapticLoc", po::value<vector<Float>>(&synapticLoc), " maximal synaptic location relative to the soma, percentage of dendrite, of different presynaptic type, size of [nType, nType], nType = sum(nTypeHierarchy), row_id -> postsynaptic, column_id -> presynaptic")
 		("nTypeHierarchy", po::value<vector<Size>>(&nTypeHierarchy), "a vector of hierarchical types differs in non-functional properties: reversal potentials, characteristic lengths of dendrite and axons, e.g. in size of nArchtype, {Exc-Pyramidal, Exc-stellate; Inh-PV, Inh-SOM, Inh-LTS} then the vector would be {3, 2}, with Exc and Inh being arch type")
 		//("LGN_targetFR", po::value<Float>(&LGN_targetFR), "target firing rate of a LGN cell")
@@ -149,27 +149,31 @@ int main(int argc, char *argv[])
     }
     conLGN_suffix = conLGN_suffix + ".bin";
 
-	Float p_n_LGNeff;
-	Size max_LGNeff;
-	Float mean_nLGN;
-	Float mean_sLGN;
-	Float preset_nLGN;
-	Size nType;
+    Size nInputLayer;
+	vector<Float> p_n_LGNeff;
+	vector<Size> max_LGNeff;
+	vector<Float> mean_nLGN;
+	vector<Float> mean_sLGN;
+	vector<Size> nType;
 	vector<Size> typeAccCount;
+    Size totalType = 0;
 	ifstream fLGN_V1_cfg(LGN_V1_cfg_filename + conLGN_suffix, fstream::in | fstream::binary);
 	if (!fLGN_V1_cfg) {
 		cout << "Cannot open or find " << LGN_V1_cfg_filename + conLGN_suffix <<"\n";
 		return EXIT_FAILURE;
 	} else {
-    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&p_n_LGNeff), sizeof(Float));
-    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&max_LGNeff), sizeof(Size));
-    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&nType), sizeof(Size));
-		typeAccCount.assign(nType, 0);
-    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&typeAccCount[0]), nType*sizeof(Size));
-    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&mean_nLGN), sizeof(Float));
-    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&mean_sLGN), sizeof(Float));
+    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&nInputLayer), sizeof(Size));
+    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&p_n_LGNeff), nInputLayer*sizeof(Float));
+    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&max_LGNeff), nInputLayer*sizeof(Size));
+    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&nType), nInputLayer*sizeof(Size));
+        for (PosInt i=0; i<nInputLayer; i++) {
+            totalType += nType[i];
+        }
+		typeAccCount.resize(totalType);
+    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&typeAccCount[0]), totalType*sizeof(Size));
+    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&mean_nLGN), nInputLayer*sizeof(Float));
+    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&mean_sLGN), nInputLayer*sizeof(Float));
 	}
-	preset_nLGN = mean_nLGN;
 	cout << "type accumulate to 1024:\n";
 	vector<Size> typeAcc0(1,0);
 	for (PosInt i=0; i<nType; i++) {
@@ -724,7 +728,7 @@ int main(int argc, char *argv[])
     checkCudaErrors(cudaMemcpy(d_nLGN_V1, nLGN_V1, networkSize*sizeof(Size), cudaMemcpyHostToDevice));
 
 	for (PosInt i=0; i<nType; i++) {
-		presetConstExcSyn[i] = preset_nLGN*synPerConFF[i] + hInit_pack.nTypeMat[i]*synPerCon[i];
+		presetConstExcSyn[i] = mean_nLGN*synPerConFF[i] + hInit_pack.nTypeMat[i]*synPerCon[i];
 		if (presetConstExcSyn[i] - nLGN_V1_Max[i]*synPerConFF[i] < hInit_pack.nTypeMat[i]*synPerCon[i]*min_FB_ratio) {
 			cout << "Exc won't be constant for type " << i << " with current parameter set, min_FB_ratio will be utilized, presetConstExcSyn = " << presetConstExcSyn[i] << ", max ffExcSyn = " << nLGN_V1_Max[i]*synPerConFF[i] << ", corticalExcSyn = " << hInit_pack.nTypeMat[i]*synPerCon[i] << "\n";
 		}
@@ -753,7 +757,7 @@ int main(int argc, char *argv[])
 		rden, raxn, dden, daxn,
 		//preF_type, preS_type, preN_type, d_LGN_V1_sSum, d_ExcRatio, d_extExcRatio, min_FB_ratio,
 		preF_type, preS_type, preN_type, d_nLGN_V1, d_ExcRatio, d_extExcRatio, d_synPerCon, d_synPerConFF, min_FB_ratio, C_InhRatio,
-		init_pack, seed, networkSize, nType, nArchtype, nFeature, CmoreN, ClessI, preset_nLGN);
+		init_pack, seed, networkSize, nType, nArchtype, nFeature, CmoreN, ClessI, mean_nLGN);
 	getLastCudaError("initialize failed");
 	checkCudaErrors(cudaDeviceSynchronize());
     printf("initialzied\n");
