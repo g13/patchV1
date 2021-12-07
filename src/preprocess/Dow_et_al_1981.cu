@@ -81,14 +81,15 @@ vector<Float> generate_baRatio(Size n, RandomEngine &rGen) {
 }
 
 // map ecc to radius
-Float mapping_rule(Float ecc, Float normalRand, RandomEngine &rGen, Float LGN_V1_RFratio) {
+Float mapping_rule(Float ecc, Float normalRand, RandomEngine &rGen, Float LGN_V1_RFratio, PosInt iLayer) {
 	// *** set LGN contribution of the total RF size
 	const Float ratio = sqrt(LGN_V1_RFratio / M_PI);
 	// Dow et al., 1981 Fig. 7 TODO: consider generalized extreme value distribution
 	//const Float a = 13.32f; 
-	const Float a = 6.66f;
-	const Float b = 0.037f;
-	const Float mean = a + b * ecc;
+    //const Float a[2] = {6.66f, 19.98};
+    const Float a[2] = {5, 10};
+	const Float b[2] = {0.037f, 0.074};
+	Float mean = a[iLayer] + b[iLayer] * ecc;
 	const Float std = 0.01;//3.0; // it is NOT the scatter in the paper, which means the VF center's scatter around an electrode
 	const Float lower_bound = 3.0; // TODO: look for the min(LGN RF size, V1 neuron RF size)
 	Float R = std  * normalRand + mean;
