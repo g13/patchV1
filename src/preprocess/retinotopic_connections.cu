@@ -1294,6 +1294,7 @@ int main(int argc, char *argv[]) {
 	} else {
         f_idList.write((char*)&input_ntotal, sizeof(Size));
     }
+    f_idList.close();
 
     ofstream f_srList(outputFolder + srList_filename + conLGN_suffix, fstream::out | fstream::binary);
 	if (!f_srList) {
@@ -1302,6 +1303,7 @@ int main(int argc, char *argv[]) {
 	} else {
         f_srList.write((char*)&input_ntotal, sizeof(Size));
     }
+    f_srList.close();
 
     vector<Float> meanPool(totalType);
     vector<Float> meanSum(totalType);
