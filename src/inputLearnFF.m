@@ -4,33 +4,43 @@
 % stdratio: initial connections weights to be gaussian distributed if nonzero
 % suffix0: theme string %lgn0 in lFF.slurm
 % stage: retinal wave stages, takes 2 or 3
-function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
+function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr, squareOrCircle, sInput, relay, smallRange)
 
 	fdr = [fdr,'/'] %inputFolder in cfg
 
 	if stdratio > 0
-		normed = true;
+		normed = true
 	else
-		normed = false;
+		normed = false
 	end
 
 	%%%% HERE %%%%%%%%
 	if stage == 5
 		nother = 1; % set the number of temporal-variable learning parameters, such as rLTD 
-		set_other = [[0.25, 1.0]]; % rLTD
+		set_other = [[0.25, 1.00]]; % rLTD
 	else
 		nother = 0;
 	end
 	same = false; % set true if all the V1 neurons have the same LGN connections
 	if stage == 2 || stage == 5
 		pCon = 0.9 % initial sparsity
-		nLGN_1D = 14; % sqrt of the total number of On/Off LGN cells
-		max_ecc = 10; % radius of the visual field spanned by all the LGN
+		nLGN_1D = 14 % sqrt of the total number of On/Off LGN cells
+		max_ecc = 10 % radius of the visual field spanned by all the LGN
+		radiusRatio = 1.0
 	end
 	if stage == 3
-		pCon = 0.8
-		nLGN_1D = 7;
-		max_ecc = 5;
+		if relay
+			%pCon = 0.8 % initial sparsity
+			pCon = 0.92 % initial sparsity
+			nLGN_1D = 14 % sqrt of the total number of On/Off LGN cells
+			max_ecc = 10 % radius of the visual field spanned by all the LGN
+			radiusRatio = 0.5
+		else
+			pCon = 0.8
+			nLGN_1D = 7
+			max_ecc = 5
+			radiusRatio = 1.0
+		end
     end
 	%%%%%%%%
 
@@ -60,7 +70,7 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 	initialConnectionStrength = 1.0; % also can be changed by sRatioLGN in .cfg file
 	eiStrength = 0.000;
 	ieStrength = 0.000;
-	iCS_std = 0.0; % zero std gives single-valued connection strength
+	iCS_std = 0.0; % zero std gives single-valued connection strength when normed is false
 	nblock = 32;
     blockSize = 32;
 	mE = 24;
@@ -89,8 +99,18 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 	    	absentRate = 1.0; % active cell percentage when being "absent"/not dominating
 	    	nOri = 32;
 	    	nRep = 3;
-	    	framesPerStatus = 132;
-	    	framesToFinish = ceil(24.9);
+			if relay
+				if smallRange
+					framesPerStatus = 132;
+	    			framesToFinish = ceil(24.9);
+				else
+					framesPerStatus = 192;
+	    			framesToFinish = ceil(49.7);
+				end
+			else
+				framesPerStatus = 132;
+	    		framesToFinish = ceil(24.9);
+			end
 	    	%framesPerStatus = 192;
 	    	%framesToFinish = ceil(49.7);
 	    end
@@ -133,16 +153,16 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 	    framesPerStatus = [225, 192]; % frames for each wave
 	    framesToFinish = [ceil(62.1), ceil(49.7)]; % frames for the ending phase of the last wave
 	    absentRate = 1.0; % active cell percentage when being "absent"/not dominating
-	    nStatus = sum(nOri.*nRep);
+	    nStatus = sum(nOri.*nRep)
 	    status = zeros(6,nStatus);
 	    statusFrame = zeros(nStatus,1);
         others = zeros(nStatus,nother);
-        iFrame = 0;
+        iStatus = 0;
         for k = 1:length(nOri)
             for i=1:nother
-                others(iFrame+1:nOri(k)*nRep(k),i) = set_other(i, k);
+                others(iStatus+1:iStatus+nOri(k)*nRep(k),i) = set_other(i, k);
             end
-            iFrame = iFrame + nOri(k)*nRep(k);
+            iStatus = iStatus + nOri(k)*nRep(k);
         end
         others
 	    %%%%%%%%%%%%%
@@ -204,8 +224,25 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 	LGN_y = (LGN_idy(:)-nLGN_1D/2+0.5)./nLGN_1D.*max_ecc./0.5;
 	LGN_vpos0 = [LGN_x(1:2:nLGN), LGN_y(1:2:nLGN)];
 
-	nLGN_circ = sum(sum(LGN_vpos0.*LGN_vpos0,2) <= max_ecc.*max_ecc);
-	nLGNperV1 = round(nLGN_circ*2 * pCon);
+	%for i=1:nLGN_1D
+	%	for j=1:nLGN_1D
+	%		index = (i-1)*nLGN_1D + j;
+	%		fprintf(['(', num2str(LGN_vpos0(index,1),'%1.1f'), ', ', num2str(LGN_vpos0(index,2),'%1.1f'),')']);
+	%		if j==nLGN_1D
+	%			fprintf('\n');
+	%		else
+	%			fprintf(', ');
+	%		end
+	%	end
+	%end
+
+    if squareOrCircle
+		nLGN_square = sum(max(abs(LGN_vpos0), [], 2) <= max_ecc*radiusRatio)
+	    nLGNperV1 = round(nLGN_square*2*pCon);
+    else
+	    nLGN_circ = sum(sum(LGN_vpos0.*LGN_vpos0,2) <= max_ecc*max_ecc*radiusRatio*radiusRatio)
+	    nLGNperV1 = round(nLGN_circ*2*pCon);
+    end
 	if mod(nLGNperV1,2) == 1
 		nLGNperV1 = nLGNperV1 + 1;
 	end
@@ -222,7 +259,7 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 	    fwrite(fid, nLGNperV1, 'uint');
 		if doubleOnOff 
 			if i == 1 || ~same
-				ids_on = randq(nLGN_1D*nLGN_1D, nLGNperV1/2, LGN_vpos0, max_ecc, max_ecc*stdratio); % index start from 0
+				ids_on = randq(nLGN_1D*nLGN_1D, nLGNperV1/2, LGN_vpos0, max_ecc*radiusRatio, max_ecc*stdratio, squareOrCircle); % index start from 0
 			end
 			idi	= zeros(nLGNperV1,1);
 			current_id = 1;
@@ -232,7 +269,7 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 				current_id = current_id+length(idj);
 			end
 			if i == 1 || ~same
-				ids_off = randq(nLGN_1D*nLGN_1D, nLGNperV1/2, LGN_vpos0, max_ecc, max_ecc*stdratio); % index start from 0
+				ids_off = randq(nLGN_1D*nLGN_1D, nLGNperV1/2, LGN_vpos0, max_ecc*radiusRatio, max_ecc*stdratio, squareOrCircle); % index start from 0
 			end
 			for j = 1:nLGN_1D
 				idj = ids_off(ids_off >= nLGN_1D*(j-1) & ids_off < nLGN_1D*j);
@@ -338,7 +375,25 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 	    LGN_type(1:nParvo) = randi(4,[nParvo,1])-1; %
 	    LGN_type((nParvo+1):nLGN) = 3 + randi(2,[nMagno,1]); %
 	end
-	LGN_type
+
+	%picked = zeros(2*nLGN_1D, nLGN_1D);
+	%picked(id(:,1)) = 1;
+	%for i=1:nLGN_1D
+	%	for j=1:nLGN_1D*2
+	%		index = (i-1)*2*nLGN_1D + j;
+	%		if picked(index)
+	%			fprintf([num2str(LGN_type(index),'%1.0f'), '(x)']);
+	%		else
+	%			fprintf([num2str(LGN_type(index),'%1.0f'), '   ']);
+	%		end
+	%		if j==nLGN_1D*2
+	%			fprintf('\n');
+	%		else
+	%			fprintf(', ');
+	%		end
+	%	end
+	%end
+	
 	fwrite(fid, LGN_type, 'uint');
 	% in polar form
 	LGN_ecc = sqrt(LGN_x.*LGN_x + LGN_y.*LGN_y); %degree
@@ -349,21 +404,59 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 	fwrite(fid, doubleOnOff, 'int'); % be read by outputLearnFF not used in patch.cu
 	fclose(fid);
 	
-	if normed
-	    sLGN = zeros(nLGNperV1, nV1);
-	    for i = 1:nV1
-	        ss = exp(-(LGN_ecc(id(:,i)+1) ./ (max_ecc*iCS_std)).^2);
-	        sLGN(:,i) = ss./sum(ss)*initialConnectionStrength*nLGNperV1;
-	    end
+	if ~isempty(sInput)
+		fid = fopen(sInput, 'r');
+        nt_ = fread(fid, 1, 'uint');
+        nV1_ = fread(fid, 1, 'uint');
+        assert(nV1_ == nV1);
+        max_LGNperV1 = fread(fid, 1, 'uint');
+		if max_LGNperV1 <= nLGNperV1
+			disp(max_LGNperV1)
+			disp(nLGNperV1)
+			assert(nLGNperV1 == max_LGNperV1);	
+		end
+        fseek(fid, 3*4, 0); % skip till time
+        fseek(fid, max_LGNperV1*nV1*int64(nt_-1)*4, 0); % skip till time
+        sLGN = fread(fid, [nV1_, max_LGNperV1], 'float')'; % transposed
+        fclose(fid);
 	else
-	    sLGN = randn(nLGNperV1,nV1)*iCS_std+initialConnectionStrength;
+		if normed
+		    sLGN = zeros(nLGNperV1, nV1);
+		    for i = 1:nV1
+		        ss = exp(-(LGN_ecc(id(:,i)+1) ./ (max_ecc*stdratio)).^2);
+		        sLGN(:,i) = ss./sum(ss)*initialConnectionStrength*nLGNperV1;
+		    end
+		else
+		    sLGN = zeros(nLGNperV1,nV1)*iCS_std+initialConnectionStrength;
+		end
 	end
 	fid = fopen(fLGN_V1_s, 'w'); % format follows function read_LGN in patch.h
 	fwrite(fid, nV1, 'uint');
 	fwrite(fid, nLGNperV1, 'uint');
 	for i = 1:nV1
 	    fwrite(fid, nLGNperV1, 'uint');
-	    fwrite(fid, sLGN(:, i), 'float');
+	    fwrite(fid, sLGN(1:nLGNperV1, i), 'float');
+		if i == 1
+			f = figure('PaperPosition',[0, 0, 3, 7]);
+			set(f, 'PaperUnit', 'inches');
+			s = zeros(nLGN,1);
+	        s(id(1:nLGNperV1,i)+1) = sLGN(1:nLGNperV1,i);
+	    	s = reshape(s, [nLGN_1D*2, nLGN_1D]);
+	    	clims = [0, 1];
+			for itype = 1:2
+				stmp0 = s(itype:2:(nLGN_1D*2),:);
+				local_max = max(abs(stmp0(:)));
+				stmp = stmp0./local_max;
+				subplot(2,1,itype)
+	    		imagesc([1 nLGN_1D], [1,nLGN_1D],stmp', clims);
+	    		daspect([1,1,1]);
+	    		set(gca,'YDir','reverse')
+				set(gca,'YTickLabel', []);
+				set(gca,'XTickLabel', []);
+	    	    colormap('gray');
+			end
+	        saveas(f, [fdr,'sLGN_V1-init-',num2str(i), suffix, '-sep.png']);
+		end
 	end
 	fclose(fid);
 	
@@ -483,12 +576,17 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr)
 	fwrite(fid, ones(nV1,1), 'float');
 	fclose(fid);
 end
-function ids = randq(m,n,pos,r0,stdev)	
+function ids = randq(m,n,pos,r0,stdev, squareOrCircle)
 	r2 = sum(pos.*pos,2);
 	ndiscard = m-n;
 	id = 1:m;
-	ndm = sum(r2>r0*r0);
-	pick = r2<=r0*r0;
+    if squareOrCircle
+	    ndm = sum(max(abs(pos),[],2)>r0);
+		pick = max(abs(pos),[],2)<=r0;
+    else
+	    ndm = sum(r2>r0*r0);
+		pick = r2<=r0*r0;
+    end
 	id_left = id(pick);
 	if stdev <= 0
 		ids = id_left(randperm(m-ndm,n));
@@ -497,6 +595,6 @@ function ids = randq(m,n,pos,r0,stdev)
 		[~, id0] = mink(rands ./ exp(-r2(pick)/(stdev*stdev)),n);
 		ids = id_left(id0);
 	end
-	ids = ids-1;
+	ids = ids-1; % index start from 0
 	assert(all(ids >= 0));
 end

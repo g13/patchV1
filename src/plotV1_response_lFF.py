@@ -18,16 +18,16 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
     #sample = np.array([0,1,2,768])
     #sample = np.array([40, 58, 75])
     #sample = np.array([1338, 10235])
-    #sample = np.array([1,10,100,999,1000]);
+    sample = np.array([203,360,365,715,467,743,203,752]);
 
     SCsplit = 0
     nLGNorF1F0 = True
     ns = 10
     seed = 657890
     np.random.seed(seed)
-    nt_ = 10000
-    nstep = 2000
     step0 = 0
+    nt_ = 50000
+    nstep = 2000
     if nOri > 0:
         stiOri = np.pi*np.mod(iOri/nOri, 1.0)
     else:
@@ -1061,7 +1061,10 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
 
             frTmp = LGN_fr[:, LGN_V1_ID[iV1]]
             LGN_fr_sSum = np.sum(frTmp[tpick,:] * LGN_V1_s[iV1], axis=-1)
-            ax2.plot(t, LGN_fr_sSum/np.max(LGN_fr_sSum), '-g', lw = 2*lw)
+            if np.max(LGN_fr_sSum) > 0:
+                ax2.plot(t, LGN_fr_sSum/np.max(LGN_fr_sSum), '-g', lw = 2*lw)
+            else:
+                ax2.plot(t, np.zeros(LGN_fr_sSum.shape), '-g', lw = 2*lw)
             ax2.set_ylabel('conductance', fontsize = 'x-small')
             ax.set_ylabel('voltage', fontsize = 'x-small')
 
@@ -1184,6 +1187,10 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
                 iLGN_v1_s = LGN_V1_s[iV1]
                 max_s = np.max(iLGN_v1_s)
                 min_s = np.max([np.min(iLGN_v1_s), ms*0.25])
+                if max_s == 0:
+                    ms *= 0.25
+                    max_s = 1 
+                    min_s = 1
                 for j in range(len(markers)):
                     pick = all_type == j
                     ax.plot(all_pos[0,pick], all_pos[1,pick], markers[j], ms = min_s/max_s*ms, mew = 0.0, alpha = 0.5)
