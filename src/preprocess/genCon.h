@@ -3,6 +3,7 @@
 #include <string>
 #include <iostream>
 #include <cassert>
+#include <algorithm>
 #include <ctime>
 #include <cmath>
 #include <fenv.h>
@@ -14,32 +15,39 @@
 #include "../util/util.h"
 
 #define nFunc 2
+const Size pPerFeature = 2;
+const Float defaultFeatureValue[4]{0.5, 0.5, 0, 0};
 
 __device__ __host__
-Float ODpref(Float post, Float pre, Float r) { // ocular dominance
+Float ODpref(Float post, Float pre, Float r1, Float r2) { // ocular dominance
     Float p;
     if (post*pre < 0) {
-        p = r;
+        p = r1;
     } else {
-        p = 1-r;
+        p = r2;
     }
     return p; 
 }
 __device__ pFeature p_OD = ODpref;
 
 __device__
-Float OPpref(Float post, Float pre, Float r) { // orientation preference
+Float OPpref(Float post, Float pre, Float k, Float b) { // orientation preference
 	Float p;
-	if (r > 0) {
+	if (k > 0) {
     	Float dp = post - pre;
     	if (abs(dp) > M_PI/2) {
     	    dp += copyms(M_PI, -dp);
     	}
-    	Float sig = M_PI/r; // set spread here
-    	Float A = square_root(2*M_PI);
-    	p = exponential(-dp*dp/(2*sig*sig))/(A*sig);
+    	//Float sig = M_PI/r; // set spread here
+    	//Float A = square_root(2*M_PI);
+    	//p = exponential(-dp*dp/(2*sig*sig))/(A*sig);
+		Float base = boostOri[iType*2 + 0];
+		Float amplitude = 1-boostOri[iType*2 + 0];
+		Float vonMisesAmp = 1-exponential(-2*boostOri[iType*2 + 1]);
+        boost = base + amplitude * (exponential(boostOri[iType*2 + 1]*(cosine(dOri*M_PI*2)-1))-1+vonMisesAmp)/vonMisesAmp; // von Mises
+
 	} else {
-		p = 1/M_PI;
+		p = 1;
 	}
     return p; 
 }
@@ -64,48 +72,31 @@ void initializePreferenceFunctions(Size nFeature) {
     checkCudaErrors(cudaMemcpyToSymbol(pref, h_pref, nFunc*sizeof(pFeature), 0, cudaMemcpyHostToDevice));
 }
 
-void read_LGN_sSum(std::string filename, Float sSum[], Float sSumMax[], Float sSumMean[], Size typeAcc[], Size nType, Size nblock, bool print) {
-    std::ifstream input_file;
-    input_file.open(filename, std::fstream::in | std::fstream::binary);
-    if (!input_file) {
-        std::string errMsg{ "Cannot open or find " + filename + "\n" };
-        throw errMsg;
+void read_LGN_V1_stats(std::string filename, Float sLGN[], Size nLGN[], vector<PosInt> &inputLayer, vector<Size> &networkSizeAcc) {
+	std::ifstream input_file;
+	input_file.open(filename, std::fstream::in | std::fstream::binary);
+	if (!input_file) {
+		std::string errMsg{ "Cannot open or find " + filename + "\n" };
+		throw errMsg;
+	}
+    Size nInputV1;
+    Size max_nLGN;
+    input_file.read(reinterpret_cast<char*>(&nInputV1), sizeof(Size));
+    input_file.read(reinterpret_cast<char*>(&max_nLGN), sizeof(Size));
+    Size _n = 0;
+    for (int i=0;i<inputLayer.size(); i++) {
+        _n += networkSizeAcc[inputLayer[i]+1] - networkSizeAcc[inputLayer[i]];
     }
-    Size nList, maxList;
-    input_file.read(reinterpret_cast<char*>(&nList), sizeof(Size));
-    input_file.read(reinterpret_cast<char*>(&maxList), sizeof(Size));
-
-    Float *array = new Float[nList*maxList];
-    Size *nTypeCount = new Size[nType];
-    for (PosInt i=0; i<nType; i++) {
-        //sSumMean[i] = 0.0;
-        sSumMax[i] = 0.0;
-        sSumMean[i] = 0.0;
-        if (i == 0) {
-            nTypeCount[i] = typeAcc[i];
-        } else {
-            nTypeCount[i] = typeAcc[i] - typeAcc[i-1];
-        }
-        nTypeCount[i] *= nblock;
-    }
-    for (PosInt i=0; i<nList; i++) {
-        Size listSize;
-        input_file.read(reinterpret_cast<char*>(&listSize), sizeof(Size));
-        input_file.read(reinterpret_cast<char*>(&array[i*maxList]), listSize * sizeof(Float));
-        for (PosInt j=0; j<listSize; j++) {
-            sSum[i] += array[i*maxList+j];
-        }
-        PosInt k = i%blockSize;
-        for (PosInt j = 0; j<nType; j++) {
-            if (k<typeAcc[j]) {
-                k = j;
-                break;
-            }
-        }
-        sSumMean[k] += sSum[i];
-        if (sSum[i] > sSumMax[k]) {
-            sSumMax[k] = sSum[i];
-        }
+    assert(_n == nInputV1);
+    PosInt currentLayer = inputLayer[0];
+    Float *sInputLGN = new Float[max_nLGN];
+    Size n;
+    PosInt index = networkSizeAcc[currentLayer];
+    for (PosInt i=0; i<nInputV1; i++) {
+        input_file.read(reinterpret_cast<char*>(&n), sizeof(Size));
+		input_file.read(reinterpret_cast<char*>(sInputLGN), n * sizeof(Float));
+        sLGN[index] = *accumulate(sInputLGN, sInputLGN+n, 0.0);
+        nLGN[index] = n;
         if (print) {
             std::cout << i << ": ";
             for (PosInt j=0; j<listSize; j++) {
@@ -114,13 +105,14 @@ void read_LGN_sSum(std::string filename, Float sSum[], Float sSumMax[], Float sS
                 else std::cout << ", ";
             }
         }
+        index++;
+        if (index == networkSizeAcc[currentLayer+1]) {
+            currentLayer++;
+            index = networkSizeAcc[currentLayer];
+        }
     }
-    for (PosInt i=0; i<nType; i++) {
-        sSumMean[i] /= nTypeCount[i];
-    }
-    delete []array;
-    delete []nTypeCount;
-    input_file.close();
+    delete []sInputLGN;
+	input_file.close();
 }
 
 void read_LGN_V1(std::string filename, Size nLGN_V1[], Size nLGN_V1_Max[], Size typeAcc[], Size nType) {
