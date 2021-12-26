@@ -126,7 +126,9 @@ void write_listOfList(std::string filename, std::vector<std::vector<T>> data, bo
 		throw errMsg;
 	}
     Size nList = data.size();
-    output_file.write((char*)&nList, sizeof(Size));
+    if (!append) {
+        output_file.write((char*)&nList, sizeof(Size));
+    }
 	for (Size i=0; i<data.size(); i++) {
         Size listSize = data[i].size();
         output_file.write((char*)&listSize, sizeof(Size));
@@ -166,7 +168,20 @@ std::vector<std::vector<T>> read_listOfList(std::string filename, bool print = f
 template <typename T>
 void write_listOfListForArray(std::string filename, std::vector<std::vector<T>> data, bool append=false) {
 	std::ofstream output_file;
+    Size maxList0, nList0;
+    Size nList = data.size();
 	if (append) {
+	    std::ifstream input_file(filename, std::fstream::in|std::fstream::binary);
+        if (!input_file) {
+		    std::string errMsg{ "Cannot open or find " + filename + "\n" };
+		    throw errMsg;
+	    } else {
+            input_file.read(reinterpret_cast<char*>(&nList0), sizeof(Size));
+            assert(nList0 >= nList);
+            input_file.read(reinterpret_cast<char*>(&maxList0), sizeof(Size));
+        }
+        input_file.close();
+
 		output_file.open(filename, std::fstream::out|std::fstream::app|std::fstream::binary);
 	} else {
 		output_file.open(filename, std::fstream::out|std::fstream::binary);
@@ -175,16 +190,24 @@ void write_listOfListForArray(std::string filename, std::vector<std::vector<T>> 
 		std::string errMsg{ "Cannot open or find " + filename + "\n" };
 		throw errMsg;
 	}
-    Size nList = data.size();
-    output_file.write((char*)&nList, sizeof(Size));
     Size maxList = 0;
 	for (Size i=0; i<nList; i++) {
         if (data[i].size() > maxList) {
             maxList = data[i].size();
         }
     }
-    std::cout << "maxList = " << maxList << "\n";
-    output_file.write((char*)&maxList, sizeof(Size));
+    if (append) {
+        if (maxList > maxList0) {
+            output_file.seekp(sizeof(Size), output_file.beg);
+            output_file.write((char*)&maxList, sizeof(Size));
+            std::cout << "maxList changed to " << maxList << "\n";
+            output_file.seekp(0, output_file.end);
+        }
+    } else{
+        output_file.write((char*)&nList, sizeof(Size));
+        output_file.write((char*)&maxList, sizeof(Size));
+        std::cout << "maxList = " << maxList << "\n";
+    }
 	for (Size i=0; i<nList; i++) {
         Size listSize = data[i].size();
         output_file.write((char*)&listSize, sizeof(Size));

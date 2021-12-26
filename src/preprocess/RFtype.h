@@ -670,7 +670,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         std::vector<Size> nExtraOn; 
         Size non = ion.size();
         if (pInfo) {
-            std::cout << iV1 << " have " << non << " red LGNs\n";
+            std::cout << iV1 << " have " << non << " On/L-On/M-Off LGNs\n";
 		    for (PosInt i = 0; i < non; i++) {
                 printf("%i: (%.4f, %.4f)\n", i, xon[i], yon[i]);
             }
@@ -765,7 +765,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         std::vector<Size> nExtraOff; 
         Size noff = ioff.size();
         if (pInfo) {
-            std::cout << iV1 << " have " << noff << " green LGNs\n";
+            std::cout << iV1 << " have " << noff << " Off/L-Off/M-On LGNs\n";
 		    for (PosInt i = 0; i < noff; i++) {
                 printf("%i: (%.4f, %.4f)\n", i, xoff[i], yoff[i]);
             }
@@ -1070,9 +1070,17 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
             if (!zero) {
                 if (iOnOff*biPick[j] < 0) {
                     if (biPick[j] > 0) {
-                        oType = OutputType::LonMoff;
+                        if (static_cast<PosInt>(oType) > 1) { 
+                            oType = OutputType::LonMoff;
+                        } else {
+                            oType = OutputType::LonMon;
+                        }
                     } else {
-                        oType = OutputType::LoffMon;
+                        if (static_cast<PosInt>(oType) > 1) { 
+                            oType = OutputType::LoffMon;
+                        } else {
+                            oType = OutputType::LoffMoff;
+                        }
                     }
                 }
                 phase = -norm_x[j];
@@ -1123,10 +1131,18 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
             } else {
                 sfreq = 1/(2*disLGN);
                 if (onComponent.size() > 0) {
-                    oType = OutputType::LonMoff;
+                    if (static_cast<PosInt>(oType) > 1) { 
+                        oType = OutputType::LonMoff;
+                    } else {
+                        oType = OutputType::LonMon;
+                    }
                     phase = -phaseOn[ionC];
                 } else {
-                    oType = OutputType::LoffMon;
+                    if (static_cast<PosInt>(oType) > 1) { 
+                        oType = OutputType::LoffMon;
+                    } else {
+                        oType = OutputType::LoffMoff;
+                    }
                     phase = -phaseOff[ioffC];
                 }
             }

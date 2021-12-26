@@ -7,6 +7,7 @@ res_fdr=${fdr0}/resource # inputFolder in cfg stimulus, V1-static, LGN-static an
 data_fdr=${fdr0} # outputFolder in cfg
 
 waveStage=3 # set stage number
+patch=patch_fast
 
 if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 	fdr=wave_concat/wave_II # folder will be made to store figures and configuratoin files
@@ -124,7 +125,7 @@ cd ${fdr0}
 date
 #ncu --export profile_fast_%i --force-overwrite --target-processes all --replay-mode kernel --kernel-name compute_V_collect_spike_learnFF_fast --kernel-name-base function --launch-skip-before-match 0 --section ComputeWorkloadAnalysis --section InstructionStats --section LaunchStats --section MemoryWorkloadAnalysis --section MemoryWorkloadAnalysis_Chart --section MemoryWorkloadAnalysis_Tables --section Occupancy --section SchedulerStats --section SourceCounters --section SpeedOfLight --section SpeedOfLight_RooflineChart --section WarpStateStats --sampling-interval auto --sampling-max-passes 5 --sampling-buffer-size 33554432 --profile-from-start 1 --cache-control all --clock-control base --apply-rules yes --import-source yes --check-exit-code yes patch -c ${fig_fdr}/${op}.cfg
 
-nsys profile -o fast_V1.qdrep --force-overwrite=true --cuda-flush-interval=0 patch -c ${fig_fdr}/${op}.cfg
+nsys profile -o fast_V1.qdrep --force-overwrite=true --cuda-flush-interval=0 ${patch} -c ${fig_fdr}/${op}.cfg
 
 date
 

@@ -19,13 +19,14 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
     #sample = np.array([40, 58, 75])
     #sample = np.array([1338, 10235])
     #sample = np.array([1,10,100,999,1000]);
+    sample = np.array([203,365,752,467,743,715,360]);
 
     SCsplit = 0
     nLGNorF1F0 = True
     ns = 10
     seed = 657890
     np.random.seed(seed)
-    nt_ = 10000
+    nt_ = 0
     nstep = 2000
     step0 = 0
     if nOri > 0:
@@ -43,17 +44,19 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
     #plotRpStat = True 
     #plotRpCorr = True
     #plotScatterFF = True
-    plotSample = True
+    #plotSample = True
     #plotDepC = True # plot depC distribution over orientation
     #plotLGNsCorr = True
     #plotTempMod = True 
     #plotExc_sLGN = True
     #plotLR_rp = True
     
+    getMeanData = True
+
     plotRpStat = False 
     plotRpCorr = False 
     plotScatterFF = False
-    #plotSample = False
+    plotSample = False
     plotDepC = False
     plotLGNsCorr = False 
     plotTempMod = False 
@@ -85,6 +88,9 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
     pSingleLGN = False
     pSC = True
     #pSC = False
+
+    if collectMeanDataOnly:
+        getMeanData = True
 
     if pSC and pLR:
         print('pSC overrides pLR')
@@ -419,8 +425,19 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
         ns = sample.size
         print(f'sampling {[(s//blockSize, np.mod(s,blockSize)) for s in sample]}') 
     
+    tTF = 1000/TF
+    dtTF = tTF/TFbins
+    n_stacks = int(np.floor(nt_*dt / tTF))
+    r_stacks = np.mod(nt_*dt, tTF)
+    stacks = np.zeros(TFbins) + n_stacks
+    i_stack = np.int(np.floor(r_stacks/dtTF))
+    j_stack = np.mod(r_stacks, dtTF)
+    stacks[:i_stack] += 1
+    stacks[i_stack] += j_stack/dtTF
+    print(f'stacks: {stacks}')
+    
     # read voltage and conductances
-    if pVoltage or pCond or plotLGNsCorr or plotSample or plotDepC or (plotTempMod and pCond):
+    if pVoltage or pCond or plotLGNsCorr or plotSample or plotDepC or (plotTempMod and pCond) or getMeanData:
         print('reading rawData..')
         gE = np.zeros((ngE,nV1,2))
         gI = np.zeros((ngI,nV1,2))
@@ -440,7 +457,6 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
         s_gI = np.zeros(nV1)
         s_gap = np.zeros(mI)
     
-        tTF = 1000/TF
         _nstep = int(round(tTF/dt))
         stepsPerBin = _nstep//TFbins
         if stepsPerBin != _nstep/TFbins:
@@ -449,17 +465,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
             TFbins = _nstep
         print(f'steps per TFbin is {stepsPerBin}, tstep = {tstep}, tTF = {tTF}, TFbins = {TFbins}')
 
-        if plotTempMod and pCond:
-            dtTF = tTF/TFbins
-            n_stacks = int(np.floor(nt_*dt / tTF))
-            r_stacks = np.mod(nt_*dt, tTF)
-            stacks = np.zeros(TFbins) + n_stacks
-            i_stack = np.int(np.floor(r_stacks/dtTF))
-            j_stack = np.mod(r_stacks, dtTF)
-            stacks[:i_stack] += 1
-            stacks[i_stack] += j_stack/dtTF
-            print(f'stacks: {stacks}')
-    
+        if plotTempMod and pCond or getMeanData:
             per_gFF = np.zeros((nV1,TFbins))
             per_gE = np.zeros((nV1,TFbins))
             per_gI = np.zeros((nV1,TFbins))
@@ -531,7 +537,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
                     _v[:,i] = s_v[sample]
     
                 
-                if pCond and plotTempMod:
+                if pCond and plotTempMod or getMeanData:
                     tmp_v = tmp_v + s_v
                     if np.mod(per_it+1, stepsPerBin) == 0:
                         per_v[:,per_nt] = per_v[:,per_nt] + tmp_v/stepsPerBin
@@ -571,7 +577,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
                 if pCond and plotSample:
                     _gI[0,:,:,i] = s_gI[:,sample]
 
-                if plotTempMod and pCond:
+                if plotTempMod and pCond or getMeanData:
                     tmp_gFF = tmp_gFF + np.sum(s_gFF, axis = 0)
                     tmp_gE = tmp_gE + np.sum(s_gE, axis = 0)
                     tmp_gI = tmp_gI + np.sum(s_gI, axis = 0)
@@ -676,7 +682,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
             getMeanStd(gI_gTot_ratio,nstep)
             getMeanStd(gEt_gTot_ratio,nstep)
     
-        if plotTempMod and pCond:
+        if plotTempMod and pCond or getMeanData:
             per_v = per_v/stacks
             per_gE = per_gE/stacks
             per_gI = per_gI/stacks
@@ -697,7 +703,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
     F0 = np.zeros(nV1)
     F1 = np.zeros((nV1, 2))
     F2 = np.zeros((nV1, 2))
-    if plotTempMod and pSample and not collectMeanDataOnly:
+    if plotTempMod and pSample and not getMeanData:
         sfig = plt.figure(f'sample-TF', dpi = 600, figsize = [5.0, ns])
         grid = gs.GridSpec(ns, 2, figure = sfig, hspace = 0.2)
         j = 0
@@ -765,56 +771,57 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
     #stacks[:i_stack] += 1
     #stacks[i_stack] += j_stack
     
-    data = per_gFF
-    if nsmooth > 1:
-        target = movingAvg(data, gTFbins, nsmooth)
-    else:
-        target = data
-    gFF_F0 = np.mean(target, axis = -1).T
-    gFF_F1 = np.zeros((nV1, 2))
-    for i in range(nV1):
-        gFF_F1[i,:] = get_FreqComp(target[i,:], 1)
-    
-    gFF_F0_0 = gFF_F0 > 0
-    gFF_F1F0 = np.zeros(nV1)
-    tF1 = gFF_F1[:,0]
-    gFF_F1F0[gFF_F0_0] = tF1[gFF_F0_0]/gFF_F0[gFF_F0_0]
+    if getMeanData:
+        data = per_gFF
+        if nsmooth > 1:
+            target = movingAvg(data, gTFbins, nsmooth)
+        else:
+            target = data
+        gFF_F0 = np.mean(target, axis = -1).T
+        gFF_F1 = np.zeros((nV1, 2))
+        for i in range(nV1):
+            gFF_F1[i,:] = get_FreqComp(target[i,:], 1)
+        
+        gFF_F0_0 = gFF_F0 > 0
+        gFF_F1F0 = np.zeros(nV1)
+        tF1 = gFF_F1[:,0]
+        gFF_F1F0[gFF_F0_0] = tF1[gFF_F0_0]/gFF_F0[gFF_F0_0]
 
-    data = per_gE
-    if nsmooth > 1:
-        target = movingAvg(data, gTFbins, nsmooth)
-    else:
-        target = data
-    gE_F0 = np.mean(target, axis = -1).T
-    gE_F1 = np.zeros((nV1, 2))
-    for i in range(nV1):
-        gE_F1[i,:] = get_FreqComp(target[i,:], 1)
-    
-    gE_F0_0 = gE_F0 > 0
-    gE_F1F0 = np.zeros(nV1)
-    tF1 = gE_F1[:,0]
-    gE_F1F0[gE_F0_0] = tF1[gE_F0_0]/gE_F0[gE_F0_0]
+        data = per_gE
+        if nsmooth > 1:
+            target = movingAvg(data, gTFbins, nsmooth)
+        else:
+            target = data
+        gE_F0 = np.mean(target, axis = -1).T
+        gE_F1 = np.zeros((nV1, 2))
+        for i in range(nV1):
+            gE_F1[i,:] = get_FreqComp(target[i,:], 1)
+        
+        gE_F0_0 = gE_F0 > 0
+        gE_F1F0 = np.zeros(nV1)
+        tF1 = gE_F1[:,0]
+        gE_F1F0[gE_F0_0] = tF1[gE_F0_0]/gE_F0[gE_F0_0]
 
-    data = per_gI
-    if nsmooth > 1:
-        target = movingAvg(data, gTFbins, nsmooth)
-    else:
-        target = data
-    gI_F0 = np.mean(target, axis = -1).T
-    gI_F1 = np.zeros((nV1, 2))
-    for i in range(nV1):
-        gI_F1[i,:] = get_FreqComp(target[i,:], 1)
-    
-    gI_F0_0 = gI_F0 > 0
-    gI_F1F0 = np.zeros(nV1)
-    tF1 = gI_F1[:,0]
-    gI_F1F0[gI_F0_0] = tF1[gI_F0_0]/gI_F0[gI_F0_0]
+        data = per_gI
+        if nsmooth > 1:
+            target = movingAvg(data, gTFbins, nsmooth)
+        else:
+            target = data
+        gI_F0 = np.mean(target, axis = -1).T
+        gI_F1 = np.zeros((nV1, 2))
+        for i in range(nV1):
+            gI_F1[i,:] = get_FreqComp(target[i,:], 1)
+        
+        gI_F0_0 = gI_F0 > 0
+        gI_F1F0 = np.zeros(nV1)
+        tF1 = gI_F1[:,0]
+        gI_F1F0[gI_F0_0] = tF1[gI_F0_0]/gI_F0[gI_F0_0]
 
-    with open(meanFn, 'ab') as f:
-        F1F0.tofile(f)
-        gFF_F1F0.tofile(f)
-        gE_F1F0.tofile(f)
-        gI_F1F0.tofile(f)
+        with open(meanFn, 'ab') as f:
+            F1F0.tofile(f)
+            gFF_F1F0.tofile(f)
+            gE_F1F0.tofile(f)
+            gI_F1F0.tofile(f)
 
     if collectMeanDataOnly:
         return None

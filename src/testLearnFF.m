@@ -1,4 +1,4 @@
-function testLearnFF(isuffix, osuffix, res_fdr, data_fdr, fig_fdr, iV1, nt_)
+function testLearnFF(res_suffix, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, iV1, nt_)
 	pLGN = [33, 32, 7, 8]
 	if nargin < 7
 		nt_ = 0; % plot full time duration.
@@ -6,6 +6,9 @@ function testLearnFF(isuffix, osuffix, res_fdr, data_fdr, fig_fdr, iV1, nt_)
 	targetfr = 6
 	nsub = 2 + 2;
 	thres = 0.5;  % as a percent of gmax
+	if ~isempty(res_suffix) 
+	    res_suffix = ['_', res_suffix];
+	end
 	if ~isempty(isuffix) 
 	    isuffix = ['_', isuffix];
 	end
@@ -23,7 +26,7 @@ function testLearnFF(isuffix, osuffix, res_fdr, data_fdr, fig_fdr, iV1, nt_)
 	f_LGNfr = [data_fdr, 'LGN_fr', osuffix, '.bin']
 
 	LGN_V1_id_fn = [res_fdr, 'LGN_V1_idList', isuffix, '.bin']
-	fLGN_vpos = [res_fdr, 'LGN_vpos', isuffix, '.bin']
+	fLGN_vpos = [res_fdr, 'LGN_vpos', res_suffix, '.bin']
 	%%
 	
 	fid = fopen(f_sLGN, 'r');
