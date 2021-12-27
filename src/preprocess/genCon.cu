@@ -4,6 +4,7 @@
 int main(int argc, char *argv[])
 {
 	namespace po = boost::program_options;
+	namespace bf = boost::filesystem;
     using namespace std;
 	using std::string;
 
@@ -14,14 +15,17 @@ int main(int argc, char *argv[])
     printf("total global memory: %f Mb.\n", deviceProps.totalGlobalMem/1024.0/1024.0);
 
 	BigSize seed;
-    Size maxNeighborBlock, nearNeighborBlock;
-	Size maxDistantNeighbor, gap_maxDistantNeighbor;
-	vector<Size> nTypeHierarchy;
-    string V1_type_filename, V1_feature_filename, V1_pos_filename, LGN_V1_s_filename, suffix, conLGN_suffix, LGN_V1_cfg_filename, output_cfg_filename;
+    vector<Size> maxNeighborBlock;
+    vector<Size> nearNeighborBlock;
+	vector<Size> maxDistantNeighbor;
+    vector<Size> gap_maxDistantNeighbor;
+	vector<Size> nonInputTypeEI;
+    string V1_type_filename, V1_feature_filename, V1_allpos_filename, LGN_V1_s_filename, suffix, conLGN_suffix, LGN_V1_cfg_filename, output_cfg_filename;
 	string V1_conMat_filename, V1_delayMat_filename, V1_gapMat_filename;
 	string V1_vec_filename, V1_gapVec_filename;
 	string block_pos_filename, neighborBlock_filename, stats_filename;
-    Float dScale, blockROI, blockROI_max;
+    Float dScale;
+    vector<Float> blockROI_max, blockROI;
 	vector<Float> extExcRatio;
 	vector<Float> extSynRatio;
     //vector<Float> targetFR;
@@ -32,18 +36,17 @@ int main(int argc, char *argv[])
     bool strictStrength;
     bool CmoreN;
     bool ClessI;
-	Size usingPosDim;
 	Float longRangeROI;
 	Float longRangeCorr;
-	Float disGauss;
+	vector<Float> disGauss;
 	vector<Float> rDend, rAxon;
 	vector<Float> dDend, dAxon;
     vector<Float> synapticLoc;
-    vector<Float> sTypeMat, gap_sTypeMat;
-    vector<Float> typeFeatureMat, gap_fTypeMat;
-    vector<Size> nTypeMat, nInhGap;
-    vector<Float> synPerConFF;
-    vector<Float> synPerCon;
+    vector<Float> sTypeMat, gap_sTypeMatE, gap_sTypeMatI;
+    vector<Float> typeFeatureMat, gap_fTypeMatE, gap_fTypeMatI;
+    vector<Size> nTypeMat, gap_nTypeMatE, gap_nTypeMatI;
+    vector<PosInt> nonInputLayer;
+    vector<PosInt> nonInputTypeAccCount;
 
 	po::options_description generic_opt("Generic options");
 	generic_opt.add_options()
@@ -54,7 +57,13 @@ int main(int argc, char *argv[])
 	Float minConTol;
 	po::options_description input_opt("output options");
 	input_opt.add_options()
-        ("DisGauss", po::value<Float>(&disGauss), "if set true, conn. prob. based on distance will follow a 2D gaussian with a variance. of (raxn*raxn + rden*rden)/(2*ln(2))*disGauss, otherwise 0 will based on the overlap of the area specified by raxn and rden")
+		("inputFolder", po::value<string>(&inputFolder)->default_value(""), "where the input data files at, must end with /")
+		("outputFolder", po::value<string>(&outputFolder)->default_value(""), "where the output data files at must end with /")
+		("res_suffix", po::value<string>(&res_suffix)->default_value(""), "suffix for resource files")
+        ("nonInputLayer", po::value<vector<PosInt>>(&nonInputLayer), "layer id of those cortical layers that do not receive external inputs")
+		("nonInputTypeEI", po::value<vector<Size>>(&nonInputTypeEI), "a vector of hierarchical types differs in non-functional properties: reversal potentials, characteristic lengths of dendrite and axons, e.g. in the form of nArchtypeE, nArchtypeI for each nonInput layer (2 x nonInputLayer). {Exc-Pyramidal, Exc-stellate; Inh-PV, Inh-SOM, Inh-LTS} then for that layer the element would be {3, 2}")
+        ("nonInputTypeAccCount", po::value<vector<PosInt>>(&nonInputTypeAccCount), "accumulative arrays for number of types for each nonInputLayer")
+        ("DisGauss", po::value<vector<Float>>(&disGauss), "if set true, conn. prob. based on distance will follow a 2D gaussian with a variance. of (raxn*raxn + rden*rden)/(2*ln(2))*disGauss, otherwise 0 will based on the overlap of the area specified by raxn and rden")
         ("strictStrength", po::value<bool>(&strictStrength), "strictly match preset summed connection")
         ("CmoreN", po::value<bool>(&CmoreN), "if true complex gets more connections otherwise stronger strength")
         ("rDend", po::value<vector<Float>>(&rDend),  "a vector of dendritic extensions' radius, size of nType x nLayer ")
@@ -64,8 +73,7 @@ int main(int argc, char *argv[])
         ("longRangeCorr", po::value<Float>(&longRangeCorr), "correlation between long-range cortical inputs that cortical cells receives")
         ("dDend", po::value<vector<Float>>(&dDend), "vector of dendrites' densities, size of nType x nLayer")
         ("dAxon", po::value<vector<Float>>(&dAxon), "vector of axons' densities, size of nType x nLayer")
-        ("synapticLoc", po::value<vector<Float>>(&synapticLoc), " maximal synaptic location relative to the soma, percentage of dendrite, of different presynaptic type, size of [nType, nType], nType = sum(nTypeHierarchy), row_id -> postsynaptic, column_id -> presynaptic")
-		("nTypeHierarchy", po::value<vector<Size>>(&nTypeHierarchy), "a vector of hierarchical types differs in non-functional properties: reversal potentials, characteristic lengths of dendrite and axons, e.g. in size of nArchtype, {Exc-Pyramidal, Exc-stellate; Inh-PV, Inh-SOM, Inh-LTS} then the vector would be {3, 2}, with Exc and Inh being arch type")
+        ("synapticLoc", po::value<vector<Float>>(&synapticLoc), " maximal synaptic location relative to the soma, percentage of dendrite, of different presynaptic type, size of [nType, nType], nType = sum(nTypeEI), row_id -> postsynaptic, column_id -> presynaptic")
 		//("LGN_targetFR", po::value<Float>(&LGN_targetFR), "target firing rate of a LGN cell")
 		//("targetFR", po::value<vector<Float>>(&targetFR), "a vector of target firing rate of different neuronal types")
 		//("FF_FB_ratio", po::value<Float>(&FF_FB_ratio), "excitation ratio of FF over total excitation")
@@ -75,23 +83,22 @@ int main(int argc, char *argv[])
 		("C_InhRatio", po::value<Float>(&C_InhRatio), "minimum inhibition for complex cells")
 		("ClessI", po::value<bool>(&ClessI), "lesser inhibition for complex cell")
 		("minConTol", po::value<Float>(&minConTol), "minimum difference tolerance of the number of preset cortical connections")
-        ("sTypeMat", po::value<vector<Float>>(&sTypeMat), "connection strength matrix between neuronal types, size of [nType, nType], nType = sum(nTypeHierarchy), row_id -> postsynaptic, column_id -> presynaptic")
-        ("gap_sTypeMat", po::value<vector<Float>>(&gap_sTypeMat), "gap junction strength matrix between inhibitory neuronal types, size of [nTypeI, nTypeI], nTypeI = nTypeHierarchy[1], row_id -> postsynaptic, column_id -> presynaptic")
-        ("nTypeMat", po::value<vector<Size>>(&nTypeMat), "#connection matrix between neuronal types, size of [nType, nType], nType = sum(nTypeHierarchy), row_id -> postsynaptic, column_id -> presynaptic")
-        ("nInhGap", po::value<vector<Size>>(&nInhGap), "#gap junction matrix between inhibitory neuronal types, size of [nTypeHierarchy[1], nTypeHierarchy[1]], symmetric")
-        ("synPerConFF",  po::value<vector<Float>>(&synPerConFF), "synpases per feedforward connection, size of nType")
-        ("synPerCon",  po::value<vector<Float>>(&synPerCon), "synpases per cortical connection size of [nType, nType]")
-        ("typeFeatureMat", po::value<vector<Float>>(&typeFeatureMat), "feature parameter of neuronal types, size of [nFeature, nType, nType], nType = sum(nTypeHierarchy), row_id -> postsynaptic, column_id -> presynaptic")
-        ("gap_fTypeMat", po::value<vector<Float>>(&gap_fTypeMat), "feature parameter of neuronal types, size of [nFeature, nTypeI, nTypeI], nTypeI = nTypeHierarchy[1], row_id -> postsynaptic, column_id -> presynaptic")
-        ("blockROI", po::value<Float>(&blockROI), "garaunteed radius (center to center) to include neighboring blocks in mm")
-        ("blockROI_max", po::value<Float>(&blockROI_max), "max radius (center to center) to include neighboring blocks in mm")
-    	("usingPosDim", po::value<Size>(&usingPosDim)->default_value(2), "using <2>D coord. or <3>D coord. when calculating distance between neurons, influencing how the position data is read") 
-        ("maxDistantNeighbor", po::value<Size>(&maxDistantNeighbor), "the preserved size of the array that store the presynaptic neurons' ID, who are not in the neighboring blocks")
+        ("sTypeMat", po::value<vector<Float>>(&sTypeMat), "connection strength matrix between neuronal types, size of [nType, nType], nType = sum(nTypeEI), row_id -> postsynaptic, column_id -> presynaptic")
+        ("gap_sTypeMatE", po::value<vector<Float>>(&gap_sTypeMatE), "gap junction strength matrix between neuronal types, size of [nTypeI/E, nTypeI/E], within each layer, row_id -> postsynaptic, column_id -> presynaptic")
+        ("gap_nTypeMatE", po::value<vector<Size>>(&gap_nTypeMatE), "connection numbers' matrix for gap junctio between exc neuronal types, size of [totalTypeE, totalTypeE], across each layer, row_id -> postsynaptic, column_id -> presynaptic")
+        ("gap_sTypeMatI", po::value<vector<Float>>(&gap_sTypeMatI), "gap junction strength matrix between neuronal types, size of [nTypeI/E, nTypeI/E], within each layer, row_id -> postsynaptic, column_id -> presynaptic")
+        ("gap_nTypeMatI", po::value<vector<Size>>(&gap_nTypeMatI), "connection numbers' matrix for gap junctio between inh neuronal types, size of [totalTypeI, totalTypeI], across each layer, row_id -> postsynaptic, column_id -> presynaptic")
+        ("nTypeMat", po::value<vector<Size>>(&nTypeMat), "#connection matrix between neuronal types, size of [nType, nType], nType = sum(nTypeEI), row_id -> postsynaptic, column_id -> presynaptic")
+        ("typeFeatureMat", po::value<vector<Float>>(&typeFeatureMat), "feature-specific matrixi for parameters of connection preference over neuronal types, size of [nFeature, totalType, totalType], row: postsynaptic-id, column: presynaptic-id")
+        ("gap_fTypeMat", po::value<vector<Float>>(&gap_fTypeMat), "feature parameter of neuronal types, size of [nFeature, nTypeI, nTypeI], nTypeI = nTypeEI[1], row_id -> postsynaptic, column_id -> presynaptic")
+        ("blockROI", po::value<vector<Float>>(&blockROI), "garaunteed radius (center to center) to include neighboring blocks in mm")
+        ("blockROI_max", po::value<vector<Float>>(&blockROI_max), "max radius (center to center) to include neighboring blocks in mm")
+        ("maxDistantNeighbor", po::value<vector<Size>>(&maxDistantNeighbor), "the preserved size of the array that store the presynaptic neurons' ID, who are not in the neighboring blocks")
         ("gap_maxDistantNeighbor", po::value<Size>(&gap_maxDistantNeighbor), "the preserved size of the array that store the pre-junction neurons' ID, who are not in the neighboring blocks")
-        ("maxNeighborBlock", po::value<Size>(&maxNeighborBlock)->default_value(12), "the preserved size (minus the nearNeighborBlock) of the array that store the neighboring blocks ID that goes into conVec")
-        ("nearNeighborBlock", po::value<Size>(&nearNeighborBlock)->default_value(8), "the preserved size of the array that store the neighboring blocks ID that goes into conMat, excluding the self block, self will be added later")
+        ("maxNeighborBlock", po::value<vector<Size>>(&maxNeighborBlock), "the preserved size (minus the nearNeighborBlock) of the array that store the neighboring blocks ID that goes into conVec")
+        ("nearNeighborBlock", po::value<vector<Size>>(&nearNeighborBlock), "the preserved size of the array that store the neighboring blocks ID that goes into conMat, excluding the self block, self will be added later, nLayer x nLayer")
         ("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file to read spatially predetermined functional features of neurons")
-        ("fV1_pos", po::value<string>(&V1_pos_filename)->default_value("V1_allpos.bin"), "the directory to read neuron positions")
+        ("fV1_allpos", po::value<string>(&V1_allpos_filename)->default_value("V1_allpos"), "the directory to read neuron positions")
         ("conLGN_suffix", po::value<string>(&conLGN_suffix)->default_value(""), "suffix associated with fLGN_V1_s")
 		("fLGN_V1_cfg", po::value<string>(&LGN_V1_cfg_filename)->default_value("LGN_V1_cfg"),"file stores LGN_V1.cfg parameters")
 		("fLGN_V1_s", po::value<string>(&LGN_V1_s_filename)->default_value("LGN_V1_sList"),"file stores LGN to V1 connection strengths, use conLGN_suffix");
@@ -122,220 +129,384 @@ int main(int argc, char *argv[])
 		return EXIT_SUCCESS;
 	}
 	string cfg_filename = vm["cfg_file"].as<string>();
-	ifstream cfg_file{cfg_filename.c_str()};
-	if (cfg_file) {
-		po::store(po::parse_config_file(cfg_file, config_file_options), vm);
-		cout << "Using configuration file: " << cfg_filename << "\n";
-	} else {
+	ifstream cfg_file;
+	if (!cfg_filename.empty()) {
+        cfg_file.open(cfg_filename.c_str(), fstream::in);
+	    if (cfg_file) {
+	    	po::store(po::parse_config_file(cfg_file, config_file_options), vm);
+	    	cout << "Using configuration file: " << cfg_filename << "\n";
+	        po::notify(vm);
+            cfg_file.close();
+	    } else {
+	    	cout << "No configuration file is given, default values are used for non-specified parameters\n";
+			return EXIT_FAILURE;
+	    }
+    } else {
 		cout << "No configuration file is given, default values are used for non-specified parameters\n";
-	}
-	po::notify(vm);
+	    po::notify(vm);
+    }
 
-    ifstream fV1_pos, fV1_feature;
+	if (!vm["inputFolder"].defaulted()) {
+		cout << "unspecified input files will be read from " << inputFolder << "\n";
+		if (vm["fLGN_V1_cfg"].defaulted()){
+			LGN_V1_cfg_filename = inputFolder + LGN_V1_cfg_filename;
+		}
+		if (vm["fV1_delayMat"].defaulted()){
+			V1_delayMat_filename = inputFolder + V1_delayMat_filename;
+		}
+		if (vm["fV1_gapMat"].defaulted()){
+			V1_gapMat_filename = inputFolder + V1_gapMat_filename;
+		}
+		if (vm["fConStats"].defaulted()){
+			conStats_filename = inputFolder + conStats_filename;
+		}
+		if (vm["fV1_vec"].defaulted()){
+			V1_vec_filename = inputFolder + V1_vec_filename;
+		}
+		if (vm["fV1_gapVec"].defaulted()){
+			V1_gapVec_filename = inputFolder + V1_gapVec_filename;
+		}
+		if (vm["fNeighborBlock"].defaulted()){
+			neighborBlock_filename = inputFolder + neighborBlock_filename;
+		}
+		// not in use
+		//if (!vm["fV1_RF"].defaulted(){
+		//	V1_RF_filename = inputFolder + V1_RF_filename;
+		//}
+	} else {
+		cout << "inputFolder defaulted to current folder\n";
+	}
+
+	if (!vm["outputFolder"].defaulted()) {
+		bf::path outputPath(outputFolder);
+		if (!bf::is_directory(outputPath)) {
+			cout << "creating output folder: " << outputFolder << "\n";
+			bf::create_directory(outputPath);
+		}
+		if (vm["fConnectome_cfg"].defaulted()){
+			connectome_cfg_filename = outputFolder + connectome_cfg_filename;
+		}
+        if (vm["fV1_conMat"].defaulted()){
+			V1_conMat_filename = outputFolder + V1_conMat_filename;
+		}
+		if (vm["fV1_delayMat"].defaulted()){
+			V1_delayMat_filename = outputFolder + V1_delayMat_filename;
+		}
+		if (vm["fV1_gapMat"].defaulted()){
+			V1_gapMat_filename = outputFolder + V1_gapMat_filename;
+		}
+		if (vm["fConStats"].defaulted()){
+			conStats_filename = outputFolder + conStats_filename;
+		}
+		if (vm["fV1_vec"].defaulted()){
+			V1_vec_filename = outputFolder + V1_vec_filename;
+		}
+		if (vm["fV1_gapVec"].defaulted()){
+			V1_gapVec_filename = outputFolder + V1_gapVec_filename;
+		}
+		if (vm["fBlock_pos"].defaulted()){
+            block_pos_filename = outputFolder + block_pos_filename;
+        }
+		if (vm["fNeighborBlock"].defaulted()){
+			neighborBlock_filename = outputFolder + neighborBlock_filename;
+		}
+        if (vm["fStats"].defaulted()) {
+            stats_filename = outputFolder + stats_filename;
+        }
+	}
+
+    ifstream fV1_allpos, fV1_feature;
     ofstream fV1_conMat, fV1_delayMat, fV1_gapMat, fV1_vec, fV1_gapVec;
     ofstream fBlock_pos, fNeighborBlock;
     ofstream fStats;
-
-	if (disGauss > 0) {
-		cout << "Using gaussian profile over distance\n";
-	} else {
-		cout << "probability over distance depends on dendrite and axon overlap\n";
-	}
-    cout << "maxDistantNeighbors = " << maxDistantNeighbor << " outside the blocks per neuron.\n";
-    cout << "blockROI = " << blockROI << " mm.\n";
 
 	if (!conLGN_suffix.empty()) {
         conLGN_suffix = '_' + conLGN_suffix;
     }
     conLGN_suffix = conLGN_suffix + ".bin";
 
+    if (!res_suffix.empty())  {
+        res_suffix = "_" + res_suffix;
+    }
+    res_suffix = res_suffix + ".bin";
+
+    if (!suffix.empty()) {
+		cout << " suffix = " << suffix << "\n";
+        suffix = '_' + suffix;
+    }
+    suffix = suffix + ".bin";
+
+    Size nLayer;
+    vector<Size> nblock;
+    vector<Size> neuronPerBlock; 
+    vector<Size> networkSize; 
+	vector<Size> mI;
+	vector<Size> mE;
+	vector<vector<Float>> pos;;
+    fV1_allpos.open(V1_allpos_filename + res_suffix, ios::in|ios::binary);
+	if (!fV1_allpos) {
+		cout << "failed to open pos file:" <<  V1_allpos_filename + res_suffix << "\n";
+		return EXIT_FAILURE;
+	} else {
+        int size_of_precision;
+		fV1_allpos.read(reinterpret_cast<char*>(&size_of_precision), sizeof(int));
+		fV1_allpos.read(reinterpret_cast<char*>(&nLayer), sizeof(Size));
+        pos.resize(nLayer);
+	    nblock.resize(nLayer);
+        neuronPerBlock.resize(nLayer);
+        networkSize.resize(nLayer);
+        fV1_allpos.read(reinterpret_cast<char*>(&nblock), nLayer*sizeof(Size));
+        fV1_allpos.read(reinterpret_cast<char*>(&neuronPerBlock), nLayer*sizeof(Size));
+        for (PosInt iLayer = 0; iLayer < nLayer; iLayer++) {
+            networkSize[iLayer] = nblock[iLayer]*neuronPerBlock[iLayer];
+            if (neuronPerBlock[iLayer] > blockSize) {
+                cout << "neuron per block (" << neuronPerBlock[iLayer] << ") cannot be larger than cuda block size: " << blockSize << "\n";
+            }
+            cout << networkSize[iLayer] << " neurons for V1 layer " << iLayer << "\n";
+            if (size_of_precision == 8) {
+                vector<double> _pos(2*networkSize[iLayer]);
+	            fV1_allpos.read(reinterpret_cast<char*>(&_pos[0]), 2*networkSize[iLayer] * sizeof(double)); 
+                pos[iLayer].assign(_pos.begin(), _pos.end());
+	            fV1_allpos.seekg(2*networkSize[iLayer]*sizeof(double), fV1_allpos.cur);  // skip vpos
+            } else {
+                assert(size_of_precision == 4);
+                vector<float> _pos(2*networkSize[iLayer]);
+	            fV1_allpos.read(reinterpret_cast<char*>(&_pos[0]), 2*networkSize[iLayer] * sizeof(float)); 
+                pos[iLayer].assign(_pos.begin(), _pos.end());
+	            fV1_allpos.seekg(2*networkSize[iLayer]*sizeof(float), fV1_allpos.cur);  // skip vpos
+            }
+        }
+    }
+	fV1_allpos.close();
+	
     Size nInputLayer;
+	vector<PosInt> inputLayer;
 	vector<Float> p_n_LGNeff;
 	vector<Size> max_LGNeff;
 	vector<Float> mean_nLGN;
 	vector<Float> mean_sLGN;
-	vector<Size> nType;
-	vector<Size> typeAccCount;
-    Size totalType = 0;
+	vector<Size> nInputType;
+	vector<Size> nInputTypeEI;
+	vector<Size> inputTypeAccCount;
+    Size totalInputType = 0;
 	ifstream fLGN_V1_cfg(LGN_V1_cfg_filename + conLGN_suffix, fstream::in | fstream::binary);
 	if (!fLGN_V1_cfg) {
 		cout << "Cannot open or find " << LGN_V1_cfg_filename + conLGN_suffix <<"\n";
 		return EXIT_FAILURE;
 	} else {
     	fLGN_V1_cfg.read(reinterpret_cast<char*>(&nInputLayer), sizeof(Size));
-    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&p_n_LGNeff), nInputLayer*sizeof(Float));
-    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&max_LGNeff), nInputLayer*sizeof(Size));
-    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&nType), nInputLayer*sizeof(Size));
+        inputLayer.resize(nInputLayer);
+    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&inputLayer), nInputLayer*sizeof(Size));
+    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&nInputTypeEI), 2*nInputLayer*sizeof(Size));
         for (PosInt i=0; i<nInputLayer; i++) {
-            totalType += nType[i];
+            nInputType[i] = nInputTypeEI[2*i] + nInputTypeEI[2*i+1];
+            totalInputType += nInputType[i];
         }
-		typeAccCount.resize(totalType);
-    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&typeAccCount[0]), totalType*sizeof(Size));
-    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&mean_nLGN), nInputLayer*sizeof(Float));
-    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&mean_sLGN), nInputLayer*sizeof(Float));
-	}
-	cout << "type accumulate to 1024:\n";
-	vector<Size> typeAcc0(1,0);
-	for (PosInt i=0; i<nType; i++) {
-		cout << typeAccCount[i];
-		if (i < nType-1) cout << ",";
-		else cout << "\n";
-		typeAcc0.push_back(typeAccCount[i]);
-	}
-	assert(typeAccCount.back() == blockSize);
-	Size nTypeE = nTypeHierarchy[0];
-	Size nTypeI = nTypeHierarchy[1];
-	Size nE = typeAccCount[nTypeE-1];
-	Size nI = blockSize - typeAccCount[nTypeE-1];
-	cout << "nTypeE = " << nTypeE << ", nTypeI = " << nTypeI << ", nE = " << nE << ", nI = " << nI << "\n";
-	Size* d_typeAcc0;
-    checkCudaErrors(cudaMalloc((void**)&d_typeAcc0, (nType+1)*sizeof(Size)));
-    checkCudaErrors(cudaMemcpy(d_typeAcc0, &(typeAcc0[0]), (nType+1)*sizeof(Size), cudaMemcpyHostToDevice));
-
-    if (synapticLoc.size() != nType*nType) {
-		cout << "synapticLoc has size of " << synapticLoc.size() << ", should be " << nType*nType << "\n";
-		return EXIT_FAILURE;
-	}
-	Float* d_synloc;
-    checkCudaErrors(cudaMalloc((void**)&d_synloc, (nType*nType)*sizeof(Float)));
-    checkCudaErrors(cudaMemcpy(d_synloc, &(synapticLoc[0]), (nType*nType)*sizeof(Float), cudaMemcpyHostToDevice));
-
-	Size nType0;
-	Size nArchtype = nTypeHierarchy.size();
-    cout << nArchtype << " archtypes\n";
-	if (nArchtype < 1) {
-		cout << "at least define one type of neuron with nTypeHierarchy.\n";
-		return EXIT_FAILURE;
-	} else {
-		if (nArchtype > 2) {
-        	cout << "nTypeHierarchy has more than 2 elements, only E and I types are implemented\n"; 
-			return EXIT_FAILURE;
-		} else {
-			nType0 = accumulate(nTypeHierarchy.begin(), nTypeHierarchy.end(), 0);
-			cout << "nType0 = " << nType0 << "\n";
-			if (nType0 != nType) {
-				cout << "nTypeHierarchy inconsistent with LGN_V1 connection built with suffix " << conLGN_suffix << "\n";
-				return EXIT_FAILURE;
-			}
-		}
+		inputTypeAccCount.resize(totalInputType);
+    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&inputTypeAccCount[0]), totalInputType*sizeof(Size));
+    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&p_n_LGNeff[0]), totalInputType*sizeof(Float));
+    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&max_LGNeff[0]), totalInputType*sizeof(Size));
+    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&mean_nLGN[0]), nInputLayer*sizeof(Float));
+    	fLGN_V1_cfg.read(reinterpret_cast<char*>(&mean_sLGN[0]), nInputLayer*sizeof(Float));
 	}
 
-    if (nTypeMat.size() != nType*nType) {
-		cout << "nTypeMat has size of " << nTypeMat.size() << ", should be " << nType*nType << "\n";
-		return EXIT_FAILURE;
-	}
-    if (sTypeMat.size() != nType*nType) {
-		cout << "sTypeMat has size of " << sTypeMat.size() << ", should be " << nType*nType << "\n";
-		return EXIT_FAILURE;
-	}
-
-    if (nInhGap.size() != nTypeI*nTypeI) {
-		cout << "nInhGap has size of " << nInhGap.size() << ", should be " << nTypeI*nTypeI << "\n";
-		return EXIT_FAILURE;
-	} else {
-		for (PosInt i=0; i<nTypeI; i++) {
-			for (PosInt j=0; j<i; j++) {
-				if (nInhGap[i*nType + j] != nInhGap[j*nType + i]) {
-					cout << "nInhGap is not symmetric\n";
-				}
-			}
-		}
-	}
-
-    if (gap_sTypeMat.size() != nTypeI*nTypeI) {
-		cout << "gap_sTypeMat has size of " << gap_sTypeMat.size() << ", should be " << nTypeI*nTypeI << "\n";
-		return EXIT_FAILURE;
-	} else {
-		for (PosInt i=0; i<nTypeI; i++) {
-			for (PosInt j=0; j<i; j++) {
-				if (gap_sTypeMat[i*nType + j] != gap_sTypeMat[j*nType + i]) {
-					cout << "gap_sTypeMat is not symmetric\n";
-				}
-			}
-		}
-	}
-
-	// TODO: std.
-	{// dendrites and axons
-    	if (dAxon.size() != nType) {
-    	    cout << "size of dAxon: " << dAxon.size() << " should be consistent with the number of neuronal types at the hierarchical top: " << nType << "\n"; 
-    	    return EXIT_FAILURE;
-    	}
-    	if (dDend.size() != nType) {
-    	    cout << "size of dDend: " << dDend.size() << " should be consistent with the number of neuronal types at the hierarchical top: " << nType << "\n"; 
-    	    return EXIT_FAILURE;
-    	}
-
-    	if (rAxon.size() != nType) {
-    	    cout << "size of rAxon: " << rAxon.size() << " should be consistent with the number of neuronal types at the hierarchical top: " << nType << "\n"; 
-    	    return EXIT_FAILURE;
-    	} else {
-    	    // adjust the scale
-    	    for (Float &r: rAxon){
-    	        r *= dScale;
-    	    }
-    	}
-    	if (rDend.size() != nType) {
-    	    cout << "size of rDend: " << rDend.size() << " should be consistent with the number of neuronal types at the hierarchical top: " << nType << "\n"; 
-    	    return EXIT_FAILURE;
-    	} else {
-    	    // adjust the scale
-    	    for (Float &r: rDend){
-    	        r *= dScale;
-    	    }
-    	}
-	}
-
-    if (typeAccCount.size() != nType) {
-        cout << "the accumulative distribution of neuronal type <typeAccCount> has size of " << typeAccCount.size() << ", should be " << nType << ",  <nType>\n";
+    vector<Size> nTypeEI(2*nLayer);
+    vector<Size> nType(nLayer, 0);
+    vector<vector<Size>> typeAccLayered(nLayer);
+    PosInt qType = 0;
+    for (PosInt iLayer=0; iLayer<nInputLayer; iLayer++) {
+        PosInt jLayer = inputLayer[iLayer];
+        cout << "layer " << jLayer << "(input layer):\n";
+	    for (PosInt i=0; i<nInputType[iLayer]; i++) {
+	    	cout << inputTypeAccCount[qType + i];
+	    	if (i < nInputType[iLayer]-1) cout << ",";
+	    	else cout << "\n";
+            typeAccLayered[jLayer].push_back(inputTypeAccCount[qType+i]);
+	    }
+        nType[jLayer] = nInputType[iLayer];
+        nTypeEI[2*jLayer] = nInputTypeEI[2*iLayer];
+        nTypeEI[2*jLayer+1] = nInputTypeEI[2*iLayer+1];
+        qType += nInputType[iLayer];
+    }
+    bool typeConsistent = true;
+    qType = 0;
+    for (PosInt iLayer=0; iLayer<nonInputLayer.size(); iLayer++) {
+        PosInt jLayer = nonInputLayer[iLayer];
+        cout << "layer " << jLayer << "(non-input layer):\n";
+	    for (PosInt i=0; i<nonInputType[iLayer]; i++) {
+	    	cout << nonInputTypeAccCount[qType + i];
+	    	if (i < nonInputType[iLayer]-1) cout << ",";
+	    	else cout << "\n";
+            typeAccLayered[jLayer].push_back(inputTypeAccCount[qType+i]);
+	    }
+        if (nType[jLayer] > 0) typeConsistent = false;
+        nType[jLayer] = nonInputType[iLayer];
+        nTypeEI[2*jLayer] = nonInputTypeEI[2*iLayer];
+        nTypeEI[2*jLayer+1] = nonInputTypeEI[2*iLayer+1];
+        qType += nonInputType[iLayer];
+    }
+	vector<Size> typeAcc0;
+    vector<Size>typeLayerID(1,0);
+    PosInt totalType = 0;
+    for (PosInt iLayer=0; iLayer<nLayer; iLayer++) {
+        if (nType[jLayer] == 0) typeConsistent = false;
+        typeAcc0.push_back(0);
+        typeAcc0.insert(typeAcc0.end(), typeAccLayered[iLayer].begin(), typeAccLayered[iLayer].end());
+        totalType += nType[iLayer];
+        typeLayerAcc.push_back(totalType);
+    }
+    assert(totalType + nLayer == typeAcc0.size());
+    assert(typeLayerID.back() == totalType);
+    typeLayerID.pop_back();
+    if (!typeConsistent) {
+        cout << "# types for input/non-input layers is not consistent\n";
         return EXIT_FAILURE;
     }
 
-    //if (FF_FB_ratio == 0) {
-    //    cout << "FF_FB_ratio cannot be zero\n";
-    //}
-    //if (targetFR.size() != nType) {
-    //    cout << "target firing rates of different neuronal types <targetFR> has size of " << targetFR.size() << ", should be " << nType << ",  <nType>\n";
-    //    return EXIT_FAILURE;
-    //}
-
-    fV1_pos.open(V1_pos_filename, ios::in|ios::binary);
-	if (!fV1_pos) {
-		cout << "failed to open pos file:" << V1_pos_filename << "\n";
-		return EXIT_FAILURE;
-	}
-    Size nblock, neuronPerBlock, dataDim;
-    // read from file cudaMemcpy to device
-	
-    fV1_pos.read(reinterpret_cast<char*>(&nblock), sizeof(Size));
-    fV1_pos.read(reinterpret_cast<char*>(&neuronPerBlock), sizeof(Size));
-    if (neuronPerBlock > blockSize) {
-        cout << "neuron per block (" << neuronPerBlock << ") cannot be larger than cuda block size: " << blockSize << "\n";
+    mI.resize(nLayer);
+    mE.resize(nLayer);
+    vector<Size> nI(nLayer);
+    vector<Size> nE(nLayer);
+    vector<Size> nTypeI(nLayer);
+    vector<Size> nTypeE(nLayer);
+    Size totalTypeE, totalTypeI;
+    cout << "layer, nTypeE, nTypeI, nE, nI\n";
+    for (PosInt iLayer=0; iLayer<nLayer; iLayer++) {
+	    if (typeAccLayered[iLayer].back() != neuronPerBlock[iLayer]) {
+            cout << "inconsistent typeAcc with neuronPerBlock\n";
+            return EXIT_FAILURE;
+        }
+        nTypeE[iLayer] = nTypeEI[2*iLayer];
+        nTypeI[iLayer] = nTypeEI[2*iLayer+1];
+        nE[iLayer] = typeAccLayered[iLayer][nTypeE[iLayer]-1];
+        nI[iLayer] = neuronPerBlock[iLayer] - nE[iLayer];
+        mE[iLayer] = nE[iLayer] * nblock[iLayer];
+        mI[iLayer] = nI[iLayer] * nblock[iLayer];
+	    cout << iLayer << ", " << nTypeE[iLayer] << ", " << nTypeI[iLayer] << ", " << nE[iLayer] << ", " << nI[iLayer] << "\n";
+        totalTypeE += nTypeE[iLayer];
+        totalTypeI += nTypeI[iLayer];
     }
-    Size networkSize = nblock*neuronPerBlock;
-	Size mI = nblock*nI;
 
-	cout << "networkSize = " << networkSize << "\n";
-	fV1_pos.read(reinterpret_cast<char*>(&dataDim), sizeof(Size));
-	// TODO: implement 3D, usingPosDim=3
-	if (dataDim != usingPosDim) {
-		cout << "the dimension of position coord intended is " << usingPosDim << ", data provided from " << V1_pos_filename << " gives " << dataDim << "\n";
+    if (synapticLoc.size() != totalType*totalType) {
+		cout << "synapticLoc has size of " << synapticLoc.size() << ", should be " << totalType*totalType << "\n";
 		return EXIT_FAILURE;
 	}
-	
-	{// not used
-		double tmp;	
-		fV1_pos.read(reinterpret_cast<char*>(&tmp), sizeof(double));
-		fV1_pos.read(reinterpret_cast<char*>(&tmp), sizeof(double));
-		fV1_pos.read(reinterpret_cast<char*>(&tmp), sizeof(double));
-		fV1_pos.read(reinterpret_cast<char*>(&tmp), sizeof(double));
+	Float* d_synloc; // self matrix of row, column [typeE, typeI] x nLayer 
+    checkCudaErrors(cudaMalloc((void**)&d_synloc, (totalType*totalType)*sizeof(Float)));
+    checkCudaErrors(cudaMemcpy(d_synloc, &(synapticLoc[0]), (totalType*totalType)*sizeof(Float), cudaMemcpyHostToDevice));
+
+	Size nType0;
+    const Size nArchtype = 2;
+
+    if (nTypeMat.size() != totalType*totalType) {
+		cout << "nTypeMat has size of " << nTypeMat.size() << ", should be " << totalType*totalType << "\n";
+		return EXIT_FAILURE;
 	}
-	
-    vector<double> pos(usingPosDim*networkSize);
-    fV1_pos.read(reinterpret_cast<char*>(&pos[0]), usingPosDim*networkSize*sizeof(double));
-	fV1_pos.close();
-	
-	// read predetermined neuronal subtypes.
+    if (sTypeMat.size() != totalType*totalType) {
+		cout << "sTypeMat has size of " << sTypeMat.size() << ", should be " << totalType*totalType << "\n";
+		return EXIT_FAILURE;
+	}
+
+    Size totalTypeE = 0;
+    Size totalTypeI = 0;
+    for (PosInt i=0; i<nLayer; i++) {
+        totalTypeE += nTypeE[i];
+        totalTypeI += nTypeI[i];
+    }
+
+    if (gap_nTypeMatE.size() != totalTypeE*totalTypeE && gap_nTypeMatE.size() != 1 && gap_nTypeMatE.size() != 0) { // gapE matrix each layer then gapI
+		cout << "array gap_nTypeMatE have size of " << gap_nTypeMatE.size() << ", should be " << totalTypeE << "x" << totalTypeE << ", 0(none) or 1(for all)\n";
+		return EXIT_FAILURE;
+	} else {
+        if (gap_nTypeMatE.size() == 0) {
+            cout << "no exc gap junctions\n";
+        } else {
+            if (gap_nTypeMatE.size() == 1) {
+                gap_nTypeMatE.insert(gap_nTypeMatE.end(), totalTypeE*totalTypeE-1, gap_nTypeMatE[0]);
+            } else {
+		        for (PosInt i=0; i<totalTypeE; i++) {
+		        	for (PosInt j=0; j<i; j++) {
+		        		if (gap_nTypeMatE[i*totalTypeE + j] != gap_nTypeMatE[j*totalTypeE + i]) {
+		        		    	cout << "gap_nTypeMat is not symmetric for exc-type neurons in layer " << i << "\n";
+                                return EXIT_FAILURE;
+		        		}
+                    }
+		        }
+            }
+        }
+	}
+
+    if (gap_nTypeMatE.size() > 0) {
+        if (gap_sTypeMatE.size() != totalTypeE*totalTypeE && gap_sTypeMatE.size() != 1) { // gapE matrix each layer then gapI
+	    	cout << "array gap_sTypeMatE have size of " << gap_sTypeMatE.size() << ", should be " << totalTypeE << "x" << totalTypeE << ", 0(none) or 1(for all)\n";
+	    	return EXIT_FAILURE;
+	    } else {
+            if (gap_sTypeMatE.size() == 1) {
+                gap_sTypeMatE.insert(gap_sTypeMatE.end(), totalTypeE*totalTypeE-1, gap_sTypeMatE[0]);
+            } else {
+	    	    for (PosInt i=0; i<totalTypeE; i++) {
+	    	    	for (PosInt j=0; j<i; j++) {
+	    	    		if (gap_sTypeMatE[i*totalTypeE + j] != gap_sTypeMatE[j*totalTypeE + i]) {
+	    	    		    	cout << "gap_sTypeMat is not symmetric for exc-type neurons in layer " << i << "\n";
+                                return EXIT_FAILURE;
+	    	    		}
+                    }
+	    	    }
+            }
+	    }
+    } else {
+        if (gap_sTypeMatE.size() != 0) {
+            cout << "size of gap_nTypeMatE is zero, ignoring gap_sTypeMatE\n";
+        }
+    }
+
+    if (gap_nTypeMatI.size() != totalTypeI*totalTypeI && gap_nTypeMatI.size() != 1 && gap_nTypeMatI.size() != 0) { // gapE matrix each layer then gapI
+		cout << "array gap_nTypeMatI have size of " << gap_nTypeMatI.size() << ", should be " << totalTypeI << "x" << totalTypeI << ", 0(none) or 1(for all)\n";
+		return EXIT_FAILURE;
+	} else {
+        if (gap_nTypeMatI.size() == 0) {
+            cout << "no inh gap junctions\n";
+        } else {
+            if (gap_nTypeMatI.size() == 1) {
+                gap_nTypeMatI.insert(gap_nTypeMatI.end(), totalTypeI*totalTypeI-1, gap_nTypeMatI[0]);
+            } else {
+		        for (PosInt i=0; i<totalTypeI; i++) {
+		        	for (PosInt j=0; j<i; j++) {
+		        		if (gap_nTypeMatI[i*totalTypeI + j] != gap_nTypeMatI[j*totalTypeI + i]) {
+		        		    	cout << "gap_nTypeMat is not symmetric for inh-type neurons in layer " << i << "\n";
+                                return EXIT_FAILURE;
+		        		}
+                    }
+		        }
+            }
+        }
+	}
+
+    if (gap_nTypeMatI.size() > 0) {
+        if (gap_sTypeMatI.size() != totalTypeI*totalTypeI && gap_sTypeMatI.size() != 1) { // gapE matrix each layer then gapI
+	    	cout << "array gap_sTypeMatI have size of " << gap_sTypeMatI.size() << ", should be " << totalTypeI << "x" << totalTypeI << ", 0(none) or 1(for all)\n";
+	    	return EXIT_FAILURE;
+	    } else {
+            if (gap_sTypeMatI.size() == 1) {
+                gap_sTypeMatI.insert(gap_sTypeMatI.end(), totalTypeI*totalTypeI-1, gap_sTypeMatI[0]);
+            } else {
+	    	    for (PosInt i=0; i<totalTypeI; i++) {
+	    	    	for (PosInt j=0; j<i; j++) {
+	    	    		if (gap_sTypeMatI[i*totalTypeI + j] != gap_sTypeMatI[j*totalTypeI + i]) {
+	    	    		    	cout << "gap_sTypeMat is not symmetric for inh-type neurons in layer " << i << "\n";
+                                return EXIT_FAILURE;
+	    	    		}
+                    }
+	    	    }
+            }
+	    }
+    } else {
+        if (gap_sTypeMatI.size() != 0) {
+            cout << "size of gap_nTypeMatI is zero, ignoring gap_sTypeMatI\n";
+        }
+    }
+
+    // read predetermined neuronal subtypes.
 	// read predetermined functional response features of neurons (use as starting seed if involve learning).
     fV1_feature.open(V1_feature_filename, ios::in|ios::binary);
 	if (!fV1_feature) {
@@ -344,70 +515,173 @@ int main(int argc, char *argv[])
 	}
 	Size nFeature;
     fV1_feature.read(reinterpret_cast<char*>(&nFeature), sizeof(Size));
-	vector<Float> featureValue(nFeature*networkSize); // [OD, OP, ..]
-    fV1_feature.read(reinterpret_cast<char*>(&featureValue[0]), sizeof(Float)*nFeature*networkSize);
+    vector<vector<PosInt>> featureLayer(nFeature);
+	vector<vector<vector<Float>>> featureValue(nFeature); // [OD, OP, ..]
+    Size nfl;
+    fV1_feature.read(reinterpret_cast<char*>(&nfl), sizeof(Size));
 	for (PosInt iF = 0; iF<nFeature; iF++) {
-		cout << iF << "th featureValue range: [" << *min_element(featureValue.begin()+iF*networkSize, featureValue.begin()+(iF+1)*networkSize) << ", " << *max_element(featureValue.begin()+iF*networkSize, featureValue.begin()+(iF+1)*networkSize) << "]\n";
-	}
-    for (PosInt i = 0; i<networkSize; i++) {
-        featureValue[networkSize+i] = (featureValue[networkSize+i] - 0.5)*M_PI;
+        featureLayer[iF].resize(nfl);
+        fV1_feature.read(reinterpret_cast<char*>(&(featureLayer[iF][0])), nfl*sizeof(PosInt));
+        vector<Size> _n(nfl);
+        fV1_feature.read(reinterpret_cast<char*>(&_n[0]), nfl*sizeof(Size));
+        for (PosInt i = 0; i<nfl; i++) {
+            Size jLayer = featureLayer[iF][i];
+            featureValue[iF][jLayer].resize(_n[i]);
+	        fV1_feature.read(reinterpret_cast<char*>(&(featureValue[iF][jLayer][0])), _n[i] * sizeof(Float));
+	        cout << iF << "th featureValue range in layer " << jLayer << ": [" << *min_element(featureValue[iF][jLayer].begin(), featureValue[iF][jLayer].end()) << ", " << *max_element(featureValue[iF][jLayer].begin(), featureValue[iF][jLayer].end()) << "]\n";
+	        }
+        }
+    }
+    for (PosInt i = 0; i<nLayer; i++) {
+        for (PosInt j=0; j<featureValue[1][i].size(); j++) {
+            featureValue[1][i][j] = (featureValue[1][i][j] - 0.5)*M_PI;
+        }
     }
 	fV1_feature.close();
 
-    if (typeFeatureMat.size()/(nType*nType) != nFeature) {
-		cout << "typeFeatureMat has " << typeFeatureMat.size()/(nType*nType) << " features, should be " << nFeature << "\n";
+    cout << "defaultFeatureValue:\n";
+    for (PosInt i=0; i<nFeature; i++) {
+        cout << defaultFeatureValue[i];
+        if (i==nFeature-1) {
+            cout << "\n";
+        } else {
+            cout << ", ";
+        }
+    }
+
+    if (typeFeatureMat.size()/(totalType*totalType*pPerFeature) != nFeature) {
+		cout << "typeFeatureMat has " << typeFeatureMat.size()/(totalType*totalType*pPerFeature) << " features, should be " << nFeature << "\n";
 		return EXIT_FAILURE;
 	}
 
-    if (gap_fTypeMat.size()/(nTypeI*nTypeI) != nFeature) {
-		cout << "gap_fTypeMat has " << gap_fTypeMat.size()/(nTypeI*nTypeI) << " features, should be " << nFeature << "\n";
-		return EXIT_FAILURE;
-	} else {
-		for (PosInt k=0; k<nFeature; k++) {
-			for (PosInt i=0; i<nTypeI; i++) {
-				for (PosInt j=0; j<i; j++) {
-					if (gap_fTypeMat[k*nTypeI*nTypeI + i*nType + j] != gap_fTypeMat[k*nTypeI*nTypeI + j*nType + i]) {
-						cout << "gap_fTypeMat is not symmetric for feature " << k << "\n";
-					}
-				}
-			}
-		}
-	}
+    if (gap_nTypeMatE.size() > 0) {
+        if (gap_fTypeMatE.size() != totalTypeE*totalTypeE*nFeature*pPerFeature && gap_fTypeMatE.size() != 0 && gap_fTypeMatE != pPerFeature*nFeature) { // gapE matrix each layer then gapE
+	    	cout << "array gap_fTypeMatE have size of " << gap_fTypeMatE.size() << ", should be " << pPerFeature << "x" << nFeature << "x" << totalTypeE << "x" << totalTypeE << ", 0(defaut) or nFeature x pPerFeature (for each feature)\n";
+	    	return EXIT_FAILURE;
+	    } else {
+            if (gap_fTypeMatE.size() == 0) {
+                for (PosInt i=0; i<pPerFeature*nFeature; i++) {
+                    gap_fTypeMatE.insert(gap_nTypeMatE.end(), totalTypeE*totalTypeE, defaultFeatureValue[i]);
+                }
+            } else {
+                if (gap_fTypeMatE.size() == pPerFeature*nFeature) {
+                    vector<Float>val(gap_fTypeMatE.begin(), gap_fTypeMatE.end());
+                    gap_fTypeMatE.clear();
+                    for (PosInt i=0; i<pPerFeature*nFeature; i++) {
+                        gap_fTypeMatE.insert(gap_nTypeMatE.end(), totalTypeE*totalTypeE, val[i]);
+                    }
+                } else {
+                    for (PosInt f=0; f<pPerFeature*nFeature; f++) {
+	    	            for (PosInt i=0; i<totalTypeE; i++) {
+	    	            	for (PosInt j=0; j<i; j++) {
+	    	            		if (gap_fTypeMatE[f*totalTypeE*totalTypeE + i*totalTypeE + j] != gap_fTypeMatE[f*totalTypeE*totalTypeE + j*totalTypeE + i]) {
+	    	            		    	cout << "gap_fTypeMat is not symmetric for exc-type neurons in layer " << i << " for feature " << f/2 << "-" << f%2 << "\n";
+                                        return EXIT_FAILURE;
+	    	            		}
+                            }
+	    	            }
+                    }
+                }
+            }
+	    }
+    } else {
+        if (gap_fTypeMatE.size() != 0) {
+            cout << "size of gap_nTypeMatE is zero, ignoring gap_fTypeMatE\n";
+        }
+    }
 
-    initializePreferenceFunctions(nFeature);
+    if (gap_nTypeMatI.size() > 0) {
+        if (gap_fTypeMatI.size() != totalTypeI*totalTypeI*nFeature*pPerFeature && gap_fTypeMatI.size() != 0 && gap_fTypeMatI != pPerFeature*nFeature) { // gapE matrix each layer then gapE
+	    	cout << "array gap_fTypeMatI have size of " << gap_fTypeMatI.size() << ", should be " << pPerFeature << "x" << nFeature << "x" << totalTypeI << "x" << totalTypeI << ", 0(defaut) or nFeature x pPerFeature(for each feature)\n";
+	    	return EXIT_FAILURE;
+	    } else {
+            if (gap_fTypeMatI.size() == 0) {
+                for (PosInt i=0; i<pPerFeature*nFeature; i++) {
+                    gap_fTypeMatI.insert(gap_nTypeMatI.end(), totalTypeI*totalTypeI, defaultFeatureValue[i]);
+                }
+            } else {
+                if (gap_fTypeMatI.size() == pPerFeature*nFeature) {
+                    vector<Float>val(gap_fTypeMatI.begin(), gap_fTypeMatI.end());
+                    gap_fTypeMatI.clear();
+                    for (PosInt i=0; i<pPerFeature*nFeature; i++) {
+                        gap_fTypeMatI.insert(gap_nTypeMatI.end(), totalTypeI*totalTypeI, val[i]);
+                    }
+                } else {
+                    for (PosInt f=0; f<pPerFeature*nFeature; f++) {
+	    	            for (PosInt i=0; i<totalTypeI; i++) {
+	    	            	for (PosInt j=0; j<i; j++) {
+	    	            		if (gap_fTypeMatI[f*totalTypeI*totalTypeI + i*totalTypeI + j] != gap_fTypeMatI[f*totalTypeI*totalTypeI + j*totalTypeI + i]) {
+	    	            		    	cout << "gap_fTypeMat is not symmetric for inh-type neurons in layer " << i << " for feature " << f/2 << "-" << f%2 << "\n";
+                                        return EXIT_FAILURE;
+	    	            		}
+                            }
+	    	            }
+                    }
+                }
+            }
+	    }
+    } else {
+        if (gap_fTypeMatI.size() != 0) {
+            cout << "size of gap_nTypeMatI is zero, ignoring gap_fTypeMatI\n";
+        }
+    }
 
-    //hInitialize_package hInit_pack(nArchtype, nType, nFeature, nTypeHierarchy, typeAccCount, targetFR, rAxon, rDend, dAxon, dDend, typeFeatureMat, sTypeMat, nTypeMat);
-    hInitialize_package hInit_pack(nArchtype, nType, nFeature, nTypeHierarchy, typeAccCount, rAxon, rDend, dAxon, dDend, typeFeatureMat, sTypeMat, nTypeMat);
-	initialize_package init_pack(nArchtype, nType, nFeature, hInit_pack);
+    if (nearNeighborBlock.size() != nLayer*nLayer || nearNeighborBlock != 1) {
+        cout << "nearNeighborBlock must have a size of " <<nLayer << " x " << nLayer << "(nLayer) or 1\n";
+    } else {// including self
+        if (nearNeighborBlock.size() == 1) {
+            nearNeighborBlock.insert(nearNeighborBlock.end(), nLayer*nLayer-1, nearNeighborBlock[0]);
+        }
+        for (PosInt i=0; i<nLayer; i++) {
+            for (PosInt j=0; j<nLayer; j++) {
+                if (j == 0) {
+                    nearNeighborBlock[i*nLayer+j] += 1;
+                }
+            }
+        }
+    }
 
-    //Float speedOfThought = 1.0f; specify instead in patch.cu through patchV1.cfg
-
-    // TODO: types that shares a smaller portion than 1/neuronPerBlock
-    if (typeAccCount.back() != neuronPerBlock) {
-		cout << "type acc. dist. end with " << typeAccCount.back() << " should be " << neuronPerBlock << "\n";
+    if (maxNeighborBlock.size() != nLayer*nLayer || maxNeighborBlock != 1) {
+        cout << "maxNeighborBlock must have a size of " << nLayer << " x " << nLayer << "(nLayer) or 1\n";
         return EXIT_FAILURE;
+    } else {// including self
+        if (maxNeighborBlock.size() == 1) {
+            maxNeighborBlock.insert(maxNeighborBlock.end(), nLayer*nLayer-1, maxNeighborBlock[0]);
+        }
+        for (PosInt i=0; i<nLayer; i++) {
+            for (PosInt j=0; j<nLayer; j++) {
+                if (j == 0) {
+                    maxNeighborBlock[i*nLayer+j] += 1;
+                }
+            }
+        }
     }
 
-    if (!suffix.empty()) {
-		cout << " suffix = " << suffix << "\n";
-        suffix = '_' + suffix;
+    if (disGauss.size() != nLayer*nLayer || disGauss != 1) {
+        cout << "disGauss must have a size of " << nLayer << " x " << nLayer << "(nLayer) or 1\n";
+        return EXIT_FAILURE;
+    } else {
+        if (disGauss.size() == 1) {
+            disGauss.insert(disGauss.end(), nLayer*nLayer-1, disGauss[0]);
+        }
     }
-    suffix = suffix + ".bin";
-    nearNeighborBlock += 1; // including self
+
     fV1_conMat.open(V1_conMat_filename + suffix, ios::out | ios::binary);
 	if (!fV1_conMat) {
 		cout << "cannot open " << V1_conMat_filename + suffix << " to write.\n";
 		return EXIT_FAILURE;
 	} else {
-        fV1_conMat.write((char*) &nearNeighborBlock, sizeof(Size));
+        fV1_conMat.write((char*) &nearNeighborBlock[0], nLayer*sizeof(Size));
     }
+
     fV1_delayMat.open(V1_delayMat_filename + suffix, ios::out | ios::binary);
 	if (!fV1_delayMat) {
 		cout << "cannot open " << V1_delayMat_filename + suffix << " to write.\n";
 		return EXIT_FAILURE;
 	} else {
-        fV1_delayMat.write((char*) &nearNeighborBlock, sizeof(Size));
+        fV1_delayMat.write((char*) &nearNeighborBlock[0], nLayer*sizeof(Size));
     }
+
     fV1_gapMat.open(V1_gapMat_filename + suffix, ios::out | ios::binary);
 	if (!fV1_gapMat) {
 		cout << "cannot open " << V1_gapMat_filename + suffix << " to write.\n";
@@ -415,44 +689,219 @@ int main(int argc, char *argv[])
 	} else {
         fV1_gapMat.write((char*) &nearNeighborBlock, sizeof(Size));
     }
+
     fV1_vec.open(V1_vec_filename + suffix, ios::out | ios::binary);
 	if (!fV1_vec) {
 		cout << "cannot open " << V1_vec_filename + suffix << " to write.\n";
 		return EXIT_FAILURE;
 	}
+
     fV1_gapVec.open(V1_gapVec_filename + suffix, ios::out | ios::binary);
 	if (!fV1_gapVec) {
 		cout << "cannot open " << V1_gapVec_filename + suffix << " to write.\n";
 		return EXIT_FAILURE;
 	}
+
     fBlock_pos.open(block_pos_filename + suffix, ios::out | ios::binary);
 	if (!fBlock_pos) {
 		cout << "cannot open " << block_pos_filename + suffix << " to write.\n";
 		return EXIT_FAILURE;
 	}
+
     fNeighborBlock.open(neighborBlock_filename + suffix, ios::out | ios::binary);
 	if (!fNeighborBlock) {
 		cout << "cannot open " << neighborBlock_filename + suffix << " to write.\n";
 		return EXIT_FAILURE;
 	}
+
     fStats.open(stats_filename + suffix, ios::out | ios::binary);
 	if (!fStats) {
 		cout << "cannot open " << stats_filename + suffix << " to write.\n";
 		return EXIT_FAILURE;
 	}
 
-    maxNeighborBlock += 1; // including self
+    size_t sizeof_block = 0;
+    size_t sizeof_neighbor = 0;
+    vector<PosInt> blockAcc(nLayer+1, 0);
+    vector<PosInt> neighborBlockAcc(nLayer+1, 0);
+    vector<PosInt> networkSizeAcc(nLayer+1, 0);
+    for (PosInt i=0; i<nLayer; i++) {
+        sizeof_block += 2*nblock[i]*sizeof(Float); // size of block_pos
+        blockAcc[i+1] = block_pos_acc[i] + nblock[i];
+        networkSizeAcc[i+1] = networkSizeAcc[i] + networkSize[i];
+        Size qMaxNeighborBlock = 0;
+        for (PosInt j=0; j<nLayer; j++) {
+            sizeof_neighbor += nblock[i]*maxNeighborBlock[i*nLayer+j]*sizeof(PosInt); // size of neighborBlockId
+            qMaxNeighborBlock += maxNeighborBlock[i*nLayer+j];
+        }
+        neighborBlockAcc[i+1] = neighborBlockAcc[i] + nblock[i]*qMaxNeighborBlock;
+    }
+    sizeof_neighbor += 2*nLayer*blockAcc.back()*sizeof(Size); // n(Near)NeighborBlock
+    size_t sizeof_pos = 2*networkSizeAcc.back()*sizeof(Float);
+    void* __restrict__ block_chunk;
+    checkCudaErrors(cudaMalloc((void**)&block_chunk, sizeof_block + sizeof_neighbor + sizeof_pos + (3*nLayer+1)*sizeof(PosInt)));
+    Float* __restrict__ d_pos = (Float*) block_chunk;
+    Float* __restrict__ d_block_x = d_pos + 2*networkSizeAcc.back();
+    Float* __restrict__ d_block_y = d_block_x + blockAcc.back();
+    PosInt*  __restrict__ d_neighborBlockId = (Size*) (d_block_y + blockAcc.back());
+    Size*  __restrict__ d_nNeighborBlock = d_neighborBlockId + neighborBlockAcc.back();
+	Size* __restrict__ d_nNearNeighborBlock = d_nNeighborBlock + nLayer*blockAcc.back();
+    PosInt* __restrict__ d_blockAcc = d_nNearNeighborBlock + nLayer*blockAcc.back();
+    PosInt* __restrict__ d_neighborBlockAcc = d_blockAcc + nLayer+1; 
+    PosInt* __restrict__ d_networkSizeAcc = d_neighborBlockAcc + nLayer+1; 
+
+	cudaStream_t *layerStream = new cudaStream_t[nLayer];
+    for (PosInt i=0; i<nLayer; i++) {
+		checkCudaErrors(cudaStreamCreate(&layerStream[i]));
+    }
+        
+    for (PosInt i=0; i<nLayer; i++) {
+        checkCudaErrors(cudaMemcpyAsync(d_pos+2*networkSizeAcc[i], &(pos[i][0]), 2*networkSize[i]*sizeof(Float), cudaMemcpyHostToDevice, layerStream[i]));
+        cal_blockPos<<<nblock[i], neuronPerBlock[i],0,layerStream[i]>>>(
+            d_pos + 2*networkSizeAcc[i], 
+	    	d_block_x + blockAcc[i], d_block_y + blockAcc[i], 
+	    	networkSize[i]);
+	    getLastCudaError("cal_blockPos failed");
+    }
+    printf("block centers calculated\n");
+
+	//shared_mem = sizeof(Size);
+    // blocks -> blocks, threads -> cal neighbor blocks
+    for (PosInt i=0; i<nLayer; i++) {
+        Size qMaxNeighborBlock = 0;
+        for (PosInt j=0; j<nLayer; j++) {
+            get_neighbor_blockId<<<nblock[i], blockSize, maxNeighborBlock*(sizeof(PosInt)+sizeof(Float)),0,layerStream[i]>>>(
+                d_block_x, d_block_y, d_blockAcc,
+	    	    d_neighborBlockId + neighborBlockAcc[i] + qMaxNeighborBlock,
+                d_nNeighborBlock + nLayer*blockAcc[i] + j*nblock[i],
+                d_nNearNeighborBlock + nLayer*blockAcc[i] + j*nblock[i],
+	    	    nblock[j], blockROI[i*nLayer+j], blockROI_max[i*nLayer+j], maxNeighborBlock[i*nLayer+j], i, j);
+            qMaxNeighborBlock += nblock[i] * maxNeighborBlock[i*nLayer+j];
+        }
+    }
+	getLastCudaError("get_neighbor_blockId failed");
+    printf("neighbor blocks acquired\n");
+    // n(Near/Max)NeighborBlock: [recv_layer, send_layer, recv_nblock]
+    // neighborBlockId: [recv_layer, send_layer, recv_nblock]
+    fBlock_pos.write((char*)block_x, nblock*sizeof(Float));
+    fBlock_pos.write((char*)block_y, nblock*sizeof(Float));
+    fBlock_pos.close();
+
+
+	{// dendrites and axons
+    	if (dAxon.size() != nLayer*totalType) {
+    	    cout << "size of dAxon: " << dAxon.size() << " should be consistent with the number of neuronal types: " << nLayer << "x" << totalType << "\n"; 
+    	    return EXIT_FAILURE;
+    	}
+    	if (dDend.size() != nLayer*totalType) {
+    	    cout << "size of dDend: " << dDend.size() << " should be consistent with the number of neuronal types: " << nLayer << "x" << totalType << "\n"; 
+    	    return EXIT_FAILURE;
+    	}
+
+    	if (rAxon.size() != nLayer*totalType) {
+    	    cout << "size of rAxon: " << rAxon.size() << " should be consistent with the number of neuronal types: " << nLayer << "x" << totalType << "\n"; 
+    	    return EXIT_FAILURE;
+    	} else {
+    	    // adjust the scale
+    	    for (Float &r: rAxon){
+    	        r *= dScale;
+    	    }
+    	}
+    	if (rDend.size() != nLayer*totalType) {
+    	    cout << "size of rDend: " << rDend.size() << " should be consistent with the number of neuronal types: " << nLayer << "x" << totalType << "\n"; 
+    	    return EXIT_FAILURE;
+    	} else {
+    	    // adjust the scale
+    	    for (Float &r: rDend){
+    	        r *= dScale;
+    	    }
+    	}
+	}
+    initializePreferenceFunctions(nFeature);
+    //Float speedOfThought = 1.0f; specify instead in patch.cu through patchV1.cfg
+
+    void* __restrict__ preset_chunk;
+    size_t morph_size = nLayer*totalType*4*sizeof(Float);
+    size_t matSize = (totalType*totalType + totalTypeE*totalTypeE + totalTypeI*totalTypeI)*(sizeof(Float) + sizeof(Size)) + pPerFeature*nFeature*(totalType*totalType + totalTypeE*totalTypeE + totalTypeI*totalTypeI)*sizeof(Float);
+    size_t  = networkSize.back()*sizeof(Float);
+    checkCudaErrors(cudaMalloc((void**)&preset_chunk, morph_size + matSize + ));
+    Float* rden = (Float*) preset_chunk; 
+    Float* raxn = rden + nLayer*totalType;
+	Float* dden = raxn + nLayer*totalType;
+	Float* daxn = dden + nLayer*totalType;
+    Size*  d_nTypeMat = (Size*) (daxn + nLayer*totalType);
+    Float* d_sTypeMat = (Float*) (d_nTypeMat + totalType*totalType);
+    Float* d_fTypeMat = d_sTypeMat + totalType*totalType;
+
+    Size*  d_gap_nTypeMatE = (Size*) (d_fTypeMat + pPerFeature*nFeature*totalType*totalType);
+    Float* d_gap_sTypeMatE = (Float*) (d_gap_nTypeMatE + totalTypeE*totalTypeE);
+    Float* d_gap_fTypeMatE = d_gap_sTypeMatE + totalTypeE*totalTypeE;
+
+    Size*  d_gap_nTypeMatI = (Size*) (d_gap_fTypeMatE + pPerFeature*nFeature*totalTypeE*totalTypeE);
+    Float* d_gap_sTypeMatI = (Float*) (d_gap_nTypeMatI + totalTypeI*totalTypeI);
+    Float* d_gap_fTypeMatI = d_gap_sTypeMatI + totalTypeI*totalTypeI;
+
+	Float* d_ExcRatio = d_gap_fTypeMatI + pPerFeature*nFeature*totalTypeI*totalTypeI;
+    checkCudaErrors(cudaMalloc((void**)&d_ExcRatio, networkSize*sizeof(Float)));
+
+	Float* ExcRatio = new Float[networkSize];
+	Size* nLGN_V1_Max = new Size[totalType];
+	Float* sLGN_V1_Max = new Float[totalType];
+    
+    Float* sLGN = new Float[networkSizeAcc.back()]{};
+	Size* nLGN = new Size[networkSizeAcc.back()]{};
+    read_LGN_V1_stats(LGN_V1_s_filename + conLGN_suffix, sLGN, nLGN, inputLayer, networkSizeAcc);
+
+    void* LGN_chunk;
+    size_t LGN_size = networkSizeAcc.back()*(sizeof(Size) + sizeof(Float));
+    checkCudaErrors(cudaMalloc((void**)&LGN_chunk, LGN_size));
+    Float* d_sLGN = (Float*) LGN_chunk;
+    Float* d_nLGN = (Size*) (d_sLGN + networkSize.back());
+
+    checkCudaErrors(cudaMemcpy(d_nLGN, nLGN, networkSize.back()*sizeof(Size), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMemcpy(d_sLGN, sLGN, networkSize.back()*sizeof(Float), cudaMemcpyHostToDevice));
+
+	for (PosInt i=0; i<nType; i++) {
+		presetConstExcSyn[i] = mean_nLGN*synPerConFF[i] + hInit_pack.nTypeMat[i]*synPerCon[i];
+		if (presetConstExcSyn[i] - nLGN_V1_Max[i]*synPerConFF[i] < hInit_pack.nTypeMat[i]*synPerCon[i]*min_FB_ratio) {
+			cout << "Exc won't be constant for type " << i << " with current parameter set, min_FB_ratio will be utilized, presetConstExcSyn = " << presetConstExcSyn[i] << ", max ffExcSyn = " << nLGN_V1_Max[i]*synPerConFF[i] << ", corticalExcSyn = " << hInit_pack.nTypeMat[i]*synPerCon[i] << "\n";
+		}
+	}
+    delete []nLGN_V1;
+    delete []nLGN_V1_Max;
+
+    initialize<<<nblock, neuronPerBlock>>>(
+        state,
+	    d_preType,
+		rden, raxn, dden, daxn,
+		//preF_type, preS_type, preN_type, d_LGN_V1_sSum, d_ExcRatio, d_extExcRatio, min_FB_ratio,
+		preF_type, preS_type, preN_type, d_nLGN_V1, d_ExcRatio, d_extExcRatio, d_synPerCon, d_synPerConFF, min_FB_ratio, C_InhRatio,
+		init_pack, seed, networkSize, nType, nArchtype, nFeature, CmoreN, ClessI, mean_nLGN);
+	getLastCudaError("initialize failed");
+	checkCudaErrors(cudaDeviceSynchronize());
+    printf("initialzied\n");
+    checkCudaErrors(cudaMemcpy(ExcRatio, d_ExcRatio, networkSize*sizeof(Float), cudaMemcpyDeviceToHost));
+
     // check memory availability
     size_t memorySize, d_memorySize, matSize;
 
-    size_t neighborSize = 2*nblock*sizeof(Float) + // block_x and y
-        			      (maxNeighborBlock + 1)*nblock*sizeof(Size); // neighborBlockId and nNeighborBlock
+    size_t statSize = 0;
+    for (PosInt i=0; i<nLayer; i++) {
+        statsSize += 2*nType[i]*networkSize[i]*sizeof(Size) + // preTypeConnected and *Avail
+        	        nType[i]*networkSize[i]*sizeof(Float); // preTypeStrSum
+    }
 
-    size_t statSize = 2*nType*networkSize*sizeof(Size) + // preTypeConnected and *Avail
-        	          nType*networkSize*sizeof(Float); // preTypeStrSum
+    size_t gap_statSizeE = 0;
+    for (PosInt i=0; i<nLayer; i++) {
+        gap_statSizeE += nTypeE[i]*mE[i]*sizeof(Size) + // preTypeGapped
+        	              nTypeE[i]*mE[i]*sizeof(Float); // preTypeStrGapped
+    }
 
-    size_t gap_statSize = nTypeI*mI*sizeof(Size) + // preTypeGapped
-        	              nTypeI*mI*sizeof(Float); // preTypeStrGapped
+    size_t gap_statSizeI = 0;
+    for (PosInt i=0; i<nLayer; i++) {
+        gap_statSizeI += nTypeI[i]*mI[i]*sizeof(Size) + // preTypeGapped
+        	              nTypeI[i]*mI[i]*sizeof(Float); // preTypeStrGapped
+    }
 
     size_t vecSize = 2*static_cast<size_t>(maxDistantNeighbor)*networkSize*sizeof(Float) + // con and delayVec
         		     static_cast<size_t>(maxDistantNeighbor)*networkSize*sizeof(Size) + // vecID
@@ -470,33 +919,6 @@ int main(int argc, char *argv[])
                                networkSize*sizeof(Size) + // preType
          					   networkSize*sizeof(curandStateMRG32k3a); //state
 
-
-
-	if (synPerCon.size() != nType*nType) {
-		cout << "the size of synPerCon has size of " << synPerCon.size() << " != " << nType << " x " << nType << "\n";
-		return EXIT_FAILURE;
-	} else {
-		for (PosInt i=0; i<nType; i++) {
-			cout << "synPerCon["<<i <<"]: " << synPerCon[i] << "-> ";
-			synPerCon[i] /= (1-extExcRatio[i]) + extExcRatio[i]*extSynRatio[i];
-			cout << synPerCon[i] << "\n";
-		}
-	}
-
-
-	if (synPerConFF.size() != nType && synPerConFF.size() != 1) {
-		cout << "the size of synPerConFF has size of " << synPerConFF.size() << " != " << nType << " or 1.\n";
-		return EXIT_FAILURE;
-	}
-	
-    Float *d_synPerConFF;
-    Float *d_synPerCon;
-    checkCudaErrors(cudaMalloc((void**)&d_synPerConFF, nType*sizeof(Float)));
-    checkCudaErrors(cudaMalloc((void**)&d_synPerCon, nType*nType*sizeof(Float)));
-	checkCudaErrors(cudaMemcpy(d_synPerConFF, &(synPerConFF[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_synPerCon, &(synPerCon[0]), nType*nType*sizeof(Float), cudaMemcpyHostToDevice));
-
-	Float *d_extExcRatio;
 	Size* max_N = new Size[nType];
 	Size* d_max_N;
     checkCudaErrors(cudaMalloc((void**)&d_max_N, nType*sizeof(Size)));
@@ -568,7 +990,7 @@ int main(int argc, char *argv[])
         checkCudaErrors(cudaDeviceSetLimit(cudaLimitMallocHeapSize, localHeapSize));
         d_memorySize = memorySize + deviceOnlyMemSize + disNeighborSize + gap_disNeighborSize + tmpVecSize  +
                        nFeature*networkSize*sizeof(Float) + 
-                       usingPosDim*networkSize*sizeof(double); 
+                       2*networkSize*sizeof(double); 
 
         if (half > 2) {
             free(cpu_chunk);
@@ -654,13 +1076,6 @@ int main(int argc, char *argv[])
 
 	// copy from host to device indivdual chunk
     Float* __restrict__ d_feature = gap_disNeighborP + gap_disNeighborSize/sizeof(Float);
-    double* __restrict__ d_pos = (double*) (d_feature + nFeature*networkSize);
-	// copy by the whole chunk
-    // device to host
-    Float* __restrict__ d_block_x = (Float*) (d_pos + usingPosDim*networkSize); 
-    Float* __restrict__ d_block_y = d_block_x + nblock;
-    PosInt*  __restrict__ d_neighborBlockId = (Size*) (d_block_y + nblock);
-    Size*  __restrict__ d_nNeighborBlock = d_neighborBlockId + maxNeighborBlock*nblock;
 
     Float* __restrict__ d_conMat = (Float*) (d_nNeighborBlock + nblock);
     Float* __restrict__ d_delayMat = d_conMat + static_cast<size_t>(nearNeighborBlock*neuronPerBlock)*neuronPerBlock*maxChunkSize;
@@ -687,55 +1102,10 @@ int main(int argc, char *argv[])
 
 	// check memory address consistency
 	assert(static_cast<void*>((char*)gpu_chunk + d_memorySize) == static_cast<void*>(d_preTypeStrGapped + nTypeI*mI));
-
-	/*
-    Float* LGN_V1_sSumMax = new Float[nType];
-    Float* LGN_V1_sSumMean = new Float[nType];
-    Float* LGN_V1_sSum = new Float[networkSize];
-    
-    read_LGN_sSum(LGN_V1_s_filename + conLGN_suffix, LGN_V1_sSum, LGN_V1_sSumMax, LGN_V1_sSumMean, &(typeAccCount[0]), nType, nblock, false);
-
-    Float* d_LGN_V1_sSum;
-    checkCudaErrors(cudaMalloc((void**)&d_LGN_V1_sSum, networkSize*sizeof(Float)));
-    checkCudaErrors(cudaMemcpy(d_LGN_V1_sSum, LGN_V1_sSum, networkSize*sizeof(Float), cudaMemcpyHostToDevice));
-
-	Float* presetConstExc = new Float[nType];
-	for (PosInt i=0; i<nType; i++) {
-		presetConstExc[i] = p_n_LGNeff + hInit_pack.sumType[i];
-		if (presetConstExc[i] - LGN_V1_sSumMax[i] < hInit_pack.sumType[i]*min_FB_ratio) {
-			cout << "Exc won't be constant for type " << i << " with current parameter set, min_FB_ratio will be utilized, presetConstExc = " << presetConstExc[i] << ", LGN_V1_sSumMax = " << LGN_V1_sSumMax[i] << ", sumType = " << hInit_pack.sumType[i] << "\n";
-		}
-	}
-
-    //Float* d_LGN_V1_sSumMax;
-    //Float* d_LGN_V1_sSumMean;
-    //checkCudaErrors(cudaMalloc((void**)&d_LGN_V1_sSumMax, nType*sizeof(Float)));
-    //checkCudaErrors(cudaMalloc((void**)&d_LGN_V1_sSumMean, nType*sizeof(Float)));
-    //checkCudaErrors(cudaMemcpy(d_LGN_V1_sSumMax, LGN_V1_sSumMax, nType*sizeof(Float), cudaMemcpyHostToDevice));
-    //checkCudaErrors(cudaMemcpy(d_LGN_V1_sSumMean, LGN_V1_sSumMean, nType*sizeof(Float), cudaMemcpyHostToDevice));
-    delete []LGN_V1_sSumMax;
-    delete []LGN_V1_sSumMean;
-	delete []presetConstExc;
-	*/
-	Float* presetConstExcSyn = new Float[nType];
-	Size* nLGN_V1 = new Size[networkSize];
-	Size* nLGN_V1_Max = new Size[nType];
-    
-    read_LGN_V1(LGN_V1_s_filename + conLGN_suffix, nLGN_V1, nLGN_V1_Max, &(typeAccCount[0]), nType);
-
-    Size* d_nLGN_V1;
-    checkCudaErrors(cudaMalloc((void**)&d_nLGN_V1, networkSize*sizeof(Size)));
-    checkCudaErrors(cudaMemcpy(d_nLGN_V1, nLGN_V1, networkSize*sizeof(Size), cudaMemcpyHostToDevice));
-
-	for (PosInt i=0; i<nType; i++) {
-		presetConstExcSyn[i] = mean_nLGN*synPerConFF[i] + hInit_pack.nTypeMat[i]*synPerCon[i];
-		if (presetConstExcSyn[i] - nLGN_V1_Max[i]*synPerConFF[i] < hInit_pack.nTypeMat[i]*synPerCon[i]*min_FB_ratio) {
-			cout << "Exc won't be constant for type " << i << " with current parameter set, min_FB_ratio will be utilized, presetConstExcSyn = " << presetConstExcSyn[i] << ", max ffExcSyn = " << nLGN_V1_Max[i]*synPerConFF[i] << ", corticalExcSyn = " << hInit_pack.nTypeMat[i]*synPerCon[i] << "\n";
-		}
-	}
-    delete []nLGN_V1;
-    delete []nLGN_V1_Max;
-
+	
+	Size* d_typeAcc0;
+    checkCudaErrors(cudaMalloc((void**)&d_typeAcc0, (totalType+nLayer)*sizeof(Size)));
+    checkCudaErrors(cudaMemcpy(d_typeAcc0, &(typeAcc0[0]), (totalType+nLayer)*sizeof(Size), cudaMemcpyHostToDevice));
 	
     //cudaStream_t s0, s1, s2;
     //cudaEvent_t i0, i1, i2;
@@ -746,41 +1116,10 @@ int main(int argc, char *argv[])
     //checkCudaErrors(cudaStreamCreate(&s1));
     //checkCudaErrors(cudaStreamCreate(&s2));
     checkCudaErrors(cudaMemcpy(d_feature, &featureValue[0], nFeature*networkSize*sizeof(Float), cudaMemcpyHostToDevice));
-    checkCudaErrors(cudaMemcpy(d_pos, &pos[0], usingPosDim*networkSize*sizeof(double), cudaMemcpyHostToDevice));
-	Float* ExcRatio = new Float[networkSize];
-	Float* d_ExcRatio;
-    checkCudaErrors(cudaMalloc((void**)&d_ExcRatio, networkSize*sizeof(Float)));
-
-    initialize<<<nblock, neuronPerBlock>>>(
-        state,
-	    d_preType,
-		rden, raxn, dden, daxn,
-		//preF_type, preS_type, preN_type, d_LGN_V1_sSum, d_ExcRatio, d_extExcRatio, min_FB_ratio,
-		preF_type, preS_type, preN_type, d_nLGN_V1, d_ExcRatio, d_extExcRatio, d_synPerCon, d_synPerConFF, min_FB_ratio, C_InhRatio,
-		init_pack, seed, networkSize, nType, nArchtype, nFeature, CmoreN, ClessI, mean_nLGN);
-	getLastCudaError("initialize failed");
-	checkCudaErrors(cudaDeviceSynchronize());
-    printf("initialzied\n");
-    checkCudaErrors(cudaMemcpy(ExcRatio, d_ExcRatio, networkSize*sizeof(Float), cudaMemcpyDeviceToHost));
+    checkCudaErrors(cudaMemcpy(d_pos, &pos[0], 2*networkSize*sizeof(double), cudaMemcpyHostToDevice));
 
     //Size shared_mem;
-    cal_blockPos<<<nblock, neuronPerBlock>>>(
-        d_pos, 
-		d_block_x, d_block_y, 
-		networkSize);
-	getLastCudaError("cal_blockPos failed");
-    printf("block centers calculated\n");
-	//shared_mem = sizeof(Size);
-    // blocks -> blocks, threads -> cal neighbor blocks
-	Size* d_nNearNeighborBlock;
-    checkCudaErrors(cudaMalloc((void**)&d_nNearNeighborBlock, nblock*sizeof(Size)));
 
-    get_neighbor_blockId<<<nblock, neuronPerBlock, maxNeighborBlock*(sizeof(PosInt)+sizeof(Float))>>>(
-        d_block_x, d_block_y, 
-		d_neighborBlockId, d_nNeighborBlock, d_nNearNeighborBlock, 
-		nblock, blockROI, blockROI_max, maxNeighborBlock);
-	getLastCudaError("get_neighbor_blockId failed");
-    printf("neighbor blocks acquired\n");
     
 	Size* nNearNeighborBlock = new Size[nblock];
     checkCudaErrors(cudaMemcpy(nNearNeighborBlock, d_nNearNeighborBlock, nblock*sizeof(Size), cudaMemcpyDeviceToHost));
@@ -859,14 +1198,14 @@ int main(int argc, char *argv[])
     		Size* preConn = new Size[nTypeI*nTypeI];
     		Size* preAvail = new Size[nTypeI*nTypeI];
     		Float* preStr = new Float[nTypeI*nTypeI];
-    		Size* nnTypeI = new Size[nTypeI];
+    		Size* totalTypeI = new Size[nTypeI];
     		for (PosInt i=0; i<nTypeI; i++) {
     		    for (PosInt j=0; j<nTypeI; j++) {
     		        preConn[i*nTypeI + j] = 0;
     		        preAvail[i*nTypeI + j] = 0;
     		        preStr[i*nTypeI + j] = 0.0;
     		    }
-    		    nnTypeI[i] = 0; 
+    		    totalTypeI[i] = 0; 
     		}
     		for (PosInt i=0; i<nTypeI; i++) {
     		    for (PosInt j=ib*nI; j<(ib+1)*nI; j++) {
@@ -876,7 +1215,7 @@ int main(int argc, char *argv[])
     		                preAvail[i*nTypeI + k] += preTypeAvail[(i+nTypeE)*networkSize + (j/nI+1)*nE + j];
     		                preStr[i*nTypeI + k] += preTypeStrGapped[i*mI + j];
     		                if (i == 0) {
-    		                    nnTypeI[k]++;
+    		                    totalTypeI[k]++;
     		                }
     		                break;
     		            }
@@ -886,13 +1225,13 @@ int main(int argc, char *argv[])
 
     		for (PosInt i=0; i<nTypeI; i++) {
     		    for (PosInt j=0; j<nTypeI; j++) {
-    		        preConn[i*nTypeI + j] /= nnTypeI[j];
-    		        preAvail[i*nTypeI + j] /= nnTypeI[j];
-    		        preStr[i*nTypeI + j] /= nnTypeI[j];
+    		        preConn[i*nTypeI + j] /= totalTypeI[j];
+    		        preAvail[i*nTypeI + j] /= totalTypeI[j];
+    		        preStr[i*nTypeI + j] /= totalTypeI[j];
     		    }
-    		    cout << "type " << i << " has " << nnTypeI[i] << " neurons\n";
+    		    cout << "type " << i << " has " << totalTypeI[i] << " neurons\n";
     		}
-    		delete [] nnTypeI;
+    		delete [] totalTypeI;
 
     		cout << "mean Type:    ";
     		for (PosInt i = 0; i < nTypeI; i++) {
@@ -1169,14 +1508,14 @@ int main(int argc, char *argv[])
     	Size* preConn = new Size[nTypeI*nTypeI];
     	Size* preAvail = new Size[nTypeI*nTypeI];
     	Float* preStr = new Float[nTypeI*nTypeI];
-    	Size* nnTypeI = new Size[nTypeI];
+    	Size* totalTypeI = new Size[nTypeI];
     	for (PosInt i=0; i<nTypeI; i++) {
     	    for (PosInt j=0; j<nTypeI; j++) {
     	        preConn[i*nTypeI + j] = 0;
     	        preAvail[i*nTypeI + j] = 0;
     	        preStr[i*nTypeI + j] = 0.0;
     	    }
-    	    nnTypeI[i] = 0; 
+    	    totalTypeI[i] = 0; 
     	}
     	for (PosInt i=0; i<nTypeI; i++) {
     	    for (PosInt j=ib*nI; j<(ib+1)*nI; j++) {
@@ -1186,7 +1525,7 @@ int main(int argc, char *argv[])
     	                preAvail[i*nTypeI + k] += preTypeAvail[(i+nTypeE)*networkSize + (j/nI+1)*nE + j];
     	                preStr[i*nTypeI + k] += preTypeStrGapped[i*mI + j];
     	                if (i == 0) {
-    	                    nnTypeI[k]++;
+    	                    totalTypeI[k]++;
     	                }
     	                break;
     	            }
@@ -1196,13 +1535,13 @@ int main(int argc, char *argv[])
 
     	for (PosInt i=0; i<nTypeI; i++) {
     	    for (PosInt j=0; j<nTypeI; j++) {
-    	        preConn[i*nTypeI + j] /= nnTypeI[j];
-    	        preAvail[i*nTypeI + j] /= nnTypeI[j];
-    	        preStr[i*nTypeI + j] /= nnTypeI[j];
+    	        preConn[i*nTypeI + j] /= totalTypeI[j];
+    	        preAvail[i*nTypeI + j] /= totalTypeI[j];
+    	        preStr[i*nTypeI + j] /= totalTypeI[j];
     	    }
-    	    cout << "type " << i << " has " << nnTypeI[i] << " neurons\n";
+    	    cout << "type " << i << " has " << totalTypeI[i] << " neurons\n";
     	}
-    	delete [] nnTypeI;
+    	delete [] totalTypeI;
 
     	cout << "mean Type:    ";
     	for (PosInt i = 0; i < nTypeI; i++) {
@@ -1458,10 +1797,6 @@ int main(int argc, char *argv[])
 	//checkCudaErrors(cudaStreamDestroy(s0));
     //checkCudaErrors(cudaStreamDestroy(s1));
     //checkCudaErrors(cudaStreamDestroy(s2));
-
-    fBlock_pos.write((char*)block_x, nblock*sizeof(Float));
-    fBlock_pos.write((char*)block_y, nblock*sizeof(Float));
-    fBlock_pos.close();
 
     cout << "number of neighbors (self-included): ";
     for (Size i=0; i<nblock; i++) {
@@ -1812,8 +2147,6 @@ int main(int argc, char *argv[])
 		fConnectome_cfg.write((char*) &nType, sizeof(Size));
 		fConnectome_cfg.write((char*) &nTypeI, sizeof(Size));
 		fConnectome_cfg.write((char*) (&typeAccCount[0]), nType*sizeof(Size));
-		fConnectome_cfg.write((char*) (&synPerCon[0]), nType*nType*sizeof(Float));
-		fConnectome_cfg.write((char*) (&synPerConFF[0]), nType*sizeof(Float));
 		fConnectome_cfg.write((char*) (&nTypeMat[0]), nType*nType*sizeof(Size));
 		fConnectome_cfg.write((char*) (&sTypeMat[0]), nType*nType*sizeof(Float));
 		fConnectome_cfg.write((char*) (&nInhGap[0]), nTypeI*nTypeI*sizeof(Size));
@@ -1840,9 +2173,13 @@ int main(int argc, char *argv[])
     checkCudaErrors(cudaFree(gap_preS_type));
     checkCudaErrors(cudaFree(gap_preN_type));
     checkCudaErrors(cudaFree(d_extExcRatio));
-    checkCudaErrors(cudaFree(d_synPerConFF));
-    checkCudaErrors(cudaFree(d_synPerCon));
     checkCudaErrors(cudaFree(d_neighborMat));
+
+    checkCudaErrors(cudaFree(block_chunk));
+	for (PosInt i=0; i<nLayer; i++) {
+		checkCudaErrors(cudaStreamDestroy(layerStream[i]));
+	}
+
 	free(cpu_chunk);
     return 0;
 }

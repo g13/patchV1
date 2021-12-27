@@ -731,7 +731,7 @@ int main(int argc, char *argv[]) {
     bool readFromFile, useCuda;
 	vector<Size> max_LGNeff;
 	vector<Size> maxLGNperV1pool;
-	vector<Size> nType;
+	vector<Size> nTypeEI;
 	vector<Float> p_n_LGNeff;
     Int SimpleComplex;
 	Float conThres;
@@ -776,8 +776,8 @@ int main(int argc, char *argv[]) {
 		("nRefTypeV1_RF", po::value<vector<Size>>(&nRefTypeV1_RF), "determine the number of cone/ON-OFF combinations for each V1 RF type")
 		("V1_RefTypeID", po::value<vector<Size>>(&V1_RefTypeID), "determine the ID of the available cone/ON-OFF combinations in each V1 RF type")
 		("V1_RefTypeDist", po::value<vector<Float>>(&V1_RefTypeDist), "determine the relative portion of the available cone/ON-OFF combinations in each V1 RF type")
-		("nType",po::value<vector<Size>>(&nType), "number of neuronal types per input layers")
         ("inputLayer", po::value<vector<PosInt>>(&inputLayer), "array of V1 layer IDs that recieve inputs from the LGN layers with size nInputLayer")
+		("nTypeEI", po::value<vector<Size>>(&nTypeEI), "a vector of hierarchical types differs in non-functional properties: reversal potentials, characteristic lengths of dendrite and axons, e.g. in the form of nTypeE, nTypeI for each layer (2 x nLayer). {Exc-Pyramidal, Exc-stellate; Inh-PV, Inh-SOM, Inh-LTS} then for that input layer the element would be {3, 2}")
 		("typeAccCount",po::value<vector<Size>>(&typeAccCount), "neuronal types' discrete accumulative distribution size of nType for input layers only")
 		("max_LGNeff", po::value<vector<Size>>(&max_LGNeff), "max realizable number of connections [0,n] for inputLayers")
 		("p_n_LGNeff", po::value<vector<Float>>(&p_n_LGNeff), "LGN conneciton probability [-1,0], or number of connections [0,n] for nInputLayer x nType")
@@ -980,8 +980,9 @@ int main(int argc, char *argv[]) {
     Size nInputLayer;
     Size input_ntotal = 0;
     Size totalType = 0;
+    vector<Size> nType;
     if (readFromFile) {
-        cout << "ignoring inputLayer, nType, typeAccCount, V1Type, RefType in the config file\n";
+        cout << "ignoring inputLayer, nTypeEI, typeAccCount, V1Type, RefType in the config file\n";
         fstream fV1_RFpreset(inputFolder + V1_RFpreset_filename, fstream::in | fstream::binary);
 	    if (!fV1_RFpreset) {
 	    	cout << "Cannot open or find " << V1_RFpreset_filename <<"\n";
@@ -997,13 +998,15 @@ int main(int argc, char *argv[]) {
 		    fV1_RFpreset.read(reinterpret_cast<char*>(&_inputLayer[0]), sizeof(Size)*nInputLayer);
             vector<Size> _n(nInputLayer);
 		    fV1_RFpreset.read(reinterpret_cast<char*>(&_n[0]), sizeof(Size)*nInputLayer);
-	        fV1_RFpreset.read(reinterpret_cast<char*>(&nType[0]), sizeof(Size)*nInputLayer);
+	        fV1_RFpreset.read(reinterpret_cast<char*>(&nTypeEI[0]), sizeof(Size)*2*nInputLayer);
             for (int iLayer = 0; iLayer<nInputLayer; iLayer++) {
                 if (n[inputLayer[iLayer]] != _n[iLayer]) {
                     cout << "feature size in layer " << inputLayer[iLayer] << " is " << _n[iLayer] << ", inconsistent with the size from V1_allpos.bin, " << n[inputLayer[iLayer]] << "\n";
                     return EXIT_FAILURE;
                 }
                 input_ntotal += _n[iLayer];
+
+                nType[iLayer] = nTypeEI[2*iLayer] + nTypeEI[2*iLayer+1];
                 totalType += nType[iLayer];
             }
 
@@ -1026,6 +1029,7 @@ int main(int argc, char *argv[]) {
         }
     } else {
         nInputLayer = inputLayer.size();    
+        nType.resize(nLayer);
         if (nInputLayer == 0) {
             cout << "no input layers assigned\n";
             return EXIT_FAILURE;
@@ -1037,10 +1041,19 @@ int main(int argc, char *argv[]) {
             cout << "V1_RFtypeAccDist has a incorrect size should be " << nInputLayer << "(nInputLayer) x " << nRFtype << "(nRFtype)\n";
             return EXIT_FAILURE;
         }
+        if (nTypeEI.size() != 2*nInputLayer) {
+            cout << "size of nTypeEI is inconsistent with nInputLayer("<<nInputLayer<<")\n";
+            return EXIT_FAILURE;
+        }
+
+        for (PosInt iLayer = 0; iLayer<nInputLayer; iLayer++) {
+            nType[iLayer] = nTypeEI[2*iLayer] + nTypeEI[2*iLayer+1];
+        }
 
         if (pureComplexRatio.size() == nInputLayer) {
             PosInt i=0;
             for (PosInt iLayer = 0; iLayer<nInputLayer; iLayer++) {
+
                 pureComplexRatio.insert(pureComplexRatio.begin() + i+1, nType[iLayer]-1, pureComplexRatio[i]);
                 i += nType[iLayer];
             }
@@ -1598,12 +1611,13 @@ int main(int argc, char *argv[]) {
 		return EXIT_FAILURE;
 	} else {
 		fLGN_V1_cfg.write((char*) &nInputLayer, sizeof(Size));
-		fLGN_V1_cfg.write((char*) &nType, nInputLayer*sizeof(Size));
+		fLGN_V1_cfg.write((char*) &inputLayer, nInputLayer*sizeof(Size));
+		fLGN_V1_cfg.write((char*) &nTypeEI[0], 2*nInputLayer*sizeof(Size));
 		fLGN_V1_cfg.write((char*) &typeAccCount[0], totalType*sizeof(Size));
-		fLGN_V1_cfg.write((char*) &p_n_LGNeff, totalType*sizeof(Float));
-		fLGN_V1_cfg.write((char*) &max_LGNeff, totalType*sizeof(Size));
-		fLGN_V1_cfg.write((char*) &meanPool, nInputLayer*sizeof(Float));
-		fLGN_V1_cfg.write((char*) &meanSum, nInputLayer*sizeof(Float));
+		fLGN_V1_cfg.write((char*) &p_n_LGNeff[0], totalType*sizeof(Float));
+		fLGN_V1_cfg.write((char*) &max_LGNeff[0], totalType*sizeof(Size));
+		fLGN_V1_cfg.write((char*) &meanPool[0], nInputLayer*sizeof(Float));
+		fLGN_V1_cfg.write((char*) &meanSum[0], nInputLayer*sizeof(Float));
 		fLGN_V1_cfg.close();
 	}
     return 0;

@@ -178,55 +178,62 @@ void cal_blockPos(double* __restrict__ pos,
 __global__ 
 void get_neighbor_blockId(Float* __restrict__ block_x,
                           Float* __restrict__ block_y,
+                          PosInt* __restrict__ blockAcc,
                           PosInt* __restrict__ neighborBlockId,
                           Size* __restrict__ nNeighborBlock,
                           Size* __restrict__ nNearNeighborBlock,
-						  Size nblock, Float radius, Float max_radius, Size maxNeighborBlock) 
+						  Size nblock, Float radius, Float max_radius, Size maxNeighborBlock, PosInt in, PosInt out) 
 {
     __shared__ PosInt id[warpSize];
     __shared__ Float min[warpSize];
-    __shared__ Int bid[blockSize];
-	__shared__ Float distance[blockSize];
+    __shared__ Int bid[blockDim.x];
+	__shared__ Float distance[blockDim.x];
 
 	extern __shared__ Float final_distance[];
 	PosInt* final_bid = (PosInt*) (final_distance + maxNeighborBlock);
-
-    Float bx = block_x[blockIdx.x]; // center of the target block
-    Float by = block_y[blockIdx.x];
+    PosInt center_bid = blockAcc[in] + blockIdx.x;
+    PosInt layeredBid = blockAcc[out];
     Size tid = threadIdx.y*blockDim.x + threadIdx.x;
-
     Size nPatch = (nblock + blockDim.x-1)/blockDim.x - 1;
     Size remain = nblock%blockDim.x;
 	if (remain == 0) {
 		remain = blockDim.x;
 	}
 
-    Size offset = 0;
     if (tid == 0) {
         id[0] = 0;
-        id[1] = 1; // 1 is correct, first self will be assigned
+        if (in == out) {
+            id[1] = 1; // 1 is correct, first self will be assigned
+        } else {
+            id[1] = 0;
+        }
     }
-    bid[tid] = -1;
     __syncthreads();
+    bid[tid] = -1;
+
+    Float bx = block_x[center_bid]; // center of the target block
+    Float by = block_y[center_bid];
+    Size offset = 0;
     for (Size iPatch = 0; iPatch < nPatch+1; iPatch++) {
         if (iPatch < nPatch || tid < remain) {
-            PosInt blockId = offset + threadIdx.x;
+            PosInt blockId = layeredBid + offset + threadIdx.x;
             Float x = block_x[blockId] - bx;
             Float y = block_y[blockId] - by;
             Float dis = square_root(x*x + y*y);
             if (dis < max_radius) {
                 distance[tid] = dis;
-                bid[tid] = blockId;
+                bid[tid] = offset+threadIdx.x;
             }
         }
         __syncthreads();
         if (tid == 0) { // rearrange
-			// assign self first
-			neighborBlockId[maxNeighborBlock*blockIdx.x] = blockIdx.x;
+            if (in == out) { // assign self first if same layer
+			    neighborBlockId[maxNeighborBlock*blockIdx.x] = blockIdx.x;
+            }
 			PosInt outside_id = id[0];
             PosInt current_id = id[1];
             for (PosInt i=0; i<blockDim.x; i++) {
-                if (bid[i] != -1 && bid[i] != blockIdx.x) {
+                if (bid[i] != -1 && (in != out || bid[i] != blockIdx.x)) {
 					if (distance[i] < radius) {
 						neighborBlockId[maxNeighborBlock*blockIdx.x + current_id] = bid[i];
                     	current_id++;
@@ -254,7 +261,7 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
     Size nn = id[1];
     if (tid == 0) {
         nNeighborBlock[blockIdx.x] = nb + id[1];
-        nNearNeighborBlock[blockIdx.x] = nn; 
+        nNearNeighborBlock[blockIdx.x] = nn;
 	    //printf("%u: %u blocks in total\n", blockIdx.x, nb);
     }
     Float dis;

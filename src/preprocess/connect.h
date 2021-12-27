@@ -139,20 +139,19 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
 						   Float min_FB_ratio, Float C_InhRatio, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, bool ClessI, Float p_n_LGNeff);
 
 __global__ 
-__launch_bounds__(blockSize, 1)
 void cal_blockPos(double* __restrict__ pos,
                   Float* __restrict__ block_x,
                   Float* __restrict__ block_y,
                   Size networkSize);
 
 __global__ 
-__launch_bounds__(blockSize, 1)
 void get_neighbor_blockId(Float* __restrict__ block_x,
                           Float* __restrict__ block_y,
+                          PosInt* __restrict__ blockAcc,
                           PosInt* __restrict__ neighborBlockId,
                           Size* __restrict__ nNeighborBlock,
                           Size* __restrict__ nNearNeighborBlock,
-                          Size nblock, Float blockROI, Float blockROI_max, Size maxNeighborBlock);
+						  Size nblock, Float radius, Float max_radius, Size maxNeighborBlock, PosInt in, PosInt out);
 
 __global__ 
 __launch_bounds__(blockSize, 1)

@@ -28,6 +28,7 @@
 	#define arctanb atan
     #define arccosb acos 
     #define arcsinb asin 
+    #define bessel0b cyl_bessel_i0
 
 	#define uniformb curand_uniform_double
     #define normalb curand_normal_double
@@ -54,6 +55,7 @@
 	#define arctanb atanf
     #define arccosb acosf 
     #define arcsinb asinf 
+    #define bessel0b cyl_bessel_i0f
 
 	#define uniformb curand_uniform
     #define normalb curand_normal
@@ -82,6 +84,7 @@
 	#define arctan atanf
     #define arccos acosf 
     #define arcsin asinf 
+    #define bessel0 cyl_bessel_i0f
 
 	#define uniform curand_uniform
     #define normal curand_normal
@@ -108,6 +111,7 @@
 	#define arctan atan
     #define arccos acos 
     #define arcsin asin 
+    #define bessel0 cyl_bessel_i0
 
 	#define uniform curand_uniform_double
     #define normal curand_normal_double
