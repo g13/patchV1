@@ -8,6 +8,7 @@
 #include <cmath>
 #include <fenv.h>
 #include <boost/program_options.hpp>
+#include <boost/filesystem.hpp>
 
 #include "connect.h"
 #include "../types.h"
@@ -16,7 +17,8 @@
 
 #define nFunc 2
 const Size pPerFeature = 2;
-const Float defaultFeatureValue[4]{0.5, 0.5, 0, 0};
+const Float defaultFeatureParameter[4]{0.5, 0.5, 0, 0};
+using std::vector;
 
 __device__ __host__
 Float ODpref(Float post, Float pre, Float r1, Float r2) { // ocular dominance
@@ -41,20 +43,17 @@ Float OPpref(Float post, Float pre, Float k, Float b) { // orientation preferenc
     	//Float sig = M_PI/r; // set spread here
     	//Float A = square_root(2*M_PI);
     	//p = exponential(-dp*dp/(2*sig*sig))/(A*sig);
-		Float base = boostOri[iType*2 + 0];
-		Float amplitude = 1-boostOri[iType*2 + 0];
-		Float vonMisesAmp = 1-exponential(-2*boostOri[iType*2 + 1]);
-        boost = base + amplitude * (exponential(boostOri[iType*2 + 1]*(cosine(dOri*M_PI*2)-1))-1+vonMisesAmp)/vonMisesAmp; // von Mises
-
+		Float amp = 1-exponential(-2*k);
+        p = b + (1-b) * (exponential(k*(cosine(dp*M_PI*2)-1))-1+amp)/amp; // von Mises
 	} else {
-		p = 1;
+		p = 0;
 	}
     return p; 
 }
 __device__ pFeature p_OP = OPpref;
 
 __device__
-Float pass(Float post, Float pre, Float r) {
+Float pass(Float post, Float pre, Float r, Float s) {
     return 1.0;
 }
 __device__ pFeature p_pass = pass;
@@ -72,17 +71,43 @@ void initializePreferenceFunctions(Size nFeature) {
     checkCudaErrors(cudaMemcpyToSymbol(pref, h_pref, nFunc*sizeof(pFeature), 0, cudaMemcpyHostToDevice));
 }
 
-void read_LGN_V1_stats(std::string filename, Float sLGN[], Size nLGN[], vector<PosInt> &inputLayer, vector<Size> &networkSizeAcc) {
-	std::ifstream input_file;
-	input_file.open(filename, std::fstream::in | std::fstream::binary);
-	if (!input_file) {
-		std::string errMsg{ "Cannot open or find " + filename + "\n" };
+void read_LGN_V1(std::string sFile, std::string idFile, Float nLGN_eff[], vector<PosInt> &inputLayer, vector<Size> &networkSizeAcc, vector<Float> &synOccupyRaito, vector<Size> &mL, vector<Size> &mR, Size mLayer, bool print) {
+    // typeAcc
+    vector<PosInt> typeAcc;
+    vector<PosInt> typeID;
+    assert(mL.size() == mR.size());
+    assert(synOccupyRaito.size() == mLayer);
+    PosInt id = 0; 
+    for (PosInt i=0; i < mLayer; i++) {
+        typeID.push_back(i);
+        id += mL[i];
+        typeAcc.push_back(id);
+    }
+    for (PosInt i=0; i < mLayer; i++) {
+        typeID.push_back(i);
+        id += mR[i];
+        typeAcc.push_back(id);
+    }
+    // open files
+	std::ifstream fs, fid;
+	fs.open(sFile, std::fstream::in | std::fstream::binary);
+	if (!fs) {
+		std::string errMsg{ "Cannot open or find " + sFile + "\n" };
 		throw errMsg;
 	}
+	fid.open(idFile, std::fstream::in | std::fstream::binary);
+	if (!fs) {
+		std::string errMsg{ "Cannot open or find " + idFile + "\n" };
+		throw errMsg;
+	}
+
     Size nInputV1;
     Size max_nLGN;
-    input_file.read(reinterpret_cast<char*>(&nInputV1), sizeof(Size));
-    input_file.read(reinterpret_cast<char*>(&max_nLGN), sizeof(Size));
+    fs.read(reinterpret_cast<char*>(&nInputV1), sizeof(Size));
+    Size _nInputV1;
+    fid.read(reinterpret_cast<char*>(&_nInputV1), sizeof(Size));
+    assert(_nInputV1 == nInputV1);
+    fs.read(reinterpret_cast<char*>(&max_nLGN), sizeof(Size));
     Size _n = 0;
     for (int i=0;i<inputLayer.size(); i++) {
         _n += networkSizeAcc[inputLayer[i]+1] - networkSizeAcc[inputLayer[i]];
@@ -90,18 +115,36 @@ void read_LGN_V1_stats(std::string filename, Float sLGN[], Size nLGN[], vector<P
     assert(_n == nInputV1);
     PosInt currentLayer = inputLayer[0];
     Float *sInputLGN = new Float[max_nLGN];
+    Float *idInputLGN = new Float[max_nLGN];
     Size n;
     PosInt index = networkSizeAcc[currentLayer];
     for (PosInt i=0; i<nInputV1; i++) {
-        input_file.read(reinterpret_cast<char*>(&n), sizeof(Size));
-		input_file.read(reinterpret_cast<char*>(sInputLGN), n * sizeof(Float));
-        sLGN[index] = *accumulate(sInputLGN, sInputLGN+n, 0.0);
-        nLGN[index] = n;
+        fs.read(reinterpret_cast<char*>(&n), sizeof(Size));
+        fid.read(reinterpret_cast<char*>(&_n), sizeof(Size));
+        assert(_n == n);
+		fs.read(reinterpret_cast<char*>(sInputLGN), n * sizeof(Float));
+		fid.read(reinterpret_cast<char*>(idInputLGN), n * sizeof(PosInt));
+        nLGN_eff[index] = 0;
+        for (PosInt j=0; j<n; j++) {
+            for (PosInt k=0; k<typeAcc.size(); k++) {
+                if (idInputLGN[j] < typeAcc[k]) {
+                    nLGN_eff[index] += sInputLGN[j]*synOccupyRaito[k];
+                    break;
+                }
+            }
+        }
         if (print) {
             std::cout << i << ": ";
-            for (PosInt j=0; j<listSize; j++) {
-                std::cout << array[i*maxList + j];
-                if (j == listSize-1) std::cout << "\n";
+            for (PosInt j=0; j<n; j++) {
+                PosInt type;
+                for (PosInt k=0; k<typeAcc.size(); k++) {
+                    if (idInputLGN[j] < typeAcc[k]) {
+                        type = k;
+                        break;
+                    }
+                }
+                std::cout << sInputLGN[j] << "(" << type << ")";
+                if (j == n-1) std::cout << "\n";
                 else std::cout << ", ";
             }
         }
@@ -112,10 +155,12 @@ void read_LGN_V1_stats(std::string filename, Float sLGN[], Size nLGN[], vector<P
         }
     }
     delete []sInputLGN;
-	input_file.close();
+    delete []idInputLGN;
+	fs.close();
+	fid.close();
 }
 
-void read_LGN_V1(std::string filename, Size nLGN_V1[], Size nLGN_V1_Max[], Size typeAcc[], Size nType) {
+/*void read_LGN_V1(std::string filename, Size nLGN_V1[], Size nLGN_V1_Max[], Size typeAcc[], Size nType) {
     std::ifstream input_file;
     input_file.open(filename, std::fstream::in | std::fstream::binary);
     if (!input_file) {
@@ -149,4 +194,4 @@ void read_LGN_V1(std::string filename, Size nLGN_V1[], Size nLGN_V1_Max[], Size 
     }
     delete []array;
     input_file.close();
-}
+}*/

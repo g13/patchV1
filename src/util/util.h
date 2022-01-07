@@ -125,12 +125,12 @@ void write_listOfList(std::string filename, std::vector<std::vector<T>> data, bo
 		std::string errMsg{ "Cannot open or find " + filename + "\n" };
 		throw errMsg;
 	}
-    Size nList = data.size();
+    Size nList = static_cast<Size>(data.size());
     if (!append) {
         output_file.write((char*)&nList, sizeof(Size));
     }
 	for (Size i=0; i<data.size(); i++) {
-        Size listSize = data[i].size();
+        Size listSize = static_cast<Size>(data[i].size());
         output_file.write((char*)&listSize, sizeof(Size));
 		if (listSize > 0) {
 			output_file.write((char*)&data[i][0], listSize * sizeof(T));
@@ -169,7 +169,7 @@ template <typename T>
 void write_listOfListForArray(std::string filename, std::vector<std::vector<T>> data, bool append=false) {
 	std::ofstream output_file;
     Size maxList0, nList0;
-    Size nList = data.size();
+    Size nList = static_cast<Size>(data.size());
 	if (append) {
 	    std::ifstream input_file(filename, std::fstream::in|std::fstream::binary);
         if (!input_file) {
@@ -193,7 +193,7 @@ void write_listOfListForArray(std::string filename, std::vector<std::vector<T>> 
     Size maxList = 0;
 	for (Size i=0; i<nList; i++) {
         if (data[i].size() > maxList) {
-            maxList = data[i].size();
+            maxList = static_cast<Size>(data[i].size());
         }
     }
     if (append) {
@@ -209,7 +209,7 @@ void write_listOfListForArray(std::string filename, std::vector<std::vector<T>> 
         std::cout << "maxList = " << maxList << "\n";
     }
 	for (Size i=0; i<nList; i++) {
-        Size listSize = data[i].size();
+        Size listSize = static_cast<Size>(data[i].size());
         output_file.write((char*)&listSize, sizeof(Size));
 		if (listSize > 0) {
 			output_file.write((char*)&data[i][0], listSize * sizeof(T));

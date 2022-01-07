@@ -252,7 +252,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
     // Probability envelope based on distance
     //virtual Float get_envelope(Float x, Float y, bool top_pick, Float thres = 0.5, Float sig = 1.1775) {
     virtual Float get_envelope(Float x, Float y, bool top_pick, Float thres = 0.5, Float sig = 0.6) {
-        Float v = exp(-0.5*(pow(x/sig,2)+pow(y/(sig*baRatio),2)));
+        Float v = exponential(-0.5*(power(x/sig,2)+power(y/(sig*baRatio),2)));
 		//if (top_pick) {
 		//	if (v > thres) {
 		//		v = 1.0;
@@ -264,7 +264,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
     }
     // Full cosine modulation, modulation is on cone and on-off types
     virtual Float modulate(Float x, Float y) {
-        return 0.5 + 0.5 * cos(sfreq*(x + phase)*M_PI);
+        return static_cast<Float>(0.5 + 0.5 * cos(sfreq*(x + phase)*M_PI));
 		//assert(abs(x) <= 1.0);
 		//assert(sfreq*x * M_PI + phase > 0 && sfreq*x * M_PI + phase < 2*M_PI);
         // sfreq should be given as a percentage of the width
@@ -412,7 +412,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 				probSum += prob[i];
 			}
 		}
-		Size m = list0.size();
+		Size m = static_cast<Size>(list0.size());
 
 		// pickout extra LGN cons with equal prob.
 		std::vector<bool> ipick(m, true);
@@ -459,7 +459,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 		norm_y = y;
 		norm_x.shrink_to_fit();
 		norm_y.shrink_to_fit();
-		Size nConnected = idList.size();
+		Size nConnected = static_cast<Size>(idList.size());
 		assert(n0 + n1 == nConnected);
 		if (n0 > 0 && n1 > 0) {
 			cx[0] /= n0;
@@ -531,7 +531,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 				}
 				// get a LGN cell's position as the phase, randomly chose based on the con prob from their amplitude modulation over VF distance
 				Float rand = uniform(rGen);
-				PosInt m = iPick.size();
+				PosInt m = static_cast<PosInt>(iPick.size());
 				PosInt iPhase = static_cast<PosInt>(flooring(rand*m));
 
 				phase = norm_x[iPhase] + iPick[iPhase]*iOnOff/2;
@@ -630,7 +630,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 
     virtual Size connect_opt(std::vector<Size> &idList, std::vector<Float> &strengthList, std::vector<InputType> &iType, std::vector<Int> &biPick, std::vector<Float> envelope_value, std::vector<Float> &norm_x, std::vector<Float> &norm_y, Size n, Int iOnOff, PosInt iV1, Float ori_tol, Float disLGN, Float dmax = 2) {
 		// make connections and normalized strength i.e., if prob > 1 then s = 1 else s = prob
-        ori_tol = ori_tol/180*M_PI;
+        ori_tol = static_cast<Float>(ori_tol/180*M_PI);
 
 		std::vector<Float> xon;
 		std::vector<Float> yon;
@@ -668,7 +668,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         std::vector<Float> disOnY; 
         std::vector<Float> meanOnY; 
         std::vector<Size> nExtraOn; 
-        Size non = ion.size();
+        Size non = static_cast<Size>(ion.size());
         if (pInfo) {
             std::cout << iV1 << " have " << non << " On/L-On/M-Off LGNs\n";
 		    for (PosInt i = 0; i < non; i++) {
@@ -721,14 +721,14 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                         disOnY.push_back(abs(yon[i] - yon[j]));
                         nExtraOn.push_back(0);
                         if (pInfo) {
-                            printf(" for component %i\n", onComponent.size()-1);
+                            printf(" for component %u\n", onComponent.size()-1);
                         }
                     }
                 }
             }
         }
         
-        Size m = onComponent.size();
+        Size m = static_cast<Size>(onComponent.size());
         if (pInfo) {
             std::cout << "  found " << m << " on components\n";
         }
@@ -738,7 +738,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         Float minPhaseVar = 1;
         PosInt ionC;
         for (PosInt i=0; i<m; i++) {
-            Size nC = onComponent[i].size();
+            Size nC = static_cast<Size>(onComponent[i].size());
             phaseOn[i] /= nC;
             meanOnY[i] /= nC;
             disOnY[i] /= nC-1 + nExtraOn[i];
@@ -763,7 +763,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         std::vector<Float> meanOffY; 
         std::vector<Float> disOffY; 
         std::vector<Size> nExtraOff; 
-        Size noff = ioff.size();
+        Size noff = static_cast<Size>(ioff.size());
         if (pInfo) {
             std::cout << iV1 << " have " << noff << " Off/L-Off/M-On LGNs\n";
 		    for (PosInt i = 0; i < noff; i++) {
@@ -816,14 +816,14 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                         disOffY.push_back(abs(yoff[i] - yoff[j]));
                         nExtraOff.push_back(0);
                         if (pInfo) {
-                            printf(" for component %i\n", offComponent.size()-1);
+                            printf(" for component %u\n", offComponent.size()-1);
                         }
                     }
                 }
             }
         }
         
-        m = offComponent.size();
+        m = static_cast<Size>(offComponent.size());
         if (pInfo) {
             std::cout << "  found " << m << " off components\n";
         }
@@ -833,7 +833,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         minPhaseVar = 1;
         PosInt ioffC;
         for (PosInt i=0; i<m; i++) {
-            Size nC = offComponent[i].size();
+            Size nC = static_cast<Size>(offComponent[i].size());
             phaseOff[i] /= nC;
             meanOffY[i] /= nC;
             disOffY[i] /= nC-1 + nExtraOff[i];

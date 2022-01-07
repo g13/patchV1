@@ -45,7 +45,7 @@ const int max_ngTypeFF = MAX_NGTYPE_FF;
 const int max_ngTypeE = MAX_NGTYPE_E;
 const int max_ngTypeI = MAX_NGTYPE_I;
 const int max_ngType = MAX_NGTYPE;
-const Float eps = EPS;
-const Float sqrt2 = SQRT2;
+const Float eps = static_cast<Float>(EPS);
+const Float sqrt2 = static_cast<Float>(SQRT2);
 
 #endif

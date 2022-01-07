@@ -1611,7 +1611,10 @@ int main(int argc, char *argv[]) {
 		return EXIT_FAILURE;
 	} else {
 		fLGN_V1_cfg.write((char*) &nInputLayer, sizeof(Size));
+		fLGN_V1_cfg.write((char*) &mLayer, sizeof(Size));
 		fLGN_V1_cfg.write((char*) &inputLayer, nInputLayer*sizeof(Size));
+		fLGN_V1_cfg.write((char*) &mL[0], mLayer*sizeof(Size));
+		fLGN_V1_cfg.write((char*) &mR[0], mLayer*sizeof(Size));
 		fLGN_V1_cfg.write((char*) &nTypeEI[0], 2*nInputLayer*sizeof(Size));
 		fLGN_V1_cfg.write((char*) &typeAccCount[0], totalType*sizeof(Size));
 		fLGN_V1_cfg.write((char*) &p_n_LGNeff[0], totalType*sizeof(Float));
