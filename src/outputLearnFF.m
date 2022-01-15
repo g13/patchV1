@@ -1,8 +1,12 @@
 % connection strength heatmaps % better to choose from testLearnFF 
-function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, LGN_switch, mix, st, examSingle)
+function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, LGN_switch, mix, st, examSingle, use_local_max)
 	if nargin < 10
 		disp('no default argument available');
 		return
+	else
+		if nargin < 11
+			use_local_max = 1;
+		end
 	end
 
 	fig_fdr = [fig_fdr, '/'];
@@ -27,7 +31,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	nbins = 20; % bins for histogram
     nit0 = 20; % number of snapshot for the spatial figure and histogram in the temporal figure
 	ns = 10; % number for V1 neurons to be sampled.
-	V1_pick = [203,752,365,360,715,467,743]; % specify the IDs of V1 neurons to be sampled. If set, ns will be ignored.
+	%V1_pick = [203,752,365,360,715,467,743]; % specify the IDs of V1 neurons to be sampled. If set, ns will be ignored.
 	%%%%%%%%%%%%  
 
 	f_sLGN = [data_fdr, 'sLGN', osuffix, '.bin']
@@ -102,7 +106,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	fclose(sid);
 
 	if ~exist('V1_pick', 'var') 
-		V1_pick = randi(768,[ns,1]);
+		V1_pick = randi(nV1,[ns,1]);
 		%V1_pick = randi(nV1,[ns,1]);
 	else
 		ns = length(V1_pick);
@@ -304,7 +308,11 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	    	            subplot(nrow*ntype,nit0+1,iplot)
 	    	            stmp0 = sLGN(itype:2:(nLGN_1D*2),:,i);
 						local_max = max(abs(stmp0(:)));
-	    	            stmp = stmp0./gmax;
+						if use_local_max == 1
+							stmp = stmp0./local_max;
+						else
+							stmp = stmp0./gmax;
+						end
 	    	            imagesc([1 nLGN_1D], [1,nLGN_1D],stmp', clims);
 	    	        	daspect([1,1,1]);
 	    	            set(gca,'YDir','reverse')
