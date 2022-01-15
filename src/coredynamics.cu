@@ -2663,8 +2663,8 @@ void recal_G_mat_nd_fast( // no distance involved for close-range connections, i
         }
         if (npreI > 0) {// inh neighbors in the block fired
             if (threadIdx.x < npreI) {
-			    PosInt id = block_ngType*bid + nE*ngTypeE + threadIdx.x;
-                shared_ipre[threadIdx.x] = ipre[bid*blockDim.x + threadIdx.x];
+			    PosInt id = block_ngType*bid + npreE*ngTypeE + threadIdx.x;
+                shared_ipre[threadIdx.x] = ipre[bid*blockDim.x + npreE + threadIdx.x];
                 //#pragma unroll (max_ngTypeI)
                 for (PosInt ig=0; ig<ngTypeI; ig++) {
                     og[ig*npreI + threadIdx.x] = output_g[ig*nI + id];
@@ -2674,7 +2674,7 @@ void recal_G_mat_nd_fast( // no distance involved for close-range connections, i
             __syncthreads(); // sync dynamic shared memory save
             //#pragma unroll
             for (PosInt i=0; i<npreI; i++) {
-                PosIntL mid = static_cast<PosIntL>((local_bid*blockDim.x + nE + shared_ipre[i])*blockDim.x + threadIdx.x);
+                PosIntL mid = static_cast<PosIntL>((local_bid*blockDim.x + shared_ipre[i])*blockDim.x + threadIdx.x);
                 Float strength = static_cast<Float>(conMat[mid]);
                 if (strength > 0) {
 		    	    PosInt jtype;	
