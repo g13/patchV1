@@ -412,8 +412,10 @@ vector<vector<Size>> retinotopic_vf_pool(
         cudaDeviceSynchronize();
 		nblock = (n-nL + blockSize-1) / blockSize;
         cout <<  "<<<" << nblock << ", " << blockSize << ">>>\n";
-        vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_theta, d_poolList, d_nPool, nL, n-nL, mL, m-mL, seed, LGN_V1_RFratio, maxLGNperV1pool);
-        getLastCudaError("vf_pool for the right eye failed");
+        if (nblock > 0 ) {
+            vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_theta, d_poolList, d_nPool, nL, n-nL, mL, m-mL, seed, LGN_V1_RFratio, maxLGNperV1pool);
+            getLastCudaError("vf_pool for the right eye failed");
+        }
 		vector<vector<PosInt>> poolListLR;
         size_t largeSize = static_cast<BigSize>(n)*maxLGNperV1pool;
         PosInt* poolListArray = new Size[largeSize];
