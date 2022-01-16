@@ -1,14 +1,17 @@
 % essential input files
 % suffix: theme string $lgn in lFF.slurm
 % seed: for randomize LGN connecction
-% stdratio: initial connections weights to be gaussian distributed if nonzero
+% std_ecc: initial connections weights to be gaussian distributed if nonzero
 % suffix0: theme string %lgn0 in lFF.slurm
 % stage: retinal wave stages, takes 2 or 3
-function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr, squareOrCircle, sInput, relay, smallRange)
+function inputLearnFF(suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle, sInput, relay, smallRange)
 
 	fdr = [fdr,'/'] %inputFolder in cfg
 
-	if stdratio > 0
+	con_std = 0
+	u0 = 0.5; % uniform range
+	u1 = 1.5;
+	if std_ecc > 0
 		normed = true
 	else
 		normed = false
@@ -31,13 +34,13 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr, squareOrCircl
 	if stage == 3
 		if relay
 			%pCon = 0.8 % initial sparsity
-			pCon = 0.92 % initial sparsity
-			nLGN_1D = 14 % sqrt of the total number of On/Off LGN cells
+			pCon = 0.8 % initial sparsity
+			nLGN_1D = 16 % sqrt of the total number of On/Off LGN cells
 			max_ecc = 10 % radius of the visual field spanned by all the LGN
 			radiusRatio = 0.5
 		else
 			pCon = 0.8
-			nLGN_1D = 7
+			nLGN_1D = 8
 			max_ecc = 5
 			radiusRatio = 1.0
 		end
@@ -70,7 +73,6 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr, squareOrCircl
 	initialConnectionStrength = 1.0; % also can be changed by sRatioLGN in .cfg file
 	eiStrength = 0.000;
 	ieStrength = 0.000;
-	iCS_std = 0.0; % zero std gives single-valued connection strength when normed is false
 	nblock = 32;
     blockSize = 32;
 	mE = 24;
@@ -259,7 +261,7 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr, squareOrCircl
 	    fwrite(fid, nLGNperV1, 'uint');
 		if doubleOnOff 
 			if i == 1 || ~same
-				ids_on = randq(nLGN_1D*nLGN_1D, nLGNperV1/2, LGN_vpos0, max_ecc*radiusRatio, max_ecc*stdratio, squareOrCircle); % index start from 0
+				ids_on = randq(nLGN_1D*nLGN_1D, nLGNperV1/2, LGN_vpos0, max_ecc*radiusRatio, con_std, squareOrCircle); % index start from 0
 			end
 			idi	= zeros(nLGNperV1,1);
 			current_id = 1;
@@ -269,7 +271,7 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr, squareOrCircl
 				current_id = current_id+length(idj);
 			end
 			if i == 1 || ~same
-				ids_off = randq(nLGN_1D*nLGN_1D, nLGNperV1/2, LGN_vpos0, max_ecc*radiusRatio, max_ecc*stdratio, squareOrCircle); % index start from 0
+				ids_off = randq(nLGN_1D*nLGN_1D, nLGNperV1/2, LGN_vpos0, max_ecc*radiusRatio, con_std, squareOrCircle); % index start from 0
 			end
 			for j = 1:nLGN_1D
 				idj = ids_off(ids_off >= nLGN_1D*(j-1) & ids_off < nLGN_1D*j);
@@ -423,11 +425,12 @@ function inputLearnFF(suffix, seed, stdratio, suffix0, stage, fdr, squareOrCircl
 		if normed
 		    sLGN = zeros(nLGNperV1, nV1);
 		    for i = 1:nV1
-		        ss = exp(-(LGN_ecc(id(:,i)+1) ./ (max_ecc*stdratio)).^2);
+		        ss = exp(-(LGN_ecc(id(:,i)+1) ./ (std_ecc)).^2);
 		        sLGN(:,i) = ss./sum(ss)*initialConnectionStrength*nLGNperV1;
 		    end
 		else
-		    sLGN = zeros(nLGNperV1,nV1)*iCS_std+initialConnectionStrength;
+		    sLGN = (u0 + rand(nLGNperV1,nV1)*(u1-u0))*initialConnectionStrength;
+		    %sLGN = zeros(nLGNperV1,nV1)+initialConnectionStrength;
 		end
 	end
 	fid = fopen(fLGN_V1_s, 'w'); % format follows function read_LGN in patch.h
