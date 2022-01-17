@@ -528,22 +528,23 @@ int main(int argc, char *argv[])
     checkCudaErrors(cudaMemcpy(gap_preN_type, &(nInhGap[0]), nTypeI*nTypeI*sizeof(Size), cudaMemcpyHostToDevice));
 
 	void *cpu_chunk;
-    Int half = 1;
     Size maxChunkSize = nblock;
     size_t disNeighborSize;
     size_t gap_disNeighborSize;
     size_t tmpVecSize;
     size_t localHeapSize;
 
+	Size count = 0;
 	do { 
         //half *= 2;
-        if (half > 1) {
-            Size half0 = maxChunkSize/half;
+        if (count> 0) {
+            Size half0 = maxChunkSize/2;
             Size half1 = maxChunkSize - half0;
             maxChunkSize = (half0 > half1)? half0: half1;
         }
         matSize = static_cast<size_t>(2*nearNeighborBlock*neuronPerBlock)*neuronPerBlock*maxChunkSize*sizeof(Float); // con and delayMat
 
+        cout << matSize/1024/1024 << "Mb mat size\n";
         memorySize = matSize + vecSize + gap_vecSize + statSize + gap_statSize + neighborSize;
 
         disNeighborSize = sizeof(Float)*static_cast<size_t>((maxNeighborBlock-nearNeighborBlock)*neuronPerBlock)*maxChunkSize*neuronPerBlock; 
@@ -555,6 +556,9 @@ int main(int argc, char *argv[])
 		} else {
 			tmpVecSize *= gap_sum_max_N;
 		}
+        cout << disNeighborSize/1024/1024 << "Mb dis size\n";
+        cout << gap_disNeighborSize/1024/1024 << "Mb gap_dis size\n";
+        cout << tmpVecSize/1024/1024 << "Mb vec size\n";
 
 		// share: qid, ratio, typeConnected, postSynLoc, fV
 		// nType: sumP, availType, sumType, sumStrType, pN, pS, pF, __vecID, nid
@@ -566,16 +570,20 @@ int main(int argc, char *argv[])
                        nFeature*networkSize*sizeof(Float) + 
                        usingPosDim*networkSize*sizeof(double); 
 
-        if (half > 2) {
+        if (count > 0) {
             free(cpu_chunk);
         }
 	    cpu_chunk = malloc(memorySize);
-        half *= 2;
         cout << localHeapSize/1024/1024 << "Mb heap size\n";
         cout << memorySize/1024/1024 << "Mb cpu mem\n";
         cout << d_memorySize/1024/1024 << "Mb gpu mem request\n";
         cout << deviceProps.totalGlobalMem/1024/1024 << "Mb gpu mem in total\n";
-    } while ((cpu_chunk == NULL || d_memorySize + localHeapSize > deviceProps.totalGlobalMem*0.8) && nblock > 1);
+		count++;
+    } while ((cpu_chunk == NULL || d_memorySize + localHeapSize > deviceProps.totalGlobalMem*0.8) && nblock > 1 && count < 10);
+	if (cpu_chunk == NULL || d_memorySize + localHeapSize > deviceProps.totalGlobalMem*0.8) {
+		cout << " failed ";
+		return EXIT_FAILURE;
+	}
     
     Size nChunk = (nblock + maxChunkSize-1) /maxChunkSize - 1;
     cout << "nChunk = " << nChunk+1 << ", with maxChunkSize: " << maxChunkSize << " in total " << nblock << " blocks.\n";
