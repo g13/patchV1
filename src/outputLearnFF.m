@@ -69,8 +69,12 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	fclose(fid);
 
 	fid = fopen(V1_frFn, 'r');
-	fr = fread(fid, nV1, 'double');
-	fclose(fid);
+	if fid == -1
+		fr = zeros(nV1,1);
+	else
+		fr = fread(fid, nV1, 'double');
+		fclose(fid);
+	end
 	
 
 	if nt_ > nt || nt_ == 0
