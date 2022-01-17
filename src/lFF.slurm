@@ -7,33 +7,36 @@ res_fdr=${fdr0}/resource # inputFolder in cfg stimulus, V1-static, LGN-static an
 data_fdr=${fdr0} # outputFolder in cfg
 
 patch=patch_fast
-waveStage=3 # set stage number
+waveStage=2 # set stage number
+std_ecc=0
 
 if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 	fdr=wave_concat/wave_II # folder will be made to store figures and configuratoin files
-	op=32_ii # theme string to be added to filenames of data and figures
+	op=wave_II # theme string to be added to filenames of data and figures
 	op_cfg=wave_II.cfg # the simulation config file to be used
 	new_setup=True
 	lgn=lFF_ii # the theme string to be used for LGN_V1 connections
 	res=lFF # the theme string to be used for V1, LGN positions etc.
+	
+	smallRange=false
 fi
 
 relay=true
 if [[ "${waveStage}" = "3" ]] ;then
 	fdr=wave_concat/wave_III
-	op=wave_III+
+	op=wave_III_u1
 	op_cfg=wave_III.cfg
 	smallRange=true
 	new_setup=True
 	if [[ "${relay}" = false ]]; then
-		lgn=lFF_III
-		res=lFF_III
+		lgn=lFF_III_u
+		res=lFF_III_u
 	else
-		#fAsInput=${fdr0}/sLGN_32_ii.bin
-		fAsInput=
+		fAsInput=${fdr0}/sLGN_wave_II.bin
+		#fAsInput=
 		if [ -z "${fAsInput}" ]; 
 		then
-			lgn=lFF_concat
+			lgn=lFF_concat0
 		else
 			lgn=lFF_relay_concat
 		fi
@@ -57,7 +60,6 @@ examSingle=true # output the spatiotemporal figure, tLGN_V1_single if true
 squareOrCircle=false # initial LGN-recruitment shape 
 use_local_max=0 # output the spatiotemporal figure, sLGN_V1 with strength normalized for each frame instead over all frames if set 1
 collectMeanDataOnly=False # not ploting samples of V1 response variable traces
-stdratio=0.0
 
 # NOT RELATED, leave alone
 usePrefData=False
@@ -122,7 +124,7 @@ sbatch <<EOT
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=64GB
-#SBATCH --time=03:00:00
+#SBATCH --time=01:00:00
 #SBATCH -o log/pLearn_%J.out
 #SBATCH --mail-user=wd554@nyu.edu
 #SBATCH --mail-type=END
@@ -142,8 +144,8 @@ if [ "${plotOnly}" = False ];
 then
 	if [ "${new_setup}" = True ];
 	then
-		echo matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, ${stdratio}, '${res}', ${waveStage}, '${res_fdr}', ${squareOrCircle}, '${fAsInput}', ${relay}, ${smallRange});exit;"
-		matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, ${stdratio}, '${res}', ${waveStage}, '${res_fdr}', ${squareOrCircle}, '${fAsInput}', ${relay}, ${smallRange});exit;"
+		echo matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, ${std_ecc}, '${res}', ${waveStage}, '${res_fdr}', ${squareOrCircle}, '${fAsInput}', ${relay}, ${smallRange});exit;"
+		matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, ${std_ecc}, '${res}', ${waveStage}, '${res_fdr}', ${squareOrCircle}, '${fAsInput}', ${relay}, ${smallRange});exit;"
 	fi
 	date
 	${patch} -c ${fig_fdr}/${op}.cfg
