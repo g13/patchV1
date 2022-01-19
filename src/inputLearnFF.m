@@ -4,17 +4,24 @@
 % std_ecc: initial connections weights to be gaussian distributed if nonzero
 % suffix0: theme string %lgn0 in lFF.slurm
 % stage: retinal wave stages, takes 2 or 3
-function inputLearnFF(suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle, sInput, relay, smallRange)
+function inputLearnFF(suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle, sInput, relay, smallRange, binary_thres)
 
 	fdr = [fdr,'/'] %inputFolder in cfg
 
 	con_std = 0
-	u0 = 0.5; % uniform range
-	u1 = 1.5;
+
 	if std_ecc > 0
 		normed = true
 	else
 		normed = false
+	end
+	
+	if stage == 2
+		u0 = 1.0; % stage 2 always single_value
+		u1 = 1.0;
+	else
+		u0 = 0.5; % uniform range
+		u1 = 1.5;
 	end
 
 	%%%% HERE %%%%%%%%
@@ -27,7 +34,7 @@ function inputLearnFF(suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle
 	same = false; % set true if all the V1 neurons have the same LGN connections
 	if stage == 2 || stage == 5
 		pCon = 0.9 % initial sparsity
-		nLGN_1D = 14 % sqrt of the total number of On/Off LGN cells
+		nLGN_1D = 16 % sqrt of the total number of On/Off LGN cells
 		max_ecc = 10 % radius of the visual field spanned by all the LGN
 		radiusRatio = 1.0
 	end
@@ -408,7 +415,10 @@ function inputLearnFF(suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle
 	
 	if ~isempty(sInput)
 		fid = fopen(sInput, 'r');
-        nt_ = fread(fid, 1, 'uint');
+        nt = fread(fid, 1, 'uint');
+		sampleInterval = fread(fid, 1, 'uint');
+		nst = floor(nt/sampleInterval);
+		dt_ = fread(fid, 1, 'float')
         nV1_ = fread(fid, 1, 'uint');
         assert(nV1_ == nV1);
         max_LGNperV1 = fread(fid, 1, 'uint');
@@ -418,19 +428,26 @@ function inputLearnFF(suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle
 			assert(nLGNperV1 == max_LGNperV1);	
 		end
         fseek(fid, 3*4, 0); % skip till time
-        fseek(fid, max_LGNperV1*nV1*int64(nt_-1)*4, 0); % skip till time
+        fseek(fid, max_LGNperV1*nV1*int64(nst-1)*4, 0); % skip till time
         sLGN = fread(fid, [nV1_, max_LGNperV1], 'float')'; % transposed
         fclose(fid);
 	else
 		if normed
 		    sLGN = zeros(nLGNperV1, nV1);
 		    for i = 1:nV1
-		        ss = exp(-(LGN_ecc(id(:,i)+1) ./ (std_ecc)).^2);
-		        sLGN(:,i) = ss./sum(ss)*initialConnectionStrength*nLGNperV1;
+		        sLGN(:,i) = exp(-(LGN_ecc(id(:,i)+1) ./ (std_ecc)).^2);
 		    end
 		else
-		    sLGN = (u0 + rand(nLGNperV1,nV1)*(u1-u0))*initialConnectionStrength;
-		    %sLGN = zeros(nLGNperV1,nV1)+initialConnectionStrength;
+		    sLGN = (u0 + rand(nLGNperV1,nV1)*(u1-u0))
+		end
+		for i = 1:nV1
+			ss = sLGN(:,i);
+			if binary_thres > 0
+				pick = ss./max(ss) > binrary_thres
+				ss(pick) = u1
+				ss(~pick) = u0
+			end	
+			sLGN(:,i) = ss./sum(ss)*initialConnectionStrength*nLGNperV1;
 		end
 	end
 	fid = fopen(fLGN_V1_s, 'w'); % format follows function read_LGN in patch.h

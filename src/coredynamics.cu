@@ -6,6 +6,8 @@ __launch_bounds__(1024,2)
 __global__ 
 void rand_spInit(Float* __restrict__ tBack,
                  Float* __restrict__ spikeTrain,
+				 PosInt* __restrict__ ipre, // [depth, nblock, nTypeHierarchy]
+        		 Size* __restrict__ npre, // [depth, nblock, nTypeHierarchy]
                  Float* __restrict__ output_g,
                  Float* __restrict__ output_h,
                  Float* __restrict__ v,
@@ -22,106 +24,125 @@ void rand_spInit(Float* __restrict__ tBack,
                  curandStateMRG32k3a* __restrict__ rNoisy,
                  PosIntL seed, Size networkSize, Size nType, Size SCsplit, Size trainDepth, Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, Size nE, Size nI, int noDelay, bool iModel) 
 {
-    PosIntL id = blockIdx.x * blockDim.x + threadIdx.x;
-    if (id < networkSize) {
-        curandStateMRG32k3a localState = rGenCond[id];
-        curandStateMRG32k3a state = rNoisy[id];
-        Size iLGN = nLGNperV1[id];
-        Size type;
-        for (PosInt i=0; i<nType; i++) {
-            if (id%blockDim.x < typeAcc[i]) {
-                type = i;
-                break;
-            }
-        }
-
-        curand_init(seed + id, 0, 0, &localState);
-        curand_init(seed + networkSize + id, 0, 0, &state);
-        Float rand = uniform(&localState);
-        Float chance;
-        Float ref = 0.0;
-        if (iLGN > SCsplit) {
-            chance = sp0[type*2 + 0]; 
-        } else {
-            chance = sp0[type*2 + 1]; 
-        }
-
-        Float tRef = tRef_type[type];
-		Float sInfo = v[id];
-		//PosInt oid;
-        if (chance > 0) {
-            if (rand < chance) {
-                Float tsp = uniform(&localState);
-                sInfo = 1.0 + tsp;
-				Float tb = tRef - (1-tsp)*dt;
-				if (tb > 0) {
-                	tBack[id] = tb;
-				}
-				Float v0 = vR[type];
-                v[id] = v0;
-				if (iModel == 1) {
-					Float A = a[type]*(v0 - vL) * tau_w[type];
-					Float w0 = w[id] + b[type];
-					w[id] = (w0 - A) * exponential(-dt*(1-tsp)/tau_w[type]) + A;
-				}
-                ref = (1-tsp)*dt + tRef - dt;
-
-				if (noDelay) {
-					Size block_ngType = (ngTypeE*nE + ngTypeI*nI)*blockIdx.x;
-    			    ConductanceShape *cond;
-					PosInt i = block_ngType;
-    			    Size ngType; 
-    			    if (threadIdx.x < nE) {
-    			        ngType = ngTypeE;
-    			    	cond = &condE;
-						i += threadIdx.x*ngTypeE;
-    			    } else {
-    			        ngType = ngTypeI;
-    			        cond = &condI;
-						i += nE*ngTypeE + (threadIdx.x-nE)*ngTypeI;
-    			    }
-					//oid = i;
-    			    #pragma unroll (max_ngType)
-    			    for (PosInt ig=0; ig<ngType; ig++) {
-    			    	Float local_g = 0;
-    			    	Float local_h = 0;
-    			    	cond->compute_single_input_conductance(local_g, local_h, 1, dt*(1-tsp), ig);
-						output_g[i + ig] = local_g;
-						output_h[i + ig] = local_h;
-						assert(output_g[i + ig] >= 0);
-						assert(output_h[i + ig] >= 0);
-    			    }
-				}
-            }
-        }
-        spikeTrain[0*networkSize + id] = sInfo;
-        rNoisy[id] = state;
-        for (PosInt i=trainDepth-1; i>0; i--) {
-            if (ref < dt) {
-                if (ref < 0) ref = 0;
-                if (uniform(&localState) < chance*(dt-ref)/dt) {
-                    Float tsp = uniform(&localState)*(dt-ref)/dt;
-                    spikeTrain[i*networkSize + id] = 1.0  + tsp;
-                    ref = tRef + (1-tsp)*dt;
-                    assert(tsp >= 0);
-                } else {
-            		spikeTrain[i*networkSize + id] = v[id];
-				}
-            } else {
-            	spikeTrain[i*networkSize + id] = vR[type];
-			}
-            ref -= dt;
-        }
-        rGenCond[id] = localState;
-		assert(v[id] < 0); 
-		//if (blockIdx.x == 0 && threadIdx.x == 960 ) {
-		//	if (noDelay) {
-		//		printf("#%u: v0 = %.3f, w0  = %.3f, sInfo = %.3f, og = %.3f, oh = %.3f\n", id, v[id], w[id], spikeTrain[id], output_g[oid], output_h[oid]);
-		//	} else {
-		//		printf("#%u: v0 = %.3f, w0  = %.3f, sInfo = %.3f\n", id, v[id], w[id], spikeTrain[id]);
-		//	}
-		//}
+    __shared__ PosInt counter[2];
+    if (threadIdx.x < 2) {
+        counter[threadIdx.x] = 0;
     }
+    __syncthreads();
+    PosIntL id = blockIdx.x * blockDim.x + threadIdx.x;
+    curandStateMRG32k3a localState = rGenCond[id];
+    curandStateMRG32k3a state = rNoisy[id];
+    Size iLGN = nLGNperV1[id];
+    Size type;
+    for (PosInt i=0; i<nType; i++) {
+        if (id%blockDim.x < typeAcc[i]) {
+            type = i;
+            break;
+        }
+    }
+
+    curand_init(seed + id, 0, 0, &localState);
+    curand_init(seed + networkSize + id, 0, 0, &state);
+    Float rand = uniform(&localState);
+    Float chance;
+    Float ref = 0.0;
+    if (iLGN > SCsplit) {
+        chance = sp0[type*2 + 0]; 
+    } else {
+        chance = sp0[type*2 + 1]; 
+    }
+
+    Float tRef = tRef_type[type];
+	Float sInfo = v[id];
+	PosInt sid;
+	//PosInt oid;
+    if (chance > 0) {
+        if (rand < chance) {
+            Float tsp = uniform(&localState);
+            sInfo = 1.0 + tsp;
+			Float tb = tRef - (1-tsp)*dt;
+			if (tb > 0) {
+            	tBack[id] = tb;
+			}
+			Float v0 = vR[type];
+            v[id] = v0;
+			if (iModel == 1) {
+				Float A = a[type]*(v0 - vL) * tau_w[type];
+				Float w0 = w[id] + b[type];
+				w[id] = (w0 - A) * exponential(-dt*(1-tsp)/tau_w[type]) + A;
+			}
+            ref = (1-tsp)*dt + tRef - dt;
+			if (threadIdx.x < nE) {
+				sid = atomicAdd_block(&counter[0],1);
+			} else {
+				sid = atomicAdd_block(&counter[1],1);
+			}
+		}
+	}
+    __syncthreads();
+	if (noDelay) {
+		if (sInfo >= 1) {
+			Float tsp = (sInfo-1)*dt;
+			Size block_ngType = (ngTypeE*nE + ngTypeI*nI)*blockIdx.x;
+			PosInt i = block_ngType;
+			Size npreE = counter[0];
+    		if (threadIdx.x < nE) {
+				i += sid;
+    	    	#pragma unroll (max_ngTypeE)
+    	    	for (PosInt ig=0; ig<ngTypeE; ig++) {
+    	    		Float local_g = 0;
+    	    		Float local_h = 0;
+    	    		condE.compute_single_input_conductance(local_g, local_h, 1, dt-tsp, ig);
+					output_g[ig*npreE + i] = local_g;
+					output_h[ig*npreE + i] = local_h;
+    	    	}
+    		} else {
+				Size npreI = counter[1];
+				i += npreE*ngTypeE + sid;
+    	    	#pragma unroll (max_ngTypeI)
+    	    	for (PosInt ig=0; ig<ngTypeI; ig++) {
+    	    		Float local_g = 0;
+    	    		Float local_h = 0;
+    	    		condI.compute_single_input_conductance(local_g, local_h, 1, dt-tsp, ig);
+					output_g[ig*npreI + i] = local_g;
+					output_h[ig*npreI + i] = local_h;
+    	    	}
+    	    	sid += npreE; // go after exc
+    		}
+			ipre[blockIdx.x*blockDim.x + sid] = threadIdx.x;
+		} else {
+			if (threadIdx.x < 2) {
+    		    npre[threadIdx.x*gridDim.x + blockIdx.x] = counter[threadIdx.x];
+    		}
+		}
+	}
+	spikeTrain[0*networkSize + id] = sInfo;
+    rNoisy[id] = state;
+    for (PosInt i=trainDepth-1; i>0; i--) {
+        if (ref < dt) {
+            if (ref < 0) ref = 0;
+            if (uniform(&localState) < chance*(dt-ref)/dt) {
+                Float tsp = uniform(&localState)*(dt-ref)/dt;
+                spikeTrain[i*networkSize + id] = 1.0  + tsp;
+                ref = tRef + (1-tsp)*dt;
+                assert(tsp >= 0);
+            } else {
+        		spikeTrain[i*networkSize + id] = v[id];
+			}
+        } else {
+        	spikeTrain[i*networkSize + id] = vR[type];
+		}
+        ref -= dt;
+    }
+    rGenCond[id] = localState;
+	assert(v[id] < 0); 
+	//if (blockIdx.x == 0 && threadIdx.x == 960 ) {
+	//	if (noDelay) {
+	//		printf("#%u: v0 = %.3f, w0  = %.3f, sInfo = %.3f, og = %.3f, oh = %.3f\n", id, v[id], w[id], spikeTrain[id], output_g[oid], output_h[oid]);
+	//	} else {
+	//		printf("#%u: v0 = %.3f, w0  = %.3f, sInfo = %.3f\n", id, v[id], w[id], spikeTrain[id]);
+	//	}
+	//}
 }
 
 __launch_bounds__(1024,1)
@@ -2627,8 +2648,8 @@ void recal_G_mat_nd_fast( // no distance involved for close-range connections, i
                 shared_ipre[threadIdx.x] = ipre[bid*blockDim.x + threadIdx.x];
                 //#pragma unroll (max_ngTypeE)
                 for (PosInt ig=0; ig<ngTypeE; ig++) {
-                    og[ig*npreE + threadIdx.x] = output_g[ig*nE + id];
-                    oh[ig*npreE + threadIdx.x] = output_h[ig*nE + id];
+                    og[ig*npreE + threadIdx.x] = output_g[ig*npreE + id];
+                    oh[ig*npreE + threadIdx.x] = output_h[ig*npreE + id];
                 }
             }
             __syncthreads(); // sync dynamic shared memory save
@@ -2667,8 +2688,8 @@ void recal_G_mat_nd_fast( // no distance involved for close-range connections, i
                 shared_ipre[threadIdx.x] = ipre[bid*blockDim.x + npreE + threadIdx.x];
                 //#pragma unroll (max_ngTypeI)
                 for (PosInt ig=0; ig<ngTypeI; ig++) {
-                    og[ig*npreI + threadIdx.x] = output_g[ig*nI + id];
-                    oh[ig*npreI + threadIdx.x] = output_h[ig*nI + id];
+                    og[ig*npreI + threadIdx.x] = output_g[ig*npreI + id];
+                    oh[ig*npreI + threadIdx.x] = output_h[ig*npreI + id];
                 }
             }
             __syncthreads(); // sync dynamic shared memory save

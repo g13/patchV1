@@ -25,7 +25,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	end
 	%%%% HERE %%%%
 	thres_out = 0.5; % under which ratio of max LGN connection strength will not be used to calculate the orientation of RF, neither will be counted toward the number of connection in spatial figure's title.
-	nstep = 1000; % total steps to sample from the trace of weight evolution.
+	nstep = 1000; % total steps to sample from the trace of weight's temporal evolution.
 	step0 = 1; % starting time step
 	nt_ = 0; % ending time step
 	nbins = 20; % bins for histogram
@@ -42,10 +42,6 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	LGN_V1_id_fn = [res_fdr, 'LGN_V1_idList', isuffix, '.bin']
 	fLGN_switch = [res_fdr,'LGN_switch', isuffix, '.bin'];
 
-	fid = fopen(learnDataFn, 'r');
-	dt = fread(fid, 1, 'float')
-	fclose(fid);
-
 	fid = fopen(fLGN_vpos, 'r');
 	nLGN = fread(fid, 1, 'uint') % # ipsi-lateral LGN 
 	nLGN_I = fread(fid, 1, 'uint') % # ipsi-lateral LGN 
@@ -61,6 +57,8 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	% read the constants first only 
 	fid = fopen(f_sLGN, 'r');
 	nt = fread(fid, 1, 'uint');
+	sampleInterval = fread(fid, 1, 'uint');
+	dt = fread(fid, 1, 'float')
 	nV1 = fread(fid, 1, 'uint');
 	max_LGNperV1 = fread(fid, 1, 'uint')
 	sRatio = fread(fid, 1, 'float')
@@ -77,17 +75,19 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	end
 	
 
+	%tstep
 	if nt_ > nt || nt_ == 0
 		nt_ = nt;
 	end
 	if step0 > nt_ || step0 == 0
 		step0 = 1;
 	end
+		
 	range_nt = nt_-step0 +1;
 	if range_nt == nt
-		rtime = '';
+		rtime = ''
 	else
-		rtime = ['-t', num2str(step0/nt*100,'%.0f'),'_',num2str(nt_/nt*100,'%.0f'),'%'];
+		rtime = ['-t', num2str(step0/nt*100,'%.0f'),'_',num2str(nt_/nt*100,'%.0f'),'%']
 	end
 	if nstep > range_nt || nstep == 0
 	    nstep = range_nt;
@@ -95,6 +95,38 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	step0
 	nt_
 	nstep
+
+	%sample_step
+	if sampleInterval > 1
+		dt = sampleInterval*dt;
+		nt_float = nt/sampleInterval;
+		nt = floor(nt/sampleInterval);
+
+		nt_ = round(nt_/sampleInterval);
+		if nt_ >nt 
+			nt_ = nt;
+		end
+
+		step0 = round(step0/sampleInterval);
+		if step0 > nt_ || step0 == 0
+			step0 = 1;
+		end
+
+		range_nt = nt_-step0 +1;
+		if range_nt == nt
+			rtime = '';
+		else
+			rtime = ['-t', num2str(step0/nt*100,'%.0f'),'_',num2str(nt_/nt*100,'%.0f'),'%'];
+		end
+		if nstep > range_nt || nstep == 0
+		    nstep = range_nt;
+		end
+		step0
+		nt_
+		nstep
+	end
+
+
 	% read connection id
 	sid = fopen(LGN_V1_id_fn, 'r');
 	LGN_V1_ID = zeros(max_LGNperV1, nV1);
@@ -120,7 +152,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	%%%%%%%%%%%%%%%%%% HERE %%%%%%%%%%%%%%%%%%
     orient = zeros(nV1,1);
 	fid = fopen(f_sLGN, 'r');
-	fseek(fid, 6*4, 0); % skip till time
+	fseek(fid, 8*4, 0); % skip till time
 	fseek(fid, max_LGNperV1*nV1*int64(nt_-1)*4, 0); % skip till time
 	sLGN = fread(fid, [nV1, max_LGNperV1], 'float')'; % transposed
     fclose(fid);
@@ -186,14 +218,16 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	end
 
     nrow = double(idivide(int32(nit+nit0-1),int32(nit0)));
-	qt = int32(floor(linspace(step0, nt_, nit)))
-	    %disp(nLGN_V1(iV1));
-	    %disp(LGN_V1_ID(1:nLGN_V1(iV1),iV1)');
-	    
+
+	if nit > nt_ - step0+1
+		nit = nt_ - step0+1;
+	end
+    qt = int32(floor(linspace(step0, nt_, nit)));
+
 	if st == 2 || st == 1
 	    sLGN_all = zeros(nLGN, nit, ns);
 	    fid = fopen(f_sLGN, 'r');
-	    fseek(fid, 6*4, 0); % skip till time
+	    fseek(fid, 8*4, 0); % skip till time
 	    
 	    % skip times
 	    %ht = round(nt/2);
@@ -366,14 +400,14 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
     end
 
 	if st == 2 || st == 0
-	    tstep = int64(round(range_nt/nstep))
-	    it = step0:tstep:nt_;
+		tstep = int64(round(range_nt/nstep))
+		it = step0:tstep:nt_;
 	    nstep = length(it)
 		qtt = int32(floor(linspace(1,nstep,nit)));
 	    tLGN_all = zeros(max_LGNperV1, nstep, ns);
 
 	    fid = fopen(f_sLGN, 'r');
-	    fseek(fid, 6*4, 0); % skip till time
+	    fseek(fid, 8*4, 0); % skip till time
 	    fseek(fid, max_LGNperV1*nV1*int64(step0-1)*4, 0); % skip till time
 		data = fread(fid, [nV1, max_LGNperV1], 'float')'; % transposed
 	    tLGN_all(:,1,:) = data(:,V1_pick);

@@ -31,6 +31,8 @@ function testLearnFF(res, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, iV1, nt_
 	
 	fid = fopen(f_sLGN, 'r');
 	nt = fread(fid, 1, 'uint');
+	sampleInterval = fread(fid, 1, 'uint');
+	dt = fread(fid, 1, 'float')
 	nV1 = fread(fid, 1, 'uint');
 	max_LGNperV1 = fread(fid, 1, 'uint')
 	sRatio = fread(fid, 1, 'float')
@@ -459,6 +461,8 @@ function testLearnFF(res, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, iV1, nt_
 	
 	fid = fopen(f_sLGN, 'r');
 	nt = fread(fid, 1, 'uint');
+	sampleInterval = fread(fid, 1, 'uint');
+	dt = fread(fid, 1, 'float')
 	nV1 = fread(fid, 1, 'uint');
 	max_LGNperV1 = fread(fid, 1, 'uint')
 	sRatio = fread(fid, 1, 'float')
@@ -472,7 +476,8 @@ function testLearnFF(res, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, iV1, nt_
 	for i=1:nV1
 	    sLGN(LGN_V1_ID(1:nLGN_V1(i),i),1,i) = data(:,i);
 	end
-	fseek(fid, max_LGNperV1*nV1*(nt-2)*4, 0); % skip till end 
+	nst = int64(floor(nt/sampleInterval));
+	fseek(fid, max_LGNperV1*nV1*(nst-2)*4, 0); % skip till end 
 	data = fread(fid, [nV1, max_LGNperV1], 'float')'; %transposed;
 	for i=1:nV1
 	    sLGN(LGN_V1_ID(1:nLGN_V1(i),i),2,i) = data(:,i);

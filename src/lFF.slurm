@@ -7,41 +7,42 @@ res_fdr=${fdr0}/resource # inputFolder in cfg stimulus, V1-static, LGN-static an
 data_fdr=${fdr0} # outputFolder in cfg
 
 patch=patch_fast
-waveStage=2 # set stage number
-std_ecc=0
+waveStage=3 # set stage number
 
 if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 	fdr=wave_concat/wave_II # folder will be made to store figures and configuratoin files
-	op=wave_II # theme string to be added to filenames of data and figures
+	op=wave_II_long_cap # theme string to be added to filenames of data and figures
 	op_cfg=wave_II.cfg # the simulation config file to be used
-	new_setup=True
-	lgn=lFF_ii # the theme string to be used for LGN_V1 connections
-	res=lFF # the theme string to be used for V1, LGN positions etc.
-	
-	smallRange=false
+	new_setup=False
+	lgn=lFF_II # the theme string to be used for LGN_V1 connections
+	res=lFF_II # the theme string to be used for V1, LGN positions etc.
+	smallRange=false # not used
+	squareOrCircle=true # initial LGN-recruitment shape 
 fi
 
-relay=true
+relay=false
 if [[ "${waveStage}" = "3" ]] ;then
 	fdr=wave_concat/wave_III
-	op=wave_III_u1
+	op=wave_III_g4l30
 	op_cfg=wave_III.cfg
 	smallRange=true
 	new_setup=True
 	if [[ "${relay}" = false ]]; then
-		lgn=lFF_III_u
-		res=lFF_III_u
+		suffix=g2l50
+		lgn=lFF_III_${suffix}
+		res=lFF_III_${suffix}
 	else
-		fAsInput=${fdr0}/sLGN_wave_II.bin
-		#fAsInput=
+		#fAsInput=${fdr0}/sLGN_32_ii.bin
+		fAsInput=
 		if [ -z "${fAsInput}" ]; 
 		then
 			lgn=lFF_concat0
 		else
 			lgn=lFF_relay_concat
 		fi
-		res=lFF
+		res=lFF0
 	fi
+	squareOrCircle=false # initial LGN-recruitment shape 
 fi
 
 if [[ "${waveStage}" = "5" ]] ;then
@@ -51,13 +52,16 @@ if [[ "${waveStage}" = "5" ]] ;then
 	new_setup=True
 	lgn=lFF_concat
 	res=lFF # starts out from stage II
+	squareOrCircle=true # initial LGN-recruitment shape 
 fi
 
+#binary_thres=0.5
+binary_thres=0
+std_ecc=2
 seed=1924784 # RANDOM SEED for post-analysis sampling and input randomization 
 # for outputLearnFF.m
 st=2 # figures' output: 0 for temporal, 1 for spatial, 2 for both
 examSingle=true # output the spatiotemporal figure, tLGN_V1_single if true
-squareOrCircle=false # initial LGN-recruitment shape 
 use_local_max=0 # output the spatiotemporal figure, sLGN_V1 with strength normalized for each frame instead over all frames if set 1
 collectMeanDataOnly=False # not ploting samples of V1 response variable traces
 
@@ -124,9 +128,9 @@ sbatch <<EOT
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=64GB
-#SBATCH --time=01:00:00
+#SBATCH --time=04:00:00
 #SBATCH -o log/pLearn_%J.out
-#SBATCH --mail-user=wd554@nyu.edu
+#SBATCH --mail-user=gueux13@gmail.com
 #SBATCH --mail-type=END
 set -e
 echo ${PATH}
@@ -144,8 +148,8 @@ if [ "${plotOnly}" = False ];
 then
 	if [ "${new_setup}" = True ];
 	then
-		echo matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, ${std_ecc}, '${res}', ${waveStage}, '${res_fdr}', ${squareOrCircle}, '${fAsInput}', ${relay}, ${smallRange});exit;"
-		matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, ${std_ecc}, '${res}', ${waveStage}, '${res_fdr}', ${squareOrCircle}, '${fAsInput}', ${relay}, ${smallRange});exit;"
+		echo matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, ${std_ecc}, '${res}', ${waveStage}, '${res_fdr}', ${squareOrCircle}, '${fAsInput}', ${relay}, ${smallRange}, ${binary_thres});exit;"
+		matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, ${std_ecc}, '${res}', ${waveStage}, '${res_fdr}', ${squareOrCircle}, '${fAsInput}', ${relay}, ${smallRange}, ${binary_thres});exit;"
 	fi
 	date
 	${patch} -c ${fig_fdr}/${op}.cfg
@@ -162,8 +166,8 @@ plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fd
 echo matlab -nodisplay -nosplash -r "outputLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle}, ${use_local_max});exit;" &
 matlab -nodisplay -nosplash -r "outputLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle}, ${use_local_max});exit;" &
 
-echo matlab -nodisplay -nosplash -r "testLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', 233, 5000);exit;" &
-matlab -nodisplay -nosplash -r "testLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', 233, 5000);exit;" &
+#echo matlab -nodisplay -nosplash -r "testLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', 233, 5000);exit;" &
+#matlab -nodisplay -nosplash -r "testLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', 233, 5000);exit;" &
 
 #python patchOutput.py ${op} ${data_fdr} &
 
