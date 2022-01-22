@@ -294,8 +294,9 @@ def readSpike(rawDataFn, spFn, prec, sizeofPrec, vThres):
         negativeSpike = False
         multi_spike = 0
         spScatter = np.empty(nV1, dtype = object)
+        spCount = np.zeros(nV1, dtype=int)
         for i in range(nV1):
-            spScatter[i] = []
+            spScatter[i] = np.empty(nt)
         for it in range(nt):
             data = np.fromfile(f, prec, nV1)
             pick = np.logical_and(data>max_vThres, data < 1)
@@ -322,9 +323,11 @@ def readSpike(rawDataFn, spFn, prec, sizeofPrec, vThres):
                             dtsp = (1-tsp)/nsp
                         tstart = tsp - (nsp//2)*dtsp
                         for isp in range(nsp):
-                            spScatter[j].append((it + tstart+isp*dtsp)*dt)
+                            spScatter[j][spCount[j] + isp] = ((it + tstart+isp*dtsp)*dt)
+                        spCount[j] = spCount[j] + nsp
                     else:
-                        spScatter[j].append((it+tsp)*dt)
+                        spScatter[j][spCount[j]] = ((it+tsp)*dt)
+                        spCount[j] = spCount[j] + 1
                     k = k + 1
             if iModel == 0:
                 f.seek(((2+(ngE + ngI + ngFF)*(1+haveH))*nV1 + mI)*sizeofPrec, 1)
@@ -335,7 +338,7 @@ def readSpike(rawDataFn, spFn, prec, sizeofPrec, vThres):
             raise Exception('negative spikes exist')
 
         for i in range(nV1):
-            spScatter[i] = np.array(spScatter[i])
+            spScatter[i] = spScatter[i][:spCount[i]+1]
         np.savez(spFn, spName = 'spScatter', spScatter = spScatter)
         print(f'number of multiple spikes in one dt: {multi_spike}')
         return spScatter

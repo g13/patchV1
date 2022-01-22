@@ -795,6 +795,7 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	} else {
 		cout << "min nearNeighborBlock = " << *min_element(nNearNeighborBlock, nNearNeighborBlock + nblock) << ", max nearNeighborBlock = " << *max_element(nNearNeighborBlock, nNearNeighborBlock + nblock) << " < " << nearNeighborBlock << " < " << maxNeighborBlock << "\n";
+		cout << "min nNeighborBlock = " << *min_element(nNeighborBlock, nNeighborBlock + nblock) << ", max nNeighborBlock = " << *max_element(nNeighborBlock, nNeighborBlock + nblock) << " < " << maxNeighborBlock << "\n";
 	}
 	for (PosInt i=0; i<nblock; i++) {
 		if (nNeighborBlock[i] - nNearNeighborBlock[i] > maxNeighborBlock - nearNeighborBlock) {
@@ -1031,7 +1032,6 @@ int main(int argc, char *argv[])
 	
 	size_t gap_neighborMatSize = static_cast<size_t>(nearNeighborBlock*nI)*nI;
 	for (PosInt i=0; i<nblock; i++) {
-	//for (PosInt i=0; i<1; i++) {
 		Size nc = 0; 
 		// gather pairs in ith block
 		vector<PosInt> clusterID;
@@ -1317,11 +1317,17 @@ int main(int argc, char *argv[])
 		for (PosInt k=0; k<nTypeI; k++) {
 			if (i%nI < typeAccCount[k+nTypeE] - nE) itype = k;
 		}
+		bool bad = false;
 		PosInt host_tid = i/nI*blockSize + nE + i%nI;
 		for (PosInt j=0; j<nGapVec[i]; j++) {
 			PosInt id = gapVecID[i*gap_maxDistantNeighbor + j];
 			PosInt guest_id = id/blockSize * nI + id%blockSize-nE;
-			assert(guest_id < mI);
+			if (guest_id >= mI) {
+				cout << "guest_id " << guest_id << ", mI = " << mI << ", id = " << id << ", (" << j << "/" << nGapVec[i] << ")\n";
+				bad = true;
+				continue;
+			}
+			if (bad) cout << "id = " << id << ", (" << j << "/" << nGapVec[i] << ")\n";
 			bool gapped = false;
 			for (PosInt k=0; k<nGapVec[guest_id]; k++) {
 				if (gapVecID[guest_id*gap_maxDistantNeighbor + k] == i) {
@@ -1363,6 +1369,10 @@ int main(int argc, char *argv[])
 					j--;
 				}
 			}
+		}
+		if (bad) {
+			cout << "bad";
+			return EXIT_FAILURE;
 		}
 	}
 	for (PosInt i=0; i<mI; i++) {

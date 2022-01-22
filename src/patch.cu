@@ -1360,6 +1360,8 @@ int main(int argc, char** argv) {
 			fStimulus.read(reinterpret_cast<char*>(&domain[0]), 2 * sizeof(float));
 			stimulus_buffer = static_cast<Float>(domain[0]);
 			stimulus_range = static_cast<Float>(domain[1]);
+			cout << "stimulus range = " << stimulus_range << "\n";
+			cout << "stimulus buffer = " << stimulus_buffer << "\n";
 		}
 
 		fStimulus.read(reinterpret_cast<char*>(&neye), sizeof(PosInt));

@@ -443,9 +443,9 @@ function inputLearnFF(suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle
 		for i = 1:nV1
 			ss = sLGN(:,i);
 			if binary_thres > 0
-				pick = ss./max(ss) > binrary_thres
-				ss(pick) = u1
-				ss(~pick) = u0
+				pick = (ss-min(ss))./(max(ss)-min(ss)) > binary_thres;
+				ss(pick) = u1;
+				ss(~pick) = u0;
 			end	
 			sLGN(:,i) = ss./sum(ss)*initialConnectionStrength*nLGNperV1;
 		end

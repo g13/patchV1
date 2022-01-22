@@ -1,6 +1,8 @@
 #!/bin/bash
 cd ${HOME}/repos/patchV1/src
 
+t=01:00:00
+echo ${t}
 #fdr0=/scratch/wd554/Jen
 fdr0=/scratch/wd554/patchV1
 res_fdr=${fdr0}/resource # inputFolder in cfg stimulus, V1-static, LGN-static and connectome files
@@ -11,7 +13,7 @@ waveStage=3 # set stage number
 
 if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 	fdr=wave_concat/wave_II # folder will be made to store figures and configuratoin files
-	op=wave_II_long_cap # theme string to be added to filenames of data and figures
+	op=wave_II_long # theme string to be added to filenames of data and figures
 	op_cfg=wave_II.cfg # the simulation config file to be used
 	new_setup=False
 	lgn=lFF_II # the theme string to be used for LGN_V1 connections
@@ -23,12 +25,12 @@ fi
 relay=false
 if [[ "${waveStage}" = "3" ]] ;then
 	fdr=wave_concat/wave_III
-	op=wave_III_g4l30
+	op=wave_III_c4_long_exact
 	op_cfg=wave_III.cfg
 	smallRange=true
 	new_setup=True
 	if [[ "${relay}" = false ]]; then
-		suffix=g2l50
+		suffix=c4
 		lgn=lFF_III_${suffix}
 		res=lFF_III_${suffix}
 	else
@@ -55,14 +57,14 @@ if [[ "${waveStage}" = "5" ]] ;then
 	squareOrCircle=true # initial LGN-recruitment shape 
 fi
 
+binary_thres=0.5
 #binary_thres=0.5
-binary_thres=0
-std_ecc=2
+std_ecc=4
 seed=1924784 # RANDOM SEED for post-analysis sampling and input randomization 
 # for outputLearnFF.m
 st=2 # figures' output: 0 for temporal, 1 for spatial, 2 for both
 examSingle=true # output the spatiotemporal figure, tLGN_V1_single if true
-use_local_max=0 # output the spatiotemporal figure, sLGN_V1 with strength normalized for each frame instead over all frames if set 1
+use_local_max=1 # output the spatiotemporal figure, sLGN_V1 with strength normalized for each frame instead over all frames if set 1
 collectMeanDataOnly=False # not ploting samples of V1 response variable traces
 
 # NOT RELATED, leave alone
@@ -128,9 +130,9 @@ sbatch <<EOT
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=64GB
-#SBATCH --time=04:00:00
+#SBATCH --time=${t}
 #SBATCH -o log/pLearn_%J.out
-#SBATCH --mail-user=gueux13@gmail.com
+#SBATCH --mail-user=weidai@cims.nyu.edu
 #SBATCH --mail-type=END
 set -e
 echo ${PATH}
@@ -157,15 +159,23 @@ then
 fi
 
 
+#date
 #echo plotLGN_response.py ${op} ${lgn} ${res_fdr} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
 #plotLGN_response.py ${op} ${lgn} ${res_fdr} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
 
+date
+echo plotV1_fr.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} & 
+plotV1_fr.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} & 
+
+date
 echo plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} & 
 plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
 
+date
 echo matlab -nodisplay -nosplash -r "outputLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle}, ${use_local_max});exit;" &
 matlab -nodisplay -nosplash -r "outputLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle}, ${use_local_max});exit;" &
 
+#date
 #echo matlab -nodisplay -nosplash -r "testLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', 233, 5000);exit;" &
 #matlab -nodisplay -nosplash -r "testLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', 233, 5000);exit;" &
 

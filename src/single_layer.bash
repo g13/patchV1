@@ -1,7 +1,8 @@
 #!/bin/bash
+set -e
 repo=$HOME/repos/patchV1
 cfg_fdr=${repo}/src
-fdr0=/scratch/wd554/patchV1/
+fdr0=/scratch/wd554/patchV1
 res_fdr=${fdr0}/resource
 fig_fdr=${fdr0}/test
 
@@ -62,20 +63,22 @@ fi
 cp ${repo}/src/plotV1_response.py ${fig_fdr}/plotV1_response_${trial_suffix}.cfg
 
 # run
-cd ${fdr0}
 if [ "${plotOnly}" = False ]
 then
 	if [ "${generate_LGN_V1_connection}" = True ]
 	then
+		cd ${res_fdr}
 		retino -c ${fig_fdr}/retino_${LGN_V1_suffix}.cfg
 	fi
 
 	if [ "${generate_V1_connection}" = True ]
 	then
+		cd ${res_fdr}
 		genCon -c ${fig_fdr}/genCon_${V1_connectome_suffix}.cfg
 	fi
 
-	patch_fast -c {fig_fdr}/patch_${trial_suffix}.cfg
+	cd ${fdr0}
+	patch_fast -c ${fig_fdr}/patch_${trial_suffix}.cfg
 fi
 
 data_fdr=${fdr0}
