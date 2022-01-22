@@ -162,9 +162,9 @@ void cal_blockPos(double* __restrict__ pos,
                   Size networkSize) 
 {
     __shared__ double reduced[warpSize];
-    Size id = (2*blockDim.x)*blockIdx.x + threadIdx.x;
+    Size id = blockDim.x*blockIdx.x + threadIdx.x;
     double x = pos[id];
-    double y = pos[id + blockDim.x];
+    double y = pos[id + gridDim.x*blockDim.x];
     block_reduce<double>(reduced, x);
     if (threadIdx.x == 0) {
         block_x[blockIdx.x] = static_cast<Float>(reduced[0]/blockDim.x);
@@ -194,6 +194,9 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
     Float bx = block_x[blockIdx.x]; // center of the target block
     Float by = block_y[blockIdx.x];
     Size tid = threadIdx.y*blockDim.x + threadIdx.x;
+	//if (blockIdx.x == 0 && threadIdx.x ==0) {
+	//	printf("center block %i, (%f,%f)\n", blockIdx.x, bx, by);
+	//}
 
     Size nPatch = (nblock + blockDim.x-1)/blockDim.x - 1;
     Size remain = nblock%blockDim.x;
@@ -214,8 +217,8 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
             Float x = block_x[blockId] - bx;
             Float y = block_y[blockId] - by;
             Float dis = square_root(x*x + y*y);
+            distance[tid] = dis;
             if (dis < max_radius) {
-                distance[tid] = dis;
                 bid[tid] = blockId;
             }
         }
@@ -226,6 +229,9 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
 			PosInt outside_id = id[0];
             PosInt current_id = id[1];
             for (PosInt i=0; i<blockDim.x; i++) {
+				//if (blockIdx.x == 0) {
+				//	printf("patch %u, block %i(%i, (%f,%f)), distace = %f< %f(%f)\n", iPatch, i+offset, bid[i], block_x[i+offset], block_y[i+offset], distance[i], radius, max_radius);
+				//}
                 if (bid[i] != -1 && bid[i] != blockIdx.x) {
 					if (distance[i] < radius) {
 						neighborBlockId[maxNeighborBlock*blockIdx.x + current_id] = bid[i];
@@ -237,7 +243,7 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
 					}
                     bid[i] = -1; 
                     if (current_id + outside_id > maxNeighborBlock) {
-                        printf("actual nNeighbor = %d > %d (preserved)\n", current_id, maxNeighborBlock);
+                        printf("actual nNeighbor = %d + %d > %d (preserved)\n", current_id, outside_id, maxNeighborBlock);
                         assert(current_id + outside_id <= maxNeighborBlock);
                     }
                 }
@@ -359,8 +365,8 @@ void generate_connections(double* __restrict__ pos,
     Size nn = nNeighborBlock[blockId];
     Size ni = nNearNeighborBlock[blockId];
     Size offset = blockId*blockDim.x;
-    double x0 = pos[offset*2 + threadIdx.x];
-    double y0 = pos[offset*2 + threadIdx.x + blockDim.x];
+    double x0 = pos[offset + threadIdx.x];
+    double y0 = pos[offset + threadIdx.x + networkSize];
     Size id = offset + threadIdx.x;
     assert(id < networkSize);
     // number of potential presynaptic connections outsied nearNeighbors, to be stored in vector.
@@ -416,8 +422,8 @@ void generate_connections(double* __restrict__ pos,
     // withhin block and nearNeighbor
     for (PosInt in=0; in<ni; in++) {
         PosInt bid = neighborBlockId[maxNeighborBlock*blockId + in] * blockDim.x; // # neurons in all past blocks 
-        x1[threadIdx.x] = pos[bid*2 + threadIdx.x];
-        y1[threadIdx.x] = pos[bid*2 + blockDim.x + threadIdx.x];
+        x1[threadIdx.x] = pos[bid + threadIdx.x];
+        y1[threadIdx.x] = pos[bid + threadIdx.x + networkSize];
         __syncthreads();
         #pragma unroll
         for (Size i=0; i<blockDim.x; i++) {
@@ -471,8 +477,8 @@ void generate_connections(double* __restrict__ pos,
     if (nb > 0) {
         for (Size in=ni; in<nn; in++) {
             Size bid = neighborBlockId[maxNeighborBlock*blockId + in] * blockDim.x;
-            x1[threadIdx.x] = pos[bid*2 + threadIdx.x];
-            y1[threadIdx.x] = pos[bid*2 + blockDim.x + threadIdx.x];
+			x1[threadIdx.x] = pos[bid + threadIdx.x];
+        	y1[threadIdx.x] = pos[bid + threadIdx.x + networkSize];
             __syncthreads();
             #pragma unroll
             for (Size i=0; i<blockDim.x; i++) {
@@ -564,7 +570,7 @@ void generate_connections(double* __restrict__ pos,
     Size* sumType = new Size[nType];
     Float* sumStrType = new Float[nType];
     Size* nid = new Size[nType];
-	while (!connected) {
+	do {
     	for (Size i=0; i<nType; i++) {
 			if (!typeConnected[i]) {
     	    	sumType[i] = 0;
@@ -656,7 +662,8 @@ void generate_connections(double* __restrict__ pos,
 			assert(count < 100);
 			//connected = true;
 		}*/
-	}
+	//} while (!connected)
+	} while (false);
 	__syncthreads();
     delete []sumP;
 	delete []typeConnected;
@@ -681,7 +688,7 @@ void generate_connections(double* __restrict__ pos,
     for (Size i=0; i<nType; i++) {
         preTypeConnected[i*networkSize + id] = sumType[i];
 		//assert(sumType[i] < round(pN[i]*1.5) && sumType[i] > round(pN[i]*2.f/3.f));
-		assert(sumType[i] <= ceiling(pN[i]*(1+tol)) && sumType[i] >= flooring(pN[i]*(1-tol)));
+		//assert(sumType[i] <= ceiling(pN[i]*(1+tol)) && sumType[i] >= flooring(pN[i]*(1-tol)));
         sumStrType[i] = 0;
     }
     delete []sumType;
@@ -716,8 +723,8 @@ void generate_connections(double* __restrict__ pos,
         Size iid = 0;
         for (Size in=ni; in<nn; in++) {
             Size bid = neighborBlockId[maxNeighborBlock*blockId + in] * blockDim.x;
-            x1[threadIdx.x] = pos[bid*2 + threadIdx.x];
-            y1[threadIdx.x] = pos[bid*2 + blockDim.x + threadIdx.x];
+			x1[threadIdx.x] = pos[bid + threadIdx.x];
+        	y1[threadIdx.x] = pos[bid + threadIdx.x + networkSize];
             __syncthreads();
 	    	if (iid < total_nid) {
                 //#pragma unroll
@@ -803,7 +810,8 @@ void generate_connections(double* __restrict__ pos,
  		sumInhType = new Size[nTypeI];
  		sumInhStrType = new Float[nTypeI];
     	gap_nid = new Size[nTypeI];
-		while (!connected) {
+		//while (!connected) {
+		do {
     		for (Size i=0; i<nTypeI; i++) {
 				if (!typeConnected[i]) {
     		    	sumInhType[i] = 0;
@@ -893,7 +901,8 @@ void generate_connections(double* __restrict__ pos,
 			if (count == 1) {
     			delete []sumInhP;
 			}
-		}
+		//} while (!connected)
+		} while (false);
 	}
 	state[id] = localState;
 	__syncthreads();
@@ -921,7 +930,7 @@ void generate_connections(double* __restrict__ pos,
     	for (Size i=0; i<nTypeI; i++) {
     	    preTypeGapped[i*mI + id] = sumInhType[i];
 			//assert(sumType[i] < round(pN[i]*1.5) && sumType[i] > round(pN[i]*2.f/3.f));
-			assert(sumInhType[i] <= ceiling(gap_pN[i]*(1+tol)) && sumInhType[i] >= flooring(gap_pN[i]*(1-tol)));
+			//assert(sumInhType[i] <= ceiling(gap_pN[i]*(1+tol)) && sumInhType[i] >= flooring(gap_pN[i]*(1-tol)));
     	    sumInhStrType[i] = 0;
     	}
     	delete []sumInhType;
@@ -958,8 +967,8 @@ void generate_connections(double* __restrict__ pos,
         for (Size in=ni; in<nn; in++) {
             Size bid = neighborBlockId[maxNeighborBlock*blockId + in] * blockDim.x;
 			if (threadIdx.x >= nE) {
-            	x1[threadIdx.x-nE] = pos[bid*2 + threadIdx.x];
-            	y1[threadIdx.x-nE] = pos[bid*2 + blockDim.x + threadIdx.x];
+				x1[threadIdx.x] = pos[bid + threadIdx.x];
+        		y1[threadIdx.x] = pos[bid + threadIdx.x + networkSize];
 			}
             __syncthreads();
 	    	if (iid < total_nid && itype >= nTypeE) {

@@ -13,15 +13,16 @@ module list
 cd preprocess
 
 sm=sm_70
+optflag=g
 
 rm -f genCon.o
-nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c genCon.cu
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -${optflag} -c genCon.cu
 
 rm -f connect.o
-nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c connect.cu
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -${optflag} -c connect.cu
 
-rm -f cuda_util.o
-nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c ../util/cuda_util.cu -o cuda_util.o
+#rm -f cuda_util.o
+#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c ../util/cuda_util.cu -o cuda_util.o
 
 nvcc -arch=$sm -lcudadevrt -lcudart -lboost_program_options cuda_util.o connect.o genCon.o -o /home/wd554/bin/genCon #-lcurand
 

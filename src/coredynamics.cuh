@@ -133,8 +133,10 @@ __device__ void block_collectID(bool exist, T &id, PosInt counter[], PosInt sep)
 __global__ 
 void rand_spInit(Float* __restrict__ tBack,
                  Float* __restrict__ spikeTrain,
-                 Float* __restrict__ og,
-                 Float* __restrict__ oh,
+				 PosInt* __restrict__ ipre, // [depth, nblock, nTypeHierarchy]
+        		 Size* __restrict__ npre, // [depth, nblock, nTypeHierarchy]
+                 Float* __restrict__ output_g,
+                 Float* __restrict__ output_h,
                  Float* __restrict__ v,
                  Float* __restrict__ w,
                  Size* __restrict__ nLGNperV1,

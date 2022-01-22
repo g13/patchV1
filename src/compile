@@ -1,14 +1,14 @@
 #!/bin/bash
 module purge
 ## Greene modules
-#module load gcc/10.2.0
-#module load cuda/11.1.74
-#module load boost/intel/1.74.0
-# Dalma modules
-module load all
-module load gcc/4.9.3
-module load cuda/9.2
-module load boost/gcc_4.9.3/openmpi_1.10.2/avx2/1.57.0
+module load gcc/10.2.0
+module load cuda/11.1.74
+module load boost/intel/1.74.0
+## Dalma modules
+#module load all
+#module load gcc/4.9.3
+#module load cuda/9.2
+#module load boost/gcc_4.9.3/openmpi_1.10.2/avx2/1.57.0
 
 module list
 
@@ -21,10 +21,10 @@ nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std
 
 #rm -f coredynamics.o
 #nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -$optflag -c coredynamics.cu
-#
+
 #rm -f discrete_convol.o
 #nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -$optflag -c discrete_input_convol.cu
-##
+#
 #rm -f cuda_util.o
 #nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -$optflag -c util/cuda_util.cu -o cuda_util.o
 #
@@ -34,8 +34,8 @@ nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std
 #rm -f condShape.o
 #nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -std=c++11 -$optflag -c condShape.cu
 
-#nvcc -arch=$sm -lcudadevrt -lcudart -L/share/apps/NYUAD/boost/gcc_4.9.3/openmpi_1.10.2/avx2/1.57.0/lib/libboost_filesystem.so.1.57.0 -lboost_system -lboost_program_options condShape.o patch.o cuda_util.o stats.o discrete_input_convol.o coredynamics.o -$optflag -o /home/wd554/bin/patch_fast
-nvcc -arch=$sm -lcudadevrt -lcudart -lboost_filesystem -lboost_system -lboost_program_options condShape.o patch.o cuda_util.o stats.o discrete_input_convol.o coredynamics.o -$optflag -o /home/wd554/bin/patch_fast
+nvcc -arch=$sm -lcudadevrt -lcudart -lboost_filesystem -lboost_program_options condShape.o patch.o cuda_util.o stats.o discrete_input_convol.o coredynamics.o -$optflag -o /home/wd554/bin/patch_fast
+#nvcc -arch=$sm -lcudadevrt -lcudart -lboost_filesystem -lboost_system -lboost_program_options condShape.o patch.o cuda_util.o stats.o discrete_input_convol.o coredynamics.o -$optflag -o /home/wd554/bin/patch_fast
 
 #rm -f patch.o 
 #nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c patch.cu

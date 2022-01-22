@@ -2921,7 +2921,7 @@ def ellipse(cx, cy, a, baRatio, orient, n = 50):
 
 if __name__ == "__main__":
 
-    if len(sys.argv) < 14:
+    if len(sys.argv) < 15:
         raise Exception('not enough argument for plotV1_response_lFF(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus)')
     else:
         output_suffix = sys.argv[1]
