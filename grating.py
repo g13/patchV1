@@ -445,7 +445,9 @@ def generate_circular_mask(npixel, radius, seed, ecc, buffer_ecc, neye, center =
         print(f'{nmasked} ({nmasked/b/a*100:.3f}%) pixel(s) left unmasked')
     return mask
 
-def generate_retinal_wave(amp, spatialFrequency, temporalFrequency, waveSF, waveTF, direction, phase, sharpness, npixel, fname, time, frameRate = 120, ecc = 2.5, gtype = 'drifting', neye = 2, bar = False, center = np.pi/2, wing = np.pi/2, mask = None, maskData = None, genMovie = True, virtual_LGN = 0, nrepeat = 1, reverse = False):
+def generate_retinal_wave(amp, spatialFrequency, temporalFrequency, waveSF, waveTF, direction, phase, sharpness, npixel, fname, time, frameRate = 120, ecc = 2.5, gtype = 'drifting', neye = 2, bar = False, center = np.pi/2, wing = np.pi/2, mask = None, maskData = None, ecc0 = 0, genMovie = True, virtual_LGN = 0, nrepeat = 1, reverse = False):
+    if ecc0 == 0:
+        ecc0 = ecc
     if np.mod(npixel,2) != 0:
         raise Exception("need even pixel")
     if neye == 1:
@@ -496,6 +498,14 @@ def generate_retinal_wave(amp, spatialFrequency, temporalFrequency, waveSF, wave
     phase = check_size(phase, nInputType, nseq, 'first', 'phase')
     sharpness = check_size(sharpness, nInputType, nseq, 'first', 'sharpness')
 
+    ########### VIDEO encodes as BGR: 
+    if neye == 1:
+        X, Y = np.meshgrid(np.linspace(-1,1,a)*ecc*np.pi/180, np.linspace(-1,1,b)*ecc*np.pi/180)
+        deg2pixel = npixel / (2*ecc)
+    else:
+        X, Y = np.meshgrid(np.linspace(0,1,a)*ecc*np.pi/180,np.linspace(-1,1,b)*ecc*np.pi/180)
+        deg2pixel = npixel / (2*ecc)
+
     if mask is not None:
         if maskData is None:
             raise Exception('mask data is not provided')
@@ -531,15 +541,14 @@ def generate_retinal_wave(amp, spatialFrequency, temporalFrequency, waveSF, wave
                     maskData = np.tile(maskData, (nInputType, nseq, 1))
         else:
             maskData = np.tile(maskData, (nInputType, nseq, b, a)) 
-            
 
-    ########### VIDEO encodes as BGR: 
-    if neye == 1:
-        X, Y = np.meshgrid(np.linspace(-1,1,a)*ecc*np.pi/180, np.linspace(-1,1,b)*ecc*np.pi/180)
-        deg2pixel = npixel / (2*ecc)
-    else:
-        X, Y = np.meshgrid(np.linspace(0,1,a)*ecc*np.pi/180,np.linspace(-1,1,b)*ecc*np.pi/180)
-        deg2pixel = npixel / (2*ecc)
+    if ecc0 < ecc:
+        maskOut = np.zeros((b,a), dtype=bool);
+        pick = np.logical_not(np.logical_and(np.abs(X) < ecc0*np.pi/180, np.abs(Y) < ecc0*np.pi/180))
+        maskOut[pick] = True 
+
+        maskOutData = np.zeros((b,a))
+        maskOutData[pick] = 0.5
 
     print(f'{1/deg2pixel} degree per pixel')
 
@@ -611,6 +620,9 @@ def generate_retinal_wave(amp, spatialFrequency, temporalFrequency, waveSF, wave
                         dataL[mask[i,:,:]] = maskData[j,i, mask[i,:,:]]
                         dataR[mask[i,:,:]] = maskData[j,i, mask[i,:,:]]
                     data = np.concatenate((dataL,dataR), axis = 1)
+
+                if ecc0 < ecc:
+                    data[maskOut[:,:]] = maskOutData[maskOut[:,:]]
 
                 #if i == 0 and it == 0 and j == 0:
                 #    print(data)
