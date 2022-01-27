@@ -1,7 +1,7 @@
 #!/bin/bash
 cd ${HOME}/repos/patchV1/src
 
-t=01:00:00
+t=00:40:00
 echo ${t}
 #fdr0=/scratch/wd554/Jen
 fdr0=/scratch/wd554/patchV1
@@ -25,12 +25,12 @@ fi
 relay=false
 if [[ "${waveStage}" = "3" ]] ;then
 	fdr=wave_concat/wave_III
-	op=wave_III_c4_long_exact
+	op=wave_III_g4_max3
 	op_cfg=wave_III.cfg
 	smallRange=true
 	new_setup=True
 	if [[ "${relay}" = false ]]; then
-		suffix=c4
+		suffix=g4
 		lgn=lFF_III_${suffix}
 		res=lFF_III_${suffix}
 	else
@@ -57,7 +57,7 @@ if [[ "${waveStage}" = "5" ]] ;then
 	squareOrCircle=true # initial LGN-recruitment shape 
 fi
 
-binary_thres=0.5
+binary_thres=0.0
 #binary_thres=0.5
 std_ecc=4
 seed=1924784 # RANDOM SEED for post-analysis sampling and input randomization 

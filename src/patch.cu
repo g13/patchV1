@@ -411,7 +411,7 @@ int main(int argc, char** argv) {
 		if (vm["fV1_allpos"].defaulted()){
 			V1_allpos_filename = inputFolder + V1_allpos_filename;
 		}
-		if (vm["V1_feature_filename"].defaulted()){
+		if (vm["fV1_feature"].defaulted()){
 			V1_feature_filename = inputFolder + V1_feature_filename;
 		}
 		if (vm["fV1_conMat"].defaulted()){
@@ -2557,7 +2557,7 @@ int main(int argc, char** argv) {
 	// malloc LGN_surface
 	cudaChannelFormatDesc surfaceDesc = cudaCreateChannelDesc(32, 0, 0, 0, cudaChannelFormatKindFloat);
 	cudaArray* cuSurfArray;
-
+	cout << "surf size = " << nsx << "x" << nsy << " x (1+3x" << nLearnTypeFF << ") = " << nsx*nsy*(1+3*nLearnTypeFF) << "\n";
 	checkCudaErrors(cudaMalloc3DArray(&cuSurfArray, &surfaceDesc, make_cudaExtent(nsx, nsy, (1+3*nLearnTypeFF)), cudaArrayLayered|cudaArraySurfaceLoadStore));
 	size_t LGNspSurfSize = nsx*nsy*(1+3*nLearnTypeFF)*sizeof(Float);
 	usingGMem += LGNspSurfSize;
@@ -2792,6 +2792,7 @@ int main(int argc, char** argv) {
     }
 
 	vector<Float> featureValue;
+	cout << "feature file:" << V1_feature_filename + res_suffix << "\n";
 	if (readFeature) {
 		fV1_feature.open(V1_feature_filename + res_suffix, ios::in|ios::binary);
 		if (!fV1_feature) {
@@ -3410,6 +3411,7 @@ int main(int argc, char** argv) {
         conDelayGapMat0 = p_conDelayGapMat;
         cout << nChunk << " == " << matConcurrency << ", entire conMat, delayMat and gapMat are pinned\n";
     }
+	cout << "mem for mats allocated\n";
 	float** conDelayGapMat = new float*[nChunk];
 	float** conMat = new float*[nChunk];
 	float** delayMat = new float*[nChunk];
@@ -3453,6 +3455,7 @@ int main(int argc, char** argv) {
 	size_t iblock = 0;
 	//Size ntmp = 0;
 	//Size ntmp_connected = 0;
+	cout << "reading mats into the mem\n";
 	for (PosInt i=0; i<nChunk; i++) {
 		if (i >= iSizeSplit) {
 			chunkSize = remainChunkSize*nearBlockSize;
@@ -5518,7 +5521,6 @@ int main(int argc, char** argv) {
     	        	    if (i >= matConcurrency) { //wait for recal_G_mat to be ready before sum_G 
     	        	        cudaStreamWaitEvent(stream[i], gReady[i%matConcurrency], 0);
     	        	    } // otherwise automatically queued in stream
-                        cout << "sumG0<<<" << chunkSize << ", " << neuronPerBlock << ">>>" << "\n";
 		    			sum_G<<<chunkSize, neuronPerBlock, 0, stream[i]>>> (d_nVec + block_offset*neuronPerBlock, d_gEt[i], d_gE[i], d_gIt[i], d_gI[i], d_hEt[i], d_hE[i], d_hIt[i], d_hI[i], ngTypeE, ngTypeI, 0);
     	        	    block_offset += chunkSize;
     	        	}
@@ -5532,7 +5534,7 @@ int main(int argc, char** argv) {
 					}
 				}
     	    }
-			if (nGapFar) {
+			if (InhGap && nGapFar) {
     	    	fill_fGapTrain(fGapTrain,  spikeTrain + nV1*currentTimeSlot, fGapCurrenSlot, gapVecID, nGapVec, mI);
     	    	PosInt block_offset = 0;
     	        for (PosInt i = 0; i < nChunk; i++) {
@@ -5559,7 +5561,6 @@ int main(int argc, char** argv) {
     	        #endif
 					// wait for the corresponding chunk to finish recal_G_mat before sum_G 
     	            cudaStreamWaitEvent(gapStream[i], gapReady[i%matConcurrency], 0);
-                    cout << "sumGap0<<<" << chunkSize << ", " << neuronPerBlock << ">>>" << "\n";
 		    		sum_Gap<<<chunkSize, nI, 0, gapStream[i]>>> (d_nGapVec + block_offset*nI, d_gapt[i], d_gap[i]);
     	            block_offset += chunkSize;
     	        }
@@ -6308,7 +6309,7 @@ int main(int argc, char** argv) {
 			//cout << " no far cudaMemcpyAsync gE\n";
 		    cudaEventRecord(gReady[0], stream[0]);
         }
-		if (nGapFar) {
+		if (InhGap && nGapFar) {
         	fill_fGapTrain(fGapTrain,  spikeTrain + nV1*currentTimeSlot, fGapCurrenSlot, gapVecID, nGapVec, mI);
 			block_offset = 0;
 		    for (PosInt i = 0; i < nChunk; i++) {

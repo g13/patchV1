@@ -1,4 +1,14 @@
 #!/bin/bash
+#SBATCH --job-name=plotV1
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=5
+#SBATCH --mem=200GB
+#SBATCH --time=02:00:00
+#SBATCH -o log/pV1_%J.out
+#SBATCH --mail-user=weidai@cims.nyu.edu
+#SBATCH --mail-type=END
+##SBATCH --gres=gpu:1
+##SBATCH -p nvidia 
 set -e
 repo=$HOME/repos/patchV1
 cfg_fdr=${repo}/src
@@ -7,14 +17,15 @@ res_fdr=${fdr0}/resource
 fig_fdr=${fdr0}/test
 
 
+res_suffix=square-single_layer
 trial_suffix=single_test
 patch_cfg=ori.cfg
 
-generate_V1_connection=True
+generate_V1_connection=False
 V1_connectome_suffix=single_test
 genCon_cfg=connectome.cfg
 
-generate_LGN_V1_connection=True
+generate_LGN_V1_connection=False
 LGN_V1_suffix=single_test
 retino_cfg=LGN_V1.cfg
 
@@ -76,11 +87,15 @@ then
 		cd ${res_fdr}
 		genCon -c ${fig_fdr}/genCon_${V1_connectome_suffix}.cfg
 	fi
-
+	
+	date
 	cd ${fdr0}
 	patch_fast -c ${fig_fdr}/patch_${trial_suffix}.cfg
+	date
 fi
 
 data_fdr=${fdr0}
 
-python plotV1_response.py ${trial_suffix} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
+date
+plotV1_response.py ${trial_suffix} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
+date

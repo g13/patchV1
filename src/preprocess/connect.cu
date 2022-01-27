@@ -51,7 +51,8 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
 	if (init_pack.nTypeMat[type] == 0 || synPerCon[type] == 0) {
 		ratio = 1.0;
 	} else {
-		ratio = (preset_Cortical_syn - (LGN_syn - preset_LGN_syn))/preset_Cortical_syn;
+		ratio = (preset_Cortical_syn - LGN_syn)/preset_Cortical_syn;
+		//ratio = (preset_Cortical_syn - (LGN_syn - preset_LGN_syn))/preset_Cortical_syn;
 		if (ClessI) {
 			inhRatio = LGN_syn/preset_LGN_syn;
 		}

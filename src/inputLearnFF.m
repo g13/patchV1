@@ -20,8 +20,10 @@ function inputLearnFF(suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle
 		u0 = 1.0; % stage 2 always single_value
 		u1 = 1.0;
 	else
-		u0 = 0.5; % uniform range
-		u1 = 1.5;
+		u0 = 0.8; % uniform range
+		u1 = 1.2;
+		%#u0 = 0.666667; % uniform range
+		%#u1 = 1.333333;
 	end
 
 	%%%% HERE %%%%%%%%
@@ -438,7 +440,7 @@ function inputLearnFF(suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle
 		        sLGN(:,i) = exp(-(LGN_ecc(id(:,i)+1) ./ (std_ecc)).^2);
 		    end
 		else
-		    sLGN = (u0 + rand(nLGNperV1,nV1)*(u1-u0))
+		    sLGN = (u0 + rand(nLGNperV1,nV1)*(u1-u0));
 		end
 		for i = 1:nV1
 			ss = sLGN(:,i);
@@ -450,6 +452,9 @@ function inputLearnFF(suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle
 			sLGN(:,i) = ss./sum(ss)*initialConnectionStrength*nLGNperV1;
 		end
 	end
+	disp('min max LGN');
+	disp(max(sLGN(:)));
+	disp(min(sLGN(:)));
 	fid = fopen(fLGN_V1_s, 'w'); % format follows function read_LGN in patch.h
 	fwrite(fid, nV1, 'uint');
 	fwrite(fid, nLGNperV1, 'uint');

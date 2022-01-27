@@ -2,9 +2,9 @@
 #define DIRECTIVE_H
 #include "types.h"
 
-//#define DEBUG 
-//#define CHECK
-//#define SYNC
+#define DEBUG 
+#define CHECK
+#define SYNC
 
 #ifdef DOUBLE_PRECISION
 	#define B_LOG_MAXIMUM 709.7827128933827

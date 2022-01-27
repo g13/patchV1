@@ -1213,6 +1213,7 @@ void compute_V_collect_spike_learnFF(
 	}
 }
 
+__launch_bounds__(1024, 1)
 __global__ 
 void compute_V_collect_spike_learnFF_fast(
         Float* __restrict__ v,
@@ -2537,6 +2538,7 @@ void recal_G_mat_nd( // no distance involved for close-range connections, i.e., 
 	}
 }
 
+__launch_bounds__(1024, 1)
 __global__  // <<< nblock[partial], blockSize >>>
 void recal_G_mat_nd_fast( // no distance involved for close-range connections, i.e., no delay in spike transport
         Float* __restrict__ spikeTrain, // [depth, nblock, nTypeHierarchy]
@@ -2677,6 +2679,8 @@ void recal_G_mat_nd_fast( // no distance involved for close-range connections, i
 		    		    	Float str = strength*ipE[ig];
 		    		    	local_gE[ig] += str*og[ig*npreE + i];
 		    		    	local_hE[ig] += str*oh[ig*npreE + i];
+							assert(local_gE[ig] >= 0);
+							assert(local_hE[ig] >= 0);
                 	    }
                     }
                 }
@@ -2715,8 +2719,8 @@ void recal_G_mat_nd_fast( // no distance involved for close-range connections, i
                         //#pragma unroll (max_ngTypeE)
                 	    for (PosInt ig=0; ig<ngTypeI; ig++) {
 		    		    	Float str = strength*ipI[ig];
-		    		    	local_gE[ig] += str*og[ig*nI + i];
-		    		    	local_hE[ig] += str*oh[ig*nI + i];
+		    		    	local_gI[ig] += str*og[ig*npreI + i];
+		    		    	local_hI[ig] += str*oh[ig*npreI + i];
                 	    }
                     }
                 }

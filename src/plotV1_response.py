@@ -10,18 +10,16 @@ import matplotlib.colors as clr
 from matplotlib import cm
 import sys
 from readPatchOutput import *
-from global_vars import _LGN_vposFn, _featureFn, _V1_allposFn, _V1_vposFn, seed
 np.seterr(invalid = 'raise')
 
 
 #@profile
-def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
+def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
     #sample = np.array([0,1,2,768])
-    #sample = np.array([40, 58, 75])
-    #sample = np.array([1338, 10235])
     SCsplit = 1
     nLGNorF1F0 = True
     ns = 10
+    seed = 657890
     np.random.seed(seed)
     nt_ = 0
     nstep = 10000
@@ -116,6 +114,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, data_f
     else:
         output_suffix = output_suffix0
     _output_suffix = "_" + output_suffix
+    res_suffix = "_" + res_suffix
     conLGN_suffix = "_" + conLGN_suffix
     conV1_suffix = "_" + conV1_suffix
     data_fdr = data_fdr+"/"
@@ -127,23 +126,21 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, data_f
     LGN_spFn = data_fdr + "LGN_sp" + _output_suffix
     meanFn = data_fdr + "mean_data" + _output_suffix + ".bin"
     
-    LGN_V1_sFn = data_fdr + "LGN_V1_sList" + conLGN_suffix + ".bin"
-    LGN_V1_idFn = data_fdr + "LGN_V1_idList" + conLGN_suffix + ".bin"
-    
-    conStats_Fn = data_fdr + "conStats" + conV1_suffix + ".bin"
-    V1_RFpropFn = data_fdr + "V1_RFprop" + conLGN_suffix + ".bin"
-
     pref_file = data_fdr + 'cort_pref_' + output_suffix0 + '.bin'
+    if nOri == 0:
+        max_frFn = data_fdr + 'max_fr_' + output_suffix0 + '.bin'
 
     spDataFn = data_fdr + "V1_spikes" + _output_suffix
     parameterFn = data_fdr + "patchV1_cfg" +_output_suffix + ".bin"
 
-    sampleFn = data_fdr + "OS_sampleList_" + output_suffix0 + ".bin"
-
-    LGN_vposFn = res_fdr + _LGN_vposFn
-    featureFn = res_fdr + _featureFn
-    V1_allposFn = res_fdr + _V1_allposFn
-    V1_vposFn = res_fdr + _V1_vposFn
+    LGN_V1_sFn = res_fdr + "LGN_V1_sList" + conLGN_suffix + ".bin"
+    LGN_V1_idFn = res_fdr + "LGN_V1_idList" + conLGN_suffix + ".bin"
+    conStats_Fn = res_fdr + "conStats" + conV1_suffix + ".bin"
+    V1_RFpropFn = res_fdr + "V1_RFprop" + conLGN_suffix + ".bin"
+    LGN_vposFn = res_fdr + 'LGN_vpos'+ res_suffix + ".bin"
+    featureFn = res_fdr + 'V1_feature' + res_suffix + ".bin"
+    V1_allposFn = res_fdr + 'V1_allpos' + res_suffix + ".bin"
+    V1_vposFn = res_fdr + 'V1_vpos' + res_suffix + ".bin"
 
     prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN = read_cfg(parameterFn)
     blockSize = typeAcc[-1]
@@ -195,10 +192,11 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, data_f
         V1_x0, V1_xspan, V1_y0, V1_yspan = np.fromfile(f, 'f8', count=4)
         print(f'x:{[V1_x0, V1_x0 + V1_xspan]}')
         print(f'y:{[V1_y0, V1_y0 + V1_yspan]}')
-        _pos = np.reshape(np.fromfile(f, 'f8', count = networkSize*dataDim), (nblock, dataDim, blockSize))
-        pos = np.zeros((2,networkSize))
-        pos[0,:] = _pos[:,0,:].reshape(networkSize)
-        pos[1,:] = _pos[:,1,:].reshape(networkSize)
+        #_pos = np.reshape(np.fromfile(f, 'f8', count = networkSize*dataDim), (nblock, dataDim, blockSize))
+        #pos = np.zeros((2,networkSize))
+        #pos[0,:] = _pos[:,0,:].reshape(networkSize)
+        #pos[1,:] = _pos[:,1,:].reshape(networkSize)
+        pos = np.reshape(np.fromfile(f, 'f8', count = 2*networkSize), (2, networkSize))
         V1_vx0, V1_vxspan, V1_vy0, V1_vyspan = np.fromfile(f, 'f8', 4)
         print(f'vx:{[V1_vx0, V1_vx0 + V1_vxspan]}')
         print(f'vy:{[V1_vy0, V1_vy0 + V1_vyspan]}')
@@ -226,6 +224,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, data_f
         ngFF = np.fromfile(f, 'u4', 1)[0] 
         ngE = np.fromfile(f, 'u4', 1)[0] 
         ngI = np.fromfile(f, 'u4', 1)[0] 
+        print(f'dt={dt}, nt={nt}, nV1={nV1}, iModel={iModel}, mI={mI}, haveH={haveH}, ngFF={ngFF}, ngE={ngE}, ngI={ngI}')
 
     if TF == 0:
         TF = 1000/(nt_*dt)
@@ -308,7 +307,7 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, data_f
     fr = np.array([x[np.logical_and(x>=step0*dt, x<(nt_+step0)*dt)].size for x in spScatter])/t_in_sec
 
     if nOri == 0:
-        with open(data_fdr + 'max_fr_' + output_suffix0 + '.bin', 'wb') as f:
+        with open(max_frFn, 'wb') as f:
             fr.tofile(f)
 
     print('V1 spikes acquired')
@@ -1068,10 +1067,13 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, data_f
                 for ig in range(ngI):
                     ax2.plot(t, _gI[1,ig,i,:], ':b', lw = (ig+1)/ngI * lw)
     
-            ax.set_title(f'ID: {(iblock, ithread)}:({LR[iV1]:.0f},{OP[iV1]*180/np.pi:.0f})- LGN:{nLGN_V1[iV1]}({np.sum(LGN_V1_s[iV1]):.1f}), E{preN[0,iV1]}({preNS[0,iV1]:.1f}), I{preN[1,iV1]}({preNS[1,iV1]:.1f})')
+            ax.set_title(f'ID: {(iblock, ithread)}:({LR[iV1]:.0f},{OP[iV1]*180/np.pi:.0f})- LGN:{nLGN_V1[iV1]}({np.sum(LGN_V1_s[iV1]):.1f}), E{preN[0,iV1]}({preNS[0,iV1]:.1f}), I{preN[1,iV1]}({preNS[1,iV1]:.1f})', fontsize = 'small')
             _vBot = min(vR[itype], np.min(_v[i,:]))
             ax.set_ylim(bottom = _vBot)
             ax.set_ylim(top = _vBot + (_vThres - _vBot) * 1.1)
+            ax.tick_params(axis='both', labelsize='xx-small', direction='in')
+            ax2.tick_params(axis='both', labelsize='xx-small', direction='in')
+
             ax2.set_ylim(bottom = 0)
             if min(_v[i,:]) > -100 and max(_v[i,:]) < 50:
                 ax.yaxis.grid(True, which='minor', linestyle=':', linewidth = 0.1)
@@ -1127,8 +1129,9 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, data_f
                 title = f'FR:{fr[iV1]:.3f}, F1F0:{F1F0[iV1]:.3f}, {gFF_F1F0[iV1]:.3f}(gFF)'
             else:
                 title = f'FR:{fr[iV1]:.3f}, F1F0:{F1F0[iV1]:.3f}'
-            ax.set_title(title)
-            ax.set_ylabel('current')
+            ax.set_title(title, fontsize = 'small')
+            ax.set_ylabel('current', fontsize = 'small')
+            ax.tick_params(axis='both', labelsize='xx-small', direction='in')
 
             ax.yaxis.grid(True, which='minor', linestyle=':', linewidth = 0.1)
             ax.yaxis.grid(True, which='major', linestyle='-', linewidth = 0.1)
@@ -1160,6 +1163,8 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, data_f
                 ax2 = ax.twinx()
                 for ig in range(ngFF):
                     ax2.plot(t, _gFF[0,ig,i,:], ':g', lw = (ig+1)/ngFF * lw)
+                ax.tick_params(axis='both', labelsize='xx-small', direction='in')
+                ax2.tick_params(axis='both', labelsize='xx-small', direction='in')
     
                 ax = fig.add_subplot(grid[2,1])
                         #   L-on L-off M-on  M-off  On   Off
@@ -1171,10 +1176,15 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, data_f
 
                 ax.plot(vx[iV1], vy[iV1], '*k', ms = ms)
                 ax.plot(cx[iV1], cy[iV1], 'sk', ms = ms)
+                ax.plot(cx0[iV1], cy0[iV1], '^y', ms = ms/2)
 
                 iLGN_v1_s = LGN_V1_s[iV1]
                 max_s = np.max(iLGN_v1_s)
                 min_s = np.max([np.min(iLGN_v1_s), ms*0.25])
+                if max_s == 0:
+                    ms *= 0.25
+                    max_s = 1 
+                    min_s = 1
                 for j in range(len(markers)):
                     pick = all_type == j
                     ax.plot(all_pos[0,pick], all_pos[1,pick], markers[j], ms = min_s/max_s*ms, mew = 0.0, alpha = 0.5)
@@ -1235,6 +1245,9 @@ def plotV1_response(output_suffix0, conLGN_suffix, conV1_suffix, res_fdr, data_f
                         ax.plot(x0, y0, ':b', lw = 0.15)
                 
                 ax.set_aspect('equal')
+                ax.set_xlabel('deg', fontsize = 'x-small')
+                ax.set_ylabel('deg', fontsize = 'x-small')
+                ax.tick_params(axis='both', labelsize='xx-small', direction='in')
 
             if pSingleLGN:
                 for j in range(nLGN_V1[iV1]):
@@ -2901,46 +2914,48 @@ def ellipse(cx, cy, a, baRatio, orient, n = 50):
     return x, y
 
 if __name__ == "__main__":
-    print(sys.argv)
-    if len(sys.argv) < 13:
-        raise Exception('not enough argument for plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus)')
+
+    if len(sys.argv) < 15:
+        raise Exception('not enough argument for plotV1_response(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus)')
     else:
         output_suffix = sys.argv[1]
         print(output_suffix)
-        conLGN_suffix = sys.argv[2]
+        res_suffix = sys.argv[2]
+        print(res_suffix)
+        conLGN_suffix = sys.argv[3]
         print(conLGN_suffix)
-        conV1_suffix = sys.argv[3]
+        conV1_suffix = sys.argv[4]
         print(conV1_suffix)
-        res_fdr = sys.argv[4]
+        res_fdr = sys.argv[5]
         print(res_fdr)
-        data_fdr = sys.argv[5]
+        data_fdr = sys.argv[6]
         print(data_fdr)
-        fig_fdr = sys.argv[6]
+        fig_fdr = sys.argv[7]
         print(fig_fdr)
-        TF = float(sys.argv[7])
+        TF = float(sys.argv[8])
         print(TF)
-        iOri = int(sys.argv[8])
-        nOri = int(sys.argv[9])
+        iOri = int(sys.argv[9])
+        nOri = int(sys.argv[10])
         print(f'{iOri}/{nOri}')
-        if sys.argv[10] == 'True' or sys.argv[10] == '1':
+        if sys.argv[11] == 'True' or sys.argv[10] == '1':
             readNewSpike = True 
             print('read new spikes')
         else:
             readNewSpike = False
             print('read stored spikes')
-        if sys.argv[11] == 'True' or sys.argv[11] == '1':
+        if sys.argv[12] == 'True' or sys.argv[11] == '1':
             usePrefData = True 
             print('using fitted data')
         else:
             usePrefData = False
             print('not using fitted data')
-        if sys.argv[12] == 'True' or sys.argv[12] == '1':
+        if sys.argv[13] == 'True' or sys.argv[12] == '1':
             collectMeanDataOnly= True 
             print('collect mean data only')
         else:
             collectMeanDataOnly = False
 
-        OPstatus = int(sys.argv[13])
+        OPstatus = int(sys.argv[14])
         if OPstatus != 0 and OPstatus != 1 and OPstatus != 2:
             raise Exception(f'OPstatus = {OPstatus} but it can only be 0: no OP plots, 1: preset OP plots, 2: update OP plots only')
         else:
@@ -2950,4 +2965,6 @@ if __name__ == "__main__":
                 print('preset OP plots are plotted')
             if OPstatus == 2:
                 print('update OP plots only')
-    plotV1_response(output_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus)
+
+    print(sys.argv)
+    plotV1_response(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus)

@@ -1,5 +1,7 @@
 % connection strength heatmaps % better to choose from testLearnFF 
 function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, LGN_switch, mix, st, examSingle, use_local_max)
+	step0 = 1; % starting time step
+	nt_ = 0; % ending time step
 	if nargin < 10
 		disp('no default argument available');
 		return
@@ -26,8 +28,6 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	%%%% HERE %%%%
 	thres_out = 0.5; % under which ratio of max LGN connection strength will not be used to calculate the orientation of RF, neither will be counted toward the number of connection in spatial figure's title.
 	nstep = 1000; % total steps to sample from the trace of weight's temporal evolution.
-	step0 = 1; % starting time step
-	nt_ = 2000000; % ending time step
 	nbins = 20; % bins for histogram
     nit0 = 20; % number of snapshot for the spatial figure and histogram in the temporal figure
 	ns = 10; % number for V1 neurons to be sampled.
@@ -319,7 +319,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	
 	subplot(2,2,4)
     for i=1:11
-        counts(i) = counts(i)*sum(os(bin == i));
+        counts(i) = counts(i)*mean(os(bin == i));
     end
     bar(x_op, counts, 'FaceColor', 'b', 'BarWidth', 0.9);
 	xlabel('OP (deg)')

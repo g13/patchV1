@@ -16,8 +16,6 @@ np.seterr(invalid = 'raise')
 #@profile
 def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
     #sample = np.array([0,1,2,768])
-    #sample = np.array([40, 58, 75])
-    #sample = np.array([1338, 10235])
     sample = np.array([203,360,365,715,467,743,203,752]);
 
     SCsplit = 0
@@ -197,10 +195,11 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
         V1_x0, V1_xspan, V1_y0, V1_yspan = np.fromfile(f, 'f8', count=4)
         print(f'x:{[V1_x0, V1_x0 + V1_xspan]}')
         print(f'y:{[V1_y0, V1_y0 + V1_yspan]}')
-        _pos = np.reshape(np.fromfile(f, 'f8', count = networkSize*dataDim), (nblock, dataDim, blockSize))
-        pos = np.zeros((2,networkSize))
-        pos[0,:] = _pos[:,0,:].reshape(networkSize)
-        pos[1,:] = _pos[:,1,:].reshape(networkSize)
+        #_pos = np.reshape(np.fromfile(f, 'f8', count = networkSize*dataDim), (nblock, dataDim, blockSize))
+        #pos = np.zeros((2,networkSize))
+        #pos[0,:] = _pos[:,0,:].reshape(networkSize)
+        #pos[1,:] = _pos[:,1,:].reshape(networkSize)
+        pos = np.reshape(np.fromfile(f, 'f8', count = 2*networkSize), (2, networkSize))
         V1_vx0, V1_vxspan, V1_vy0, V1_vyspan = np.fromfile(f, 'f8', 4)
         print(f'vx:{[V1_vx0, V1_vx0 + V1_vxspan]}')
         print(f'vy:{[V1_vy0, V1_vy0 + V1_vyspan]}')
