@@ -1773,7 +1773,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
             ms2 = 0.04
             mk1 = '.'
             mk2 = 's'
-            sat0 = 0.25
+            sat0 = 0.0
             ax11 = fig.add_subplot(243)
             ax12 = fig.add_subplot(244)
 
@@ -2091,7 +2091,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
             ms2 = 0.04
             mk1 = '.'
             mk2 = 's'
-            sat0 = 0.25
+            sat0 = 0.0
             ax11 = fig.add_subplot(243)
             ax12 = fig.add_subplot(244)
 

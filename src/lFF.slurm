@@ -1,7 +1,7 @@
 #!/bin/bash
 cd ${HOME}/repos/patchV1/src
 
-t=00:40:00
+t=01:00:00
 echo ${t}
 #fdr0=/scratch/wd554/Jen
 fdr0=/scratch/wd554/patchV1
@@ -25,12 +25,12 @@ fi
 relay=false
 if [[ "${waveStage}" = "3" ]] ;then
 	fdr=wave_concat/wave_III
-	op=wave_III_g4_max3
+	op=wave_III_g6
 	op_cfg=wave_III.cfg
 	smallRange=true
 	new_setup=True
 	if [[ "${relay}" = false ]]; then
-		suffix=g4
+		suffix=g6
 		lgn=lFF_III_${suffix}
 		res=lFF_III_${suffix}
 	else
@@ -59,7 +59,7 @@ fi
 
 binary_thres=0.0
 #binary_thres=0.5
-std_ecc=4
+std_ecc=6
 seed=1924784 # RANDOM SEED for post-analysis sampling and input randomization 
 # for outputLearnFF.m
 st=2 # figures' output: 0 for temporal, 1 for spatial, 2 for both
@@ -165,11 +165,11 @@ fi
 
 date
 echo plotV1_fr.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} & 
-plotV1_fr.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} & 
+plotV1_fr.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} &
 
-date
-echo plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} & 
-plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
+#date
+#echo plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} & 
+#plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
 
 date
 echo matlab -nodisplay -nosplash -r "outputLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle}, ${use_local_max});exit;" &

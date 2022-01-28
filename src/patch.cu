@@ -5496,7 +5496,7 @@ int main(int argc, char** argv) {
     	    if (nFar) {
     	    	farSpiked = fill_fSpikeTrain(fSpikeTrain,  spikeTrain + nV1*currentTimeSlot, fCurrenSlot, vecID, nVec, nV1);
 				if (farSpiked) {
-					cout << "far spiked\n!";
+					//cout << "far spiked\n!";
     	    		PosInt block_offset = 0;
     	        	for (PosInt i = 0; i < nChunk; i++) {
     	        	    if (i >= iSizeSplit) chunkSize = remainChunkSize;
@@ -6241,7 +6241,7 @@ int main(int argc, char** argv) {
         if (nFar) { 
         	farSpiked = fill_fSpikeTrain(fSpikeTrain,  spikeTrain + nV1*currentTimeSlot, fCurrenSlot, vecID, nVec, nV1);
 			if (farSpiked) {
-				cout << "it = " << it << ", far spiked!\n";
+				//cout << "it = " << it << ", far spiked!\n";
 				block_offset = 0;
 		    	for (PosInt i = 0; i < nChunk; i++) {
 		    		if (i >= iSizeSplit) chunkSize = remainChunkSize;

@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
@@ -5,46 +6,38 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gs
 import matplotlib as mpl
 from readPatchOutput import *
-from global_vars import LGN_vposFn, featureFn, V1_allposFn, seed
 
 import sys
-if len(sys.argv) > 1:
-    output_suffix = sys.argv[1]
-    if len(sys.argv) > 2:
-        conLGN_suffix = sys.argv[2]
-        if len(sys.argv) > 3:
-            conV1_suffix = sys.argv[3]
-            if len(sys.argv) > 4:
-                outputfdr = sys.argv[4]
-            else:
-                outputfdr = ""
-        else:
-            conV1_suffix = ""
-            outputfdr = ""
-    else:
-        conLGN_suffix = ""
-        conV1_suffix = ""
-        outputfdr = ""
-else:
-    output_suffix = ""
-    conLGN_suffix = ""
-    conV1_suffix = ""
-    outputfdr = ""
+output_suffix = sys.argv[1]
+res_suffix = sys.argv[2]
+conLGN_suffix = sys.argv[3]
+conV1_suffix = sys.argv[4]
+res_fdr = sys.argv[5]
+data_fdr = sys.argv[6]
+fig_fdr = sys.argv[7]
 
-print(outputfdr)
-print(output_suffix)
-print(conLGN_suffix)
-print(conV1_suffix)
+if res_suffix:
+    res_suffix = "_" + res_suffix 
 if conLGN_suffix:
     conLGN_suffix = "_" + conLGN_suffix 
 if conV1_suffix:
     conV1_suffix = "_" + conV1_suffix 
 if output_suffix:
-    _output_suffix = "_" + output_suffix
-if outputfdr:
-    outputfdr = outputfdr + "/"
+    output_suffix = "_" + output_suffix
+print(f'res_suffix = {res_suffix}')
+print(f'conLGN_suffix = {conLGN_suffix}')
+print(f'conV1_suffix = {conV1_suffix}')
+print(f'output_suffix = {output_suffix}')
+
+if fig_fdr[-1] != "/":
+    fig_fdr = fig_fdr + "/"
+if res_fdr[-1] != "/":
+    res_fdr = res_fdr + "/"
+if data_fdr[-1] != "/":
+    data_fdr = data_fdr + "/"
 
 
+seed = 6578872
 np.random.seed(seed)
 ns = 5
 mk = ['o', 'd']
@@ -75,20 +68,24 @@ plotLGN_V1_ratio = False
 plotLGNsSum = False
 plotBlockWiseComplexDist = False 
 
-parameterFn = "patchV1_cfg" +_output_suffix + ".bin"
-prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn = read_cfg(parameterFn)
+LGN_vposFn = res_fdr + 'LGN_vpos'+ res_suffix + ".bin"
+featureFn = res_fdr + 'V1_feature' + res_suffix + ".bin"
+V1_allposFn = res_fdr + 'V1_allpos' + res_suffix + ".bin"
+parameterFn = data_fdr + "patchV1_cfg" +output_suffix + ".bin"
+conMat_file = res_fdr + 'V1_conMat'+conV1_suffix+'.bin'
+delayMat_file = res_fdr + 'V1_delayMat'+conV1_suffix+'.bin'
+vec_file = res_fdr + 'V1_vec'+conV1_suffix+'.bin'
+blkPos_file = res_fdr + 'block_pos'+conV1_suffix+'.bin'
+nabaBlk_file = res_fdr + 'neighborBlock'+conV1_suffix+'.bin'
+stats_file = res_fdr + 'conStats'+conV1_suffix+'.bin'
+LGN_V1_ID_file = res_fdr + 'LGN_V1_idList'+conLGN_suffix+'.bin'
+LGN_V1_s_file = res_fdr + 'LGN_V1_sList'+conLGN_suffix+'.bin'
+
+prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN = read_cfg(parameterFn)
 
 typeAcc = np.hstack((0, typeAcc))
 print(typeAcc)
 
-conMat_file = 'V1_conMat'+conV1_suffix+'.bin'
-delayMat_file = 'V1_delayMat'+conV1_suffix+'.bin'
-vec_file = 'V1_vec'+conV1_suffix+'.bin'
-blkPos_file = 'block_pos'+conV1_suffix+'.bin'
-nabaBlk_file = 'neighborBlock'+conV1_suffix+'.bin'
-stats_file = 'conStats'+conV1_suffix+'.bin'
-LGN_V1_ID_file = 'LGN_V1_idList'+conLGN_suffix+'.bin'
-LGN_V1_s_file = 'LGN_V1_sList'+conLGN_suffix+'.bin'
 
 sampleBlockId = [13]
 
@@ -106,7 +103,11 @@ with open(V1_allposFn, 'r') as f:
     V1_yspan = coord_span[3]
     print(f'V1_x:{[V1_x0, V1_x0 + V1_xspan]}')
     print(f'V1_y:{[V1_y0, V1_y0 + V1_yspan]}')
-    pos = np.reshape(np.fromfile(f, 'f8', count = networkSize*2), (nblock,2,blockSize))
+    _pos = np.reshape(np.fromfile(f, 'f8', count = networkSize*2), (2,nblock,blockSize))
+    pos = np.empty((nblock,2,blockSize), dtype = 'f8')
+    for i in range(nblock):
+        pos[i,0,:] = _pos[0,i,:]
+        pos[i,1,:] = _pos[1,i,:]
 
 # read block center pos
 with open(blkPos_file, 'rb') as f:
@@ -119,6 +120,10 @@ with open(nabaBlk_file,'rb') as f:
     print(nNabaBlk)
     for i in range(nblock):
         nabaBlkId[i] = np.fromfile(f, 'u4', count = nNabaBlk[i])            
+    print('nNearNeighborBlock:')
+    print(f'[{np.min(nNearNabaBlk)}, {np.mean(nNearNabaBlk)},{np.max(nNearNabaBlk)}]')
+    print('nNeighborBlock:')
+    print(f'[{np.min(nNabaBlk)}, {np.mean(nNabaBlk)},{np.max(nNabaBlk)}]')
 
 print(conMat_file)
 with open(conMat_file, 'rb') as f:
@@ -260,7 +265,7 @@ if plotLGNsSum:
     ax.hist(lgnData[epick], color = 'r', alpha = 0.5, label = 'R')
     ax.hist(lgnData[ipick], color = 'b', alpha = 0.5, label = 'L')
     ax.set_title('EI')
-    fig.savefig(outputfdr+'LGNsSum'+conLGN_suffix+'.png')
+    fig.savefig(fig_fdr+'LGNsSum'+conLGN_suffix+'.png')
 
 if plotBlockWiseComplexDist:
     fig = plt.figure('blockComp', dpi = 300)
@@ -269,7 +274,7 @@ if plotBlockWiseComplexDist:
     ax.hist(pick//blockSize, bins = np.arange(nblock+1), color = 'r', alpha = 0.5, label = 'Exc.C')
     pick = ipick[nLGN_V1[ipick] == 0]
     ax.hist(pick//blockSize, bins = np.arange(nblock+1), color = 'b', alpha = 0.5, label = 'Inh.C')
-    fig.savefig(outputfdr+'blockComp'+conLGN_suffix+'.png')
+    fig.savefig(fig_fdr+'blockComp'+conLGN_suffix+'.png')
 
 if plotLGN_V1_ratio:
     fig = plt.figure('LGN_V1_ratio', dpi = 300)
@@ -316,7 +321,7 @@ if plotLGN_V1_ratio:
         ax0.hist(lgnData[typeID]*sRatioLGN[i], bins = np.arange(max_nLGN+1), label = f'type_{i}', alpha = 0.5)
         ax0.legend()
         ax0.set_xlabel('lgn Exc')
-    fig.savefig(outputfdr+'LGN_V1_ratio'+conLGN_suffix+conV1_suffix+'.png')
+    fig.savefig(fig_fdr+'LGN_V1_ratio'+conLGN_suffix+conV1_suffix+'.png')
     
 if plotPos:
     fig = plt.figure('pos', dpi = 900)
@@ -334,7 +339,7 @@ if plotPos:
                     plt.plot(blkPos[0,nabaBlkId[i][j]], blkPos[1,nabaBlkId[i][j]], 'sk', ms = 0.2)
 
     ax.set_aspect('equal')
-    fig.savefig(outputfdr+'V1_pos' + conV1_suffix + '.png')
+    fig.savefig(fig_fdr+'V1_pos' + conV1_suffix + '.png')
     
 if plotStats:
     fig = plt.figure('conStatsSum', dpi = 300)
@@ -374,7 +379,7 @@ if plotStats:
             ax3.hist(data3[j,:], bins = 10, label = f'preType_{j}')
             if i==nType-1:
                 ax3.legend(loc='upper right')
-    fig.savefig(outputfdr+'conStatsSum'+conV1_suffix+'.png')
+    fig.savefig(fig_fdr+'conStatsSum'+conV1_suffix+'.png')
 
     fig = plt.figure('conStrPooled', dpi = 300)
     grid = gs.GridSpec(nType, 1, figure = fig, hspace = 0.2)
@@ -400,7 +405,7 @@ if plotStats:
 
             if i==nType-1:
                 ax.legend(loc='upper right')
-    fig.savefig(outputfdr+'conStatsPooled'+conV1_suffix+'.png')
+    fig.savefig(fig_fdr+'conStatsPooled'+conV1_suffix+'.png')
 
 if plotLGN_V1_sample:
     fig = plt.figure('LGN_V1-sample', dpi = 300)
@@ -458,7 +463,7 @@ if plotLGN_V1_sample:
         ax.set_aspect('equal')
         ax.set_title(f'{orient*180/np.pi:.1f}')
 
-    fig.savefig(outputfdr+'LGN_V1-sample'+conLGN_suffix+'.png')
+    fig.savefig(fig_fdr+'LGN_V1-sample'+conLGN_suffix+'.png')
 
 if plotCon_sample:
     red = np.array([0.0, 1, 1])
@@ -582,7 +587,7 @@ if plotCon_sample:
 
         ax.plot(pos[bid,0,tid], pos[bid,1,tid],'*k', ms = 1)
         ax.set_aspect('equal')
-        fig.savefig(outputfdr+'V1_conSample-'+f'{bid}-{tid}' + conV1_suffix + '.png')
+        fig.savefig(fig_fdr+'V1_conSample-'+f'{bid}-{tid}' + conV1_suffix + '.png')
 
 if plotConFeature_stats:
     feat = ('LR', 'OP', 'CS')
@@ -595,7 +600,7 @@ if plotConFeature_stats:
         for iF in range(nFeature):
             ax = fig.add_subplot(grid[iF, iType])
             ax.hist(feature[iF, pick], bins = bins[iF])
-    fig.savefig(outputfdr+'conFeature-dist' + conV1_suffix + '.png')
+    fig.savefig(fig_fdr+'conFeature-dist' + conV1_suffix + '.png')
 
     cm = ('Reds', 'Blues')
     ranges = (np.array([-1,1]), np.array([0.0, 1.0]), np.array([0.0, 1.0]))
@@ -654,7 +659,7 @@ if plotConFeature_stats:
                     HeatMap(xFeature, mean_std[1,jType,:], ranges[iF], stdBins[jF], ax, cm[jType], log_scale = logScale, intPick = False, tickPick1 = tickPick[iF])
                     ax.set_title('std')
 
-        fig.savefig(outputfdr+f'conFeature-{archType[iType]}'+ conV1_suffix + '.png')
+        fig.savefig(fig_fdr+f'conFeature-{archType[iType]}'+ conV1_suffix + '.png')
 
 if plotConFeature_sample:
     fig = plt.figure('conFeature-sample', figsize = np.array([nFeature*2, ns])*2, dpi = 300)
@@ -723,7 +728,7 @@ if plotConFeature_sample:
             ax.set_aspect('equal')
             ax2.set_xlabel(f'{mean_std[0,0]:.3f}, {mean_std[1,0]:.3f} | {mean_std[0,1]:.3f}, {mean_std[1,1]:.3f}')
     
-    fig.savefig(outputfdr+'conFeature-sample'+conV1_suffix+'.png')
+    fig.savefig(fig_fdr+'conFeature-sample'+conV1_suffix+'.png')
 
 if plotConFeature_preSynTC:
     feat = ('LR', 'OP', 'CS')
@@ -771,4 +776,4 @@ if plotConFeature_preSynTC:
                 TuningCurves(data[jType,:], bins[iF], percentile, ax, color[jType], tick[iF], ticklabel[iF])
                 ax.set_title(f'{archType[iType]}<-{feat[iF]}')
 
-        fig.savefig(outputfdr+f'conFeature_preSynTC-{archType[iType]}'+ conV1_suffix + '.png')
+        fig.savefig(fig_fdr+f'conFeature_preSynTC-{archType[iType]}'+ conV1_suffix + '.png')

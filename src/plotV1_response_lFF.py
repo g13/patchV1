@@ -120,9 +120,12 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
     conLGN_suffix = "_" + conLGN_suffix
     conV1_suffix = "_" + conV1_suffix
 
-    data_fdr = data_fdr+"/"
+    if data_fdr[-1] != "/":
+        data_fdr = data_fdr+"/"
+    if fig_fdr[-1] != "/":
+        fig_fdr = fig_fdr+"/"
+
     res_fdr = res_fdr+"/"
-    fig_fdr = fig_fdr+"/"
     
     rawDataFn = data_fdr + "rawData" + _output_suffix + ".bin"
     LGN_frFn = data_fdr + "LGN_fr" + _output_suffix + ".bin"
