@@ -481,7 +481,7 @@ void compute_V_collect_spike_learnFF(
 		cudaSurfaceObject_t LGNspikeSurface,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
-        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo)
+        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo, bool symmetricHomeo)
 {
     // get different ids in chunks
     PosInt tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -978,15 +978,28 @@ void compute_V_collect_spike_learnFF(
 			if (applyHomeo) {
 				local_totalFF0 = totalFF[tid];
             	local_totalFF_inf = totalFF_inf[tid];
-            	new_totalFF0 = (local_totalFF0-local_totalFF_inf)*exp_homeo + local_totalFF_inf;
-				switch (applyHomeo) {	
-					case 1: 
-						homeostatic_change = new_totalFF0/local_totalFF0;
-						break;
-					case 2:
-						homeostatic_change = (new_totalFF0 - local_totalFF0)/m;
-						break;
-				}
+                Float d_totalF = local_totalFF0-local_totalFF_inf;
+                if (d_totalF > 0 || symmetricHomeo) {
+            	    new_totalFF0 = d_totalF*exp_homeo + local_totalFF_inf;
+				    switch (applyHomeo) {	
+				    	case 1: 
+                            homeostatic_change = new_totalFF0/local_totalFF0;
+				    		break;
+				    	case 2:
+				    		homeostatic_change = (new_totalFF0 - local_totalFF0)/m;
+				    		break;
+				    }
+                } else {
+            	    new_totalFF0 = local_totalFF0;
+				    switch (applyHomeo) {	
+				    	case 1: 
+                            homeostatic_change = 1;
+				    		break;
+				    	case 2:
+				    		homeostatic_change = 0;
+				    		break;
+				    }
+                }
 				delta_f = 0.0;
 				/*
 				if (tid == 743) {
@@ -1273,7 +1286,7 @@ void compute_V_collect_spike_learnFF_fast(
 		cudaSurfaceObject_t LGNspikeSurface,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
-        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo)
+        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo, bool symmetricHomeo)
 {
     __shared__ PosInt counter[2];
     if (threadIdx.x < 2) {
@@ -1736,15 +1749,29 @@ void compute_V_collect_spike_learnFF_fast(
 			if (applyHomeo) {
 				local_totalFF0 = totalFF[tid];
             	local_totalFF_inf = totalFF_inf[tid];
-            	new_totalFF0 = (local_totalFF0-local_totalFF_inf)*exp_homeo + local_totalFF_inf;
-				switch (applyHomeo) {	
-					case 1: 
-						homeostatic_change = new_totalFF0/local_totalFF0;
-						break;
-					case 2:
-						homeostatic_change = (new_totalFF0 - local_totalFF0)/m;
-						break;
-				}
+                Float d_totalF = local_totalFF0-local_totalFF_inf;
+                if (d_totalF > 0 || symmetricHomeo) {
+            	    new_totalFF0 = d_totalF*exp_homeo + local_totalFF_inf;
+				    switch (applyHomeo) {	
+				    	case 1: 
+                            homeostatic_change = new_totalFF0/local_totalFF0;
+				    		break;
+				    	case 2:
+				    		homeostatic_change = (new_totalFF0 - local_totalFF0)/m;
+				    		break;
+				    }
+                } else {
+            	    new_totalFF0 = local_totalFF0;
+				    switch (applyHomeo) {	
+				    	case 1: 
+                            homeostatic_change = 1;
+				    		break;
+				    	case 2:
+				    		homeostatic_change = 0;
+				    		break;
+				    }
+                }
+
 				delta_f = 0.0;
 				/*
 				if (tid == 743) {

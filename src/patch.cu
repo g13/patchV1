@@ -67,6 +67,7 @@ int main(int argc, char** argv) {
 	bool asInit;
 	bool use_v0;
 	bool virtual_LGN;
+    bool symmetricHomeo;
 	int rebound;
 	int learning;
 	int iModel;
@@ -210,6 +211,7 @@ int main(int argc, char** argv) {
 		("decayTimeHomeoFF", po::value<Float>(&hdFF)->default_value(250.0), "the decay time constant for homeostatis on the total FF connection strength")
 		("FF_InfRatio", po::value<Float>(&FF_InfRatio)->default_value(1.0), "Ratio of f_FF_inf/f_FF")
 		("applyHomeo", po::value<int>(&applyHomeo)->default_value(0), "type of homeostatis to apply, 0: none")
+		("symmetricHomeo", po::value<bool>(&symmetricHomeo)->default_value(true), "allow total sum of weights to increase when smaller than the initial sum of weights")
 		("v0", po::value<vector<Float>>(&v0), "array for initial dist [nType, mean, std]")
 		("w0", po::value<vector<Float>>(&w0), "AdEx model's initial dist of w [nType, mean, std]")
 		("gFF0", po::value<vector<Float>>(&gFF0), "array for initial dist [nType, ngTypeFF, mean, std]")
