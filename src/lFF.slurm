@@ -25,10 +25,10 @@ fi
 relay=false
 if [[ "${waveStage}" = "3" ]] ;then
 	fdr=wave_concat/wave_III
-	op=wave_III_g6
+	op=wave_III_g6-max7
 	op_cfg=wave_III.cfg
 	smallRange=true
-	new_setup=True
+	new_setup=False
 	if [[ "${relay}" = false ]]; then
 		suffix=g6
 		lgn=lFF_III_${suffix}
@@ -62,7 +62,7 @@ binary_thres=0.0
 std_ecc=6
 seed=1924784 # RANDOM SEED for post-analysis sampling and input randomization 
 # for outputLearnFF.m
-st=2 # figures' output: 0 for temporal, 1 for spatial, 2 for both
+st=2 # figures' output: 0 for temporal, 1 for spatial, 2 for both, otherwise none
 examSingle=true # output the spatiotemporal figure, tLGN_V1_single if true
 use_local_max=1 # output the spatiotemporal figure, sLGN_V1 with strength normalized for each frame instead over all frames if set 1
 collectMeanDataOnly=False # not ploting samples of V1 response variable traces
@@ -167,9 +167,9 @@ date
 echo plotV1_fr.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} & 
 plotV1_fr.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} &
 
-#date
-#echo plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} & 
-#plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
+date
+echo plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} & 
+plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
 
 date
 echo matlab -nodisplay -nosplash -r "outputLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle}, ${use_local_max});exit;" &

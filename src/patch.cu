@@ -4578,6 +4578,7 @@ int main(int argc, char** argv) {
 		    		f_sLGN.write((char*) &sRatioLGN[0], sizeof(Float));
 		    		f_sLGN.write((char*) &nLearnTypeFF, sizeof(Size));
 		    		f_sLGN.write((char*) &(gmaxLGN[0]), nLearnTypeFF*sizeof(Float));
+		    		f_sLGN.write((char*) &FF_InfRatio, sizeof(Float));
 				}
             }
         }
@@ -5960,7 +5961,7 @@ int main(int argc, char** argv) {
 		    		tau_noise, currentTimeSlot, trainDepth, max_LGNperV1,
 		    		ngTypeFF, ngTypeE, ngTypeI, condFF, condE, condI,
 		    		dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, nE, nI, nV1, learning, varSlot, nType, LGNspikeSurface,
-                    lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ, exp_homeo, iModel, noDelay, applyHomeo); // learning const structs 
+                    lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ, exp_homeo, iModel, noDelay, applyHomeo, symmetricHomeo); // learning const structs 
             
         } else {
 		    compute_V_collect_spike_learnFF_fast<<<nblock, neuronPerBlock, 0, mainStream>>> (
@@ -5976,7 +5977,7 @@ int main(int argc, char** argv) {
 		    		tau_noise, currentTimeSlot, trainDepth, max_LGNperV1,
 		    		ngTypeFF, ngTypeE, ngTypeI, condFF, condE, condI,
 		    		dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, nE, nI, nV1, learning, varSlot, nType, LGNspikeSurface,
-                    lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ, exp_homeo, iModel, noDelay, applyHomeo); // learning const structs 
+                    lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ, exp_homeo, iModel, noDelay, applyHomeo, symmetricHomeo); // learning const structs 
         }
 
         #ifdef CHECK

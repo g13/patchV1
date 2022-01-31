@@ -26,7 +26,8 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	    osuffix = ['_', osuffix];
 	end
 	%%%% HERE %%%%
-	thres_out = 0.5; % under which ratio of max LGN connection strength will not be used to calculate the orientation of RF, neither will be counted toward the number of connection in spatial figure's title.
+    top_thres = 0.8; % threshold to count connections of max strength, fluctuates below max
+	thres_out = 0.1; % under which ratio of max LGN connection strength will not be used to calculate the orientation of RF, neither will be counted toward the number of connection in spatial figure's title.
 	nstep = 1000; % total steps to sample from the trace of weight's temporal evolution.
 	nbins = 20; % bins for histogram
     nit0 = 20; % number of snapshot for the spatial figure and histogram in the temporal figure
@@ -67,6 +68,9 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	sRatio = fread(fid, 1, 'float')
 	nLearnFF = fread(fid, 1, 'uint')
 	gmaxLGN = fread(fid, nLearnFF, 'float')*sRatio
+	FF_InfRatio = fread(fid, 1, 'float');
+	nskip = (8 + nLearnFF);
+	capacity = max_LGNperV1*sRatio*FF_InfRatio/gmaxLGN(1)/top_thres
 	fclose(fid);
 
 	fid = fopen(V1_frFn, 'r');
@@ -178,7 +182,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 
 	%%%%%%%%%%%%%%%%%% HERE %%%%%%%%%%%%%%%%%%
 	fid = fopen(f_sLGN, 'r');
-	fseek(fid, 8*4, 'cof'); % skip till time
+	fseek(fid, nskip*4, 'cof'); % skip till time
     f = figure('PaperPosition',[0, 0, 4, nit*0.75]*2);
 
     x = ((1:nLGN_1D/2)-0.5)*sqrt(2);
@@ -188,12 +192,22 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
     xLGN = xLGN-nLGN_1D/2-0.5;
     yLGN = yLGN-nLGN_1D/2-0.5;
     rLGN = sqrt(xLGN.*xLGN + yLGN.*yLGN);
+    disp('rLGN shape = ')
+    disp(size(rLGN));
     op_edges = linspace(0,360,nop);
 	x_op = (op_edges(1:nop-1) + op_edges(2:nop))/2;
 	lims = zeros(2,2);
     lims(:,1) = inf;
     lims(:,2) = -inf;
 	it = diff(qt)-1;
+    max20 = zeros(max_LGNperV1/2, nit, 2);
+    min0 = zeros(max_LGNperV1/2, nit, 2);
+    picked = false(nLGN_1D,nLGN_1D,nV1,2);
+    s_on = zeros(max_LGNperV1/2, nV1);
+    s_off = zeros(max_LGNperV1/2, nV1);
+    s_Don = zeros(length(x)-1,1);
+    s_Doff = zeros(length(x)-1,1);
+    n0 = 0;
     for i=1:nit
         if i == 1
 	        fseek(fid, max_LGNperV1*nV1*int64(step0-1)*4, 'cof'); % skip till time
@@ -204,25 +218,51 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
         end
 	    sLGN = fread(fid, [nV1, max_LGNperV1], 'float')'; % transposed
 
-        sLGN_avg = zeros(nLGN, nV1);
+        sLGN_grid = zeros(nLGN, nV1);
 	    for j = 1:nV1
-	        sLGN_avg(LGN_V1_ID(1:nLGN_V1(j),j),j) = sLGN(1:nLGN_V1(j),j);
+	        sLGN_grid(LGN_V1_ID(1:nLGN_V1(j),j),j) = sLGN(1:nLGN_V1(j),j);
         end
-        sLGN_avg = mean(sLGN_avg, 2);
-        sLGN_avg = reshape(sLGN_avg, [nLGN_1D*2, nLGN_1D]);
-        sLGN_on = sLGN_avg(1:2:(nLGN_1D*2),:);
-        sLGN_off = sLGN_avg(1:2:(nLGN_1D*2),:);
-        s_on = zeros(length(x)-1,1);
-        s_off = zeros(length(x)-1,1);
+        sLGN_grid = reshape(sLGN_grid, [nLGN_1D*2, nLGN_1D, nV1]);
+        sLGN_on = sLGN_grid(1:2:(nLGN_1D*2),:,:);
+        sLGN_off = sLGN_grid(2:2:(nLGN_1D*2),:,:);
+        if i == 1
+            picked(:, :, :, 1) = sLGN_on > 0;
+            picked(:, :, :, 2) = sLGN_off > 0;
+        end
+        
+	    for j = 1:nV1
+            if sum(picked(:,:,j,:)) > 0
+                q_on = sLGN_on(:,:,j);
+                s_on(:,j) = reshape(q_on(picked(:,:,j,1)), [max_LGNperV1/2,1]);
+                q_off = sLGN_off(:,:,j);
+                s_off(:,j) = reshape(q_off(picked(:,:,j,2)), [max_LGNperV1/2,1]);
+            else
+                s_on(:,j) = 0;
+                s_off(:,j) = 0;
+            end
+        end
+        max20(:,i,1) = histcounts(sum(s_on>gmaxLGN*top_thres, 1), 'BinEdges', 0:max_LGNperV1/2);
+        max20(:,i,2) = histcounts(sum(s_off>gmaxLGN*top_thres, 1), 'BinEdges', 0:max_LGNperV1/2);
+        if i == nit
+            nmax = sum(s_on > gmaxLGN*top_thres, 1);
+            avg_on_max = mean(nmax(nmax > 0));
+            nmax = sum(s_off > gmaxLGN*top_thres, 1);
+            avg_off_max = mean(nmax(nmax > 0));
+        end
+        min0(:,i,1) = histcounts(sum(s_on==0, 1), 'BinEdges', 0:max_LGNperV1/2);
+        min0(:,i,2) = histcounts(sum(s_off==0, 1), 'BinEdges', 0:max_LGNperV1/2);
+
+        sLGN_on = mean(sLGN_on,3);
+        sLGN_off = mean(sLGN_off,3);
         for j=1:length(x)-1
             pick = (rLGN > x(j) & rLGN < x(j+1));
-            s_on(j) = mean(sLGN_on(pick));
-            s_off(j) = mean(sLGN_off(pick));
+            s_Don(j) = mean(sLGN_on(pick));
+            s_Doff(j) = mean(sLGN_off(pick));
         end
         subplot(nit,4,4*(i-1)+4)
         hold on
-        plot(x(2:end), s_on, '-*r');
-        plot(x(2:end), s_off, '-*b');
+        plot(x(2:end), s_Don, '-*r');
+        plot(x(2:end), s_Doff, '-*b');
         ylim([0,inf])
         if i==1
 	        title('str over dis')
@@ -253,7 +293,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	    subplot(nit,4,4*(i-1)+2)
         [counts, ~, bin] = histcounts(orient*180/pi, 'BinEdges', op_edges);
         for j=1:11
-            counts(j) = counts(j)*sum(os(bin == j));
+            counts(j) = counts(j)*mean(os(bin == j));
         end
         bar(x_op, counts, 'FaceColor', 'b', 'BarWidth', 0.9);
         if i==1
@@ -283,6 +323,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 			xlabel('dis/(Ron+Roff)')
         end
     end
+    disp('data collected');
     for i=1:nit
 	    subplot(nit,4,4*(i-1)+1)
         xlim(lims(1,:));
@@ -299,8 +340,47 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	set(f, 'OuterPosition', [.1, .1, 4, nit*0.75]*2);
 	set(f, 'innerPosition', [.1, .1, 4, nit*0.75]*2);
 	saveas(f, [fig_fdr, 'tOS-dist', osuffix,rtime, '.png']);
+    close(f);
+    disp('tOS-dist finished');
 
-	fseek(fid, max_LGNperV1*nV1*int64(nt_-1)*4 + 8*4, 'bof'); % skip till time
+	f = figure('PaperPosition',[0, 0, 6, 6]);
+	clims = [0, 1];
+	subplot(2,2,1)
+    counts = max20(:,:,1);
+	imagesc([1, nit], [1, max_LGNperV1/2], counts./max(counts), clims);
+	set(gca,'YDir','normal')
+	colormap('gray');
+    ylabel(['# > ', num2str(top_thres*100,'%.0f'), '% max']);
+    title(['on (', num2str(avg_on_max,'%.2f'), '/', num2str(capacity,'%.2f'),')']);
+
+	subplot(2,2,2)
+    counts = max20(:,:,2);
+	imagesc([1, nit], [1, max_LGNperV1/2], counts./max(counts), clims);
+	colormap('gray');
+    title(['off (', num2str(avg_off_max,'%.2f'), '/', num2str(capacity,'%.2f'),')']);
+	set(gca,'YDir','normal')
+
+	subplot(2,2,3)
+    counts = min0(:,:,1);
+	imagesc([1, nit], [1, max_LGNperV1/2], counts./max(counts), clims);
+	colormap('gray');
+    ylabel('# == 0');
+    xlabel('sample time');
+	set(gca,'YDir','normal')
+
+	subplot(2,2,4)
+    counts = min0(:,:,2);
+	imagesc([1, nit], [1, max_LGNperV1/2], counts./max(counts), clims);
+	colormap('gray');
+	set(gca,'YDir','normal')
+
+	set(f, 'OuterPosition', [.1, .1, max_LGNperV1/2, nit*0.75]/4);
+	set(f, 'innerPosition', [.1, .1, max_LGNperV1/2, nit*0.75]/4);
+	saveas(f, [fig_fdr, 'max_min_tDist', osuffix,rtime, '.png']);
+    close(f);
+    disp('max_min_tDist finished');
+
+	fseek(fid, max_LGNperV1*nV1*int64(nt_-1)*4 + nskip*4, 'bof'); % skip till time
 	sLGN = fread(fid, [nV1, max_LGNperV1], 'float')'; % transposed
     fclose(fid);
 
@@ -332,13 +412,14 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	set(f, 'OuterPosition', [.1, .1, 6, 6]);
 	set(f, 'innerPosition', [.1, .1, 6, 6]);
 	saveas(f, [fig_fdr, 'stats-LGN_V1', osuffix,rtime, '.png']);
+    close(f);
+    disp('stats finished');
 	%%%%%%%%%%%%%%%%%% HERE %%%%%%%%%%%%%%%%%%
-
 
 	if st == 2 || st == 1
 	    sLGN_all = zeros(nLGN, nit, ns);
 	    fid = fopen(f_sLGN, 'r');
-	    fseek(fid, 8*4, 'cof'); % skip till time
+	    fseek(fid, nskip*4, 'cof'); % skip till time
 	    
 	    % skip times
 	    %ht = round(nt/2);
@@ -502,8 +583,10 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	        	%saveas(f, [fig_fdr,'sLGN_V1-',num2str(iV1), osuffix, '-sep',rtime], 'fig');
 	        	saveas(f, [fig_fdr,'sLGN_V1-',num2str(iV1), osuffix, '-sep',rtime,'.png']);
 			end
+            close(f);
 	    end
     end
+    disp('sLGN finished');
 
 	if st == 2 || st == 0
 		tstep = int64(round(range_nt/nstep))
@@ -513,7 +596,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	    tLGN_all = zeros(max_LGNperV1, nstep, ns);
 
 	    fid = fopen(f_sLGN, 'r');
-	    fseek(fid, 8*4, 'cof'); % skip till time
+	    fseek(fid, nskip*4, 'cof'); % skip till time
 	    fseek(fid, max_LGNperV1*nV1*int64(step0-1)*4, 'cof'); % skip till time
 		data = fread(fid, [nV1, max_LGNperV1], 'float')'; % transposed
 	    tLGN_all(:,1,:) = data(:,V1_pick);
@@ -557,6 +640,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 					set(gca,'XTickLabel', []);
 				end
 				saveas(f, [fig_fdr, 'tLGN_V1_single-',num2str(iV1), osuffix,rtime, '.png']);
+                close(f);
 			end
 			f = figure('PaperPosition',[.1 .1 8 6]);
 			
@@ -598,8 +682,10 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 			set(f, 'innerPosition', [.1, .1, 8, 6]);
 	        %saveas(f, [fig_fdr, 'tLGN_V1-',num2str(iV1), osuffix,rtime], 'fig');
 	        saveas(f, [fig_fdr, 'tLGN_V1-',num2str(iV1), osuffix,rtime, '.png']);
+            close(f)
 	    end
 	end
+    disp('tLGN finished');
 end
 
 

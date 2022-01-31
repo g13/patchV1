@@ -79,7 +79,7 @@ function inputLearnFF(suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle
 	%parvoMagno = 3 % both, don't use, only for testing purpose
 	
 	rng(seed);
-	initialConnectionStrength = 1.0; % also can be changed by sRatioLGN in .cfg file
+	initialConnectionStrength = 1.0; % dont change, use sRatioLGN in .cfg file
 	eiStrength = 0.000;
 	ieStrength = 0.000;
 	nblock = 32;

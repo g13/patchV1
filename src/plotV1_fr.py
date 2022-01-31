@@ -10,9 +10,10 @@ np.seterr(invalid = 'raise')
 def plotV1_fr(output_suffix0, data_fdr, fig_fdr, nOri, readNewSpike, ns):
     sample = np.array([290,311,600,685,108,134,744]);
     step0 = 0
-    nt_ = 0
-    fr_window = 4000 #ms
-    
+    nt_ = 16000
+    fr_window = 1000 #ms
+    nit = 32
+
     if nOri > 0:
         output_suffix = output_suffix0 + '_' + str(iOri)
     else:
@@ -40,6 +41,9 @@ def plotV1_fr(output_suffix0, data_fdr, fig_fdr, nOri, readNewSpike, ns):
         stepInterval = nt_
     it = np.append(np.arange(step0,nt_,stepInterval), nt_)
 
+    stepInterval0 = int(round(nt/nit)
+    it0 = np.append(np.arange(0,nt,stepInterval0), nt)
+
     if not readNewSpike:
         with np.load(spDataFn + '.npz', allow_pickle=True) as data:
             spScatter = data['spScatter']
@@ -49,10 +53,18 @@ def plotV1_fr(output_suffix0, data_fdr, fig_fdr, nOri, readNewSpike, ns):
     if 'sample' not in locals():
         sample = np.random.randint(nV1, size = ns)
     for i in sample:
-        fig = plt.figure(f'V1-fr-{i}', dpi = 600, figsize = [4,2])
-        ax = fig.add_subplot(111)
+        fig = plt.figure(f'V1-fr-{i}', dpi = 300, figsize = [6,4])
+        ax = fig.add_subplot(211)
         fr = np.array([sum(np.logical_and(spScatter[i]>=it[j]*dt, spScatter[i]<it[j+1]*dt)) for j in range(it.size-1)])/(stepInterval*dt)*1000
         ax.plot(it[:-1]*dt, fr, '-k', lw = 0.5)
+        ax.set_xlabel('sample range (ms)')
+        ax.set_ylabel('firing rate')
+
+        ax = fig.add_subplot(212)
+        fr = np.array([sum(np.logical_and(spScatter[i]>=it0[j]*dt, spScatter[i]<it0[j+1]*dt)) for j in range(it0.size-1)])/(stepInterval0*dt)*1000
+        ax.plot(it0[:-1]*dt/1000, fr, '-k', lw = 0.5)
+        ax.set_xlabel('full time (s)')
+
         fig.savefig(fig_fdr+output_suffix + f'V1-fr-{i}.png')
         plt.close(fig)
 

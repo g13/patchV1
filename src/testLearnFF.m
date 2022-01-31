@@ -39,6 +39,7 @@ function testLearnFF(res, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, iV1, nt_
 	nLearnFF = fread(fid, 1, 'uint')
 	gmaxLGN = fread(fid, nLearnFF, 'float');
 	gmax = gmaxLGN(1)*sRatio % TODO, separate E and I
+	nskip = (8+nLearnFF);
 	fclose(fid);
 	thres = gmax*thres;
 	
@@ -460,17 +461,8 @@ function testLearnFF(res, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, iV1, nt_
 	%title('LGN FR dist.');
 	
 	fid = fopen(f_sLGN, 'r');
-	nt = fread(fid, 1, 'uint');
-	sampleInterval = fread(fid, 1, 'uint');
-	dt = fread(fid, 1, 'float')
-	nV1 = fread(fid, 1, 'uint');
-	max_LGNperV1 = fread(fid, 1, 'uint')
-	sRatio = fread(fid, 1, 'float')
-	nLearnFF = fread(fid, 1, 'uint')
-	gmaxLGN = fread(fid, nLearnFF, 'float')
-	gmax = gmaxLGN(1)*sRatio; % TODO, separate E and I
+	fseek(fid, nskip*4, 'cof');
 	
-	thres = gmax*thres;
 	sLGN = zeros(nLGN, 2, nV1);
 	data = fread(fid, [nV1, max_LGNperV1], 'float')'; %transposed;
 	for i=1:nV1

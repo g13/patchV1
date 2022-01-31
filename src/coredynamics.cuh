@@ -227,7 +227,7 @@ void compute_V_collect_spike_learnFF(
 		cudaSurfaceObject_t LGNspikeSurface,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
-        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo
+        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo, bool symmetricHomeo
 );
 
 __global__ 
@@ -289,7 +289,7 @@ void compute_V_collect_spike_learnFF_fast(
 		cudaSurfaceObject_t LGNspikeSurface,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
-        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo
+        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo, bool symmetricHomeo
 );
 
 //template<int ntimesE, int ntimesI> extern
