@@ -313,7 +313,7 @@ def readSpike(rawDataFn, spFn, prec, sizeofPrec, vThres):
                     nsp = np.int(np.floor(tsps[k]))
                     tsp = tsps[k] - nsp
                     if nsp > 1:
-                        #raise Exception(f'{nsp} spikes from {j} at time step {it}, sInfo = {tsps[k]}!')
+                        raise Exception(f'{nsp} spikes from {j} at time step {it}, sInfo = {tsps[k]}!')
                         multi_spike = multi_spike + nsp 
                         if 1-tsp > 0.5:
                             dtsp = tsp/nsp
@@ -336,7 +336,7 @@ def readSpike(rawDataFn, spFn, prec, sizeofPrec, vThres):
             raise Exception('negative spikes exist')
 
         for i in range(nV1):
-            spScatter[i] = spScatter[i][:spCount[i]+1]
+            spScatter[i] = spScatter[i][:spCount[i]]
         np.savez(spFn, spName = 'spScatter', spScatter = spScatter)
         print(f'number of multiple spikes in one dt: {multi_spike}')
         return spScatter

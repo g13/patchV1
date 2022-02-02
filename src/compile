@@ -12,7 +12,7 @@ module load boost/intel/1.74.0
 
 module list
 
-optflag=O1
+optflag=g
 #gptflag=G
 gptflag=lineinfo
 

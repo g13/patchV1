@@ -227,7 +227,7 @@ void compute_V_collect_spike_learnFF(
 		cudaSurfaceObject_t LGNspikeSurface,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
-        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo, bool symmetricHomeo
+        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo, bool symmetricHomeo, bool InhGap
 );
 
 __global__ 
@@ -289,7 +289,7 @@ void compute_V_collect_spike_learnFF_fast(
 		cudaSurfaceObject_t LGNspikeSurface,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
-        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo, bool symmetricHomeo
+        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo, bool symmetricHomeo, bool InhGap
 );
 
 //template<int ntimesE, int ntimesI> extern
@@ -320,7 +320,7 @@ void recal_G_mat( // <<< nblock[partial], blockSize >>>
         Float* __restrict__ synPerCon,
 		Float* __restrict__ vThres,
         Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, PosInt currentTimeSlot, Size trainDepth, Size nearNeighborBlock, Size nE, Size nI, Size nV1, Float speedOfThought, int learning, PosInt block_offset, Size nType, Size nTypeE, Size nTypeI,
-        LearnVarShapeE lE, LearnVarShapeQ lQ, PosInt iChunk
+        LearnVarShapeE lE, LearnVarShapeQ lQ, PosInt iChunk, bool InhGap
 );
 
 //template<int ntimesE, int ntimesI> extern
@@ -374,7 +374,7 @@ void recal_G_mat_nd( // <<< nblock[partial], blockSize >>>
         Float* __restrict__ synPerCon,
 		Float* __restrict__ vThres,
         Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, Size nearNeighborBlock, Size nE, Size nI, Size nV1, int learning, PosInt block_offset, Size nType, Size nTypeE, Size nTypeI,
-        LearnVarShapeE lE, LearnVarShapeQ lQ, PosInt iChunk, PosInt it
+        LearnVarShapeE lE, LearnVarShapeQ lQ, PosInt iChunk, PosInt it, bool InhGap
 );
 
 __global__  

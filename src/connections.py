@@ -705,6 +705,7 @@ if plotConFeature_sample:
                 for iType in range(nType):
                     vTypePick = np.logical_and(vtid < typeAcc[iType+1], vtid >= typeAcc[iType])
                     pre_id = vbid[vTypePick]*blockSize + vtid[vTypePick]
+                    m_diff = diff(feature[i,ipost], feature[i,pre_id])
                     npre = pre_id.size
                     color = mpl.colors.hsv_to_rgb(np.stack(((m_diff+rangeFeature[i])/(2*rangeFeature[i]), np.ones(npre), np.ones(npre)), axis = 1))
                     v_diff = diff(feature[i,ipost], feature[i,pre_id])

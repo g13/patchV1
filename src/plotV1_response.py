@@ -16,6 +16,7 @@ np.seterr(invalid = 'raise')
 #@profile
 def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
     #sample = np.array([0,1,2,768])
+    singleOri = True
     SCsplit = 1
     nLGNorF1F0 = True
     ns = 10
@@ -109,7 +110,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     if pCond:
         pVoltage = True
     # const
-    if nOri > 0:
+    if nOri > 0 and not singleOri:
         output_suffix = output_suffix0 + '_' + str(iOri)
     else:
         output_suffix = output_suffix0
@@ -127,7 +128,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     meanFn = data_fdr + "mean_data" + _output_suffix + ".bin"
     
     pref_file = data_fdr + 'cort_pref_' + output_suffix0 + '.bin'
-    if nOri == 0:
+    if nOri == 0 and singleOri:
         max_frFn = data_fdr + 'max_fr_' + output_suffix0 + '.bin'
 
     spDataFn = data_fdr + "V1_spikes" + _output_suffix
@@ -280,6 +281,9 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         if nOri > 0:
             dOP = np.abs(OP - stiOri)
             dOP[dOP > np.pi/2] = np.pi - dOP[dOP > np.pi/2]
+            tmp = np.histogram(dOP, bins = np.arange(nOri)/nOri*np.pi/2)[0]
+            print(f'dOP: distribute over {np.arange(nOri)/nOri*np.pi/2}')
+            print(tmp)
             dOri = np.pi/(2*nOri)
         else:
             dOP = np.zeros(nV1)

@@ -857,6 +857,29 @@ int main(int argc, char *argv[])
 	checkCudaErrors(cudaMemcpy(conVec, d_conVec, vecSize+statSize, cudaMemcpyDeviceToHost)); 	
 	checkCudaErrors(cudaMemcpy(gapVec, d_gapVec, gap_vecSize+gap_statSize, cudaMemcpyDeviceToHost)); 	
 
+	for (PosInt i=0; i<mI; i++) {
+		PosInt itype;
+		for (PosInt k=0; k<nTypeI; k++) {
+			if (i%nI < typeAccCount[k+nTypeE] - nE) itype = k;
+		}
+		bool bad = false;
+		PosInt host_tid = i/nI*blockSize + nE + i%nI;
+		for (PosInt j=0; j<nGapVec[i]; j++) {
+			PosInt id = gapVecID[i*gap_maxDistantNeighbor + j];
+			PosInt guest_id = id/blockSize * nI + id%blockSize-nE;
+			if (guest_id >= mI) {
+				cout << "0: guest_id " << guest_id << ", mI = " << mI << ", id = " << id << ", (" << j << "/" << nGapVec[i] << "), nI = " << nI << ", nE = " << nE << ", blockSize = " << blockSize << "\n";
+				bad = true;
+				continue;
+			}
+			if (bad) cout << "id = " << id << ", (" << j << "/" << nGapVec[i] << ")\n";
+		}
+		if (bad) {
+			cout << "0: bad";
+			return EXIT_FAILURE;
+		}
+	}
+
 	/*===========
 	{
 		for	(PosInt ib=0; ib<nblock; ib++) {
@@ -1323,7 +1346,7 @@ int main(int argc, char *argv[])
 			PosInt id = gapVecID[i*gap_maxDistantNeighbor + j];
 			PosInt guest_id = id/blockSize * nI + id%blockSize-nE;
 			if (guest_id >= mI) {
-				cout << "guest_id " << guest_id << ", mI = " << mI << ", id = " << id << ", (" << j << "/" << nGapVec[i] << ")\n";
+				cout << "1: guest_id " << guest_id << ", mI = " << mI << ", id = " << id << ", (" << j << "/" << nGapVec[i] << "), nI = " << nI << ", nE = " << nE << ", blockSize = " << blockSize << "\n";
 				bad = true;
 				continue;
 			}
@@ -1371,10 +1394,11 @@ int main(int argc, char *argv[])
 			}
 		}
 		if (bad) {
-			cout << "bad";
+			cout << "1: bad";
 			return EXIT_FAILURE;
 		}
 	}
+    /*
 	for (PosInt i=0; i<mI; i++) {
 		if (nGapVec[i]) {
 			cout << i << "th inh gaps:\n";
@@ -1388,7 +1412,7 @@ int main(int argc, char *argv[])
 			}
 			cout << "\n";
 		}
-	}
+	}*/
 	cout << "gap vec ready\n";
 
 	if (strictStrength) {
@@ -1416,8 +1440,12 @@ int main(int argc, char *argv[])
 				}
 				vector<Float> ratio;
 				for (PosInt j=0; j<nTypeI; j++) {
-					ratio.push_back(gap_sTypeMat[j*nTypeI+ itype]*nInhGap[j*nTypeI+ itype]/preTypeStrGapped[j*mI + ib*nI+i]);
-					assert(ratio[j] > 0);
+                    if (preTypeStrGapped[j*mI + ib*nI+i] > 0) {
+					    ratio.push_back(gap_sTypeMat[j*nTypeI+ itype]*nInhGap[j*nTypeI+ itype]/preTypeStrGapped[j*mI + ib*nI+i]);
+					    assert(ratio[j] >= 0);
+                    } else {
+                        ratio.push_back(0);
+                    }
 				}
 				for (PosInt in=0; in<nNearNeighborBlock[ib]; in++) {
 					PosInt bid = neighborBlockId[ib*maxNeighborBlock + in];

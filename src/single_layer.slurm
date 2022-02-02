@@ -2,12 +2,12 @@
 #SBATCH --job-name=plotV1
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=5
-#SBATCH --mem=200GB
-#SBATCH --time=02:00:00
+#SBATCH --mem=128GB
+#SBATCH --time=01:00:00
 #SBATCH -o log/pV1_%J.out
 #SBATCH --mail-user=weidai@cims.nyu.edu
 #SBATCH --mail-type=END
-##SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:1
 ##SBATCH -p nvidia 
 set -e
 repo=$HOME/repos/patchV1
@@ -30,8 +30,8 @@ LGN_V1_suffix=single_test
 retino_cfg=LGN_V1.cfg
 
 TF=8 # input frequency if applicable
-ori=0 # input orientation index if applicable
-nOri=0 # total # orientaton if applicable
+ori=2 # input orientation index if applicable
+nOri=6 # total # orientaton if applicable
 OPstatus=1 
 usePrefData=False # use fitted preference from plotTC
 collectMeanDataOnly=False # no plots, just collect average data
@@ -90,7 +90,9 @@ then
 	
 	date
 	cd ${fdr0}
-	patch_fast -c ${fig_fdr}/patch_${trial_suffix}.cfg
+	echo patch_fast -c ${fig_fdr}/patch_${trial_suffix}.cfg
+	#nsys profile -o ori_profile-small.qdstrm patch_fast -c ${fig_fdr}/patch_${trial_suffix}.cfg
+	#patch_fast -c ${fig_fdr}/patch_${trial_suffix}.cfg
 fi
 
 data_fdr=${fdr0}
