@@ -24,6 +24,7 @@ if conV1_suffix:
     conV1_suffix = "_" + conV1_suffix 
 if output_suffix:
     output_suffix = "_" + output_suffix
+
 print(f'res_suffix = {res_suffix}')
 print(f'conLGN_suffix = {conLGN_suffix}')
 print(f'conV1_suffix = {conV1_suffix}')
@@ -35,7 +36,6 @@ if res_fdr[-1] != "/":
     res_fdr = res_fdr + "/"
 if data_fdr[-1] != "/":
     data_fdr = data_fdr + "/"
-
 
 seed = 6578872
 np.random.seed(seed)

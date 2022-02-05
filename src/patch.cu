@@ -2756,12 +2756,7 @@ int main(int argc, char** argv) {
     	            }
     	        }
     	    }
-    	} else {
-			if (iOri.size() > 0) {
-    	        cout << "when iOri is set, boostOri needs to be set.\n";
-    	        return EXIT_FAILURE; 
-			}
-		}
+    	} 
 		
 		if (iOri.size() > 0) {
     	    if (iOri.size() != nType && iOri.size() != 1) {
@@ -2778,19 +2773,30 @@ int main(int argc, char** argv) {
 					fOri.push_back(mod(static_cast<Float>(iOri[i] % nOri)/nOri + 0.5, 1.0));
 				}
 			}
-		}
+		} else {
+    	    if (boostOri.size() > 0) {
+				for (PosInt i = 0; i < nType; i++) {
+            	    if (boostOri[i*2 + 1] != 0) {
+            	        cout << "nOri is not set or is zero, boostOri[" << i*2 + 1 << "] (the std of von Mises) should be 0\n";
+            	        boostOri[i*2 + 1] = 0;
+            	    }
+		    	}
+			}
+            cout << "nOri is ignored\n";
+		    fOri.assign(nType,0);
+        }
 	} else {
-        for (PosInt i = 0; i < nType; i++) {
-            if (boostOri[i*2 + 1] != 0) {
-                cout << "nOri is not set or is zero, boostOri[" << i*2 + 1 << "] (the std of von Mises) should be 0\n";
-                if (tonicDep[i] == 0) {
+        if (boostOri.size()>0) {
+            for (PosInt i = 0; i < nType; i++) {
+                if (boostOri[i*2 + 1] != 0) {
+                    cout << "nOri is not set or is zero, boostOri[" << i*2 + 1 << "] (the std of von Mises) should be 0\n";
                     boostOri[i*2 + 1] = 0;
-                } else {
-                    return EXIT_FAILURE;
                 }
-            }
-		    fOri.push_back(0);
-		}
+		        fOri.push_back(0);
+		    }
+        } else {
+		    fOri.assign(nType,0);
+        }
     }
 
 	vector<Float> featureValue;
@@ -2809,17 +2815,9 @@ int main(int argc, char** argv) {
 			featureValue.push_back(featureValue0[i]);
 		} 
 		fV1_feature.close();
-	} else {
-        if (nOri > 0) {
-            cout << "if readFeature is not set, nOri should be 0.\n";
-            return EXIT_FAILURE;
-        }
-        for (PosInt i = 0; i < nType; i++) {
-            if (boostOri[i*2 + 1] != 0 ) {
-                cout << "if readFeature is not set, boostOri[" << i*2 + 1 << "] (the std of von Mises) should be 0.\n";
-                return EXIT_FAILURE;
-            }
-		}
+		assert(nOri>0);
+		assert(iOri.size()>0);
+		assert(boostOri.size()>0);
     }
     
 	// stats: frames, rawdata
@@ -3974,7 +3972,11 @@ int main(int argc, char** argv) {
 				Float base = boostOri[iType*2 + 0];
 				Float amplitude = 1-boostOri[iType*2 + 0];
 				Float vonMisesAmp = 1-exponential(-2*boostOri[iType*2 + 1]);
-            	boost = base + amplitude * (exponential(boostOri[iType*2 + 1]*(cosine(dOri*M_PI*2)-1))-1+vonMisesAmp)/vonMisesAmp; // von Mises
+				if (vonMisesAmp == 0) {
+					boost = base;
+				} else {
+					boost = base + amplitude * (exponential(boostOri[iType*2 + 1]*(cosine(dOri*M_PI*2)-1))-1+vonMisesAmp)/vonMisesAmp; // von Mises
+				}
 			} else {
 				boost = 1;
 			}

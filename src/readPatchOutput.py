@@ -313,7 +313,7 @@ def readSpike(rawDataFn, spFn, prec, sizeofPrec, vThres):
                     nsp = np.int(np.floor(tsps[k]))
                     tsp = tsps[k] - nsp
                     if nsp > 1:
-                        raise Exception(f'{nsp} spikes from {j} at time step {it}, sInfo = {tsps[k]}!')
+                        #raise Exception(f'{nsp} spikes from {j} at time step {it}, sInfo = {tsps[k]}!')
                         multi_spike = multi_spike + nsp 
                         if 1-tsp > 0.5:
                             dtsp = tsp/nsp

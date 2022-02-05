@@ -24,8 +24,8 @@ if [ "$default" = True ]; then
 fi
 
 date
-echo getTuningCurve.py $op $lgn $v1 $res_fdr $data_fdr $fig_fdr $nOri $fitTC $fitDataReady
-getTuningCurve.py $op $lgn $v1 $res_fdr $data_fdr $fig_fdr $nOri $fitTC $fitDataReady
+echo python ${fig_fdr}/getTuningCurve_${trial_suffix}.py ${trial_suffix} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${res_fdr} ${data_fdr} ${fig_fdr} ${nOri} ${fitTC} ${fitDataReady}
+python ${fig_fdr}/getTuningCurve_${trial_suffix}.py ${trial_suffix} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${res_fdr} ${data_fdr} ${fig_fdr} ${nOri} ${fitTC} ${fitDataReady}
 
 if [ "$collectMeanDataOnly" = True ]; then
 	OPstatus=1
@@ -33,12 +33,13 @@ else
 	OPstatus=2
 fi
 
-if [ "$redraw" = True ]; then
+if [ "${usePrefData}" = True ]; then
 
 	pid=""
 	for ori in $( seq 1 $nOri )
 	do
-		plotV1_response.py $op $lgn $v1 $res_fdr $data_fdr $fig_fdr $TF $ori $nOri False True False $OPstatus & 
+		echo python ${fig_fdr}/plotV1_response_${trial_suffix}.py ${trial_suffix} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} False ${usePrefData} False ${OPstatus}
+		python ${fig_fdr}/plotV1_response_${trial_suffix}.py ${trial_suffix} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} False ${usePrefData} False ${OPstatus} &
 		pid+="${!} "
 	done
 	wait $pid

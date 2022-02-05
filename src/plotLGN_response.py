@@ -11,15 +11,15 @@ from readPatchOutput import *
 from os import path
 
 import sys
-if len(sys.argv) < 7:
+if len(sys.argv) < 6:
+    print(sys.argv)
     raise Exception(' need all 6 arguments, no default values available')
 else:
     output_suffix = sys.argv[1]
     input_suffix = sys.argv[2]
-    res_fdr = sys.argv[3]
-    data_fdr = sys.argv[4]
-    fig_fdr = sys.argv[5]
-    if sys.argv[6] == 'True' or sys.argv[6] == '1':
+    data_fdr = sys.argv[3]
+    fig_fdr = sys.argv[4]
+    if sys.argv[5] == 'True':
         readNewSpike = True 
         print('read new spikes')
     else:
@@ -31,9 +31,7 @@ output_suffix = "_" + output_suffix
 input_suffix = "_" + input_suffix 
 
 data_fdr = data_fdr + '/'
-res_fdr = res_fdr + '/'
 fig_fdr = fig_fdr + '/'
-
 
 plotResponseSample = True
 plotContrastDist = False 

@@ -24,22 +24,14 @@ module load python/intel/3.8.6
 #module load matlab/R2017a
 module list
 
-cd ${fdr0}
-op_cfg=${op}-ori_${ori}.cfg
+cd ${data_fdr}
+patch_cfg=${fig_fdr}/${trial_suffix}-ori_${ori}.cfg
 
 date
-if [ "$plotOnly" = True ]; then
-	readNewSpike=False
-	usePrefData=True
-	collectMeanDataOnly=False
-else
-	patch -c $op_cfg
-	date
-	cp $op_cfg ${op}-ori_${ori}_cfg.bak
-	cp ${op}-ori_${ori}_cfg.bak $fig_fdr
-	readNewSpike=True
-	usePrefData=False
-fi
+${patch} -c $patch_cfg
+date
+usePrefData=False
+collectMeanDataOnly=False
 
 if [ "$fitTC" = True ]; then
 	OPstatus=0
@@ -48,17 +40,21 @@ else
 fi
 
 pid=""
-echo plotLGN_response.py ${op}_${ori} $lgn $res_fdr $data_fdr $fig_fdr $readNewSpike
-plotLGN_response.py ${op}_${ori} $lgn $res_fdr $data_fdr $fig_fdr $readNewSpike &
+echo python ${fig_fdr}/plotLGN_response_${trial_suffix}.py ${trial_suffix}_${ori} ${LGN_V1_suffix} ${res_fdr} ${data_fdr} ${fig_fdr} ${readNewSpike}
+python ${fig_fdr}/plotLGN_response_${trial_suffix}.py ${trial_suffix}_${ori} ${LGN_V1_suffix} ${res_fdr} ${data_fdr} ${fig_fdr} ${readNewSpike} &
 pid+="${!} "
 
-echo plotV1_response.py $op $lgn $v1 $res_fdr $data_fdr $fig_fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus
-plotV1_response.py $op $lgn $v1 $res_fdr $data_fdr $fig_fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus &
+echo python ${fig_fdr}/plotV1_response_${trial_suffix}.py ${trial_suffix} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
+python ${fig_fdr}/plotV1_response_${trial_suffix}.py ${trial_suffix} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} &
 pid+="${!} "
-#if [ ${ori} -eq 1 ]; then
-#	echo connections.py ${op}_${ori} $lgn $v1 $fdr
-#	connections.py ${op}_${ori} $lgn $v1 $fdr & 
-#	pid+="${!} "
-#fi
+
+if [ ${ori} -eq 1 ]; then
+	if [ "${generate_V1_connection}" = True ]; then
+		echo python connections.py ${trial_suffix}_${ori} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${data_fdr} ${fig_fdr}
+		python connections.py ${trial_suffix}_${ori} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${data_fdr} ${fig_fdr}
+		pid+="${!} "
+	fi
+fi
+
 wait $pid
 date

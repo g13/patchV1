@@ -16,7 +16,7 @@ np.seterr(invalid = 'raise')
 #@profile
 def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
     #sample = np.array([0,1,2,768])
-    singleOri = True
+    singleOri = False
     SCsplit = 1
     nLGNorF1F0 = True
     ns = 10
@@ -1788,13 +1788,15 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 frMax = np.max(fr[pick])
                 if frMax == 0:
                     color[:,1] = sat0
+                    sizeRatio = 1
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
+                    sizeRatio = 1 + (fr[pick]/frMax)*3
 
                 color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
-                ax11.scatter(pos[0,pick], pos[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
+                ax11.scatter(pos[0,pick], pos[1,pick], s = ms2*sizeRatio, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
 
             pick = ipick[LR[ipick] > 0]
             nnI = pick.size
@@ -1803,13 +1805,15 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 frMax = np.max(fr[pick])
                 if frMax == 0:
                     color[:,1] = sat0
+                    sizeRatio = 1
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
+                    sizeRatio = 1 + (fr[pick]/frMax)*3
 
                 color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
-                ax11.scatter(pos[0,pick], pos[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
+                ax11.scatter(pos[0,pick], pos[1,pick], s = ms2*sizeRatio, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
 
             if pLR:
                 mode = 'LR'
@@ -1847,13 +1851,15 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 frMax = np.max(fr[pick])
                 if frMax == 0:
                     color[:,1] = sat0
+                    sizeRatio = 1
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
+                    sizeRatio = 1 + (fr[pick]/frMax)*3
 
                 color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
-                ax11.scatter(pos[0,pick], pos[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
+                ax11.scatter(pos[0,pick], pos[1,pick], s = ms1*sizeRatio, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
 
             pick = ipick[LR[ipick] < 0]
             nnI = pick.size
@@ -1862,13 +1868,15 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 frMax = np.max(fr[pick])
                 if frMax == 0:
                     color[:,1] = sat0
+                    sizeRatio = 1
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
+                    sizeRatio = 1 + (fr[pick]/frMax)*3
 
                 color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
-                ax11.scatter(pos[0,pick], pos[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
+                ax11.scatter(pos[0,pick], pos[1,pick], s = ms1*sizeRatio, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
 
             if pLR:
                 eSpick = np.logical_and(np.mod(isp, blockSize) < nE , LR[isp]<0)
@@ -1905,13 +1913,15 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 frMax = np.max(fr[pick])
                 if frMax == 0:
                     color[:,1] = sat0
+                    sizeRatio = 1
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
+                    sizeRatio = 1 + (fr[pick]/frMax)*3
 
                 color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
-                ax12.scatter(pos[0,pick], pos[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
+                ax12.scatter(pos[0,pick], pos[1,pick], s = ms2*sizeRatio, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
 
             pick = ipick[nLGN_V1[ipick]<=SCsplit]
             nnI = pick.size
@@ -1920,13 +1930,15 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 frMax = np.max(fr[pick])
                 if frMax == 0:
                     color[:,1] = sat0
+                    sizeRatio = 1
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
+                    sizeRatio = 1 + (fr[pick]/frMax)*3
 
                 color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
-                ax12.scatter(pos[0,pick], pos[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
+                ax12.scatter(pos[0,pick], pos[1,pick], s = ms2*sizeRatio, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
 
             if pSC:
                 mode = 'SC'
@@ -1963,13 +1975,15 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 frMax = np.max(fr[pick])
                 if frMax == 0:
                     color[:,1] = sat0
+                    sizeRatio = 1
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
+                    sizeRatio = 1 + (fr[pick]/frMax)*3
 
                 color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
-                ax12.scatter(pos[0,pick], pos[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
+                ax12.scatter(pos[0,pick], pos[1,pick], s = ms1*sizeRatio, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
 
             pick = ipick[nLGN_V1[ipick] > SCsplit]
             nnI = pick.size
@@ -1978,13 +1992,15 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 frMax = np.max(fr[pick])
                 if frMax == 0:
                     color[:,1] = sat0
+                    sizeRatio = 1
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
+                    sizeRatio = 1 + (fr[pick]/frMax)*3
 
                 color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
-                ax12.scatter(pos[0,pick], pos[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
+                ax12.scatter(pos[0,pick], pos[1,pick], s = ms1*sizeRatio, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
         
             if pSC:
                 eSpick = np.logical_and(np.mod(isp, blockSize) < nE , nLGN_V1[isp] > 0)
@@ -2106,13 +2122,15 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 frMax = np.max(fr[pick])
                 if frMax == 0:
                     color[:,1] = sat0
+                    sizeRatio = 1
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
+                    sizeRatio = 1 + (fr[pick]/frMax)*3
 
                 color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
-                ax11.scatter(pos[0,pick], pos[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
+                ax11.scatter(pos[0,pick], pos[1,pick], s = ms2*sizeRatio, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
 
             pick = iORpick[LR[iORpick] > 0]
             nnI = pick.size
@@ -2121,13 +2139,15 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 frMax = np.max(fr[pick])
                 if frMax == 0:
                     color[:,1] = sat0
+                    sizeRatio = 1
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
+                    sizeRatio = 1 + (fr[pick]/frMax)*3
 
                 color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
-                ax11.scatter(pos[0,pick], pos[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
+                ax11.scatter(pos[0,pick], pos[1,pick], s = ms2*sizeRatio, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
 
             V1_range = np.arange(nV1)
             ## FFT Right eye
@@ -2248,13 +2268,15 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 frMax = np.max(fr[pick])
                 if frMax == 0:
                     color[:,1] = sat0
+                    sizeRatio = 1
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
+                    sizeRatio = 1 + (fr[pick]/frMax)*3
 
                 color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
-                ax11.scatter(pos[0,pick], pos[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
+                ax11.scatter(pos[0,pick], pos[1,pick], s = ms1*sizeRatio, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
 
             pick = iORpick[LR[iORpick] < 0]
             nnI = pick.size
@@ -2263,13 +2285,15 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 frMax = np.max(fr[pick])
                 if frMax == 0:
                     color[:,1] = sat0
+                    sizeRatio = 1
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
+                    sizeRatio = 1 + (fr[pick]/frMax)*3
                 
                 color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
-                ax11.scatter(pos[0,pick], pos[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
+                ax11.scatter(pos[0,pick], pos[1,pick], s = ms1*sizeRatio, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
 
             ## FFT Left eye
             if pLR:
@@ -2387,13 +2411,15 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 frMax = np.max(fr[pick])
                 if frMax == 0:
                     color[:,1] = sat0
+                    sizeRatio = 1
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
+                    sizeRatio = 1 + (fr[pick]/frMax)*3
 
                 color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
-                ax12.scatter(pos[0,pick], pos[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
+                ax12.scatter(pos[0,pick], pos[1,pick], s = ms2*sizeRatio, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
 
             pick = iORpick[nLGN_V1[iORpick]<=SCsplit]
             nnI = pick.size
@@ -2402,13 +2428,15 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 frMax = np.max(fr[pick])
                 if frMax == 0:
                     color[:,1] = sat0
+                    sizeRatio = 1
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
+                    sizeRatio = 1 + (fr[pick]/frMax)*3
 
                 color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
-                ax12.scatter(pos[0,pick], pos[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
+                ax12.scatter(pos[0,pick], pos[1,pick], s = ms2*sizeRatio, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
 
             npSC = 0
             if pSC:
@@ -2527,13 +2555,15 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 frMax = np.max(fr[pick])
                 if frMax == 0:
                     color[:,1] = sat0
+                    sizeRatio = 1
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
+                    sizeRatio = 1 + (fr[pick]/frMax)*3
 
                 color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
-                ax12.scatter(pos[0,pick], pos[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
+                ax12.scatter(pos[0,pick], pos[1,pick], s = ms1*sizeRatio, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
 
             pick = iORpick[nLGN_V1[iORpick] > SCsplit]
             nnI = pick.size
@@ -2542,13 +2572,15 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 frMax = np.max(fr[pick])
                 if frMax == 0:
                     color[:,1] = sat0
+                    sizeRatio = 1
                 else:
                     color[:,1] = sat0 + np.log(1+fr[pick]/frMax)/np.log(2)*(1-sat0)
+                    sizeRatio = 1 + (fr[pick]/frMax)*3
 
                 color[:,0] = np.mod(OP[pick]+np.pi/2, np.pi)/np.pi
                 color[color[:,0] < 0,0] = 0
                 color[color[:,0] > 1,0] = 1
-                ax12.scatter(pos[0,pick], pos[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
+                ax12.scatter(pos[0,pick], pos[1,pick], s = ms1*sizeRatio, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
         
             if pSC:
                 eSpick = np.logical_and(np.logical_and(np.mod(isp, blockSize) < nE , nLGN_V1[isp] > SCsplit), dOP[isp] <= dOri)
@@ -2920,6 +2952,7 @@ def ellipse(cx, cy, a, baRatio, orient, n = 50):
 if __name__ == "__main__":
 
     if len(sys.argv) < 15:
+        print(sys.argv)
         raise Exception('not enough argument for plotV1_response(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus)')
     else:
         output_suffix = sys.argv[1]
@@ -2941,19 +2974,19 @@ if __name__ == "__main__":
         iOri = int(sys.argv[9])
         nOri = int(sys.argv[10])
         print(f'{iOri}/{nOri}')
-        if sys.argv[11] == 'True' or sys.argv[10] == '1':
+        if sys.argv[11] == 'True':
             readNewSpike = True 
             print('read new spikes')
         else:
             readNewSpike = False
             print('read stored spikes')
-        if sys.argv[12] == 'True' or sys.argv[11] == '1':
+        if sys.argv[12] == 'True':
             usePrefData = True 
             print('using fitted data')
         else:
             usePrefData = False
             print('not using fitted data')
-        if sys.argv[13] == 'True' or sys.argv[12] == '1':
+        if sys.argv[13] == 'True':
             collectMeanDataOnly= True 
             print('collect mean data only')
         else:
@@ -2970,5 +3003,4 @@ if __name__ == "__main__":
             if OPstatus == 2:
                 print('update OP plots only')
 
-    print(sys.argv)
     plotV1_response(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus)

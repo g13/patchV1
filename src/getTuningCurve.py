@@ -15,20 +15,25 @@ import matplotlib.colors as clr
 from matplotlib import cm
 import sys
 from readPatchOutput import *
-from global_vars import _LGN_vposFn, _featureFn, _V1_allposFn, seed
 #import multiprocessing as mp
 np.seterr(invalid = 'raise')
 
-def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, nOri, fitTC, fitDataReady):
-
+def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, nOri, fitTC, fitDataReady):
+    
     res_fdr = res_fdr+"/"
     data_fdr = data_fdr+"/"
     fig_fdr = fig_fdr+"/"
 
-    output_suffix = "_" + output_suffix + "_"
-    conLGN_suffix = "_" + conLGN_suffix
-    conV1_suffix = "_" + conV1_suffix
+    if output_suffix:
+        output_suffix = "_" + output_suffix + "_"
+    if res_suffix:
+        res_suffix = "_" + res_suffix
+    if conLGN_suffix:
+        conLGN_suffix = "_" + conLGN_suffix
+    if conV1_suffix:
+        conV1_suffix = "_" + conV1_suffix
 
+    seed = 17843143
     fr_thres = 1
     ns = 20
     ndpref = 10
@@ -53,8 +58,8 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_
     plotOSI = True
     plotSpatialOP = True
 
-    LGN_V1_ID_file = data_fdr+'LGN_V1_idList'+conLGN_suffix+'.bin'
-    LGN_V1_s_file = data_fdr+'LGN_V1_sList'+conLGN_suffix+'.bin'
+    LGN_V1_ID_file = res_fdr + 'LGN_V1_idList'+conLGN_suffix+'.bin'
+    LGN_V1_s_file = res_fdr + 'LGN_V1_sList'+conLGN_suffix+'.bin'
 
     pref_file = data_fdr+'cort_pref' + output_suffix[:-1] + '.bin'
     fit_file = data_fdr+'fit_data' + output_suffix[:-1] + '.bin'
@@ -63,9 +68,9 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_
 
     sampleFn = data_fdr+"OS_sampleList" + output_suffix[:-1] + ".bin"
 
-    LGN_vposFn = res_fdr + _LGN_vposFn
-    featureFn = res_fdr + _featureFn
-    V1_allposFn = res_fdr + _V1_allposFn
+    LGN_vposFn = res_fdr + 'LGN_vpos'+ res_suffix + ".bin"
+    featureFn = res_fdr + 'V1_feature' + res_suffix + ".bin"
+    V1_allposFn = res_fdr + 'V1_allpos' + res_suffix + ".bin"
 
     LGN_V1_s = readLGN_V1_s0(LGN_V1_s_file)
     LGN_V1_ID, nLGN_V1 = readLGN_V1_ID(LGN_V1_ID_file)
@@ -746,10 +751,7 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_
             _nblock, _blockSize, dataDim = np.fromfile(f, 'u4', count=3)
             assert(nV1 == _nblock*_blockSize)
             coord_span = np.fromfile(f, 'f8', count=4)
-            _pos = np.reshape(np.fromfile(f, 'f8', count = nV1*dataDim), (nblock, dataDim, blockSize))
-            pos = np.zeros((2,nV1))
-            pos[0,:] = _pos[:,0,:].reshape(nV1)
-            pos[1,:] = _pos[:,1,:].reshape(nV1)
+            pos = np.reshape(np.fromfile(f, 'f8', count = 2*nV1), (2,nV1))
 
         fig = plt.figure('spatial_OP', figsize = (4,7))
         ax = fig.add_subplot(321)
@@ -1260,32 +1262,34 @@ def gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_
             
 if __name__ == "__main__":
     print(sys.argv)
-    if len(sys.argv) < 9:
-        raise Exception('not enough argument for getTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus)')
+    if len(sys.argv) < 11:
+        raise Exception('not enough argument for getTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus)')
     else:
         output_suffix = sys.argv[1]
         print(output_suffix)
-        conLGN_suffix = sys.argv[2]
+        res_suffix = sys.argv[2]
+        print(res_suffix)
+        conLGN_suffix = sys.argv[3]
         print(conLGN_suffix)
-        conV1_suffix = sys.argv[3]
+        conV1_suffix = sys.argv[4]
         print(conV1_suffix)
-        res_fdr = sys.argv[4]
+        res_fdr = sys.argv[5]
         print(res_fdr)
-        data_fdr = sys.argv[5]
+        data_fdr = sys.argv[6]
         print(data_fdr)
-        fig_fdr = sys.argv[6]
+        fig_fdr = sys.argv[7]
         print(fig_fdr)
-        nOri = int(sys.argv[7])
+        nOri = int(sys.argv[8])
         print(nOri)
-        if sys.argv[8] == 'True' or sys.argv[6] == '1':
+        if sys.argv[9] == 'True':
             fitTC = True
             print('use TC fitted with von Mises function')
         else:
             fitTC = False
             print('won\'t use fitted TC')
-        if sys.argv[9] == 'True' or sys.argv[9] == '1':
+        if sys.argv[10] == 'True':
             fitDataReady = True
         else:
             fitDataReady = False
 
-    gatherTuningCurve(output_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr,fig_fdr, nOri, fitTC, fitDataReady)
+    gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr,fig_fdr, nOri, fitTC, fitDataReady)

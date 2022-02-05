@@ -1,36 +1,70 @@
 #!/bin/bash
 set -e
 
+repo=/home/wd554/repos/patchV1
+cfg_fdr=${repo}/src
 fdr0=/scratch/wd554/patchV1
-res_fdr=$fdr0 # stimulus, V1-static and LGN-static files
-in_fdr=$fdr0 # inputFolder in cfg
+res_fdr=$fdr0/resource # stimulus, V1-static and LGN-static files
+in_fdr=$fdr0/resource # inputFolder in cfg
 data_fdr=$fdr0 # outputFolder in cfg
 
 fitTC=True
 nOri=6
 TF=8
 SF=40
-op=test-s${SF}t${TF}
-lgn=b_4_20-test
-v1=replay
 
-fig_fdr=${fdr0}/${op} # figures and configs
-v1_cfg=$v1.cfg
-lgn_cfg=LGN_V1.cfg
+res_suffix=square-single_layer
+trial_suffix=single_test
+patch=patch_fast
+
+generate_V1_connection=False
+generate_LGN_V1_connection=True
+
+patch_cfg=ori.cfg
+
+LGN_V1_suffix=single_test
+V1_connectome_suffix=single_test
+
+retino_cfg=LGN_V1.cfg
+genCon_cfg=connectome.cfg
+
+TF=8 # input frequency if applicable
+nOri=6 # total # orientaton if applicable
+OPstatus=1 
+usePrefData=False # use fitted preference from plotTC
+collectMeanDataOnly=False # no plots, just collect average data
+
+fig_fdr=${fdr0}/${trial_suffix} # figures and configs
 collectMeanDataOnly=False
-redraw=False
+
+echo ${trial_suffix}
 
 plotTConly=$1
-echo $plotTConly
+if [ -z "${plotTConly}" ]; 
+then
+	plotTConly=False
+fi
 
 if [ "$plotTConly" = True ]; then
 	fitDataReady=$2
-else
-	plotOnly=$2
-	fitDataReady=$3
 	if [ -z "$fitDataReady" ]; 
 	then
 		fitDataReady=False
+	fi
+else
+	plotOnly=$2
+	if [ -z "$plotOnly" ]; 
+	then
+		plotOnly=False
+	fi
+	if [ "$plotOnly" = True ]; then
+		readNewSpike=$3
+		if [ -z "${readNewSpike}" ]; 
+		then
+			readNewSpike=True
+		fi
+	else
+		readNewSpike=True
 	fi
 fi
 
@@ -41,33 +75,50 @@ else
 	mkdir -p $fig_fdr	
 fi
 
-cp patchTC ${fig_fdr}/patchTC_${op}.bak
+cp ${cfg_fdr}/patchTC ${fig_fdr}/patchTC_${trial_suffix}
+cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/patch_${trial_suffix}.cfg
+
+if [ "${generate_LGN_V1_connection}" = True ]
+then
+	cp ${cfg_fdr}/${retino_cfg} ${fig_fdr}/retino_${LGN_V1_suffix}.cfg
+fi
+if [ "${generate_V1_connection}" = True ]
+then
+	cp ${cfg_fdr}/${genCon_cfg} ${fig_fdr}/genCon_${V1_connectome_suffix}.cfg
+	cp ${repo}/src/connections.py ${fig_fdr}/connections_${V1_connectome_suffix}.py
+fi
+echo configuration files copied
+
+cp ${repo}/src/plotV1_response.py ${fig_fdr}/plotV1_response_${trial_suffix}.py
+cp ${repo}/src/plotLGN_response.py ${fig_fdr}/plotLGN_response_${trial_suffix}.py
+cp ${repo}/src/getTuningCurve.py ${fig_fdr}/getTuningCurve_${trial_suffix}.py
+echo plotting files copied
 
 jobList=""
-export redraw
 export plotOnly
 export nOri
 export TF
-export fdr0
 export res_fdr
 export data_fdr
 export fig_fdr
-export op
-export lgn
-export v1
+export res_suffix
+export trial_suffix
+export LGN_V1_suffix
+export V1_connectome_suffix
 export fitTC
 export collectMeanDataOnly
 export fitDataReady 
+export patch
+export usePrefData
+export readNewSpike
 
 if [ "$plotTConly" = False ]; then
 	if [ "$plotOnly" = False ]; then
-		cp ori.cfg ${op}-ori_1.cfg
-		cp ${op}-ori_1.cfg ${op}-ori_2.cfg
-		mv ${op}-ori_1.cfg ${fdr0}
+		cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/${trial_suffix}-ori_1.cfg
+		cp ${fig_fdr}/${trial_suffix}-ori_1.cfg ${fig_fdr}/${trial_suffix}-ori_2.cfg
 	fi
-	cp $lgn_cfg ${fig_fdr}/${lgn}_cfg.bak 
-	cp $v1_cfg ${fig_fdr}/${v1}_cfg.bak
 	for ori in $( seq 1 $nOri )
+	#for ori in $( seq 1 1 )
 	do
 		export ori
 		if [ "$plotOnly" = True ]; then
@@ -75,11 +126,10 @@ if [ "$plotTConly" = False ]; then
 		else
 			jobID=`sbatch --export=ALL ori_gpu.slurm`
 			if [ "${ori}" -lt "${nOri}" ]; then
-				vim -s nextOri_cfg.keys ${op}-ori_$((ori+1)).cfg
+				vim -s ${cfg_fdr}/nextOri_cfg.keys ${fig_fdr}/${trial_suffix}-ori_$((ori+1)).cfg
 				if [ "$((ori+1))" -lt "${nOri}" ]; then
-					cp ${op}-ori_$((ori+1)).cfg ${op}-ori_$((ori+2)).cfg
+					cp ${fig_fdr}/${trial_suffix}-ori_$((ori+1)).cfg ${fig_fdr}/${trial_suffix}-ori_$((ori+2)).cfg
 				fi
-				mv ${op}-ori_$((ori+1)).cfg ${fdr0}
 			fi
 		fi
 		jobList="$jobList:${jobID:20}"
