@@ -15,7 +15,7 @@ np.seterr(invalid = 'raise')
 
 #@profile
 def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
-    #sample = np.array([0,1,2,768])
+    sample = np.array([91,72,78,54,84,91,8,6,8,52])*1024 + np.array([649,650,508,196,385,873,190,673,350,806])
     singleOri = False
     SCsplit = 1
     nLGNorF1F0 = True
@@ -338,7 +338,13 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         if 'sample' not in locals():
             if usePrefData:
                 with open(sampleFn, 'rb') as f:
-                    sample = np.fromfile(f, 'u4')
+                    _ns = np.fromfile(f, 'u4', 1)
+                    sample = np.fromfile(f, 'u4', _ns)
+                    #sn_max = np.fromfile(f, 'u4', 1)
+                    #sample_max = np.fromfile(f, 'u4', sn_max)
+                    #sn_min = np.fromfile(f, 'u4', 1)
+                    #sample_min = np.fromfile(f, 'u4', sn_min)
+                #sample = np.hstack((sample_fr, sample_max, sample_min))
             else:
                 sample = np.random.randint(nV1, size = ns)
                 if False:
@@ -1091,38 +1097,44 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
             current = np.zeros(_v[i,:].shape)
             cL = -_gL[iV1]*(_v[i,:]-vL)
             ax.plot(t, cL, '-c', lw = lw)
-            ax.plot(t[-1], np.mean(cL), '*c', ms = lw)
+            ax.plot(t[-1]*0.95, np.mean(cL), 'oc', ms = lw)
             current = current + cL
+            cFF_total = 0
             for ig in range(ngFF):
-                cFF = -_gFF[0,ig,i,:]*(_v[i,:]-vE)
-                ax.plot(t, cFF, '-g', lw = (ig+1)/ngFF * lw)
-                ax.plot(t[-1], np.mean(cFF), '*g', ms = (ig+1)/ngFF * lw)
-                current = current + cFF
+                _cFF = -_gFF[0,ig,i,:]*(_v[i,:]-vE)
+                ax.plot(t, _cFF, '-g', lw = (ig+1)/ngFF * lw)
+                current = current + _cFF
+                cFF_total += np.mean(_cFF)
+            ax.plot(t[-1]*0.95, cFF_total, 'og', ms = 2 * lw)
+            cE_total = 0
             for ig in range(ngE):
-                cE = -_gE[0,ig,i,:]*(_v[i,:]-vE)
-                ax.plot(t, cE, '-r', lw = (ig+1)/ngE * lw)
-                ax.plot(t[-1], np.mean(cE), '*r', ms = (ig+1)/ngE * lw)
-                current = current + cE
+                _cE = -_gE[0,ig,i,:]*(_v[i,:]-vE)
+                ax.plot(t, _cE, '-r', lw = (ig+1)/ngE * lw)
+                current = current + _cE
+                cE_total += np.mean(_cE)
+            ax.plot(t[-1]*0.95, cE_total, 'or', ms = 2 * lw)
+            cI_total = 0
             for ig in range(ngI):
-                cI = -_gI[0,ig,i,:]*(_v[i,:]-vI)
-                ax.plot(t, cI, '-b', lw = (ig+1)/ngI * lw)
-                ax.plot(t[-1], np.mean(cI), '*b', ms = (ig+1)/ngI * lw)
-                current = current + cI
+                _cI = -_gI[0,ig,i,:]*(_v[i,:]-vI)
+                ax.plot(t, _cI, '-b', lw = (ig+1)/ngI * lw)
+                current = current + _cI
+                cI_total += np.mean(_cI)
+            ax.plot(t[-1]*0.95, cI_total, 'ob', ms = 2 * lw)
             if pGap and itype >= nTypeE:
                 cGap = -_cGap[i_gap,:]
                 ax.plot(t, cGap, ':k', lw = lw)
-                ax.plot(t[-1], np.mean(cGap), 'sk', ms = lw)
+                ax.plot(t[-1]*0.95, np.mean(cGap), 'sk', ms = lw*2)
                 current = current + cGap
                 i_gap = i_gap+1
     
             ax.plot(t, _depC[i,:], '-y', lw = lw)
-            ax.plot(t[-1], np.mean(_depC[i,:]), '*y', ms = lw)
+            ax.plot(t[-1]*0.95, np.mean(_depC[i,:]), 'oy', ms = lw*2)
             current = current + _depC[i,:]
     
             if iModel == 1:
                 if pW:
                     ax.plot(t, -_w[i,:], '-m', lw = lw)
-                    ax.plot(t[-1], -np.mean(_w[i,:]), '*m', ms = lw)
+                    ax.plot(t[-1]*0.95, -np.mean(_w[i,:]), '*m', ms = lw)
                     current = current - _w[i,:]
     
             ax.plot(t, current, '-k', lw = lw)

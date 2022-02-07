@@ -8,7 +8,7 @@ res_fdr=$fdr0/resource # stimulus, V1-static and LGN-static files
 in_fdr=$fdr0/resource # inputFolder in cfg
 data_fdr=$fdr0 # outputFolder in cfg
 
-fitTC=True
+fitTC=False
 nOri=6
 TF=8
 SF=40
