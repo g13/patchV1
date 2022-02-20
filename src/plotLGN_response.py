@@ -8,6 +8,7 @@ import numpy as np
 from mpl_toolkits.mplot3d import axes3d
 from matplotlib import cm
 from readPatchOutput import *
+from plotV1_response import movingAvg
 from os import path
 
 import sys
@@ -40,10 +41,11 @@ nLGN_1D = 8
 nt_ = 0
 nstep = 10000
 seed = 1653783
-#iLGN = np.array([84,1455,1833,2575])
-iLGN = np.array([0,1,nLGN_1D*nLGN_1D+nLGN_1D-1,nLGN_1D*nLGN_1D+nLGN_1D])
-#iLGN = np.array([0,1,2,3])
+#iLGN = np.array([12198, 24358, 1833,2575])
+#iLGN = np.array([0,1,nLGN_1D*nLGN_1D+nLGN_1D-1,nLGN_1D*nLGN_1D+nLGN_1D])
 ns = 10
+FRbins = 250 # per sec
+nsmooth = 8
 
 parameterFn = data_fdr + "patchV1_cfg" +output_suffix + ".bin"
 
@@ -119,6 +121,8 @@ with open(output_fn, 'rb') as f:
         interstep = nt_//nstep
     tt = np.arange(nstep)*interstep
     t = tt * dt
+    t_in_ms = nt_*dt
+    t_in_sec = t_in_ms/1000
     print(f'interstep = {interstep}')
     print(t[0], t[-1])
     nLGN = np.fromfile(f, 'u4', count = 1)[0]
@@ -145,11 +149,10 @@ with open(output_fn, 'rb') as f:
         contrast[it,:,:] = np.fromfile(f, prec, count = 2*nLGN).reshape(2,nLGN)
 
 if plotResponseSample:
-    if readNewSpike or not path.exists(LGN_spFn + '-' + str(nstep) + '.npz'):
+    if readNewSpike or not path.exists(LGN_spFn + '.npz'):
         LGN_spScatter = readLGN_sp(LGN_spFn + '.bin', prec = prec, nstep = nt_)
-        np.savez(LGN_spFn + '-' + str(nt_) + '.npz', LGN_spScatter = LGN_spScatter)
     else:
-        with np.load(LGN_spFn + '-' + str(nt_) + '.npz', allow_pickle=True) as data:
+        with np.load(LGN_spFn + '.npz', allow_pickle=True) as data:
             LGN_spScatter = data['LGN_spScatter']
 
 if plotResponseSample:
@@ -173,6 +176,13 @@ if plotResponseSample:
         ax.set_ylim([-1.0,1.0])
         ax2 = ax.twinx()
         ax2.plot(t, LGNfr[:,i], 'k', lw = 0.1)
+
+        nbins = int(FRbins*t_in_sec)
+        sp_range = np.linspace(0, nt_, nbins+1)*dt
+        counts, _ = np.histogram(sp, bins = sp_range)
+        fr = movingAvg(counts/(1/FRbins), counts.size, nsmooth)
+        ax2.plot((sp_range[:-1] + sp_range[1:])/2, fr, 'b', lw=0.2)
+    
         if i == 0:
             ax.legend()
         ax2.set_ylim(bottom = 0)
@@ -182,7 +192,7 @@ if plotResponseSample:
             on_off = 'off'
         ix = np.mod(j, nLGN_1D)
         iy = np.int(np.floor(j/nLGN_1D))
-        ax2.set_title(f'#{j} {(ix,iy)}, {LGN_type[j]} ' + on_off + f' fr: {np.mean(LGNfr[:,i]):.3f}/{np.max(LGNfr[:,i]):.3f}Hz, {len(LGN_spScatter[j])/t[-1]*1000:.3f}Hz')
+        ax2.set_title(f'#{j} {(ix,iy)}, {LGN_type[j]} ' + on_off + f' fr: {np.mean(LGNfr[:,i]):.3f}/{np.max(LGNfr[:,i]):.3f}Hz, {sp0.size/t[-1]*1000:.3f}Hz')
     fig.savefig(fig_fdr+'lgn-response' + output_suffix + '.png')
 
 if plotContrastDist:

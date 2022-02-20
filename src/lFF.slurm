@@ -160,8 +160,8 @@ fi
 
 
 #date
-#echo plotLGN_response.py ${op} ${lgn} ${res_fdr} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
-#plotLGN_response.py ${op} ${lgn} ${res_fdr} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
+#echo plotLGN_response.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
+#plotLGN_response.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
 
 date
 echo plotV1_fr.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} & 

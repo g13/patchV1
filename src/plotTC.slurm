@@ -4,7 +4,7 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=6
 #SBATCH --mem=64GB
-#SBATCH --time=00:30:00
+#SBATCH --time=01:00:00
 #SBATCH -o log/pTC_%J.out
 #SBATCH --mail-user=wd554@nyu.edu
 #SBATCH --mail-type=END

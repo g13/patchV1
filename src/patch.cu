@@ -6009,11 +6009,6 @@ int main(int argc, char** argv) {
 			    cudaMemcpyAsync(targetAddress, d_LGN_sInfo, nLGN*sizeof(Float), cudaMemcpyDeviceToHost, LGN_stream);
             #endif
 
-        	if (getLGN_sp) {
-		    	memcpy((void*)(outputB4V1), (void*) targetAddress, nLGN*sizeof(Float));
-			} else {
-		    	memcpy((void*)(LGN_sInfo), (void*) targetAddress, nLGN*sizeof(Float));
-			}
 			/*
 			cout << "it = " << it << "\n";
 			for (PosInt kk = 0; kk < nLGN; kk++) {
@@ -6033,8 +6028,8 @@ int main(int argc, char** argv) {
             #else
 			    cudaMemcpyAsync(outputB4V1+nLGN, lVarFFpre, LGN_learnPreSize, cudaMemcpyDeviceToHost, LGN_stream);
 			#endif
-		    cudaEventRecord(LGN_ready, LGN_stream);
 		}
+		cudaEventRecord(LGN_ready, LGN_stream);
 
         #ifdef CHECK
 		    checkCudaErrors(cudaMemcpyAsync(spikeTrain + currentTimeSlot*nV1, d_spikeTrain + currentTimeSlot*nV1, nV1*sizeof(Float), cudaMemcpyDeviceToHost, mainStream)); // to overlap with  recal_G, to be used in recal_Gvec
@@ -6065,23 +6060,15 @@ int main(int argc, char** argv) {
                 checkCudaErrors(cudaDeviceSynchronize());
             #endif
         }
+
         if (learnData_FF > 1){
+			if (getLGN_sp) memcpy((void*)(outputB4V1), (void*) LGN_sInfo, nLGN*sizeof(Float));
             cudaEventSynchronize(LGN_ready);
 			fLearnData_FF.write((char*) outputB4V1, preFFsize); // d_LGN_sInfo and lVarFFpre
         }
         if (getLGN_sp) {
-            cudaEventSynchronize(LGN_ready);
-			Float* targetAddress;
-			if (learnData_FF) targetAddress = outputB4V1;
-			else targetAddress = LGN_sInfo;
-			/*
-			cout << "t = " << it << "\n";
-			for (PosInt kk = 0; kk < nLGN; kk++) {
-				cout << targetAddress[kk] << ", ";
-			}
-			cout << "\n";
-			*/
-            fLGN_sp.write((char*) targetAddress, nLGN*sizeof(Float));
+            if (learnData_FF <=1) cudaEventSynchronize(LGN_ready); // else synchronized already
+            fLGN_sp.write((char*) LGN_sInfo, nLGN*sizeof(Float));
         }
 
         if (matConcurrency < nChunk) { // initially, staging all the chunks of the first matConcurrency

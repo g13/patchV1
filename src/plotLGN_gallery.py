@@ -8,24 +8,29 @@ from mpl_toolkits.mplot3d import axes3d
 from matplotlib import cm
 
 import sys
-if len(sys.argv) == 1:
-    suffix = ""
+if len(sys.argv) < 4:
+    print("need suffix, data_fdr, fig_fdr as input")
 else:
     suffix = sys.argv[1]
+    data_fdr = sys.argv[2]
+    fig_fdr = sys.argv[3]
 
 print(suffix)
 if suffix:
     suffix = "_" + suffix
 
-
+if data_fdr[-1] != '/':
+    data_fdr += '/'
+if fig_fdr[-1] != '/':
+    fig_fdr += '/'
 #iLGN = np.array([0])
 #iLGN = np.array([264, 462])
 #iLGN = np.array([267, 11])
-iLGN = np.array([270, 0])
+iLGN = np.array([6214, 19782])
 ns = 1
 precision = 'f4'
 
-output = "LGN_gallery" + suffix + ".bin"
+output = data_fdr+"LGN_gallery" + suffix + ".bin"
 with open(output, 'rb') as f:
     nParvo = np.fromfile(f, 'u4', 1)[0]
     nType = np.fromfile(f, 'u4', 1)[0]
@@ -57,7 +62,7 @@ print(f'nMagno = {nMagno}, mType = {mType}, mKernelSample = {mKernelSample}, mSa
 if 'iLGN' not in locals():
     iLGN = np.random.randint(nLGN, size=ns)
 
-output = "LGN" + suffix + ".bin"
+output = data_fdr+"LGN" + suffix + ".bin"
 with open(output, 'rb') as f:
     nLGN = np.fromfile(f, 'u4', 1)[0]
     LGN_type = np.fromfile(f, 'u4', nLGN)
@@ -112,17 +117,17 @@ if nParvo > 0:
     ax.plot(sc[0,:,1,(nSample1D-1)*nSample1D], sc[1,:,1,(nSample1D-1)*nSample1D], '>b', ms = 0.001)
     ax.plot(sc[0,:,1,nSample-1],               sc[1,:,1,nSample-1], '>b', ms = 0.001)
     # center boundary
-    ax.plot(sc[0,:,0,0],                       sc[1,:,0,0], 'or', ms = 0.001)
-    ax.plot(sc[0,:,0,nSample1D-1],             sc[1,:,0,nSample1D-1], 'or', ms = 0.001)
-    ax.plot(sc[0,:,0,(nSample1D-1)*nSample1D], sc[1,:,0,(nSample1D-1)*nSample1D], 'or', ms = 0.001)
-    ax.plot(sc[0,:,0,nSample-1],               sc[1,:,0,nSample-1], 'or', ms = 0.001)
+    ax.plot(sc[0,:,0,0],                       sc[1,:,0,0], 'or', ms = 0.004)
+    ax.plot(sc[0,:,0,nSample1D-1],             sc[1,:,0,nSample1D-1], 'or', ms = 0.004)
+    ax.plot(sc[0,:,0,(nSample1D-1)*nSample1D], sc[1,:,0,(nSample1D-1)*nSample1D], 'or', ms = 0.004)
+    ax.plot(sc[0,:,0,nSample-1],               sc[1,:,0,nSample-1], 'or', ms = 0.004)
 if nMagno > 0:
     ax.plot(sc_m[0,:,0],                       sc_m[1,:,0], '*k', ms = 0.001)
     ax.plot(sc_m[0,:,mSample1D-1],             sc_m[1,:,mSample1D-1], '*k', ms = 0.001)
     ax.plot(sc_m[0,:,(mSample1D-1)*mSample1D], sc_m[1,:,(mSample1D-1)*mSample1D], '*k', ms = 0.001)
     ax.plot(sc_m[0,:,mSample-1],               sc_m[1,:,mSample-1], '*k', ms = 0.001)
 ax.set_aspect('equal')
-fig.savefig('check_coord'+suffix + '.png')
+fig.savefig(fig_fdr + 'check_coord'+suffix + '.png')
 
 def getSF(rC, rS, kC, kS, cov):
     # rC, rS in rad
@@ -185,7 +190,7 @@ if nParvo > 0:
 if nMagno > 0:
     ax.plot(np.arange(mKernelSample), temporal_m, '-b', lw = 0.2)
 ax.set_xlabel('t/ms')
-fig.savefig('SF-TF'+suffix + '.png')
+fig.savefig(fig_fdr+'SF-TF'+suffix + '.png')
 
 print(f'SF: {[np.min(SF), np.mean(SF), np.max(SF)]}')
 print(f'TF: {[np.min(TF), np.mean(TF), np.max(TF)]}')
@@ -225,7 +230,7 @@ for j in iLGN:
         ax1.plot(t, np.flipud(tw[i,0,:]*LGN_k[0,i]), 'm', lw = 1)
         ax1.plot(t, np.flipud(tw[i,1,:]*LGN_k[1,i]), 'g', lw = 1)
         ax1.plot(t, np.flipud(tw[i,0,:]*LGN_k[0,i] + tw[i,1,:]*LGN_k[1,i]), 'k', lw = 1)
-        fig.savefig(f'check_kernel_{j}-p{i}-{LGN_type[i]}' + suffix + '.png')
+        fig.savefig(fig_fdr+f'check_kernel_{j}-p{i}-{LGN_type[i]}' + suffix + '.png')
         print([np.sum(sw[:]), np.sum(tw[i,0,:]), np.sum(tw[i,1,:])])
     else:
         t = np.arange(mKernelSample)
@@ -254,7 +259,7 @@ for j in iLGN:
         #    ax1.plot(t, tw[j,0,:], 'r', lw = 0.1)
         #    ax2.plot(t, tw[j,1,:], 'b', lw = 0.1)
         ax1.plot(t, np.flipud(tw_m[i,:]), 'm', lw = 1)
-        fig.savefig(f'check_kernel_{j}-m{i}-{LGN_type[i]}' + suffix + '.png')
+        fig.savefig(fig_fdr+f'check_kernel_{j}-m{i}-{LGN_type[i]}' + suffix + '.png')
         print([np.sum(sw_m[i,:]), np.sum(tw_m[i,:])])
 
 markers = ('^r', 'vg', '*g', 'dr', '^k', 'vb')
@@ -263,7 +268,11 @@ ax = fig.add_subplot(111, projection = '3d')
 for i in iLGN:
     ax.plot3D(sc[0,i,0,:], sc[1,i,0,:], sw, markers[LGN_type[i]], ms = 0.1)
     #ax.plot(sc[0,i,1,:], sc[1,i,1,:], '>r', ms = 0.01)
-fig.savefig('check_multi-pattern' + suffix + '.png')
+    xs = ax.get_xlim()
+    ys = ax.get_xlim()
+    zs = ax.get_xlim()
+    ax.set_box_aspect([np.ptp(xs),np.ptp(xs),np.ptp(zs)])
+fig.savefig(fig_fdr+'check_multi-pattern' + suffix + '.png')
 
 
 fig = plt.figure('hist', dpi = 600)
@@ -295,4 +304,4 @@ ax.plot(LGN_k[0,:], LGN_k[1,:] , 'o', ms = 1, alpha = 0.5)
 ax.set_xlabel('center')
 ax.set_ylabel('surround')
 
-fig.savefig('spat_amplitude' + suffix + '.png')
+fig.savefig(fig_fdr+'spat_amplitude' + suffix + '.png')

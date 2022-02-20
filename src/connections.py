@@ -48,10 +48,11 @@ compThres = 1
 #plotLGNsSize = True
 #plotPos = True
 #plotLGN_V1_sample = True
-plotConFeature_stats = True 
-plotConFeature_preSynTC = True
-plotConFeature_sample = True
-plotCon_sample = True
+plot_nLGN_OS = True
+#plotConFeature_stats = True 
+#plotConFeature_preSynTC = True
+#plotConFeature_sample = True
+#plotCon_sample = True
 #plotLGN_V1_ratio = True
 #plotLGNsSum = True
 #plotBlockWiseComplexDist = True
@@ -60,10 +61,11 @@ plotStats = False
 plotLGNsSize = False
 plotPos = False
 plotLGN_V1_sample = False 
-#plotConFeature_stats = False
-#plotConFeature_preSynTC = False
-#plotConFeature_sample = False 
-#plotCon_sample = False
+#plot_nLGN_OS = False
+plotConFeature_stats = False
+plotConFeature_preSynTC = False
+plotConFeature_sample = False 
+plotCon_sample = False
 plotLGN_V1_ratio = False
 plotLGNsSum = False
 plotBlockWiseComplexDist = False 
@@ -227,9 +229,6 @@ def circular_diff(v0, vs, minv, maxv):
     v_diff[pick] = v_diff[pick] + v_range  
     return v_diff
 
-
-
-
 if 'sample' not in locals():
     sample = np.zeros(ns*nType, dtype = int)
     i = 0
@@ -252,8 +251,96 @@ with open(stats_file, 'rb') as f:
     strength = np.reshape(np.fromfile(f, 'f4', count=nType*networkSize), (nType, networkSize))
 assert(len(mk) == nType)
 
-if plotLGNsSum or plotLGN_V1_ratio:
+if plotLGNsSum or plotLGN_V1_ratio or plot_nLGN_OS:
     lgnData = np.array([np.sum(sArray) for sArray in LGN_V1_s])
+
+if plot_nLGN_OS:
+    nrow = 6
+    nOri = 6
+    fig = plt.figure('preset-OS_dist', figsize = (6,2*nrow))
+    iPref = feature[1,:]*180 # for ori
+    for i in range(nrow):
+        opEdges = (np.arange(nOri+1)-0.5)/nOri*180
+        ax = fig.add_subplot(nrow,2,2*i+1)
+        ax.hist(iPref[epick], bins=opEdges)
+        ax = fig.add_subplot(nrow,2,2*i+2)
+        ax.hist(iPref[ipick], bins=opEdges)
+        nOri *= 2
+    fig.savefig(fig_fdr + 'preset-OS_dist' + output_suffix[:-1] + '.png', dpi = 150)
+    fig = plt.figure('preset-OS_dist_T', figsize = (6,2*nrow))
+    iPref = np.mod(feature[1,:]+0.5,1.0)*180 # for ori
+    for i in range(nrow):
+        opEdges = (np.arange(nOri+1)-0.5)/nOri*180
+        ax = fig.add_subplot(nrow,2,2*i+1)
+        ax.hist(iPref[epick], bins=opEdges)
+        ax = fig.add_subplot(nrow,2,2*i+2)
+        ax.hist(iPref[ipick], bins=opEdges)
+        nOri *= 2
+    fig.savefig(fig_fdr + 'preset-OS_dist_T' + output_suffix[:-1] + '.png', dpi = 150)
+         
+
+    iPref = np.mod(feature[1,:] + 0.5, 1.0)*180 # for ori
+    nOri = 6
+    opEdges = (np.arange(nOri+1)-0.5)/nOri*180
+    fig = plt.figure('nLGN-OS_dist0', figsize = (11,5+maxList))
+    ax = fig.add_subplot(2+maxList,4,(1,5))
+    target = nLGN_V1[epick]
+    ytarget = iPref[epick]
+    HeatMap(target, ytarget, np.arange(maxList)+1, opEdges, ax, 'Reds', log_scale = False)
+    ax.set_ylabel(f'preset OP')
+    ax.set_title(f'#LGN of E')
+    ax = fig.add_subplot(2+maxList,4,(2,6))
+    target = nLGN_V1[ipick]
+    ytarget = iPref[ipick]
+    HeatMap(target, ytarget, np.arange(maxList)+1, opEdges, ax, 'Blues', log_scale = False)
+    ax.set_title(f'#LGN of I')
+    maxLGN_s = np.max(lgnData[epick])
+    ax = fig.add_subplot(2+maxList,4,(3,7))
+    target = lgnData[epick]
+    ytarget = iPref[epick]
+    HeatMap(target, ytarget, np.linspace(0, maxLGN_s, nOri), opEdges, ax, 'Reds', log_scale = False)
+    ax.set_title(f'sum(LGN_s) of E')
+    ax = fig.add_subplot(2+maxList,4,(4,8))
+    target = lgnData[ipick]
+    ytarget = iPref[ipick]
+    HeatMap(target, ytarget, np.linspace(0, maxLGN_s, nOri), opEdges, ax, 'Blues', log_scale = False)
+    ax.set_title(f'sum(LGN_s) of I')
+    for i in range(maxList):
+        ax = fig.add_subplot(2+maxList,4,8 + 4*i+1)
+        pick = epick[nLGN_V1[epick] == i]
+        if pick.size > 0:
+            ytarget = iPref[pick]
+            ax.hist(ytarget, bins=opEdges)
+        ax.set_ylabel(f'#LGN = {i}')  
+        ax = fig.add_subplot(2+maxList,4,8 + 4*i+2)
+        pick = ipick[nLGN_V1[ipick] == i]
+        if pick.size > 0:
+            ytarget = iPref[pick]
+            ax.hist(ytarget, bins=opEdges)
+        if i > 0:
+            ax = fig.add_subplot(2+maxList,4,8 + 4*i+3)
+            pick = epick[nLGN_V1[epick] == i]
+            if pick.size > 0:
+                ytarget = iPref[pick]
+                ax.hist(ytarget, bins=opEdges, weights=lgnData[pick]/np.mean(lgnData[pick]))
+            ax = fig.add_subplot(2+maxList,4,8 + 4*i+4)
+            pick = ipick[nLGN_V1[ipick] == i]
+            if pick.size > 0:
+                ytarget = iPref[pick]
+                ax.hist(ytarget, bins=opEdges, weights=lgnData[pick]/np.mean(lgnData[pick]))
+        else:
+            ax = fig.add_subplot(2+maxList,4,8 + 4*i+3)
+            ytarget = iPref[epick]
+            ax.hist(ytarget, bins=opEdges, weights=lgnData[epick]/np.mean(lgnData[epick]))
+            ax.set_title(f'for all nLGN>0')
+            ax = fig.add_subplot(2+maxList,4,8 + 4*i+4)
+            pick = ipick[nLGN_V1[ipick] == i]
+            ytarget = iPref[ipick]
+            ax.hist(ytarget, bins=opEdges, weights=lgnData[ipick]/np.mean(lgnData[ipick]))
+            ax.set_title(f'for all nLGN>0')
+
+
+    fig.savefig(fig_fdr + 'nLGN-OS_dist0' + output_suffix[:-1] + '.png', dpi = 150)
 
 if plotLGNsSum:
     fig = plt.figure('LGNsSum', dpi = 300)

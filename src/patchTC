@@ -12,9 +12,10 @@ fitTC=False
 nOri=6
 TF=8
 SF=40
+singleOri=False
 
+trial_suffix=test
 res_suffix=square-single_layer
-trial_suffix=single_test
 patch=patch_fast
 
 generate_V1_connection=False
@@ -22,8 +23,8 @@ generate_LGN_V1_connection=True
 
 patch_cfg=ori.cfg
 
-LGN_V1_suffix=single_test
-V1_connectome_suffix=single_test
+LGN_V1_suffix=4nLGN
+V1_connectome_suffix=4nLGN
 
 retino_cfg=LGN_V1.cfg
 genCon_cfg=connectome.cfg
@@ -31,11 +32,10 @@ genCon_cfg=connectome.cfg
 TF=8 # input frequency if applicable
 nOri=6 # total # orientaton if applicable
 OPstatus=1 
-usePrefData=False # use fitted preference from plotTC
+usePrefData=True # use fitted preference from plotTC replot plotV1_response.py
 collectMeanDataOnly=False # no plots, just collect average data
 
 fig_fdr=${fdr0}/${trial_suffix} # figures and configs
-collectMeanDataOnly=False
 
 echo ${trial_suffix}
 
@@ -66,6 +66,7 @@ else
 	else
 		readNewSpike=True
 	fi
+	fitDataReady=False
 fi
 
 if [ -d "$fig_fdr" ]
@@ -117,25 +118,34 @@ if [ "$plotTConly" = False ]; then
 		cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/${trial_suffix}-ori_1.cfg
 		cp ${fig_fdr}/${trial_suffix}-ori_1.cfg ${fig_fdr}/${trial_suffix}-ori_2.cfg
 	fi
-	for ori in $( seq 1 $nOri )
-	#for ori in $( seq 1 1 )
-	do
+	if [ "$singleOri" = False ]; then
+		for ori in $( seq 1 $nOri )
+		#for ori in $( seq 1 1 )
+		do
+			export ori
+			if [ "$plotOnly" = True ]; then
+				jobID=`sbatch --export=ALL ori_cpu.slurm`
+			else
+				jobID=`sbatch --export=ALL ori_gpu.slurm`
+				if [ "${ori}" -lt "${nOri}" ]; then
+					vim -s ${cfg_fdr}/nextOri_cfg.keys ${fig_fdr}/${trial_suffix}-ori_$((ori+1)).cfg
+					if [ "$((ori+1))" -lt "${nOri}" ]; then
+						cp ${fig_fdr}/${trial_suffix}-ori_$((ori+1)).cfg ${fig_fdr}/${trial_suffix}-ori_$((ori+2)).cfg
+					fi
+				fi
+			fi
+			jobList="$jobList:${jobID:20}"
+		done
+		sbatch --export=ALL --dependency=afterok$jobList plotTC.slurm
+	else
+		ori=1
 		export ori
 		if [ "$plotOnly" = True ]; then
 			jobID=`sbatch --export=ALL ori_cpu.slurm`
 		else
 			jobID=`sbatch --export=ALL ori_gpu.slurm`
-			if [ "${ori}" -lt "${nOri}" ]; then
-				vim -s ${cfg_fdr}/nextOri_cfg.keys ${fig_fdr}/${trial_suffix}-ori_$((ori+1)).cfg
-				if [ "$((ori+1))" -lt "${nOri}" ]; then
-					cp ${fig_fdr}/${trial_suffix}-ori_$((ori+1)).cfg ${fig_fdr}/${trial_suffix}-ori_$((ori+2)).cfg
-				fi
-			fi
 		fi
-		jobList="$jobList:${jobID:20}"
-	done
-	
-	sbatch --export=ALL --dependency=afterok$jobList plotTC.slurm
+	fi
 else
 	sbatch --export=ALL plotTC.slurm
 fi

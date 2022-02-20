@@ -45,8 +45,8 @@ fi
 readNewSpike=True
 
 pid=""
-echo python ${fig_fdr}/plotLGN_response_${trial_suffix}.py ${trial_suffix}_${ori} ${LGN_V1_suffix} ${res_fdr} ${data_fdr} ${fig_fdr} ${readNewSpike}
-python ${fig_fdr}/plotLGN_response_${trial_suffix}.py ${trial_suffix}_${ori} ${LGN_V1_suffix} ${res_fdr} ${data_fdr} ${fig_fdr} ${readNewSpike} &
+echo python ${fig_fdr}/plotLGN_response_${trial_suffix}.py ${trial_suffix}_${ori} ${LGN_V1_suffix} ${data_fdr} ${fig_fdr} ${readNewSpike}
+python ${fig_fdr}/plotLGN_response_${trial_suffix}.py ${trial_suffix}_${ori} ${LGN_V1_suffix} ${data_fdr} ${fig_fdr} ${readNewSpike} &
 pid+="${!} "
 
 echo python ${fig_fdr}/plotV1_response_${trial_suffix}.py ${trial_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
