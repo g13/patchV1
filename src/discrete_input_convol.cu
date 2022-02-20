@@ -1559,25 +1559,47 @@ Float get_spike(Size &nsp,
                 Float &lastNegLogRand,
                 Float dt,
                 Float rate,
-                curandStateMRG32k3a *state) 
+                curandStateMRG32k3a *state,
+				PosInt id, 
+				Float tRef = 2) 
 {
-    nsp = 0;
-    // ith spike, jth dt
-    // t_{i+1}*r_{j+1} + (T_{j}-t_{i})*r_{j} = -log(rand);
-    Float rT = dt*rate;
-    Float next_rT = lastNegLogRand - leftTimeRate; // tsp = next_rt/rate
-    if (next_rT > rT) { // spike time is larger than dt.
-        leftTimeRate += rT;
-        return 0.0;
-    } else do { // at least one spike during current time step
-        lastNegLogRand = -logarithm(uniform(state));
-        next_rT += lastNegLogRand;
-        nsp++;
-    } while (next_rT <= rT);
-    next_rT -= lastNegLogRand; // retract the tentative spike
-    leftTimeRate = rT - next_rT;
-    if (nsp > 0) return next_rT/(rate*nsp); // mean tsp not yet normalized by dt
-    else return 0; 
+	nsp = 0;
+	if (true) {
+    	// ith spike, jth dt
+    	// t_{i+1}*r_{j+1} + (T_{j}-t_{i})*r_{j} = -log(rand);
+    	Float rT = dt*rate;
+    	Float next_rT = lastNegLogRand - leftTimeRate; // tsp = next_rt/rate
+		Float old_rT;
+    	if (next_rT > rT) { // spike time is larger than dt.
+    	    leftTimeRate += rT;
+    	    return 0;
+    	} else do { // at least one spike during current time step
+			Float rand = uniform(state); 
+    	    //lastNegLogRand = -logarithm(rand);
+    	    lastNegLogRand = fmaxf(-logarithm(rand),tRef*rate);
+			old_rT = next_rT;
+    	    next_rT += lastNegLogRand;
+    	    nsp++;
+    	} while (next_rT <= rT);
+    	//next_rT -= lastNegLogRand; // retract the tentative spike
+    	leftTimeRate = rT - old_rT; // just use old_rT
+    	if (nsp > 0) return old_rT/(rate*nsp); // mean tsp not yet normalized by dt
+    	else return 0; 
+	} else {
+		Float rand = uniform(state);
+		Float tsp = 0;
+		if (rand < rate*dt) {
+			nsp = 1;
+			if (leftTimeRate > dt) {
+				tsp = rand*dt;
+			} else {
+				tsp = (1-rand)*dt;
+			}
+			leftTimeRate = tsp;
+		} 
+		leftTimeRate += dt*rate;
+		return tsp;
+	}	
 }
 
 //template<int ntimes>
@@ -1691,7 +1713,7 @@ void LGN_nonlinear(
         //Size nsp;
         //Float tsp = get_spike(nsp, lTR, lNL, dt, fr/1000.0, &local_state);
         //Float sInfo = nsp + tsp/dt; // must be float, integer part = #spikes decimals: mean tsp normalized by dt
-        tsp = get_spike(nsp, lTR, lNL, dt, fr/1000.0, &local_state);
+        tsp = get_spike(nsp, lTR, lNL, dt, fr/1000.0, &local_state, id);
         sInfo = nsp + tsp/dt; // must be float, integer part = #spikes decimals: mean tsp normalized by dt
 		/* debug for snapshot
 			if (id == 0) {

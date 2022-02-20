@@ -197,12 +197,14 @@ def readLGN_sp(fn, prec='f4', nstep = 0):
             assert(np.sum(tsp0>0) == np.sum(tsp0>=1))
             tsps = tsp0[tsp0 > 0]
             if tsps.size > 0:
-                idxFired = np.nonzero(tsp0>1)[0]
+                idxFired = np.nonzero(tsp0>=1)[0]
                 k = 0
                 for j in idxFired:
                     nsp = np.int(np.floor(tsps[k]))
                     tsp = tsps[k] - nsp
                     if nsp > 1:
+                        if j == 24358:
+                            print('2 spikes for {j}')
                         if 1-tsp > 0.5:
                             dtsp = tsp/nsp
                         else:
@@ -212,6 +214,8 @@ def readLGN_sp(fn, prec='f4', nstep = 0):
                             LGN_spScatter[j].append((it + tstart+isp*dtsp)*dt)
                     else:
                         LGN_spScatter[j].append((it+tsp)*dt)
+                    if j == 24358:
+                        print(f'fired at {tsps[k]}, {LGN_spScatter[j][-1], it*dt}')
                     k = k + 1
         for i in range(nLGN):
             LGN_spScatter[i] = np.asarray(LGN_spScatter[i])
@@ -313,7 +317,7 @@ def readSpike(rawDataFn, spFn, prec, sizeofPrec, vThres):
                     nsp = np.int(np.floor(tsps[k]))
                     tsp = tsps[k] - nsp
                     if nsp > 1:
-                        raise Exception(f'{nsp} spikes from {j} at time step {it}, sInfo = {tsps[k]}!')
+                        #raise Exception(f'{nsp} spikes from {j} at time step {it}, sInfo = {tsps[k]}!')
                         multi_spike = multi_spike + nsp 
                         if 1-tsp > 0.5:
                             dtsp = tsp/nsp
@@ -365,12 +369,15 @@ def HeatMap(d1, d2, range1, range2, ax, cm, log_scale = False, intPick = True, t
     else:
         data = h.T
     tc = np.zeros(edge1.size-1)
+    tm = np.zeros(edge1.size-1)
     for i in range(edge1.size-1):
         binned = np.logical_and(d1 <= edge1[i+1], d1 > edge1[i])
         if not binned.any():
             tc[i] = np.NAN
+            tm[i] = np.NAN
         else:
             tc[i] = np.mean(d2[binned])
+            tm[i] = np.median(d2[binned])
 
     #image = ax.imshow(data, vmin = vmin, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap(cm))
     image = ax.imshow(data, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap(cm))
@@ -425,7 +432,8 @@ def HeatMap(d1, d2, range1, range2, ax, cm, log_scale = False, intPick = True, t
         else:
             ax.set_yticklabels([f'{min_value + label * (max_value-min_value):.2e}' for label in tickPick2])
 
-    ax.plot(np.arange(edge1.size - 1), (tc - edge2[0])/(edge2[-1]-edge2[0])*(edge2.size - 1)-0.5, '*-k', lw = 1.0, ms = 1.5)
+    ax.plot(np.arange(edge1.size - 1), (tc - edge2[0])/(edge2[-1]-edge2[0])*(edge2.size - 1)-0.5, '*:k', lw = 1.0, ms = 1.5)
+    ax.plot(np.arange(edge1.size - 1), (tm - edge2[0])/(edge2[-1]-edge2[0])*(edge2.size - 1)-0.5, '*-k', lw = 1.0, ms = 1.5)
     return image
 
 def TuningCurves(data, bins, percentile, ax, color, tick, ticklabel):

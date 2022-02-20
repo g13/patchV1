@@ -119,7 +119,8 @@ function inputLearnFF(suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle
 	    			framesToFinish = ceil(49.7);
 				end
 			else
-				framesPerStatus = 132;
+				%framesPerStatus = 132;
+				framesPerStatus = 108;
 	    		framesToFinish = ceil(24.9);
 			end
 	    	%framesPerStatus = 192;
