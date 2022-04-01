@@ -9,11 +9,11 @@ res_fdr=${fdr0}/resource # inputFolder in cfg stimulus, V1-static, LGN-static an
 data_fdr=${fdr0} # outputFolder in cfg
 
 patch=patch_fast
-waveStage=3 # set stage number
+waveStage=2 # set stage number
 
 if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 	fdr=wave_concat/wave_II # folder will be made to store figures and configuratoin files
-	op=wave_II_long # theme string to be added to filenames of data and figures
+	op=II_m # theme string to be added to filenames of data and figures
 	op_cfg=wave_II.cfg # the simulation config file to be used
 	new_setup=False
 	lgn=lFF_II # the theme string to be used for LGN_V1 connections
@@ -49,22 +49,23 @@ fi
 
 if [[ "${waveStage}" = "5" ]] ;then
 	fdr=wave_concat
-	op=32_32x3_concat
+	op=II_l
 	op_cfg=wave_concat.cfg
-	new_setup=True
-	lgn=lFF_concat
-	res=lFF # starts out from stage II
+	new_setup=False
+	lgn=lFF_l
+	res=lFF_l # starts out from stage II
 	squareOrCircle=true # initial LGN-recruitment shape 
+	smallRange=false
 fi
 
 binary_thres=0.0
 #binary_thres=0.5
-std_ecc=6
+std_ecc=0
 seed=1924784 # RANDOM SEED for post-analysis sampling and input randomization 
 # for outputLearnFF.m
 st=2 # figures' output: 0 for temporal, 1 for spatial, 2 for both, otherwise none
 examSingle=true # output the spatiotemporal figure, tLGN_V1_single if true
-use_local_max=1 # output the spatiotemporal figure, sLGN_V1 with strength normalized for each frame instead over all frames if set 1
+use_local_max=0 # output the spatiotemporal figure, sLGN_V1 with strength normalized for each frame instead over all frames if set 1
 collectMeanDataOnly=False # not ploting samples of V1 response variable traces
 
 # NOT RELATED, leave alone
@@ -159,9 +160,9 @@ then
 fi
 
 
-#date
-#echo plotLGN_response.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
-#plotLGN_response.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
+date
+echo plotLGN_response.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
+plotLGN_response.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
 
 date
 echo plotV1_fr.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} & 

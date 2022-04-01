@@ -20,8 +20,8 @@ function inputLearnFF(suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle
 		u0 = 1.0; % stage 2 always single_value
 		u1 = 1.0;
 	else
-		u0 = 0.8; % uniform range
-		u1 = 1.2;
+		u0 = 1.0; % uniform range
+		u1 = 1.0;
 		%#u0 = 0.666667; % uniform range
 		%#u1 = 1.333333;
 	end
@@ -29,7 +29,7 @@ function inputLearnFF(suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle
 	%%%% HERE %%%%%%%%
 	if stage == 5
 		nother = 1; % set the number of temporal-variable learning parameters, such as rLTD 
-		set_other = [[0.25, 1.00]]; % rLTD
+		set_other = [[0.32, 0.85]]; % rLTD
 	else
 		nother = 0;
 	end
@@ -162,8 +162,9 @@ function inputLearnFF(suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle
 	    % corresponds to the parameters set in ext_input.py
 	    nOri = [32, 32]; % number of orientation for the input waves
 	    nRep = [1, 3]; % repeat of each orientation
-	    framesPerStatus = [225, 192]; % frames for each wave
-	    framesToFinish = [ceil(62.1), ceil(49.7)]; % frames for the ending phase of the last wave
+	    %framesPerStatus = [225, 192]; % frames for each wave
+	    framesPerStatus = [225, 108]; % frames for each wave
+	    framesToFinish = [ceil(62.1), ceil(24.9)]; % frames for the ending phase of the last wave
 	    absentRate = 1.0; % active cell percentage when being "absent"/not dominating
 	    nStatus = sum(nOri.*nRep)
 	    status = zeros(6,nStatus);
