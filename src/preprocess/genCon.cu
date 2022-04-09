@@ -389,22 +389,28 @@ int main(int argc, char *argv[])
         suffix = '_' + suffix;
     }
     suffix = suffix + ".bin";
+    nearNeighborBlock += 1; // including self
     fV1_conMat.open(V1_conMat_filename + suffix, ios::out | ios::binary);
 	if (!fV1_conMat) {
 		cout << "cannot open " << V1_conMat_filename + suffix << " to write.\n";
 		return EXIT_FAILURE;
-	}
-
+	} else {
+        fV1_conMat.write((char*) &nearNeighborBlock, sizeof(Size));
+    }
     fV1_delayMat.open(V1_delayMat_filename + suffix, ios::out | ios::binary);
 	if (!fV1_delayMat) {
 		cout << "cannot open " << V1_delayMat_filename + suffix << " to write.\n";
 		return EXIT_FAILURE;
-	}
+	} else {
+        fV1_delayMat.write((char*) &nearNeighborBlock, sizeof(Size));
+    }
     fV1_gapMat.open(V1_gapMat_filename + suffix, ios::out | ios::binary);
 	if (!fV1_gapMat) {
 		cout << "cannot open " << V1_gapMat_filename + suffix << " to write.\n";
 		return EXIT_FAILURE;
-	}
+	} else {
+        fV1_gapMat.write((char*) &nearNeighborBlock, sizeof(Size));
+    }
     fV1_vec.open(V1_vec_filename + suffix, ios::out | ios::binary);
 	if (!fV1_vec) {
 		cout << "cannot open " << V1_vec_filename + suffix << " to write.\n";
@@ -529,7 +535,6 @@ int main(int argc, char *argv[])
     size_t localHeapSize;
 
 	Size count = 0;
-    nearNeighborBlock += 1; // including self
 	do { 
         //half *= 2;
         if (count> 0) {
@@ -790,14 +795,9 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	} else {
 		cout << "min nearNeighborBlock = " << *min_element(nNearNeighborBlock, nNearNeighborBlock + nblock) << ", max nearNeighborBlock = " << _nearNeighborBlock << " < " << nearNeighborBlock << " < " << maxNeighborBlock << "\n";
-		nearNeighborBlock = _nearNeighborBlock;
-		cout << "nearNeighborBlock now set to " << nearNeighborBlock << "\n";
+		cout << "suggest set nearNeighborBlock to " << _nearNeighborBlock << "\n";
 		cout << "min nNeighborBlock = " << *min_element(nNeighborBlock, nNeighborBlock + nblock) << ", max nNeighborBlock = " << *max_element(nNeighborBlock, nNeighborBlock + nblock) << " < " << maxNeighborBlock << "\n";
 	}
-
-    fV1_conMat.write((char*) &nearNeighborBlock, sizeof(Size));
-    fV1_delayMat.write((char*) &nearNeighborBlock, sizeof(Size));
-    fV1_gapMat.write((char*) &nearNeighborBlock, sizeof(Size));
 	for (PosInt i=0; i<nblock; i++) {
 		if (nNeighborBlock[i] - nNearNeighborBlock[i] > maxNeighborBlock - nearNeighborBlock) {
 			cout << "increase maxNeighborBlock block "<< i << " non-sense: " << nNeighborBlock[i] << "-" << nNearNeighborBlock[i] << " = " << nNeighborBlock[i] - nNearNeighborBlock[i] << "/ " << maxNeighborBlock - nearNeighborBlock << ".\n";
