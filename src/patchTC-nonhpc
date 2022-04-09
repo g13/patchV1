@@ -1,0 +1,121 @@
+#!/bin/bash
+set -e
+
+repo=${CRD}
+cfg_fdr=${repo}/src
+fdr0=${SCRATCH}
+res_fdr=$fdr0/resource # stimulus, V1-static and LGN-static files
+in_fdr=$fdr0/resource # inputFolder in cfg
+data_fdr=$fdr0 # outputFolder in cfg
+
+fitTC=False
+nOri=6
+TF=8
+SF=40
+singleOri=False
+
+trial_suffix=test
+res_suffix=square-single_layer
+patch=patch_fast
+
+generate_V1_connection=False
+generate_LGN_V1_connection=True
+
+patch_cfg=ori.cfg
+
+LGN_V1_suffix=4nLGN
+V1_connectome_suffix=4nLGN
+
+retino_cfg=LGN_V1.cfg
+genCon_cfg=connectome.cfg
+
+TF=8 # input frequency if applicable
+nOri=6 # total # orientaton if applicable
+OPstatus=1 
+usePrefData=True # use fitted preference from plotTC replot plotV1_response.py
+collectMeanDataOnly=False # no plots, just collect average data
+
+fig_fdr=${fdr0}/${trial_suffix} # figures and configs
+
+echo ${trial_suffix}
+
+plotTConly=$1
+if [ -z "${plotTConly}" ]; 
+then
+	plotTConly=False
+fi
+
+if [ "$plotTConly" = True ]; then
+	fitDataReady=$2
+	if [ -z "$fitDataReady" ]; 
+	then
+		fitDataReady=False
+	fi
+else
+	plotOnly=$2
+	if [ -z "$plotOnly" ]; 
+	then
+		plotOnly=False
+	fi
+	if [ "$plotOnly" = True ]; then
+		readNewSpike=$3
+		if [ -z "${readNewSpike}" ]; 
+		then
+			readNewSpike=True
+		fi
+	else
+		readNewSpike=True
+	fi
+	fitDataReady=False
+fi
+
+if [ -d "$fig_fdr" ]
+then
+	echo overwrite contents in $fig_fdr
+else
+	mkdir -p $fig_fdr	
+fi
+
+cp ${cfg_fdr}/patchTC ${fig_fdr}/patchTC_${trial_suffix}
+cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/patch_${trial_suffix}.cfg
+
+if [ "${generate_LGN_V1_connection}" = True ]
+then
+	cp ${cfg_fdr}/${retino_cfg} ${fig_fdr}/retino_${LGN_V1_suffix}.cfg
+fi
+if [ "${generate_V1_connection}" = True ]
+then
+	cp ${cfg_fdr}/${genCon_cfg} ${fig_fdr}/genCon_${V1_connectome_suffix}.cfg
+	cp ${repo}/src/connections.py ${fig_fdr}/connections_${V1_connectome_suffix}.py
+fi
+echo configuration files copied
+
+cp ${repo}/src/plotV1_response.py ${fig_fdr}/plotV1_response_${trial_suffix}.py
+cp ${repo}/src/plotLGN_response.py ${fig_fdr}/plotLGN_response_${trial_suffix}.py
+cp ${repo}/src/getTuningCurve.py ${fig_fdr}/getTuningCurve_${trial_suffix}.py
+echo plotting files copied
+
+export plotOnly
+export nOri
+export TF
+export res_fdr
+export data_fdr
+export fig_fdr
+export res_suffix
+export trial_suffix
+export LGN_V1_suffix
+export V1_connectome_suffix
+export fitTC
+export collectMeanDataOnly
+export fitDataReady 
+export patch
+export usePrefData
+export readNewSpike
+
+if [ "$plotTConly" = False ]; then
+	ori=1
+	export ori
+	./ori_cpu-nonhpc
+else
+	./plotTC-nonhpc
+fi
