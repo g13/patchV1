@@ -721,7 +721,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                         disOnY.push_back(abs(yon[i] - yon[j]));
                         nExtraOn.push_back(0);
                         if (pInfo) {
-                            printf(" for component %i\n", onComponent.size()-1);
+                            printf(" for component %lu\n", onComponent.size()-1);
                         }
                     }
                 }
@@ -816,7 +816,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                         disOffY.push_back(abs(yoff[i] - yoff[j]));
                         nExtraOff.push_back(0);
                         if (pInfo) {
-                            printf(" for component %i\n", offComponent.size()-1);
+                            printf(" for component %lu\n", offComponent.size()-1);
                         }
                     }
                 }
@@ -881,7 +881,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         	            onComponent[ionC].push_back(kon);
         	            phaseOn.push_back(xon[kon]);
                         if (ionC != phaseOn.size() - 1) {
-                            printf("ionC = %i, size of phaseOn: %i, size of onComponent%i\n", ionC, phaseOn.size(), onComponent.size());
+                            printf("ionC = %u, size of phaseOn: %lu, size of onComponent%lu\n", ionC, phaseOn.size(), onComponent.size());
                             assert(ionC == phaseOn.size() - 1);
                         }
 

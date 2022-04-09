@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
     size_t size_heap, size_stack;
     checkCudaErrors(cudaDeviceGetLimit(&size_heap, cudaLimitMallocHeapSize));
     checkCudaErrors(cudaDeviceGetLimit(&size_stack, cudaLimitStackSize));
-    printf("Heap size found to be %d; Stack size found to be %d\n",(float)(size_heap)/1024.0/1024.0,(float)(size_stack)/1024.0/1024.0);
+    printf("Heap size found to be %f; Stack size found to be %f\n",(float)(size_heap)/1024.0/1024.0,(float)(size_stack)/1024.0/1024.0);
     
 	bool storeSpatial = true;
 	Float dt; // in ms, better in fractions of binary 
