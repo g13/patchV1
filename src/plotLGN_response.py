@@ -196,7 +196,7 @@ if plotResponseSample:
         else:
             on_off = 'off'
         ix = np.mod(j, nLGN_1D)
-        iy = np.int(np.floor(j/nLGN_1D))
+        iy = int(np.floor(j/nLGN_1D))
         ax2.set_title(f'#{j} {(ix,iy)}, {LGN_type[j]} ' + on_off + f' fr: {np.mean(LGNfr[:,i]):.3f}/{np.max(LGNfr[:,i]):.3f}Hz, {sp0.size/t[-1]*1000:.3f}Hz')
     fig.savefig(fig_fdr+'lgn-response' + output_suffix + '.png')
 

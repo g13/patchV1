@@ -200,7 +200,7 @@ def readLGN_sp(fn, prec='f4', nstep = 0):
                 idxFired = np.nonzero(tsp0>=1)[0]
                 k = 0
                 for j in idxFired:
-                    nsp = np.int(np.floor(tsps[k]))
+                    nsp = int(np.floor(tsps[k]))
                     tsp = tsps[k] - nsp
                     if nsp > 1:
                         if j == 24358:
@@ -314,7 +314,7 @@ def readSpike(rawDataFn, spFn, prec, sizeofPrec, vThres):
                 idxFired = np.nonzero(data >= 1)[0]
                 k = 0
                 for j in idxFired:
-                    nsp = np.int(np.floor(tsps[k]))
+                    nsp = int(np.floor(tsps[k]))
                     tsp = tsps[k] - nsp
                     if nsp > 1:
                         #raise Exception(f'{nsp} spikes from {j} at time step {it}, sInfo = {tsps[k]}!')

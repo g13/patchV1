@@ -456,7 +456,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
             n_stacks = int(np.floor(nt_*dt / tTF))
             r_stacks = np.mod(nt_*dt, tTF)
             stacks = np.zeros(TFbins) + n_stacks
-            i_stack = np.int(np.floor(r_stacks/dtTF))
+            i_stack = int(np.floor(r_stacks/dtTF))
             j_stack = np.mod(r_stacks, dtTF)
             stacks[:i_stack] += 1
             stacks[i_stack] += j_stack/dtTF
@@ -762,7 +762,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
     gTFbins = TFbins
     
     #stacks = np.zeros(gTFbins) + n_stacks
-    #i_stack = np.int(np.floor(r_stacks/dtgTF))
+    #i_stack = int(np.floor(r_stacks/dtgTF))
     #j_stack = np.mod(r_stacks, dtgTF)
     #stacks[:i_stack] += 1
     #stacks[i_stack] += j_stack
@@ -1763,7 +1763,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
             ax2 = fig.add_subplot(224)
             #ax2_ = ax2.twinx()
             t = nt_ *dt #ms
-            nbins = np.int(np.round(t/tbinSize)) #every 1ms
+            nbins = int(np.round(t/tbinSize)) #every 1ms
             edges = step0*dt + np.arange(nbins+1) * tbinSize 
             t_tf = (edges[:-1] + edges[1:])/2
             ff = np.arange(nbins//2+1) * 1000/t
@@ -2081,7 +2081,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
             ax2 = fig.add_subplot(224)
             #ax2_ = ax2.twinx()
             t = nt_ *dt #ms
-            nbins = np.int(np.round(t/tbinSize)) #every 1ms
+            nbins = int(np.round(t/tbinSize)) #every 1ms
             edges = step0*dt + np.arange(nbins+1) * tbinSize 
             t_tf = (edges[:-1] + edges[1:])/2
             ff = np.arange(nbins//2+1) * 1000/t
