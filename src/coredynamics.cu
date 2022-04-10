@@ -480,7 +480,7 @@ void compute_V_collect_spike_learnFF(
 		cudaSurfaceObject_t LGNspikeSurface,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
-        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo, bool symmetricHomeo, bool InhGap)
+        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo, bool symmetricHomeo, bool InhGap, bool rebound)
 {
     // get different ids in chunks
     PosInt tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -835,7 +835,7 @@ void compute_V_collect_spike_learnFF(
 			tsp = (sInfo - nsp)*dt;
 		} else {
 			nsp = 0;
-			tsp = 1;
+			tsp = dt;
 		}
         // will compute ff learning, first row at start of time step, second row at tsp
         Float lFF[2*2*max_nLearnTypeFF]; // row 0: start, row 1: sp
@@ -1009,7 +1009,7 @@ void compute_V_collect_spike_learnFF(
                 PosInt lid = i*nV1 + tid; //transposed
                 Float f = sLGN[lid];
                 // pruning process not revertible
-                if (f == 0) {
+                if (f == 0 && rebound) {
                     continue;
                 }
 				switch (applyHomeo) {
@@ -1036,7 +1036,6 @@ void compute_V_collect_spike_learnFF(
                         cPick = 1; // from tsp
                         delta_t = tsp_FF-tsp;
                     }
-                    delta_t *= dt;
                     if (threadIdx.x < nE) {
                         #pragma unroll max_nLearnTypeFF_E
                         for (PosInt j=0; j<learnE_pre.n; j++) {
@@ -1082,7 +1081,6 @@ void compute_V_collect_spike_learnFF(
                         fPick = varSlot;
                         delta_t = tsp;
                     }
-                    delta_t *= dt;
                     if (threadIdx.x < nE) {
                         #pragma unroll max_nLearnTypeFF_E
                         for (PosInt j=0; j<learnE_pre.n; j++) {
@@ -1141,12 +1139,11 @@ void compute_V_collect_spike_learnFF(
             if (applyHomeo) totalFF[tid] = new_totalFF0 + delta_f;
 
             // update FF vars; lAvg(E) to be updated after cortical learning if nLearnTypeE > 0
-            Float delta_t = 1;
+            Float delta_t = dt;
             PosInt cPick = nsp > 0? 1: 0;
             if (nsp > 0) { 
                 delta_t -= tsp;
             }
-            delta_t *= dt;
             if (threadIdx.x < nE) {
                 #pragma unroll max_nLearnTypeFF_E
                 for (PosInt i=0; i<learnE_post.n; i++) {
@@ -1283,7 +1280,7 @@ void compute_V_collect_spike_learnFF_fast(
 		cudaSurfaceObject_t LGNspikeSurface,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
-        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo, bool symmetricHomeo, bool InhGap)
+        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo, bool symmetricHomeo, bool InhGap, bool rebound)
 {
     __shared__ PosInt counter[2];
     if (threadIdx.x < 2) {
@@ -1470,7 +1467,7 @@ void compute_V_collect_spike_learnFF_fast(
 					if (backingUpFromRef && ddt > 0) {
     					condFF.compute_single_input_conductance(g0[ig], h0[ig], str*nsp_FF, ddt, ig);
 					}
-    				condFF.compute_single_input_conductance(g1[ig], h1[ig], str*nsp_FF, dt*(1-tsp_FF), ig);
+    				condFF.compute_single_input_conductance(g1[ig], h1[ig], str*nsp_FF, dt-tsp_FF, ig);
 				}
 			}
 		}
@@ -1606,7 +1603,7 @@ void compute_V_collect_spike_learnFF_fast(
 			tsp = (sInfo - nsp)*dt;
 		} else {
 			nsp = 0;
-			tsp = 1;
+			tsp = dt;
 		}
         // will compute ff learning, first row at start of time step, second row at tsp
         Float lFF[2*2*max_nLearnTypeFF]; // row 0: start, row 1: sp
@@ -1781,7 +1778,7 @@ void compute_V_collect_spike_learnFF_fast(
                 PosInt lid = i*nV1 + tid; //transposed
                 Float f = sLGN[lid];
                 // pruning process not revertible
-                if (f == 0) {
+                if (f == 0 && !rebound) {
                     continue;
                 }
 				switch (applyHomeo) {
@@ -1797,7 +1794,7 @@ void compute_V_collect_spike_learnFF_fast(
                 float sInfo_FF;
                 surf2DLayeredread(&sInfo_FF, LGNspikeSurface, 4*x, y, 0);
                 Size nsp_FF = static_cast<Size>(flooring(sInfo_FF));
-                Float tsp_FF = sInfo_FF > 0? sInfo_FF - nsp_FF: 1;
+                Float tsp_FF = (sInfo_FF > 0? sInfo_FF - nsp_FF: 1)*dt;
                 if (nsp_FF > 0) { // LTD, regarless of post spike
                     PosInt cPick;
                     Float delta_t;
@@ -1808,7 +1805,6 @@ void compute_V_collect_spike_learnFF_fast(
                         cPick = 1; // from tsp
                         delta_t = tsp_FF-tsp;
                     }
-                    delta_t *= dt;
                     if (threadIdx.x < nE) {
                         #pragma unroll max_nLearnTypeFF_E
                         for (PosInt j=0; j<learnE_pre.n; j++) {
@@ -1854,7 +1850,6 @@ void compute_V_collect_spike_learnFF_fast(
                         fPick = varSlot;
                         delta_t = tsp;
                     }
-                    delta_t *= dt;
                     if (threadIdx.x < nE) {
                         #pragma unroll max_nLearnTypeFF_E
                         for (PosInt j=0; j<learnE_pre.n; j++) {
@@ -1913,12 +1908,11 @@ void compute_V_collect_spike_learnFF_fast(
             if (applyHomeo) totalFF[tid] = new_totalFF0 + delta_f;
 
             // update FF vars; lAvg(E) to be updated after cortical learning if nLearnTypeE > 0
-            Float delta_t = 1;
+            Float delta_t = dt;
             PosInt cPick = nsp > 0? 1: 0;
             if (nsp > 0) { 
                 delta_t -= tsp;
             }
-            delta_t *= dt;
             if (threadIdx.x < nE) {
                 #pragma unroll max_nLearnTypeFF_E
                 for (PosInt i=0; i<learnE_post.n; i++) {

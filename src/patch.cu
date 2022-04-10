@@ -5965,7 +5965,7 @@ int main(int argc, char** argv) {
 		    		tau_noise, currentTimeSlot, trainDepth, max_LGNperV1,
 		    		ngTypeFF, ngTypeE, ngTypeI, condFF, condE, condI,
 		    		dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, nE, nI, nV1, learning, varSlot, nType, LGNspikeSurface,
-                    lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ, exp_homeo, iModel, noDelay, applyHomeo, symmetricHomeo, InhGap); // learning const structs 
+                    lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ, exp_homeo, iModel, noDelay, applyHomeo, symmetricHomeo, InhGap, rebound); // learning const structs 
             
         } else {
 		    compute_V_collect_spike_learnFF_fast<<<nblock, neuronPerBlock, 0, mainStream>>> (
@@ -5981,7 +5981,7 @@ int main(int argc, char** argv) {
 		    		tau_noise, currentTimeSlot, trainDepth, max_LGNperV1,
 		    		ngTypeFF, ngTypeE, ngTypeI, condFF, condE, condI,
 		    		dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, nE, nI, nV1, learning, varSlot, nType, LGNspikeSurface,
-                    lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ, exp_homeo, iModel, noDelay, applyHomeo, symmetricHomeo, InhGap); // learning const structs 
+                    lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ, exp_homeo, iModel, noDelay, applyHomeo, symmetricHomeo, InhGap, rebound); // learning const structs 
         }
 
         #ifdef CHECK
@@ -6379,9 +6379,10 @@ int main(int argc, char** argv) {
                 }
 		    }
             if (spiked) {
+                bool is_spike = true;
                 if (framePhyV1output) {
 		            cudaStreamWaitEvent(ostream[0], spReady, 0);
-		            pixelizeOutput<<<(nPixel_phyV1+blockSize-1)/blockSize, blockSize, 0, ostream[0]>>>(d_spikeTrain+currentTimeSlot*nV1, d_V1SpPhyFrame, d_V1_phyFramePosId, d_nV1perPhyPixel, maxV1perPixel, 0, nPixel_phyV1, nPixel_phyV1, nV1, odt);
+		            pixelizeOutput<<<(nPixel_phyV1+blockSize-1)/blockSize, blockSize, 0, ostream[0]>>>(d_spikeTrain+currentTimeSlot*nV1, d_V1SpPhyFrame, d_V1_phyFramePosId, d_nV1perPhyPixel, maxV1perPixel, 0, nPixel_phyV1, nPixel_phyV1, nV1, odt, is_spike);
                     #ifdef CHECK
 		                getLastCudaError("pixelizeOutput phyV1 failed");
                     #endif
@@ -6392,7 +6393,7 @@ int main(int argc, char** argv) {
 
 		        if (frameVisV1output) {
 		            cudaStreamWaitEvent(ostream[1], spReady, 0);
-		    	    pixelizeOutput<<<(nPixel_visV1+blockSize-1)/blockSize, blockSize, 0, ostream[1]>>>(d_spikeTrain+currentTimeSlot*nV1, d_V1SpVisFrame, d_V1_visFramePosId, d_nV1perVisPixel, maxV1perPixel_I, maxV1perPixel_C, nPixel_visV1/2, nPixel_visV1, nV1, odt);
+		    	    pixelizeOutput<<<(nPixel_visV1+blockSize-1)/blockSize, blockSize, 0, ostream[1]>>>(d_spikeTrain+currentTimeSlot*nV1, d_V1SpVisFrame, d_V1_visFramePosId, d_nV1perVisPixel, maxV1perPixel_I, maxV1perPixel_C, nPixel_visV1/2, nPixel_visV1, nV1, odt, is_spike);
                     #ifdef CHECK
 		    	        getLastCudaError("pixelizeOutput visV1 failed");
                     #endif
@@ -6403,8 +6404,9 @@ int main(int argc, char** argv) {
 		    }
 
 		    if (frameVisLGNoutput) {
+                bool is_spike = false;
 		        cudaStreamWaitEvent(ostream[2], spReady, 0);
-		    	pixelizeOutput<<<(nPixel_visLGN+blockSize-1)/blockSize, blockSize, 0, ostream[2]>>>(d_LGN_fr, d_LGN_spVisFrame, d_LGN_visFramePosId, d_nLGNperPixel, maxLGNperPixel_I, maxLGNperPixel_C, nPixel_visLGN/2, nPixel_visLGN, nLGN, odt);
+		    	pixelizeOutput<<<(nPixel_visLGN+blockSize-1)/blockSize, blockSize, 0, ostream[2]>>>(d_LGN_fr, d_LGN_spVisFrame, d_LGN_visFramePosId, d_nLGNperPixel, maxLGNperPixel_I, maxLGNperPixel_C, nPixel_visLGN/2, nPixel_visLGN, nLGN, odt, is_spike);
                 #ifdef CHECK
 		    	    getLastCudaError("pixelizeOutput visLGN failed");
                 #endif

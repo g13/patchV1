@@ -3,7 +3,7 @@ set -e
 
 repo=${CRD}
 cfg_fdr=${repo}/src
-fdr0=${SCRATCH}
+fdr0=${CWD}
 res_fdr=$fdr0/resource # stimulus, V1-static and LGN-static files
 in_fdr=$fdr0/resource # inputFolder in cfg
 data_fdr=$fdr0 # outputFolder in cfg
@@ -12,7 +12,6 @@ fitTC=False
 nOri=6
 TF=8
 SF=40
-singleOri=False
 
 trial_suffix=test
 res_suffix=square-single_layer
@@ -77,7 +76,7 @@ else
 fi
 
 cp ${cfg_fdr}/patchTC ${fig_fdr}/patchTC_${trial_suffix}
-cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/patch_${trial_suffix}.cfg
+cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/${trial_suffix}-ori_1.cfg
 
 if [ "${generate_LGN_V1_connection}" = True ]
 then
@@ -115,7 +114,7 @@ export readNewSpike
 if [ "$plotTConly" = False ]; then
 	ori=1
 	export ori
-	./ori_cpu-nonhpc
+	./ori-nonhpc
 else
 	./plotTC-nonhpc
 fi

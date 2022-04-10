@@ -1,12 +1,11 @@
 #!/bin/bash
 
 cd ${data_fdr}
-patch_cfg=${fig_fdr}/${trial_suffix}-ori_${ori}.cfg
 
 if [ "$plotOnly" = False ]; then
     date
-    echo ${patch} -c $patch_cfg
-    ${patch} -c $patch_cfg
+    echo ${patch} -c ${fig_fdr}/${trial_suffix}-ori_1.cfg
+    ${patch} -c ${fig_fdr}/${trial_suffix}-ori_1.cfg
     date
     usePrefData=False
     collectMeanDataOnly=False

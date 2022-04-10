@@ -6,7 +6,7 @@ void pixelizeOutput(
         Float* __restrict__ fr,
         Float* __restrict__ output,
         PosInt* __restrict__ pid, Size* __restrict__ m, // within one pixel
-		Size nPerPixel_I, Size nPerPixel_C, Size nPixel_I, Size nPixel, Size n, Float odt)
+		Size nPerPixel_I, Size nPerPixel_C, Size nPixel_I, Size nPixel, Size n, Float odt, bool is_spike)
 {
 	PosInt tid = blockDim.x*blockIdx.x + threadIdx.x;
 	if (tid < nPixel) {
@@ -22,12 +22,7 @@ void pixelizeOutput(
 				PosInt id = pid[offset + i];
 				Float sInfo = fr[id];
 				if (sInfo >= 0) {
-					value += flooring(sInfo);
-                    #ifdef DEBUG
-                        if (id == 0) {
-                            printf("i fired, sInfo = %f\n", sInfo);
-                        }
-                    #endif
+					value += is_spike? flooring(sInfo): sInfo;
 				}
 			}
 			value /= m_local*odt;
