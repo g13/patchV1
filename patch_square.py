@@ -55,6 +55,14 @@ def assign_square_xyID(n, pos, ratio = 2):
         local_id = pos_id[local_pick]
         imin = np.argmin(local_dis)
         xyID[:,i] = xy[local_id[imin],:]
+        if xyID[0,i] == 0 and xyID[1,i] == 0:
+            print(f'{i}:{xyID[:,i]}')
+        if xyID[0,i] == 0 and xyID[1,i] == 1:
+            print(f'{i}:{xyID[:,i]}')
+        if xyID[0,i] == 1 and xyID[1,i] == 0:
+            print(f'{i}:{xyID[:,i]}')
+        if xyID[0,i] == 1 and xyID[1,i] == 1:
+            print(f'{i}:{xyID[:,i]}')
         nonreplace_pick[local_id[imin]] = False 
         #if count > 0:
         #    print(count, sum(local_pick))

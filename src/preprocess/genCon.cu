@@ -88,7 +88,7 @@ int main(int argc, char *argv[])
     	("usingPosDim", po::value<Size>(&usingPosDim)->default_value(2), "using <2>D coord. or <3>D coord. when calculating distance between neurons, influencing how the position data is read") 
         ("maxDistantNeighbor", po::value<Size>(&maxDistantNeighbor), "the preserved size of the array that store the presynaptic neurons' ID, who are not in the neighboring blocks")
         ("gap_maxDistantNeighbor", po::value<Size>(&gap_maxDistantNeighbor), "the preserved size of the array that store the pre-junction neurons' ID, who are not in the neighboring blocks")
-        ("maxNeighborBlock", po::value<Size>(&maxNeighborBlock)->default_value(12), "the preserved size (minus the nearNeighborBlock) of the array that store the neighboring blocks ID that goes into conVec")
+        ("maxNeighborBlock", po::value<Size>(&maxNeighborBlock)->default_value(12), "the preserved size of the array that store the neighboring blocks ID including that goes into conVec")
         ("nearNeighborBlock", po::value<Size>(&nearNeighborBlock)->default_value(8), "the preserved size of the array that store the neighboring blocks ID that goes into conMat, excluding the self block, self will be added later")
         ("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file to read spatially predetermined functional features of neurons")
         ("fV1_pos", po::value<string>(&V1_pos_filename)->default_value("V1_allpos.bin"), "the directory to read neuron positions")
@@ -794,7 +794,8 @@ int main(int argc, char *argv[])
 		cout << "increase nearNeighborBlock " << _nearNeighborBlock << "/" << nearNeighborBlock << "\n";
 		return EXIT_FAILURE;
 	} else {
-		cout << "min nearNeighborBlock = " << *min_element(nNearNeighborBlock, nNearNeighborBlock + nblock) << ", max nearNeighborBlock = " << *max_element(nNearNeighborBlock, nNearNeighborBlock + nblock) << " < " << nearNeighborBlock << " < " << maxNeighborBlock << "\n";
+		cout << "min nearNeighborBlock = " << *min_element(nNearNeighborBlock, nNearNeighborBlock + nblock) << ", max nearNeighborBlock = " << _nearNeighborBlock << " < " << nearNeighborBlock << " < " << maxNeighborBlock << "\n";
+		cout << "suggest set nearNeighborBlock to " << _nearNeighborBlock << "\n";
 		cout << "min nNeighborBlock = " << *min_element(nNeighborBlock, nNeighborBlock + nblock) << ", max nNeighborBlock = " << *max_element(nNeighborBlock, nNeighborBlock + nblock) << " < " << maxNeighborBlock << "\n";
 	}
 	for (PosInt i=0; i<nblock; i++) {

@@ -1,9 +1,9 @@
 #!/bin/bash
 set -e
 
-repo=/home/wd554/repos/patchV1
+repo=${CRD}
 cfg_fdr=${repo}/src
-fdr0=/scratch/wd554/patchV1
+fdr0=${CWD}
 res_fdr=$fdr0/resource # stimulus, V1-static and LGN-static files
 in_fdr=$fdr0/resource # inputFolder in cfg
 data_fdr=$fdr0 # outputFolder in cfg
@@ -12,7 +12,6 @@ fitTC=False
 nOri=6
 TF=8
 SF=40
-singleOri=False
 
 trial_suffix=test
 res_suffix=square-single_layer
@@ -77,7 +76,7 @@ else
 fi
 
 cp ${cfg_fdr}/patchTC ${fig_fdr}/patchTC_${trial_suffix}
-cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/patch_${trial_suffix}.cfg
+cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/${trial_suffix}-ori_1.cfg
 
 if [ "${generate_LGN_V1_connection}" = True ]
 then
@@ -95,7 +94,6 @@ cp ${repo}/src/plotLGN_response.py ${fig_fdr}/plotLGN_response_${trial_suffix}.p
 cp ${repo}/src/getTuningCurve.py ${fig_fdr}/getTuningCurve_${trial_suffix}.py
 echo plotting files copied
 
-jobList=""
 export plotOnly
 export nOri
 export TF
@@ -114,38 +112,9 @@ export usePrefData
 export readNewSpike
 
 if [ "$plotTConly" = False ]; then
-	if [ "$plotOnly" = False ]; then
-		cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/${trial_suffix}-ori_1.cfg
-		cp ${fig_fdr}/${trial_suffix}-ori_1.cfg ${fig_fdr}/${trial_suffix}-ori_2.cfg
-	fi
-	if [ "$singleOri" = False ]; then
-		for ori in $( seq 1 $nOri )
-		#for ori in $( seq 1 1 )
-		do
-			export ori
-			if [ "$plotOnly" = True ]; then
-				jobID=`sbatch --export=ALL ori_cpu.slurm`
-			else
-				jobID=`sbatch --export=ALL ori_gpu.slurm`
-				if [ "${ori}" -lt "${nOri}" ]; then
-					vim -s ${cfg_fdr}/nextOri_cfg.keys ${fig_fdr}/${trial_suffix}-ori_$((ori+1)).cfg
-					if [ "$((ori+1))" -lt "${nOri}" ]; then
-						cp ${fig_fdr}/${trial_suffix}-ori_$((ori+1)).cfg ${fig_fdr}/${trial_suffix}-ori_$((ori+2)).cfg
-					fi
-				fi
-			fi
-			jobList="$jobList:${jobID:20}"
-		done
-		sbatch --export=ALL --dependency=afterok$jobList plotTC.slurm
-	else
-		ori=1
-		export ori
-		if [ "$plotOnly" = True ]; then
-			jobID=`sbatch --export=ALL ori_cpu.slurm`
-		else
-			jobID=`sbatch --export=ALL ori_gpu.slurm`
-		fi
-	fi
+	ori=1
+	export ori
+	./ori-nonhpc
 else
-	sbatch --export=ALL plotTC.slurm
+	./plotTC-nonhpc
 fi

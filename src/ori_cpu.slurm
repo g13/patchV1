@@ -7,7 +7,6 @@
 #SBATCH -o log/pV1_%J.out
 #SBATCH --mail-user=wd554@nyu.edu
 #SBATCH --mail-type=END
-##SBATCH -p nvidia 
 set -e
 module purge
 # Greene modules
@@ -23,8 +22,6 @@ module load python/intel/3.8.6
 #module load matlab/R2017a
 module list
 
-readNewSpike=True
-usePrefData=False
 collectMeanDataOnly=False
 
 if [ "$fitTC" = True ]; then
@@ -35,16 +32,21 @@ fi
 
 date
 pid=""
-echo plotLGN_response.py ${op}_${ori} $lgn $res_fdr $data_fdr $fig_fdr $readNewSpike
-plotLGN_response.py ${op}_${ori} $lgn $res_fdr $data_fdr $fig_fdr $readNewSpike &
+echo python ${fig_fdr}/plotLGN_response_${trial_suffix}.py ${trial_suffix}_${ori} ${LGN_V1_suffix} ${data_fdr} ${fig_fdr} ${readNewSpike}
+python ${fig_fdr}/plotLGN_response_${trial_suffix}.py ${trial_suffix}_${ori} ${LGN_V1_suffix} ${data_fdr} ${fig_fdr} ${readNewSpike} &
 pid+="${!} "
-echo plotV1_response.py $op $lgn $v1 $res_fdr $data_fdr $fig_fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus
-plotV1_response.py $op $lgn $v1 $res_fdr $data_fdr $fig_fdr $TF $ori $nOri $readNewSpike $usePrefData $collectMeanDataOnly $OPstatus &
+
+echo python ${fig_fdr}/plotV1_response_${trial_suffix}.py ${trial_suffix} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
+python ${fig_fdr}/plotV1_response_${trial_suffix}.py ${trial_suffix} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} &
 pid+="${!} "
-#if [ ${ori} -eq 1 ]; then
-#	echo connections.py ${op}_${ori} $lgn $v1 $fdr
-#	connections.py ${op}_${ori} $lgn $v1 $fdr & 
-#	pid+="${!} "
-#fi
+
+if [ ${ori} -eq 1 ]; then
+	if [ "${generate_V1_connection}" = True ]; then
+		echo python connections.py ${trial_suffix}_${ori} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${data_fdr} ${fig_fdr}
+		python ${fig_fdr}/connections_{V1_connectome_suffix}.py ${trial_suffix}_${ori} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${data_fdr} ${fig_fdr}
+		pid+="${!} "
+	fi
+fi
+
 wait $pid
 date

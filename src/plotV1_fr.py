@@ -41,7 +41,7 @@ def plotV1_fr(output_suffix0, data_fdr, fig_fdr, nOri, readNewSpike, ns):
         stepInterval = nt_
     it = np.append(np.arange(step0,nt_,stepInterval), nt_)
 
-    stepInterval0 = int(round(nt/nit)
+    stepInterval0 = int(round(nt/nit))
     it0 = np.append(np.arange(0,nt,stepInterval0), nt)
 
     if not readNewSpike:

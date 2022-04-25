@@ -371,8 +371,8 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 				} while (newList.size() < n_to_connect || newList.size() > max_nCon);
 			}
 
-        	Float con_irl = std::accumulate(strengthList.begin(), strengthList.end(), 0.0);
 			if (strictStrength) {
+				Float con_irl = std::accumulate(strengthList.begin(), strengthList.end(), 0.0);
         		Float ratio = sSum/con_irl;
         		for (PosInt i=0; i<strengthList.size(); i++) {
         		    strengthList[i] *= ratio; 
@@ -576,7 +576,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         }
         return nConnected;
     }
-    virtual Size construct_connection_opt(std::vector<Float> &x, std::vector<Float> &y, std::vector<InputType> &iType, std::vector<Size> &idList, std::vector<Float> &strengthList, Float zero, Float &true_sfreq, Float vx, Float vy, PosInt iV1, Float ori_tol, Float disLGN) {
+    virtual Size construct_connection_opt(std::vector<Float> &x, std::vector<Float> &y, std::vector<InputType> &iType, std::vector<Size> &idList, std::vector<Float> &strengthList, Float zero, Float &true_sfreq, Float vx, Float vy, PosInt iV1, Float ori_tol, Float disLGN, Float sSum) {
         Size nConnected;
         if (n > 0) {
             if (zero > 0) {
@@ -612,7 +612,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 				}
 
                 // make connection and update ID and strength list
-                nConnected = connect_opt(idList, strengthList, iType, biPick, envelope_value, norm_x, norm_y, n, iOnOff, iV1, ori_tol, disLGN);
+                nConnected = connect_opt(idList, strengthList, iType, biPick, envelope_value, norm_x, norm_y, n, iOnOff, iV1, ori_tol, disLGN, sSum);
 				idList.shrink_to_fit();
 				true_sfreq = sfreq;
             } else {
@@ -628,7 +628,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         return nConnected;
     }
 
-    virtual Size connect_opt(std::vector<Size> &idList, std::vector<Float> &strengthList, std::vector<InputType> &iType, std::vector<Int> &biPick, std::vector<Float> envelope_value, std::vector<Float> &norm_x, std::vector<Float> &norm_y, Size n, Int iOnOff, PosInt iV1, Float ori_tol, Float disLGN, Float dmax = 2) {
+    virtual Size connect_opt(std::vector<Size> &idList, std::vector<Float> &strengthList, std::vector<InputType> &iType, std::vector<Int> &biPick, std::vector<Float> envelope_value, std::vector<Float> &norm_x, std::vector<Float> &norm_y, Size n, Int iOnOff, PosInt iV1, Float ori_tol, Float disLGN, Float sSum, Float dmax = 2) {
 		// make connections and normalized strength i.e., if prob > 1 then s = 1 else s = prob
         ori_tol = ori_tol/180*M_PI;
 
@@ -721,7 +721,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                         disOnY.push_back(abs(yon[i] - yon[j]));
                         nExtraOn.push_back(0);
                         if (pInfo) {
-                            printf(" for component %i\n", onComponent.size()-1);
+                            printf(" for component %lu\n", onComponent.size()-1);
                         }
                     }
                 }
@@ -816,7 +816,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                         disOffY.push_back(abs(yoff[i] - yoff[j]));
                         nExtraOff.push_back(0);
                         if (pInfo) {
-                            printf(" for component %i\n", offComponent.size()-1);
+                            printf(" for component %lu\n", offComponent.size()-1);
                         }
                     }
                 }
@@ -881,7 +881,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         	            onComponent[ionC].push_back(kon);
         	            phaseOn.push_back(xon[kon]);
                         if (ionC != phaseOn.size() - 1) {
-                            printf("ionC = %i, size of phaseOn: %i, size of onComponent%i\n", ionC, phaseOn.size(), onComponent.size());
+                            printf("ionC = %u, size of phaseOn: %lu, size of onComponent%lu\n", ionC, phaseOn.size(), onComponent.size());
                             assert(ionC == phaseOn.size() - 1);
                         }
 
@@ -1172,6 +1172,13 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
             std::cout << " erased " << nErase << ".\n";
         }
         assert(idList.size() == strengthList.size());
+		if (strictStrength && idList.size() > 0) {
+			Float con_irl = std::accumulate(strengthList.begin(), strengthList.end(), 0.0);
+        	Float ratio = sSum/con_irl;
+        	for (PosInt i=0; i<strengthList.size(); i++) {
+        	    strengthList[i] *= ratio; 
+        	}
+		}
         return idList.size();
     }
 };

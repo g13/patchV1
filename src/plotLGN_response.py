@@ -8,18 +8,20 @@ import numpy as np
 from mpl_toolkits.mplot3d import axes3d
 from matplotlib import cm
 from readPatchOutput import *
+from plotV1_response import movingAvg
 from os import path
+np.seterr(divide='warn', invalid='warn')
 
 import sys
-if len(sys.argv) < 7:
+if len(sys.argv) < 6:
+    print(sys.argv)
     raise Exception(' need all 6 arguments, no default values available')
 else:
     output_suffix = sys.argv[1]
     input_suffix = sys.argv[2]
-    res_fdr = sys.argv[3]
-    data_fdr = sys.argv[4]
-    fig_fdr = sys.argv[5]
-    if sys.argv[6] == 'True' or sys.argv[6] == '1':
+    data_fdr = sys.argv[3]
+    fig_fdr = sys.argv[4]
+    if sys.argv[5] == 'True':
         readNewSpike = True 
         print('read new spikes')
     else:
@@ -31,25 +33,24 @@ output_suffix = "_" + output_suffix
 input_suffix = "_" + input_suffix 
 
 data_fdr = data_fdr + '/'
-res_fdr = res_fdr + '/'
 fig_fdr = fig_fdr + '/'
-
 
 plotResponseSample = True
 plotContrastDist = False 
 plotStat = True 
 nLGN_1D = 8
-nt_ = 0
+nt_ = 50000
 nstep = 10000
 seed = 1653783
-#iLGN = np.array([84,1455,1833,2575])
-iLGN = np.array([0,1,nLGN_1D*nLGN_1D+nLGN_1D-1,nLGN_1D*nLGN_1D+nLGN_1D])
-#iLGN = np.array([0,1,2,3])
+#iLGN = np.array([12198, 24358, 1833,2575])
+#iLGN = np.array([0,1,nLGN_1D*nLGN_1D+nLGN_1D-1,nLGN_1D*nLGN_1D+nLGN_1D])
 ns = 10
+FRbins = 25 # per sec
+nsmooth = 10 
 
 parameterFn = data_fdr + "patchV1_cfg" +output_suffix + ".bin"
 
-LGN_spFn = data_fdr + "LGN_sp" + output_suffix
+LGN_spFn = data_fdr + "LGN_sp" + output_suffix + ".bin"
 
 prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN = read_cfg(parameterFn)
 print(f'frRatioLGN = {frRatioLGN}, convolRatio = {convolRatio}')
@@ -121,6 +122,8 @@ with open(output_fn, 'rb') as f:
         interstep = nt_//nstep
     tt = np.arange(nstep)*interstep
     t = tt * dt
+    t_in_ms = nt_*dt
+    t_in_sec = t_in_ms/1000
     print(f'interstep = {interstep}')
     print(t[0], t[-1])
     nLGN = np.fromfile(f, 'u4', count = 1)[0]
@@ -146,13 +149,16 @@ with open(output_fn, 'rb') as f:
         luminance[it,:] = data[iLGN]
         contrast[it,:,:] = np.fromfile(f, prec, count = 2*nLGN).reshape(2,nLGN)
 
-if plotResponseSample:
-    if readNewSpike or not path.exists(LGN_spFn + '-' + str(nstep) + '.npz'):
-        LGN_spScatter = readLGN_sp(LGN_spFn + '.bin', prec = prec, nstep = nt_)
-        np.savez(LGN_spFn + '-' + str(nt_) + '.npz', LGN_spScatter = LGN_spScatter)
-    else:
-        with np.load(LGN_spFn + '-' + str(nt_) + '.npz', allow_pickle=True) as data:
-            LGN_spScatter = data['LGN_spScatter']
+LGN_spScatter = readLGN_sp(LGN_spFn, prec = prec, nstep = nt_)
+
+nbins = int(FRbins*t_in_sec)
+realLGN_fr = np.empty((nbins,nLGN))
+for i in range(nLGN):
+    sp0 = np.array(LGN_spScatter[i])
+    sp = sp0[sp0 < t[-1]]
+    sp_range = np.linspace(0, nt_, nbins+1)*dt
+    counts, _ = np.histogram(sp, bins = sp_range)
+    realLGN_fr[:,i] = movingAvg(counts/(1/FRbins), counts.size, nsmooth)
 
 if plotResponseSample:
     fig = plt.figure('LGN', dpi = 600)
@@ -174,7 +180,14 @@ if plotResponseSample:
 
         ax.set_ylim([-1.0,1.0])
         ax2 = ax.twinx()
-        ax2.plot(t, LGNfr[:,i], 'k', lw = 0.1)
+        ax2.plot(t, LGNfr[:,i], 'k', lw = 0.2)
+
+        nbins = int(FRbins*t_in_sec)
+        sp_range = np.linspace(0, nt_, nbins+1)*dt
+        counts, _ = np.histogram(sp, bins = sp_range)
+        fr = movingAvg(counts/(1/FRbins), counts.size, nsmooth)
+        ax2.plot((sp_range[:-1] + sp_range[1:])/2, fr, 'b', lw=0.1)
+    
         if i == 0:
             ax.legend()
         ax2.set_ylim(bottom = 0)
@@ -183,8 +196,8 @@ if plotResponseSample:
         else:
             on_off = 'off'
         ix = np.mod(j, nLGN_1D)
-        iy = np.int(np.floor(j/nLGN_1D))
-        ax2.set_title(f'#{j} {(ix,iy)}, {LGN_type[j]} ' + on_off + f' fr: {np.mean(LGNfr[:,i]):.3f}/{np.max(LGNfr[:,i]):.3f}Hz, {len(LGN_spScatter[j])/t[-1]*1000:.3f}Hz')
+        iy = int(np.floor(j/nLGN_1D))
+        ax2.set_title(f'#{j} {(ix,iy)}, {LGN_type[j]} ' + on_off + f' fr: {np.mean(LGNfr[:,i]):.3f}/{np.max(LGNfr[:,i]):.3f}Hz, {sp0.size/t[-1]*1000:.3f}Hz')
     fig.savefig(fig_fdr+'lgn-response' + output_suffix + '.png')
 
 if plotContrastDist:
@@ -214,13 +227,28 @@ if plotStat:
     ax.hist(active_ratio, bins=12)
     ax = fig.add_subplot(222)
     ax.hist(max_convol, bins=12, alpha = 0.5, label='predef')
-    ax.hist(np.max(LGNfr, axis = 0), bins = 12, alpha = 0.5, label = 'irl' )
-    ax.legend()
+    maxLGN_fr = np.max(realLGN_fr, axis=0)
+    Ron = maxLGN_fr[LGN_type == 0]
+    Roff = maxLGN_fr[LGN_type == 1]
+    Gon = maxLGN_fr[LGN_type == 2]
+    Goff = maxLGN_fr[LGN_type == 3]
+    On = maxLGN_fr[LGN_type == 4]
+    Off = maxLGN_fr[LGN_type == 5]
+    ax.hist((Ron, Roff, Gon, Goff, On, Off), bins = 12, alpha = 0.5)
+    ax.legend(fontsize='xx-small')
     ax.set_xlabel('max fr')
     ax = fig.add_subplot(223)
     ax.hist(max_convol*spont, bins=10)
     ax.set_xlabel('spont fr')
     ax = fig.add_subplot(224)
-    ax.hist(np.mean(LGNfr, axis = 0), bins=10)
+    meanLGN_fr = np.mean(realLGN_fr, axis=0)
+    Ron = meanLGN_fr[LGN_type == 0]
+    Roff = meanLGN_fr[LGN_type == 1]
+    Gon = meanLGN_fr[LGN_type == 2]
+    Goff = meanLGN_fr[LGN_type == 3]
+    On = meanLGN_fr[LGN_type == 4]
+    Off = meanLGN_fr[LGN_type == 5]
+    ax.hist((Ron,Roff,Gon,Goff,On,Off), bins=20, label=(f'Ron:{np.mean(Ron):.3f}',f'Roff:{np.mean(Roff):.3f}',f'Gon:{np.mean(Gon):.3f}',f'Goff:{np.mean(Goff):.3f}',f'On:{np.mean(On):.3f}',f'Off:{np.mean(Off):.3f}'))
+    ax.legend(fontsize='xx-small')
     ax.set_xlabel('mean fr')
     fig.savefig(fig_fdr+'LGN_activity'+output_suffix+'.png')

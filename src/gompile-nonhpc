@@ -1,0 +1,19 @@
+#!/bin/bash
+
+cd preprocess
+
+sm=sm_70
+optflag=O0
+
+rm -f genCon.o
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -${optflag} -c genCon.cu
+
+rm -f connect.o
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -${optflag} -c connect.cu
+
+rm -f cuda_util.o
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -${optflag} -c ../util/cuda_util.cu -o cuda_util.o
+
+nvcc -arch=$sm -lcudadevrt -lcudart -lboost_program_options cuda_util.o connect.o genCon.o -o $HOME/bin/genCon #-lcurand
+
+cd ..

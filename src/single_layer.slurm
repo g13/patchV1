@@ -18,14 +18,14 @@ fig_fdr=${fdr0}/test
 
 
 res_suffix=square-single_layer
-trial_suffix=single_test0
+trial_suffix=single_test
 patch_cfg=ori.cfg
 
 generate_V1_connection=False
 V1_connectome_suffix=single_test
 genCon_cfg=connectome.cfg
 
-generate_LGN_V1_connection=False
+generate_LGN_V1_connection=True
 LGN_V1_suffix=single_test
 retino_cfg=LGN_V1.cfg
 
@@ -101,9 +101,9 @@ date
 echo plotV1_response.py ${trial_suffix} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
 plotV1_response.py ${trial_suffix} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} &
 
-#date
-#echo connections.py ${trial_suffix} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${res_fdr} ${data_fdr} ${fig_fdr}
-#connections.py ${trial_suffix} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${res_fdr} ${data_fdr} ${fig_fdr} &
+date
+echo connections.py ${trial_suffix} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${res_fdr} ${data_fdr} ${fig_fdr}
+connections.py ${trial_suffix} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${res_fdr} ${data_fdr} ${fig_fdr} &
 
 wait
 date
