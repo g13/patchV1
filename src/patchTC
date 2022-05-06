@@ -12,9 +12,10 @@ fitTC=False
 nOri=6
 TF=8
 SF=40
-singleOri=False
+singleOri=True
+one_ori=4
 
-trial_suffix=test
+trial_suffix=test2
 res_suffix=square-single_layer
 patch=patch_fast
 
@@ -114,11 +115,11 @@ export usePrefData
 export readNewSpike
 
 if [ "$plotTConly" = False ]; then
-	if [ "$plotOnly" = False ]; then
-		cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/${trial_suffix}-ori_1.cfg
-		cp ${fig_fdr}/${trial_suffix}-ori_1.cfg ${fig_fdr}/${trial_suffix}-ori_2.cfg
-	fi
 	if [ "$singleOri" = False ]; then
+		if [ "$plotOnly" = False ]; then
+			cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/${trial_suffix}-ori_1.cfg
+			cp ${fig_fdr}/${trial_suffix}-ori_1.cfg ${fig_fdr}/${trial_suffix}-ori_2.cfg
+		fi
 		for ori in $( seq 1 $nOri )
 		#for ori in $( seq 1 1 )
 		do
@@ -138,11 +139,12 @@ if [ "$plotTConly" = False ]; then
 		done
 		sbatch --export=ALL --dependency=afterok$jobList plotTC.slurm
 	else
-		ori=1
+		ori=$one_ori
 		export ori
 		if [ "$plotOnly" = True ]; then
 			jobID=`sbatch --export=ALL ori_cpu.slurm`
 		else
+			cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/${trial_suffix}-ori_${ori}.cfg
 			jobID=`sbatch --export=ALL ori_gpu.slurm`
 		fi
 	fi

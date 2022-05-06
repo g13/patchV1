@@ -15,7 +15,7 @@ np.seterr(invalid = 'raise')
 
 #@profile
 def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
-    #sample = np.array([91,72,78,54,84,91,8,6,8,52])*1024 + np.array([649,650,508,196,385,873,190,673,350,806])
+    sample = np.array([91,72,78,54,84,91,8,6,8,52])*1024 + np.array([649,650,508,196,385,873,190,673,350,806])
     singleOri = False
     SCsplit = 1
     nLGNorF1F0 = True
@@ -39,8 +39,8 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     SF = 40
     
     #plotRpStat = True 
-    #plotRpCorr = True
-    #plotScatterFF = True
+    plotRpCorr = True
+    plotScatterFF = True
     plotSample = True
     #plotDepC = True # plot depC distribution over orientation
     #plotLGNsCorr = True
@@ -49,8 +49,8 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     #plotLR_rp = True
     
     plotRpStat = False 
-    plotRpCorr = False 
-    plotScatterFF = False
+    #plotRpCorr = False 
+    #plotScatterFF = False
     #plotSample = False
     plotDepC = False
     plotLGNsCorr = False 
@@ -221,14 +221,14 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         tstep = min(round(10/dt),tstep)
         nstep = nt_//tstep
         interval = tstep - 1
-        print(f'plot {nstep} data points from the {nt_} time steps startingfrom step {step0}, total {nt} steps, dt = {dt}')
+        print(f'plot {nstep} data points from the {nt_} time steps startingfrom step {step0} dt = {tstep*dt}; raw data total {nt} steps, dt = {dt}')
         nV1 = np.fromfile(f, 'u4', 1)[0] 
         iModel = np.fromfile(f, 'i4', 1)[0] 
         mI = np.fromfile(f, 'u4', 1)[0] 
         haveH = np.fromfile(f, 'u4', 1)[0] 
-        ngFF = np.fromfile(f, 'u4', 1)[0] 
-        ngE = np.fromfile(f, 'u4', 1)[0] 
-        ngI = np.fromfile(f, 'u4', 1)[0] 
+        ngFF = np.fromfile(f, 'u4', 1)[0]
+        ngE = np.fromfile(f, 'u4', 1)[0]
+        ngI = np.fromfile(f, 'u4', 1)[0]
         print(f'dt={dt}, nt={nt}, nV1={nV1}, iModel={iModel}, mI={mI}, haveH={haveH}, ngFF={ngFF}, ngE={ngE}, ngI={ngI}')
 
     if TF == 0:
@@ -468,21 +468,21 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         s_gap = np.zeros(mI)
     
         tTF = 1000/TF
-        _nstep = int(round(tTF/dt))
+        _nstep = int(round(tTF/(tstep*dt)))
         stepsPerBin = _nstep//TFbins
         if stepsPerBin != _nstep/TFbins:
             #raise Exception(f'binning for periods of {tTF} can not be divided by sampling steps: {round(tTF/tstep):.0f} x {tstep} ms vs. {TFbins}')
             stepsPerBin = 1
             TFbins = _nstep
-        print(f'steps per TFbin is {stepsPerBin}, tstep = {tstep}, tTF = {tTF}, TFbins = {TFbins}')
+        print(f'steps per TFbin is {stepsPerBin}, tTF = {tTF}, TFbins = {TFbins}')
 
         if plotTempMod and pCond:
             dtTF = tTF/TFbins
             n_stacks = int(np.floor(nt_*dt / tTF))
-            r_stacks = np.mod(nt_*dt, tTF)
+            r_stacks = nt_*dt - n_stacks*tTF
             stacks = np.zeros(TFbins) + n_stacks
-            i_stack = np.int(np.floor(r_stacks/dtTF))
-            j_stack = np.mod(r_stacks, dtTF)
+            i_stack = int(np.floor(r_stacks/dtTF))
+            j_stack = r_stacks - dtTF*i_stack
             stacks[:i_stack] += 1
             stacks[i_stack] += j_stack/dtTF
             print(f'stacks: {stacks}')
