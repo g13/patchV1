@@ -38,7 +38,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     lw = 0.1
     SF = 40
     
-    #plotRpStat = True 
+    plotRpStat = True 
     plotRpCorr = True
     plotScatterFF = True
     plotSample = True
@@ -48,7 +48,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     #plotExc_sLGN = True
     #plotLR_rp = True
     
-    plotRpStat = False 
+    #plotRpStat = False 
     #plotRpCorr = False 
     #plotScatterFF = False
     #plotSample = False
@@ -221,7 +221,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         tstep = min(round(10/dt),tstep)
         nstep = nt_//tstep
         interval = tstep - 1
-        print(f'plot {nstep} data points from the {nt_} time steps startingfrom step {step0} dt = {tstep*dt}; raw data total {nt} steps, dt = {dt}')
+        print(f'plot {nstep} data points from the {nt_} time steps startingfrom step {step0} dt = {tstep*dt}')
         nV1 = np.fromfile(f, 'u4', 1)[0] 
         iModel = np.fromfile(f, 'i4', 1)[0] 
         mI = np.fromfile(f, 'u4', 1)[0] 
@@ -229,7 +229,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         ngFF = np.fromfile(f, 'u4', 1)[0]
         ngE = np.fromfile(f, 'u4', 1)[0]
         ngI = np.fromfile(f, 'u4', 1)[0]
-        print(f'dt={dt}, nt={nt}, nV1={nV1}, iModel={iModel}, mI={mI}, haveH={haveH}, ngFF={ngFF}, ngE={ngE}, ngI={ngI}')
+        print(f'raw data total nt={nt}, dt={dt}, nV1={nV1}, iModel={iModel}, mI={mI}, haveH={haveH}, ngFF={ngFF}, ngE={ngE}, ngI={ngI}')
 
     if TF == 0:
         TF = 1000/(nt_*dt)
@@ -447,268 +447,264 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         print(f'sampling {[(s//blockSize, np.mod(s,blockSize)) for s in sample]}') 
     
     # read voltage and conductances
-    if pVoltage or pCond or plotLGNsCorr or plotSample or plotDepC or (plotTempMod and pCond):
-        print('reading rawData..')
-        gE = np.zeros((ngE,nV1,2))
-        gI = np.zeros((ngI,nV1,2))
-        gFF = np.zeros((ngFF,nV1,2))
-        w = np.zeros((nV1,2))
-        v = np.zeros((nV1,2))
-        depC = np.zeros((nV1,2))
+    print('reading rawData..')
+    gE = np.zeros((ngE,nV1,2))
+    gI = np.zeros((ngI,nV1,2))
+    gFF = np.zeros((ngFF,nV1,2))
+    w = np.zeros((nV1,2))
+    v = np.zeros((nV1,2))
+    depC = np.zeros((nV1,2))
     
-        cE = np.zeros((ngE,nV1,2))
-        cI = np.zeros((ngI,nV1,2))
-        cFF = np.zeros((ngFF,nV1,2))
-        cGap = np.zeros((mI,2)) # gap junction current
+    cE = np.zeros((ngE,nV1,2))
+    cI = np.zeros((ngI,nV1,2))
+    cFF = np.zeros((ngFF,nV1,2))
+    cGap = np.zeros((mI,2)) # gap junction current
     
-        s_v = np.zeros(nV1)
-        s_gFF = np.zeros(nV1)
-        s_gE = np.zeros(nV1)
-        s_gI = np.zeros(nV1)
-        s_gap = np.zeros(mI)
+    s_v = np.zeros(nV1)
+    s_gFF = np.zeros(nV1)
+    s_gE = np.zeros(nV1)
+    s_gI = np.zeros(nV1)
+    s_gap = np.zeros(mI)
     
-        tTF = 1000/TF
-        _nstep = int(round(tTF/(tstep*dt)))
-        stepsPerBin = _nstep//TFbins
-        if stepsPerBin != _nstep/TFbins:
-            #raise Exception(f'binning for periods of {tTF} can not be divided by sampling steps: {round(tTF/tstep):.0f} x {tstep} ms vs. {TFbins}')
-            stepsPerBin = 1
-            TFbins = _nstep
-        print(f'steps per TFbin is {stepsPerBin}, tTF = {tTF}, TFbins = {TFbins}')
+    tTF = 1000/TF
+    _nstep = int(round(tTF/(tstep*dt)))
+    stepsPerBin = _nstep//TFbins
+    if stepsPerBin != _nstep/TFbins:
+        #raise Exception(f'binning for periods of {tTF} can not be divided by sampling steps: {round(tTF/tstep):.0f} x {tstep} ms vs. {TFbins}')
+        stepsPerBin = 1
+        TFbins = _nstep
+    print(f'steps per TFbin is {stepsPerBin}, tTF = {tTF}, TFbins = {TFbins}')
 
-        if plotTempMod and pCond:
-            dtTF = tTF/TFbins
-            n_stacks = int(np.floor(nt_*dt / tTF))
-            r_stacks = nt_*dt - n_stacks*tTF
-            stacks = np.zeros(TFbins) + n_stacks
-            i_stack = int(np.floor(r_stacks/dtTF))
-            j_stack = r_stacks - dtTF*i_stack
-            stacks[:i_stack] += 1
-            stacks[i_stack] += j_stack/dtTF
-            print(f'stacks: {stacks}')
+    dtTF = tTF/TFbins
+    n_stacks = int(np.floor(nt_*dt / tTF))
+    r_stacks = nt_*dt - n_stacks*tTF
+    stacks = np.zeros(TFbins) + n_stacks
+    i_stack = int(np.floor(r_stacks/dtTF))
+    j_stack = r_stacks - dtTF*i_stack
+    stacks[:i_stack] += 1
+    stacks[i_stack] += j_stack/dtTF
+    print(f'stacks: {stacks}')
     
-            per_gFF = np.zeros((nV1,TFbins))
-            per_gE = np.zeros((nV1,TFbins))
-            per_gI = np.zeros((nV1,TFbins))
-            per_v = np.zeros((nV1,TFbins))
-            tmp_gFF = np.zeros(nV1)
-            tmp_gE = np.zeros(nV1)
-            tmp_gI = np.zeros(nV1)
-            tmp_v = np.zeros(nV1)
+    per_gFF = np.zeros((nV1,TFbins))
+    per_gE = np.zeros((nV1,TFbins))
+    per_gI = np.zeros((nV1,TFbins))
+    per_v = np.zeros((nV1,TFbins))
+    tmp_gFF = np.zeros(nV1)
+    tmp_gE = np.zeros(nV1)
+    tmp_gI = np.zeros(nV1)
+    tmp_v = np.zeros(nV1)
     
-        if plotLGNsCorr or plotRpCorr:
-            gFF_gTot_ratio = np.zeros((ngFF,nV1,2))
-            gE_gTot_ratio = np.zeros((ngE,nV1,2))
-            gI_gTot_ratio = np.zeros((ngI,nV1,2))
-            gEt_gTot_ratio = np.zeros((nV1,2))
-            s_gTot = np.zeros(nV1)
+    if plotLGNsCorr or plotRpCorr:
+        gFF_gTot_ratio = np.zeros((ngFF,nV1,2))
+        gE_gTot_ratio = np.zeros((ngE,nV1,2))
+        gI_gTot_ratio = np.zeros((ngI,nV1,2))
+        gEt_gTot_ratio = np.zeros((nV1,2))
+        s_gTot = np.zeros(nV1)
+        
+    with open(rawDataFn, 'rb') as f:
+        f.seek(sizeofPrec+4*8, 1)
+        if plotSample:
+            if pDep:
+                _depC = np.empty((ns, nstep), dtype = prec)
+    
+            if iModel == 1:
+                if pW:
+                    _w = np.empty((ns, nstep), dtype = prec)
+            if pVoltage:
+                _v = np.empty((ns, nstep), dtype = prec)
+            if pCond:
+                if pH:
+                    getH = haveH
+                else:
+                    getH = 0
+                _gE = np.empty((1+getH, ngE, ns, nstep), dtype = prec)
+                _gI = np.empty((1+getH, ngI, ns, nstep), dtype = prec)
+                _gFF = np.empty((1+getH, ngFF, ns, nstep), dtype = prec)
+            if pGap:
+                gap_pick = np.mod(sample, blockSize) >= nE
+                gap_sample = sample[gap_pick]//blockSize*nI + np.mod(sample[gap_pick], blockSize) - nE
+                gap_ns = gap_sample.size
+                _cGap = np.empty((gap_ns, nstep), dtype = prec)
+    
+        if iModel == 0:
+            f.seek(((3+(ngE + ngI + ngFF)*(1+haveH))*nV1 + mI)*sizeofPrec*step0, 1)
+        if iModel == 1:
+            f.seek(((4+(ngE + ngI + ngFF)*(1+haveH))*nV1 + mI)*sizeofPrec*step0, 1)
+    
+        per_it = 0
+        per_nt = 0
+        nstack_count = 0
+        for i in range(nstep):
+            f.seek(nV1*sizeofPrec, 1)
+            data = np.fromfile(f, prec, nV1)
+            depC[:,0] = depC[:,0] + data
+            depC[:,1] = depC[:,1] + data*data
+            if plotSample and pDep:
+                _depC[:,i] = data[sample]
+    
+            if iModel == 1:
+                data = np.fromfile(f, prec, nV1)
+                w[:,0] = w[:,0] + data
+                w[:,1] = w[:,1] + data*data
+                if pW and plotSample:
+                    _w[:,i] = data[sample]
+    
+            s_v = np.fromfile(f, prec, nV1)
+            v[:,0] = v[:,0] + s_v 
+            v[:,1] = v[:,1] + s_v*s_v
+            if pVoltage and plotSample:
+                _v[:,i] = s_v[sample]
+    
             
-        with open(rawDataFn, 'rb') as f:
-            f.seek(sizeofPrec+4*8, 1)
-            if plotSample:
-                if pDep:
-                    _depC = np.empty((ns, nstep), dtype = prec)
+            if pCond and plotTempMod:
+                tmp_v = tmp_v + s_v
+                if np.mod(per_it+1, stepsPerBin) == 0:
+                    per_v[:,per_nt] = per_v[:,per_nt] + tmp_v/stepsPerBin
+                    tmp_v = np.zeros(nV1)
     
-                if iModel == 1:
-                    if pW:
-                        _w = np.empty((ns, nstep), dtype = prec)
-                if pVoltage:
-                    _v = np.empty((ns, nstep), dtype = prec)
-                if pCond:
-                    if pH:
-                        getH = haveH
-                    else:
-                        getH = 0
-                    _gE = np.empty((1+getH, ngE, ns, nstep), dtype = prec)
-                    _gI = np.empty((1+getH, ngI, ns, nstep), dtype = prec)
-                    _gFF = np.empty((1+getH, ngFF, ns, nstep), dtype = prec)
-                if pGap:
-                    gap_pick = np.mod(sample, blockSize) >= nE
-                    gap_sample = sample[gap_pick]//blockSize*nI + np.mod(sample[gap_pick], blockSize) - nE
-                    gap_ns = gap_sample.size
-                    _cGap = np.empty((gap_ns, nstep), dtype = prec)
+            s_gFF = np.fromfile(f, prec, ngFF*nV1).reshape(ngFF,nV1)
+            gFF[:,:,0] = gFF[:,:,0] + s_gFF
+            gFF[:,:,1] = gFF[:,:,1] + s_gFF*s_gFF
+            x = s_gFF*(vE - s_v)
+            cFF[:,:,0] = cFF[:,:,0] + x
+            cFF[:,:,1] = cFF[:,:,1] + x*x
+            if pCond and plotSample:
+                _gFF[0,:,:,i] = s_gFF[:,sample]
+    
+            if haveH:
+                if pH:
+                    data = np.fromfile(f, prec, ngFF*nV1).reshape(ngFF,nV1)
+                    _gFF[1,:,:,i] = data[:,sample]
+                else:
+                    f.seek(ngFF*nV1*sizeofPrec, 1)
+    
+            s_gE = np.fromfile(f, prec, ngE*nV1).reshape(ngE,nV1)
+            gE[:,:,0] = gE[:,:,0] + s_gE
+            gE[:,:,1] = gE[:,:,1] + s_gE*s_gE
+            x = s_gE*(vE - s_v)
+            cE[:,:,0] = cE[:,:,0] + x
+            cE[:,:,1] = cE[:,:,1] + x*x
+            if pCond and plotSample:
+                _gE[0,:,:,i] = s_gE[:,sample]
+    
+            s_gI = np.fromfile(f, prec, ngI*nV1).reshape(ngI,nV1)
+            gI[:,:,0] = gI[:,:,0] + s_gI
+            gI[:,:,1] = gI[:,:,1] + s_gI*s_gI
+            x = s_gI*(vI - s_v)
+            cI[:,:,0] = cI[:,:,0] + x
+            cI[:,:,1] = cI[:,:,1] + x*x
+            if pCond and plotSample:
+                _gI[0,:,:,i] = s_gI[:,sample]
+
+            tmp_gFF = tmp_gFF + np.sum(s_gFF, axis = 0)
+            tmp_gE = tmp_gE + np.sum(s_gE, axis = 0)
+            tmp_gI = tmp_gI + np.sum(s_gI, axis = 0)
+            if np.mod(per_it+1, stepsPerBin) == 0: 
+                per_gFF[:,per_nt] = per_gFF[:,per_nt] + tmp_gFF/stepsPerBin
+                per_gE[:,per_nt] = per_gE[:,per_nt] + tmp_gE/stepsPerBin
+                per_gI[:,per_nt] = per_gI[:,per_nt] + tmp_gI/stepsPerBin
+                tmp_gFF = np.zeros(nV1)
+                tmp_gE = np.zeros(nV1)
+                tmp_gI = np.zeros(nV1)
+    
+            if plotLGNsCorr or plotRpCorr:
+                s_gTot = np.sum(s_gE, axis = 0) + np.sum(s_gI, axis = 0) + np.sum(s_gFF, axis = 0) + _gL
+                x = s_gFF/s_gTot
+                gFF_gTot_ratio[:,:,0] = gFF_gTot_ratio[:,:,0] + x
+                gFF_gTot_ratio[:,:,1] = gFF_gTot_ratio[:,:,1] + x*x
+    
+                x = s_gE/s_gTot
+                gE_gTot_ratio[:,:,0] = gE_gTot_ratio[:,:,0] + x
+                gE_gTot_ratio[:,:,1] = gE_gTot_ratio[:,:,1] + x*x
+    
+                x = s_gI/s_gTot
+                gI_gTot_ratio[:,:,0] = gI_gTot_ratio[:,:,0] + x
+                gI_gTot_ratio[:,:,1] = gI_gTot_ratio[:,:,1] + x*x
+                
+                x = (np.sum(s_gE,axis=0)+np.sum(s_gFF,axis=0))/s_gTot
+                gEt_gTot_ratio[:,0] = gEt_gTot_ratio[:,0] + x
+                gEt_gTot_ratio[:,1] = gEt_gTot_ratio[:,1] + x*x
+    
+            if haveH :
+                if pH and plotSample:
+                    data = np.fromfile(f, prec, ngE*nV1).reshape(ngE,nV1)
+                    _gE[1,:,:,i] = data[:,sample]
+                    data = np.fromfile(f, prec, ngI*nV1).reshape(ngI,nV1)
+                    _gI[1,:,:,i] = data[:,sample]
+                else:
+                    f.seek((ngE+ngI)*nV1*sizeofPrec, 1)
+
+            s_cGap = np.fromfile(f, prec, mI)
+            cGap[:,0] = cGap[:,0] + s_cGap
+            cGap[:,1] = cGap[:,1] + s_cGap*s_cGap
+            if pGap and plotSample:
+                _cGap[:,i] = s_cGap[gap_sample]
+    
     
             if iModel == 0:
-                f.seek(((3+(ngE + ngI + ngFF)*(1+haveH))*nV1 + mI)*sizeofPrec*step0, 1)
+                f.seek(((3+(ngE + ngI + ngFF)*(1+haveH))*nV1 + mI)*sizeofPrec*interval, 1)
             if iModel == 1:
-                f.seek(((4+(ngE + ngI + ngFF)*(1+haveH))*nV1 + mI)*sizeofPrec*step0, 1)
-    
-            per_it = 0
-            per_nt = 0
-            nstack_count = 0
-            for i in range(nstep):
-                f.seek(nV1*sizeofPrec, 1)
-                data = np.fromfile(f, prec, nV1)
-                depC[:,0] = depC[:,0] + data
-                depC[:,1] = depC[:,1] + data*data
-                if plotSample and pDep:
-                    _depC[:,i] = data[sample]
-    
-                if iModel == 1:
-                    data = np.fromfile(f, prec, nV1)
-                    w[:,0] = w[:,0] + data
-                    w[:,1] = w[:,1] + data*data
-                    if pW and plotSample:
-                        _w[:,i] = data[sample]
-    
-                s_v = np.fromfile(f, prec, nV1)
-                v[:,0] = v[:,0] + s_v 
-                v[:,1] = v[:,1] + s_v*s_v
-                if pVoltage and plotSample:
-                    _v[:,i] = s_v[sample]
-    
-                
-                if pCond and plotTempMod:
-                    tmp_v = tmp_v + s_v
-                    if np.mod(per_it+1, stepsPerBin) == 0:
-                        per_v[:,per_nt] = per_v[:,per_nt] + tmp_v/stepsPerBin
-                        tmp_v = np.zeros(nV1)
-    
-                s_gFF = np.fromfile(f, prec, ngFF*nV1).reshape(ngFF,nV1)
-                gFF[:,:,0] = gFF[:,:,0] + s_gFF
-                gFF[:,:,1] = gFF[:,:,1] + s_gFF*s_gFF
-                x = s_gFF*(vE - s_v)
-                cFF[:,:,0] = cFF[:,:,0] + x
-                cFF[:,:,1] = cFF[:,:,1] + x*x
-                if pCond and plotSample:
-                    _gFF[0,:,:,i] = s_gFF[:,sample]
-    
-                if haveH:
-                    if pH:
-                        data = np.fromfile(f, prec, ngFF*nV1).reshape(ngFF,nV1)
-                        _gFF[1,:,:,i] = data[:,sample]
-                    else:
-                        f.seek(ngFF*nV1*sizeofPrec, 1)
-    
-                s_gE = np.fromfile(f, prec, ngE*nV1).reshape(ngE,nV1)
-                gE[:,:,0] = gE[:,:,0] + s_gE
-                gE[:,:,1] = gE[:,:,1] + s_gE*s_gE
-                x = s_gE*(vE - s_v)
-                cE[:,:,0] = cE[:,:,0] + x
-                cE[:,:,1] = cE[:,:,1] + x*x
-                if pCond and plotSample:
-                    _gE[0,:,:,i] = s_gE[:,sample]
-    
-                s_gI = np.fromfile(f, prec, ngI*nV1).reshape(ngI,nV1)
-                gI[:,:,0] = gI[:,:,0] + s_gI
-                gI[:,:,1] = gI[:,:,1] + s_gI*s_gI
-                x = s_gI*(vI - s_v)
-                cI[:,:,0] = cI[:,:,0] + x
-                cI[:,:,1] = cI[:,:,1] + x*x
-                if pCond and plotSample:
-                    _gI[0,:,:,i] = s_gI[:,sample]
+                f.seek(((4+(ngE + ngI + ngFF)*(1+haveH))*nV1 + mI)*sizeofPrec*interval, 1)
 
-                if plotTempMod and pCond:
-                    tmp_gFF = tmp_gFF + np.sum(s_gFF, axis = 0)
-                    tmp_gE = tmp_gE + np.sum(s_gE, axis = 0)
-                    tmp_gI = tmp_gI + np.sum(s_gI, axis = 0)
-                    if np.mod(per_it+1, stepsPerBin) == 0: 
-                        per_gFF[:,per_nt] = per_gFF[:,per_nt] + tmp_gFF/stepsPerBin
-                        per_gE[:,per_nt] = per_gE[:,per_nt] + tmp_gE/stepsPerBin
-                        per_gI[:,per_nt] = per_gI[:,per_nt] + tmp_gI/stepsPerBin
-                        tmp_gFF = np.zeros(nV1)
-                        tmp_gE = np.zeros(nV1)
-                        tmp_gI = np.zeros(nV1)
+            per_it = np.mod(per_it+1, stepsPerBin)
+            if per_it == 0:
+                if per_nt == 0:
+                    nstack_count = nstack_count + 1
+                per_nt = np.mod(per_nt + 1, TFbins)
+    print(f'nstack = {nstack_count}, istack = {per_nt}, rstack = {per_it}')
     
-                if plotLGNsCorr or plotRpCorr:
-                    s_gTot = np.sum(s_gE, axis = 0) + np.sum(s_gI, axis = 0) + np.sum(s_gFF, axis = 0) + _gL
-                    x = s_gFF/s_gTot
-                    gFF_gTot_ratio[:,:,0] = gFF_gTot_ratio[:,:,0] + x
-                    gFF_gTot_ratio[:,:,1] = gFF_gTot_ratio[:,:,1] + x*x
-    
-                    x = s_gE/s_gTot
-                    gE_gTot_ratio[:,:,0] = gE_gTot_ratio[:,:,0] + x
-                    gE_gTot_ratio[:,:,1] = gE_gTot_ratio[:,:,1] + x*x
-    
-                    x = s_gI/s_gTot
-                    gI_gTot_ratio[:,:,0] = gI_gTot_ratio[:,:,0] + x
-                    gI_gTot_ratio[:,:,1] = gI_gTot_ratio[:,:,1] + x*x
-                    
-                    x = (np.sum(s_gE,axis=0)+np.sum(s_gFF,axis=0))/s_gTot
-                    gEt_gTot_ratio[:,0] = gEt_gTot_ratio[:,0] + x
-                    gEt_gTot_ratio[:,1] = gEt_gTot_ratio[:,1] + x*x
-    
-                if haveH :
-                    if pH and plotSample:
-                        data = np.fromfile(f, prec, ngE*nV1).reshape(ngE,nV1)
-                        _gE[1,:,:,i] = data[:,sample]
-                        data = np.fromfile(f, prec, ngI*nV1).reshape(ngI,nV1)
-                        _gI[1,:,:,i] = data[:,sample]
-                    else:
-                        f.seek((ngE+ngI)*nV1*sizeofPrec, 1)
-
-                s_cGap = np.fromfile(f, prec, mI)
-                cGap[:,0] = cGap[:,0] + s_cGap
-                cGap[:,1] = cGap[:,1] + s_cGap*s_cGap
-                if pGap and plotSample:
-                    _cGap[:,i] = s_cGap[gap_sample]
-    
-        
-                if iModel == 0:
-                    f.seek(((3+(ngE + ngI + ngFF)*(1+haveH))*nV1 + mI)*sizeofPrec*interval, 1)
-                if iModel == 1:
-                    f.seek(((4+(ngE + ngI + ngFF)*(1+haveH))*nV1 + mI)*sizeofPrec*interval, 1)
-
-                per_it = np.mod(per_it+1, stepsPerBin)
-                if per_it == 0:
-                    if per_nt == 0:
-                        nstack_count = nstack_count + 1
-                    per_nt = np.mod(per_nt + 1, TFbins)
-        print(f'nstack = {nstack_count}, istack = {per_nt}, rstack = {per_it}')
-    
-        def getMeanStd(arr, n):
-            if len(arr.shape) == 3:
-                arr[:,:,0] /= n
-                x = arr[:,:,1]/nstep - arr[:,:,0]*arr[:,:,0]
+    def getMeanStd(arr, n):
+        if len(arr.shape) == 3:
+            arr[:,:,0] /= n
+            x = arr[:,:,1]/nstep - arr[:,:,0]*arr[:,:,0]
+            x[x<0] = 0
+            arr[:,:,1] = np.sqrt(x)
+        else:
+            if len(arr.shape) == 2:
+                arr[:,0] /= n
+                x = arr[:,1]/nstep - arr[:,0]*arr[:,0]
                 x[x<0] = 0
-                arr[:,:,1] = np.sqrt(x)
+                arr[:,1] = np.sqrt(x)
             else:
-                if len(arr.shape) == 2:
-                    arr[:,0] /= n
-                    x = arr[:,1]/nstep - arr[:,0]*arr[:,0]
-                    x[x<0] = 0
-                    arr[:,1] = np.sqrt(x)
-                else:
-                    raise Exception('dimension of arr need to be 2 or 3')
-            
+                raise Exception('dimension of arr need to be 2 or 3')
+        
 
-        getMeanStd(gFF,nstep)
-        getMeanStd(gE,nstep)
-        getMeanStd(gI,nstep)
-        getMeanStd(w,nstep)
-        getMeanStd(v,nstep)
-        getMeanStd(depC,nstep)
-        getMeanStd(cFF,nstep)
-        getMeanStd(cE,nstep)
-        getMeanStd(cI,nstep)
+    getMeanStd(gFF,nstep)
+    getMeanStd(gE,nstep)
+    getMeanStd(gI,nstep)
+    getMeanStd(w,nstep)
+    getMeanStd(v,nstep)
+    getMeanStd(depC,nstep)
+    getMeanStd(cFF,nstep)
+    getMeanStd(cE,nstep)
+    getMeanStd(cI,nstep)
 
-        with open(meanFn, 'wb') as f:
-            np.array([nV1,mI,ngFF,ngE,ngI], dtype = 'i4').tofile(f)
-            fr.tofile(f)
-            gFF.tofile(f)
-            gE.tofile(f)
-            gI.tofile(f)
-            w.tofile(f)
-            v.tofile(f)
-            depC.tofile(f)
-            cFF.tofile(f)
-            cE.tofile(f)
-            cI.tofile(f)
-            cGap.tofile(f)
+    with open(meanFn, 'wb') as f:
+        np.array([nV1,mI,ngFF,ngE,ngI], dtype = 'i4').tofile(f)
+        fr.tofile(f)
+        gFF.tofile(f)
+        gE.tofile(f)
+        gI.tofile(f)
+        w.tofile(f)
+        v.tofile(f)
+        depC.tofile(f)
+        cFF.tofile(f)
+        cE.tofile(f)
+        cI.tofile(f)
+        cGap.tofile(f)
 
     
-        if plotLGNsCorr or plotRpCorr:
-            getMeanStd(gFF_gTot_ratio,nstep)
-            getMeanStd(gE_gTot_ratio,nstep)
-            getMeanStd(gI_gTot_ratio,nstep)
-            getMeanStd(gEt_gTot_ratio,nstep)
+    if plotLGNsCorr or plotRpCorr:
+        getMeanStd(gFF_gTot_ratio,nstep)
+        getMeanStd(gE_gTot_ratio,nstep)
+        getMeanStd(gI_gTot_ratio,nstep)
+        getMeanStd(gEt_gTot_ratio,nstep)
     
-        if plotTempMod and pCond:
-            per_v = per_v/stacks
-            per_gE = per_gE/stacks
-            per_gI = per_gI/stacks
-            per_gFF = per_gFF/stacks
-        print("rawData read")
+    per_v = per_v/stacks
+    per_gE = per_gE/stacks
+    per_gI = per_gI/stacks
+    per_gFF = per_gFF/stacks
+    print("rawData read")
     
     # temporal modulation
     def get_FreqComp(data, ifreq):
@@ -1594,13 +1590,13 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         target = np.sum(gE_gTot_ratio[:,:,0], axis = 0)
     
         ax = fig.add_subplot(grid[0,0])
-        image = HeatMap(target[epick], fr[epick], heatBins, heatBins, ax, 'Reds', log_scale = pLog)
+        image = HeatMap(target[epick], fr[epick], heatBins, heatBins, ax, 'Reds', log_scale = pLog, intPick = False, tickPick1 = 5)
         ax.set_xlabel('gExc/gTot')
         ax.set_ylabel('Exc. FR Hz')
         old_target = target.copy()
         
         ax = fig.add_subplot(grid[0,1])
-        image = HeatMap(target[ipick], fr[ipick], heatBins, heatBins, ax, 'Blues', log_scale = pLog)
+        image = HeatMap(target[ipick], fr[ipick], heatBins, heatBins, ax, 'Blues', log_scale = pLog, intPick = False, tickPick1 = 5)
         ax.set_xlabel('gExc/gTot')
         ax.set_ylabel('Inh. FR Hz')
     
@@ -1645,7 +1641,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         pick = epick[nLGN_V1[epick]<=SCsplit]
         if np.sum(nLGN_V1[epick]<=SCsplit) > 0:
             active = np.sum(fr[pick]>0)/np.sum(nLGN_V1[epick]<=SCsplit)
-            image = HeatMap(target[pick], fr[pick], heatBins, heatBins, ax, 'Reds', log_scale = pLog)
+            image = HeatMap(target[pick], fr[pick], heatBins, heatBins, ax, 'Reds', log_scale = pLog, intPick = False, tickPick1 = 5)
             ax.set_title(f'active complexE {active*100:.3f}%')
         else:
             ax.set_title('no ative complexE')
@@ -1656,7 +1652,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         pick = ipick[nLGN_V1[ipick]>=SCsplit]
         if np.sum(nLGN_V1[ipick]>=SCsplit) > 0:
             active = np.sum(fr[pick]>0)/np.sum(nLGN_V1[ipick]>=SCsplit)
-            image = HeatMap(target[pick], fr[pick], heatBins, heatBins, ax, 'Blues', log_scale = pLog)
+            image = HeatMap(target[pick], fr[pick], heatBins, heatBins, ax, 'Blues', log_scale = pLog, intPick = False, tickPick1 = 5)
             ax.set_title(f'active complexI {active*100:.3f}%')
         else:
             ax.set_title(f'no active complexI')
@@ -1666,13 +1662,13 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     
         target = np.sum(gFF[:,:,0], axis = 0)
         ax = fig.add_subplot(grid[1,4])
-        image = HeatMap(target[epick], fr[epick], heatBins, heatBins, ax, 'Reds', log_scale = pLog)
+        image = HeatMap(target[epick], fr[epick], heatBins, heatBins, ax, 'Reds', log_scale = pLog, intPick = False, tickPick1 = 5)
         ax.set_xlabel('gFF')
         ax.set_ylabel('Exc FR')
         ax.set_title(f'active {np.sum(fr[epick]>0)/epick.size*100:.3f}%')
     
         ax = fig.add_subplot(grid[1,5])
-        image = HeatMap(target[ipick], fr[ipick], heatBins, heatBins, ax, 'Blues', log_scale = pLog)
+        image = HeatMap(target[ipick], fr[ipick], heatBins, heatBins, ax, 'Blues', log_scale = pLog, intPick = False, tickPick1 = 5)
         ax.set_xlabel('gFF')
         ax.set_ylabel('Inh FR')
         ax.set_title(f'active {np.sum(fr[ipick]>0)/ipick.size*100:.3f}%')
@@ -2971,73 +2967,73 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         ax.set_ylabel('inh. gE')
         
         ax = fig.add_subplot(grid[1,0])
-        image = HeatMap(gFF_target[eSpick], nsE[eSpick], heatBins, heatBins, ax, 'Reds', log_scale = pLog)
+        image = HeatMap(gFF_target[eSpick], nsE[eSpick], heatBins, heatBins, ax, 'Reds', log_scale = pLog, intPick = False, tickPick1 = 5)
         ax.set_xlabel('exc. gFF')
         ax.set_ylabel('exc. nsE')
         
         ax = fig.add_subplot(grid[1,1])
-        image = HeatMap(gFF_target[iSpick], nsE[iSpick], heatBins, heatBins, ax, 'Blues', log_scale = pLog)
+        image = HeatMap(gFF_target[iSpick], nsE[iSpick], heatBins, heatBins, ax, 'Blues', log_scale = pLog, intPick = False, tickPick1 = 5)
         ax.set_xlabel('inh. gFF')
         ax.set_ylabel('inh. nsE')
         
         ax = fig.add_subplot(grid[2,0])
-        image = HeatMap(gFF_target[eSpick], gI_target[eSpick], heatBins, heatBins, ax, 'Reds', log_scale = pLog)
+        image = HeatMap(gFF_target[eSpick], gI_target[eSpick], heatBins, heatBins, ax, 'Reds', log_scale = pLog, intPick = False, tickPick1 = 5)
         ax.set_xlabel('exc. gFF')
         ax.set_ylabel('exc. gI')
         
         ax = fig.add_subplot(grid[2,1])
-        image = HeatMap(gFF_target[iSpick], gI_target[iSpick], heatBins, heatBins, ax, 'Blues', log_scale = pLog)
+        image = HeatMap(gFF_target[iSpick], gI_target[iSpick], heatBins, heatBins, ax, 'Blues', log_scale = pLog, intPick = False, tickPick1 = 5)
         ax.set_xlabel('inh. gFF')
         ax.set_ylabel('inh. gI')
         
         ax = fig.add_subplot(grid[0,2])
-        image = HeatMap(gFF_target[eSpick], fr[eSpick], heatBins, heatBins, ax, 'Reds', log_scale = pLog)
+        image = HeatMap(gFF_target[eSpick], fr[eSpick], heatBins, heatBins, ax, 'Reds', log_scale = pLog, intPick = False, tickPick1 = 5)
         ax.set_xlabel('exc. gFF')
         ax.set_ylabel('exc. FR Hz')
         
         ax = fig.add_subplot(grid[0,3])
-        image = HeatMap(gFF_target[iSpick], fr[iSpick], heatBins, heatBins, ax, 'Blues', log_scale = pLog)
+        image = HeatMap(gFF_target[iSpick], fr[iSpick], heatBins, heatBins, ax, 'Blues', log_scale = pLog, intPick = False, tickPick1 = 5)
         ax.set_xlabel('inh. gFF')
         ax.set_ylabel('inh. FR Hz')
         
         ax = fig.add_subplot(grid[3,0])
-        image = HeatMap(gFF_target[eSpick], nsI[eSpick], heatBins, heatBins, ax, 'Reds', log_scale = pLog)
+        image = HeatMap(gFF_target[eSpick], nsI[eSpick], heatBins, heatBins, ax, 'Reds', log_scale = pLog, intPick = False, tickPick1 = 5)
         ax.set_xlabel('exc. gFF')
         ax.set_ylabel('exc. nsI')
         
         ax = fig.add_subplot(grid[3,1])
-        image = HeatMap(gFF_target[iSpick], nsI[iSpick], heatBins, heatBins, ax, 'Blues', log_scale = pLog)
+        image = HeatMap(gFF_target[iSpick], nsI[iSpick], heatBins, heatBins, ax, 'Blues', log_scale = pLog, intPick = False, tickPick1 = 5)
         ax.set_xlabel('inh. gFF')
         ax.set_ylabel('inh. nsI')
     
         target = np.sum(gE_gTot_ratio[:,:,0],axis = 0)
         ax = fig.add_subplot(grid[1,2])
-        image = HeatMap(gFF_target[eSpick], target[eSpick] , heatBins, heatBins, ax, 'Reds', log_scale = pLog)
+        image = HeatMap(gFF_target[eSpick], target[eSpick] , heatBins, heatBins, ax, 'Reds', log_scale = pLog, intPick = False, tickPick1 = 5)
         ax.set_xlabel('exc. gFF')
         ax.set_ylabel('exc. gE/gTot')
         
         ax = fig.add_subplot(grid[1,3])
-        image = HeatMap(gFF_target[iSpick], target[iSpick], heatBins, heatBins, ax, 'Blues', log_scale = pLog)
+        image = HeatMap(gFF_target[iSpick], target[iSpick], heatBins, heatBins, ax, 'Blues', log_scale = pLog, intPick = False, tickPick1 = 5)
         ax.set_xlabel('inh. gFF')
         ax.set_ylabel('inh. gE/gTot')
     
         ax = fig.add_subplot(grid[2,2])
-        image = HeatMap(gFF_target[spick], nLGN_V1[spick], heatBins, heatBins, ax, 'Greys', log_scale = pLog)
+        image = HeatMap(gFF_target[spick], nLGN_V1[spick], heatBins, heatBins, ax, 'Greys', log_scale = pLog, intPick = False, tickPick1 = 5)
         ax.set_xlabel('gFF')
         ax.set_ylabel('nLGN')
         
         ax = fig.add_subplot(grid[2,3])
-        image = HeatMap(gFF_F1F0[spick], nLGN_V1[spick], heatBins, heatBins, ax, 'Greys', log_scale = pLog)
+        image = HeatMap(gFF_F1F0[spick], nLGN_V1[spick], heatBins, heatBins, ax, 'Greys', log_scale = pLog, intPick = False, tickPick1 = 5)
         ax.set_xlabel('gFF-F1F0')
         ax.set_ylabel('nLGN')
     
         ax = fig.add_subplot(grid[3,2])
-        image = HeatMap(gFF_target[eSpick], gEt_gTot_ratio[eSpick,0], heatBins, heatBins, ax, 'Reds', log_scale = pLog)
+        image = HeatMap(gFF_target[eSpick], gEt_gTot_ratio[eSpick,0], heatBins, heatBins, ax, 'Reds', log_scale = pLog, intPick = False, tickPick1 = 5)
         ax.set_xlabel('exc. gFF')
         ax.set_ylabel('exc. gEt/gTot')
         
         ax = fig.add_subplot(grid[3,3])
-        image = HeatMap(gFF_target[iSpick], gEt_gTot_ratio[iSpick,0], heatBins, heatBins, ax, 'Blues', log_scale = pLog)
+        image = HeatMap(gFF_target[iSpick], gEt_gTot_ratio[iSpick,0], heatBins, heatBins, ax, 'Blues', log_scale = pLog, intPick = False, tickPick1 = 5)
         ax.set_xlabel('inh. gFF')
         ax.set_ylabel('inh. gEt/gTot')
     

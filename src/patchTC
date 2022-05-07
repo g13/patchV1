@@ -13,7 +13,7 @@ nOri=6
 TF=8
 SF=40
 singleOri=True
-one_ori=4
+one_ori=1
 
 trial_suffix=test2
 res_suffix=square-single_layer
@@ -93,7 +93,9 @@ echo configuration files copied
 
 cp ${repo}/src/plotV1_response.py ${fig_fdr}/plotV1_response_${trial_suffix}.py
 cp ${repo}/src/plotLGN_response.py ${fig_fdr}/plotLGN_response_${trial_suffix}.py
-cp ${repo}/src/getTuningCurve.py ${fig_fdr}/getTuningCurve_${trial_suffix}.py
+if [ "$singleOri" = False ]; then
+	cp ${repo}/src/getTuningCurve.py ${fig_fdr}/getTuningCurve_${trial_suffix}.py
+fi
 echo plotting files copied
 
 jobList=""

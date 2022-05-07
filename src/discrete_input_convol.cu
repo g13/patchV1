@@ -1561,7 +1561,7 @@ Float get_spike(Size &nsp,
                 Float rate,
                 curandStateMRG32k3a *state,
 				PosInt id, 
-				Float tRef = 2) 
+				Float tRef = 0) 
 {
 	nsp = 0;
 	if (true) {
@@ -1623,7 +1623,7 @@ void LGN_nonlinear(
         InputActivation typeStatus,
         Float* __restrict__ lVar,
 		cudaSurfaceObject_t LGNspikeSurface,
-        int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning, bool learnData_FF, bool LGN_switch, bool getLGN_sp, bool virtual_LGN, int switchNow)
+        Float frRatio, int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning, bool learnData_FF, bool LGN_switch, bool getLGN_sp, bool virtual_LGN, int switchNow)
 {
 	unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
     bool engaging = id<nLGN;
@@ -1689,7 +1689,7 @@ void LGN_nonlinear(
         }
 
         __syncwarp(MASK);
-        Float fr = max * transform(C50, K, A, B, current/max);
+        Float fr = frRatio * max * transform(C50, K, A, B, current/max);
 		// DEBUG
 		/* DEBUG
         if (fr < 0) {
