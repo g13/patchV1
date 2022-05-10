@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as clr
+np.seterr(invalid = 'raise')
 
 def read_input_frames(fn):
     with open(fn) as f:
@@ -203,8 +204,6 @@ def readLGN_sp(fn, prec='f4', nstep = 0):
                     nsp = int(np.floor(tsps[k]))
                     tsp = tsps[k] - nsp
                     if nsp > 1:
-                        if j == 24358:
-                            print('2 spikes for {j}')
                         if 1-tsp > 0.5:
                             dtsp = tsp/nsp
                         else:
@@ -214,8 +213,6 @@ def readLGN_sp(fn, prec='f4', nstep = 0):
                             LGN_spScatter[j].append((it + tstart+isp*dtsp)*dt)
                     else:
                         LGN_spScatter[j].append((it+tsp)*dt)
-                    if j == 24358:
-                        print(f'fired at {tsps[k]}, {LGN_spScatter[j][-1], it*dt}')
                     k = k + 1
         for i in range(nLGN):
             LGN_spScatter[i] = np.asarray(LGN_spScatter[i])
@@ -345,7 +342,7 @@ def readSpike(rawDataFn, spFn, prec, sizeofPrec, vThres):
         print(f'number of multiple spikes in one dt: {multi_spike}')
         return spScatter
 
-def HeatMap(d1, d2, range1, range2, ax, cm, log_scale = False, intPick = True, tickPick1 = None, tickPick2 = None):
+def HeatMap(d1, d2, range1, range2, ax, cm, log_scale = False, intPick = False, tickPick1 = None, tickPick2 = None, mostDropZero = True):
     if hasattr(range1, "__len__") and hasattr(range2, "__len__"):
         if len(range1) == 2 and len(range2) == 2:
             h, edge1, edge2 = np.histogram2d(d1, d2, range = [range1, range2])
@@ -368,19 +365,40 @@ def HeatMap(d1, d2, range1, range2, ax, cm, log_scale = False, intPick = True, t
         data = np.log(h.T + 1)
     else:
         data = h.T
+
+    if mostDropZero:
+        d2_0 = d2[d2>0]
+        d1_0 = d1[d2>0]
+        h0, _, _ = np.histogram2d(d1_0, d2_0, bins = [edge1, edge2])
+        if log_scale:
+            data0 = np.log(h0.T + 1)
+        else:
+            data0 = h0.T
+    else:
+        data0 = data
+        
+
     tc = np.zeros(edge1.size-1)
     tm = np.zeros(edge1.size-1)
+    tmost = np.zeros(edge1.size-1)
+    nmost = max(int(edge2.size * 0.1),1)
     for i in range(edge1.size-1):
         binned = np.logical_and(d1 <= edge1[i+1], d1 > edge1[i])
         if not binned.any():
-            tc[i] = np.NAN
-            tm[i] = np.NAN
+            tc[i] = np.nan
+            tm[i] = np.nan
+            tmost[i] = np.nan
         else:
             tc[i] = np.mean(d2[binned])
             tm[i] = np.median(d2[binned])
+            imost_list = np.argpartition(-data0[:,i], nmost)[:nmost]
+            if sum(data0[imost_list,i]) > 0:
+                tmost[i] = np.average(imost_list, weights = data0[imost_list,i])
+            else:
+                tmost[i] = np.nan
 
     #image = ax.imshow(data, vmin = vmin, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap(cm))
-    image = ax.imshow(data, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap(cm))
+    image = ax.imshow(data, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap(cm), alpha = 0.7)
 
     nTick = 5
     if not hasattr(tickPick1, "__len__") and tickPick1 is not None:
@@ -431,9 +449,17 @@ def HeatMap(d1, d2, range1, range2, ax, cm, log_scale = False, intPick = True, t
             ax.set_yticklabels([f'{min_value + label * (max_value-min_value):.2f}' for label in tickPick2])
         else:
             ax.set_yticklabels([f'{min_value + label * (max_value-min_value):.2e}' for label in tickPick2])
+    #if cm == 'Reds':
+    #    color = 'm'
+    #elif cm == 'Blues':
+    #    color = 'c'
+    #else: 
+    #    color = 'k'
+    color = 'k'
 
-    ax.plot(np.arange(edge1.size - 1), (tc - edge2[0])/(edge2[-1]-edge2[0])*(edge2.size - 1)-0.5, '*:k', lw = 1.0, ms = 1.5)
-    ax.plot(np.arange(edge1.size - 1), (tm - edge2[0])/(edge2[-1]-edge2[0])*(edge2.size - 1)-0.5, '*-k', lw = 1.0, ms = 1.5)
+    ax.plot(np.arange(edge1.size - 1), (tc - edge2[0])/(edge2[-1]-edge2[0])*(edge2.size - 1)-0.5, ':', c=color, lw = 1.0, ms = 1.5)
+    ax.plot(np.arange(edge1.size - 1), (tm - edge2[0])/(edge2[-1]-edge2[0])*(edge2.size - 1)-0.5, '*--k', c=color, lw = 1.0, ms = 1.5)
+    ax.plot(np.arange(edge1.size - 1), tmost, '-', c='k', lw = 3.0, alpha = 0.5)
     return image
 
 def TuningCurves(data, bins, percentile, ax, color, tick, ticklabel):

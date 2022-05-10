@@ -80,7 +80,7 @@ void LGN_nonlinear(
         InputActivation typeStatus,
         Float* __restrict__ lVar,
 		cudaSurfaceObject_t LGNspikeSurface,
-        int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning, bool learnData_FF, bool LGN_switch, bool getLGN_sp, bool virtual_LGN, int switchNow
+        Float frRatio, int varSlot, LearnVarShapeFF_E_pre lE, LearnVarShapeFF_I_pre lI, Size nFF, Float dt, int learning, bool learnData_FF, bool LGN_switch, bool getLGN_sp, bool virtual_LGN, int switchNow
 );
 
 __global__

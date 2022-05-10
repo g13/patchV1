@@ -1684,7 +1684,8 @@ int main(int argc, char** argv) {
 		fLGN_vpos.close();
 
         // Magno-cellular have no sustain response, std is arbitarily set
-        Float K_onMagno[2] = {60.0f * frRatioLGN, 0.1f};
+        //Float K_onMagno[2] = {60.0f * frRatioLGN, 0.1f};
+        Float K_onMagno[2] = {60.0f, 0.1f};
         Float ratio_onMagno[2] = {1.0f, 0.1f};
         //Float tauR_onMagno[2] = {1.5f, 0.1f}; // Macaque, 8Hz
         //Float tauD_onMagno[2] = {4.5f, 0.1f};
@@ -1695,7 +1696,7 @@ int main(int argc, char** argv) {
         Float delay_onMagno[2] = {14.0f, 0.1f};
 
         //Float K_offMagno[2] = {54.0f * frRatioLGN, 0.1f};
-        Float K_offMagno[2] = {60.0f * frRatioLGN, 0.1f};
+		Float K_offMagno[2] = {60.0f, 0.1f};
         Float ratio_offMagno[2] = {1.0f, 0.1f};
         //Float tauR_onMagno[2] = {1.5f, 0.1f}; // Macaque, 8Hz
         //Float tauD_onMagno[2] = {4.5f, 0.1f};
@@ -1707,7 +1708,8 @@ int main(int argc, char** argv) {
 
         // ON-CENTER temporal mu and c.v.
 		// LGN_on = LGN_all * P_on/P_all
-		Float K_onC[2] = {29.13289963f*frRatioLGN, 0.60*0.52/0.48}; //A spatially-integrated K
+		//Float K_onC[2] = {29.13289963f*frRatioLGN, 0.60*0.52/0.48}; //A spatially-integrated K
+		Float K_onC[2] = {29.13289963f, 0.60*0.52/0.48}; //A spatially-integrated K
 		Float ratio_onC[2] = {0.56882181, 0.18*0.11/0.13}; //Hs
 
 		Float nR_onC[2] = {23.20564706, 0.28*0.18/0.23};
@@ -1723,7 +1725,8 @@ int main(int argc, char** argv) {
 		//Float nD_onC[2] = {12.56210526, 0.28*0.18/0.23}; //NL
 
 		// OFF-CENTER temporal mu and c.v.
-		Float K_offC[2] = {22.71914498f*frRatioLGN, 0.60*0.37/0.48}; // A [Hz per unit contrast (100% or 1%?)]
+		//Float K_offC[2] = {22.71914498f*frRatioLGN, 0.60*0.37/0.48}; // A [Hz per unit contrast (100% or 1%?)]
+		Float K_offC[2] = {29.13289963f, 0.60*0.37/0.48}; // A [Hz per unit contrast (100% or 1%?)]
 		Float ratio_offC[2] = {0.60905210, 0.18*0.14/0.13}; //Hs
 
 		Float nR_offC[2] = {16.70023529, 0.28*0.20/0.23};
@@ -1743,7 +1746,8 @@ int main(int argc, char** argv) {
 		Float delay_offC[2] = {13.45, square_root(2.39*2.39+0.61*0.61)};
 
 		// ON-SURROUND temporal mu and c.v.
-		Float K_onS[2] = {23.17378917f*frRatioLGN,  1.45*1.53/1.64}; // A
+		//Float K_onS[2] = {23.17378917f*frRatioLGN,  1.45*1.53/1.64}; // A
+		Float K_onS[2] = {23.17378917f,  1.45*1.53/1.64}; // A
 		Float ratio_onS[2] = {0.36090931, 0.57*0.74/0.64}; //Hs
 
 		Float nR_onS[2] = {50.29602888, 0.35*0.12/0.38};
@@ -1758,7 +1762,8 @@ int main(int argc, char** argv) {
 		Float tauD_onS[2] = {3.05084745, 0.90*1.08/0.94}; //tauS
 
 		// OFF-surround temporal mu and c.v.
-		Float K_offS[2] = {12.53276353f*frRatioLGN, 1.45*1.84/1.64}; // A
+		//Float K_offS[2] = {12.53276353f*frRatioLGN, 1.45*1.84/1.64}; // A
+		Float K_offS[2] = {23.17378917f, 1.45*1.84/1.64}; // A
 		Float ratio_offS[2] = {0.33004402, 0.57*0.59/0.64}; //Hs
 
 		Float nR_offS[2] = {26.23465704, 0.35*0.53/0.38};
@@ -5888,7 +5893,7 @@ int main(int argc, char** argv) {
 			cout << "switchNow = " << switchNow << "\n";
 		}
 		//cout << "MAX_NLEARNTYPE_FF = " << MAX_NLEARNTYPE_FF << ", nLearnTypeFF = " << nLearnTypeFF << " \n";
-		LGN_nonlinear<<<nLGN_block, nLGN_thread, 0, mainStream>>>(nLGN, *dLGN.logistic, maxConvol, currentConvol, convolRatio, d_LGN_fr, d_LGN_sInfo, d_sx, d_sy, leftTimeRate, lastNegLogRand, randState, dLGN_type, switch_value, typeStatus, lVarFFpre, LGNspikeSurface, varSlot, lFF_E_pre, lFF_I_pre, nLearnTypeFF, dt, learning, learnData_FF > 1, LGN_switch, getLGN_sp, virtual_LGN, switchNow);
+		LGN_nonlinear<<<nLGN_block, nLGN_thread, 0, mainStream>>>(nLGN, *dLGN.logistic, maxConvol, currentConvol, convolRatio, d_LGN_fr, d_LGN_sInfo, d_sx, d_sy, leftTimeRate, lastNegLogRand, randState, dLGN_type, switch_value, typeStatus, lVarFFpre, LGNspikeSurface, frRatioLGN, varSlot, lFF_E_pre, lFF_I_pre, nLearnTypeFF, dt, learning, learnData_FF > 1, LGN_switch, getLGN_sp, virtual_LGN, switchNow);
 		if (it > 0) {
 			cudaProfilerStop();
 		}
