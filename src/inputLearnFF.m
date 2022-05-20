@@ -4,7 +4,7 @@
 % std_ecc: initial connections weights to be gaussian distributed if nonzero
 % suffix0: theme string %lgn0 in lFF.slurm
 % stage: retinal wave stages, takes 2 or 3
-function inputLearnFF(suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle, sInput, relay, smallRange, binary_thres)
+function inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle, sInput, relay, binary_thres)
 
 	fdr = [fdr,'/'] %inputFolder in cfg
 
@@ -37,7 +37,6 @@ function inputLearnFF(suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle
 	if stage == 2 || stage == 5
 		pCon = 0.9 % initial sparsity
 		nLGN_1D = 16 % sqrt of the total number of On/Off LGN cells
-		max_ecc = 10 % radius of the visual field spanned by all the LGN
 		radiusRatio = 1.0
 	end
 	if stage == 3
@@ -45,12 +44,10 @@ function inputLearnFF(suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle
 			%pCon = 0.8 % initial sparsity
 			pCon = 0.8 % initial sparsity
 			nLGN_1D = 16 % sqrt of the total number of On/Off LGN cells
-			max_ecc = 10 % radius of the visual field spanned by all the LGN
 			radiusRatio = 0.5
 		else
 			pCon = 0.8
 			nLGN_1D = 8
-			max_ecc = 5
 			radiusRatio = 1.0
 		end
     end
@@ -94,37 +91,28 @@ function inputLearnFF(suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle
 	doubleOnOff = 1;
 	frameVisV1output = false; % if need framed V1 output, write visual pos to fV1_allpos
 
-	frameRate = 30; % from ext_input.py, also need to be set in the <simulation_config>.cfg
+
+
+	fid = fopen([fdr, inputFn, '.cfg'], 'r');
+	nStage = fread(fid, 1, 'uint')
+    nOri = fread(fid, nStage, 'uint')
+	nRep = fread(fid, nStage, 'uint')
+	frameRate = fread(fid, 1, 'double')
+	framesPerStatus = fread(fid, nStage, 'uint')
+	framesToFinish = fread(fid, nStage, 'uint')
+	max_ecc = fread(fid, 1, 'double')
+	fclose(fid);
+
     if stage == 2 || stage == 3
+		assert(nStage == 1);
 	    %%%%% HERE %%%%%%%%
 	    if stage == 2
 	    	peakRate = 0.5; % active cell percentage during wave
 	    	% corresponds to the parameters set in ext_input.py
-	    	nOri = 32; % number of orientation for the input waves
-	    	nRep = 1; % repeat of each orientation
-	    	framesPerStatus = 225; % frames for each wave
-	    	framesToFinish = ceil(62.1); % frames for the ending phase of the last wave
 	    end
 	    if stage == 3
 	    	peakRate = 1.0;
 	    	absentRate = 1.0; % active cell percentage when being "absent"/not dominating
-	    	nOri = 32;
-	    	nRep = 3;
-			if relay
-				if smallRange
-					framesPerStatus = 132;
-	    			framesToFinish = ceil(24.9);
-				else
-					framesPerStatus = 192;
-	    			framesToFinish = ceil(49.7);
-				end
-			else
-				%framesPerStatus = 132;
-				framesPerStatus = 108;
-	    		framesToFinish = ceil(24.9);
-			end
-	    	%framesPerStatus = 192;
-	    	%framesToFinish = ceil(49.7);
 	    end
 	    %%%%%%%%%%%%%
 	    nStatus = nOri*nRep;
@@ -156,15 +144,11 @@ function inputLearnFF(suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle
 	    end
 	    reverse = zeros(nStatus,1);
     else
+		assert(nStage == 2);
 	    %%%%% HERE %%%%%%%%
 	    assert(stage == 5);
 	    peakRate = [0.5, 1.0]; % active cell percentage during wave
 	    % corresponds to the parameters set in ext_input.py
-	    nOri = [32, 32]; % number of orientation for the input waves
-	    nRep = [1, 3]; % repeat of each orientation
-	    %framesPerStatus = [225, 192]; % frames for each wave
-	    framesPerStatus = [225, 108]; % frames for each wave
-	    framesToFinish = [ceil(62.1), ceil(24.9)]; % frames for the ending phase of the last wave
 	    absentRate = 1.0; % active cell percentage when being "absent"/not dominating
 	    nStatus = sum(nOri.*nRep)
 	    status = zeros(6,nStatus);

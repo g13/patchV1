@@ -1,36 +1,43 @@
 #!/bin/bash
 cd ${HOME}/repos/patchV1/src
 
-t=01:00:00
+t=00:30:00
 echo ${t}
 #fdr0=/scratch/wd554/Jen
 fdr0=/scratch/wd554/patchV1
 res_fdr=${fdr0}/resource # inputFolder in cfg stimulus, V1-static, LGN-static and connectome files
 data_fdr=${fdr0} # outputFolder in cfg
 
+
 patch=patch_fast
-waveStage=2 # set stage number
+waveStage=3 # set stage number
 
 if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
+	#inputFn=32-sequential_10-30_stage_II 
+	#inputFn=32-random3917563_10-30_stage_II 
+	inputFn=32-opponent_10-30_stage_II 
 	fdr=wave_concat/wave_II # folder will be made to store figures and configuratoin files
 	op=II_m # theme string to be added to filenames of data and figures
 	op_cfg=wave_II.cfg # the simulation config file to be used
 	new_setup=False
 	lgn=lFF_II # the theme string to be used for LGN_V1 connections
 	res=lFF_II # the theme string to be used for V1, LGN positions etc.
-	smallRange=false # not used
 	squareOrCircle=true # initial LGN-recruitment shape 
 fi
 
 relay=false
 if [[ "${waveStage}" = "3" ]] ;then
+	#inputFn=32x3-random3917563_5-15_stage_III_sym
+	inputFn=32x3-opponent_5-10_stage_III_sym
+	#inputFn=32x3-sequential_5-15_stage_III_sym
+	#inputFn=32x3-135_5-5_stage_III_sym
 	fdr=wave_concat/wave_III
-	op=wave_III_g6-sym-max3-random
+	op=w3_opp_iwi2_on1off1_cap3_g7
+	#op=single_test-135
 	op_cfg=wave_III.cfg
-	smallRange=true
-	new_setup=False
+	new_setup=True
 	if [[ "${relay}" = false ]]; then
-		suffix=g6
+		suffix=g7
 		lgn=lFF_III_${suffix}
 		res=lFF_III_${suffix}
 	else
@@ -55,12 +62,11 @@ if [[ "${waveStage}" = "5" ]] ;then
 	lgn=lFF_l
 	res=lFF_l # starts out from stage II
 	squareOrCircle=true # initial LGN-recruitment shape 
-	smallRange=false
 fi
 
 binary_thres=0.0
 #binary_thres=0.5
-std_ecc=0
+std_ecc=2.6667
 seed=1924784 # RANDOM SEED for post-analysis sampling and input randomization 
 # for outputLearnFF.m
 st=2 # figures' output: 0 for temporal, 1 for spatial, 2 for both, otherwise none
@@ -151,8 +157,8 @@ if [ "${plotOnly}" = False ];
 then
 	if [ "${new_setup}" = True ];
 	then
-		echo matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, ${std_ecc}, '${res}', ${waveStage}, '${res_fdr}', ${squareOrCircle}, '${fAsInput}', ${relay}, ${smallRange}, ${binary_thres});exit;"
-		matlab -nodisplay -nosplash -r "inputLearnFF('${lgn}', ${seed}, ${std_ecc}, '${res}', ${waveStage}, '${res_fdr}', ${squareOrCircle}, '${fAsInput}', ${relay}, ${smallRange}, ${binary_thres});exit;"
+		echo matlab -nodisplay -nosplash -r "inputLearnFF('${inputFn}','${lgn}', ${seed}, ${std_ecc}, '${res}', ${waveStage}, '${res_fdr}', ${squareOrCircle}, '${fAsInput}', ${relay}, ${binary_thres});exit;"
+		matlab -nodisplay -nosplash -r "inputLearnFF('${inputFn}', '${lgn}', ${seed}, ${std_ecc}, '${res}', ${waveStage}, '${res_fdr}', ${squareOrCircle}, '${fAsInput}', ${relay}, ${binary_thres});exit;"
 	fi
 	date
 	${patch} -c ${fig_fdr}/${op}.cfg

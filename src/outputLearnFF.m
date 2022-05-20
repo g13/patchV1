@@ -27,7 +27,8 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	end
 	%%%% HERE %%%%
     top_thres = 0.8; % threshold to count connections of max strength, fluctuates below max
-	thres_out = 0.1; % under which ratio of max LGN connection strength will not be used to calculate the orientation of RF, neither will be counted toward the number of connection in spatial figure's title.
+	thres_out = 0; % under which ratio of max LGN connection strength will not be used to plot spatial RF
+	os_out = 0.5; % under which ratio of max LGN connection strength will not be used to calculate the orientation and its selectivity. 
 	nstep = 1000; % total steps to sample from the trace of weight's temporal evolution.
 	nbins = 20; % bins for histogram
     nit0 = 20; % number of snapshot for the spatial figure and histogram in the temporal figure
@@ -40,9 +41,11 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	learnDataFn = [data_fdr, 'learnData_FF', osuffix, '.bin']
 	V1_frFn = [data_fdr, 'max_fr', osuffix, '.bin']
 
+	fV1_allpos = [res_fdr, 'V1_allpos', isuffix0, '.bin'];
 	fLGN_vpos = [res_fdr, 'LGN_vpos', isuffix0, '.bin'];
 	LGN_V1_id_fn = [res_fdr, 'LGN_V1_idList', isuffix, '.bin']
 	fLGN_switch = [res_fdr,'LGN_switch', isuffix, '.bin'];
+	fConnectome = [res_fdr, 'connectome_cfg', isuffix, '.bin'];
 
 	fid = fopen(fLGN_vpos, 'r');
 	nLGN = fread(fid, 1, 'uint') % # ipsi-lateral LGN 
@@ -71,6 +74,20 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	FF_InfRatio = fread(fid, 1, 'float');
 	nskip = (8 + nLearnFF);
 	capacity = max_LGNperV1*sRatio*FF_InfRatio/gmaxLGN(1)/top_thres
+	fclose(fid);
+
+	fid = fopen(fV1_allpos, 'r'); % format follows patch.cu, search for the same variable name
+	nblock = fread(fid, 1, 'uint');
+	%blockSize = fread(fid, 1, 'uint');
+	fclose(fid);
+
+	fid = fopen(fConnectome, 'r');
+	fread(fid,2,'uint');
+	mE = fread(fid,1,'uint');
+	blockSize = fread(fid,1,'uint');
+	mI = blockSize - mE;
+	synPerCon = fread(fid,4,'float'); % synapse per cortical connection in float!
+	synPerFF = fread(fid,2,'float'); % synapse per FF connection in float!
 	fclose(fid);
 
 	fid = fopen(V1_frFn, 'r');
@@ -152,7 +169,8 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	disp(V1_pick); 
 
 	nLGN_1D = sqrt(double(nLGN/2))
-	min_dis = xspan/(nLGN_1D-1);
+	%min_dis = xspan/(nLGN_1D-1);
+	min_dis = 0;
 
 	if LGN_switch
 		fid = fopen(fLGN_switch, 'r');
@@ -274,7 +292,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 			set(gca, 'XTickLabel', []);
         end
 
-        [onS, offS, os, orient] = determine_os_str(LGN_vpos, LGN_V1_ID, LGN_type, sLGN, nV1, nLGN_V1, min_dis, thres_out);
+        [onS, offS, os, orient] = determine_os_str(LGN_vpos, LGN_V1_ID, LGN_type, sLGN, nV1, nLGN_V1, min_dis, os_out);
         subplot(nit,4,4*(i-1)+1)
 		hold on
         h=histogram(onS-offS, 20);
@@ -384,30 +402,61 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	sLGN = fread(fid, [nV1, max_LGNperV1], 'float')'; % transposed
     fclose(fid);
 
-    [onS, offS, os, orient] = determine_os_str(LGN_vpos, LGN_V1_ID, LGN_type, sLGN, nV1, nLGN_V1, min_dis, thres_out);
+    [onS, offS, os, orient] = determine_os_str(LGN_vpos, LGN_V1_ID, LGN_type, sLGN, nV1, nLGN_V1, min_dis, os_out);
+
+	epick = zeros(mE*nblock,1);
+	ipick = zeros(mI*nblock,1);
+	for i = 1:nblock
+		epick(((i-1)*mE+1):(i*mE)) = (i-1)*blockSize + (1:mE);
+		ipick(((i-1)*mI+1):(i*mI)) = (i-1)*blockSize + mE + (1:mI);
+	end
 
 	f = figure('PaperPosition',[0, 0, 6, 6]);
 	subplot(2,2,1)
-    histogram(onS-offS, 20);
+	dS = onS - offS;
+    [~, dS_edges, ~] = histcounts(dS, nbins);
+    [countsE, ~, ~] = histcounts(dS(epick), 'BinEdges', dS_edges);
+    [countsI, ~, ~] = histcounts(dS(ipick), 'BinEdges', dS_edges);
+	x_ds = (dS_edges(1:nbins) + dS_edges(2:nbins+1))/2;
+    b = bar(x_ds, [countsE; countsI], 'FaceColor', 'flat');
+	b(1).CData = [1, 0, 0];
+	b(2).CData = [0, 0, 1];
+	legend('E', 'I')
 	xlabel('sOn-sOff')
+	ylabel('#V1')
 
 	subplot(2,2,2)
-    [counts, ~, bin] = histcounts(orient*180/pi, 'BinEdges', linspace(0,360,12));
-    bar(x_op, counts, 'FaceColor', 'b', 'BarWidth', 0.9);
+    [countsE, ~, binE] = histcounts(orient(epick)*180/pi, 'BinEdges', linspace(0,360,nop));
+    [countsI, ~, binI] = histcounts(orient(ipick)*180/pi, 'BinEdges', linspace(0,360,nop));
+    b = bar(x_op, [countsE; countsI], 'FaceColor', 'flat');
+	b(1).CData = [1, 0, 0];
+	b(2).CData = [0, 0, 1];
 	xlabel('OP (deg)')
 	ylabel('#V1')
 	
+	osE = os(epick);
+	osI = os(ipick);
 	subplot(2,2,4)
-    for i=1:11
-        counts(i) = counts(i)*mean(os(bin == i));
+    for i=1:(nop-1)
+        countsE(i) = countsE(i)*mean(osE(binE == i));
+        countsI(i) = countsI(i)*mean(osI(binI == i));
     end
-    bar(x_op, counts, 'FaceColor', 'b', 'BarWidth', 0.9);
+    b = bar(x_op, [countsE; countsI], 'FaceColor', 'flat');
+	b(1).CData = [1, 0, 0];
+	b(2).CData = [0, 0, 1];
 	xlabel('OP (deg)')
 	ylabel('#V1 weighted by os')
 
 	subplot(2,2,3)
-    histogram(os, 11);
+	osEdges = linspace(0,1,nop);
+    [countsE, ~, ~] = histcounts(osE, 'BinEdges', osEdges);
+    [countsI, ~, ~] = histcounts(osI, 'BinEdges', osEdges);
+	x_os = (osEdges(1:nop-1) + osEdges(2:nop))/2;
+    b = bar(x_os, [countsE; countsI], 'FaceColor', 'flat');
+	b(1).CData = [1, 0, 0];
+	b(2).CData = [0, 0, 1];
 	xlabel('dis/(Ron+Roff)')
+	ylabel('#V1')
 
 	set(f, 'OuterPosition', [.1, .1, 6, 6]);
 	set(f, 'innerPosition', [.1, .1, 6, 6]);
@@ -689,7 +738,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 end
 
 
-function [onS, offS, os, orient] = determine_os_str(pos, id, type, s, n, m, min_dis, thres_out)
+function [onS, offS, os, orient] = determine_os_str(pos, id, type, s, n, m, min_dis, os_out)
     orient = zeros(n,1);
     os = zeros(n,1);
 	onS = zeros(n,1);
@@ -701,21 +750,21 @@ function [onS, offS, os, orient] = determine_os_str(pos, id, type, s, n, m, min_
 
         on_s = all_s(all_type == 4);
         on_id = all_id(all_type == 4);
-		sPick = on_s >= max(on_s) * thres_out;
+		sPick = on_s > max(on_s) * os_out;
         onPick = on_id(sPick);
 		onS(i) = sum(on_s(sPick));
         on_pos = mean(pos(onPick,:), 1);
 
         off_s = all_s(all_type == 5);
         off_id = all_id(all_type == 5);
-		sPick = off_s >= max(off_s) * thres_out;
+		sPick = off_s > max(off_s) * os_out;
         offPick = off_id(sPick);
 		offS(i) = sum(off_s(sPick));
         off_pos = mean(pos(offPick,:), 1);
 
         dis_vec = [on_pos(1)-off_pos(1), off_pos(2)-on_pos(2)];
 		on_off_dis = sqrt(dis_vec*dis_vec');
-		if on_off_dis < min_dis/2
+		if on_off_dis <= min_dis/2
             os(i) = 0;
             orient(i) = nan;
         else

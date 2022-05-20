@@ -417,6 +417,8 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
     OPbins = (np.arange(0,nOri+2)-0.5)/nOri*180
     OPs = (OPbins[1:] + OPbins[:-1])/2
     OPs = OPs[1:]
+    print(f'OPbins = {OPbins}')
+    print(f'OPs = {OPs}')
 
     targetEt = iPref_thal_for_ori[eSpick_act]/nOri*180
     targetIt = iPref_cort_for_ori[eSpick_act]/nOri*180
@@ -424,7 +426,7 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
     targetIc = iPref_cort_for_ori[iSpick_act]/nOri*180
     ax.hist((targetEt,targetIt,targetEc,targetIc), bins=opEdges, label = ('thal_E','thal_I','cort_E','cort_I'), alpha = 0.3, color = ('r','b','m','c'), density = True)
 
-    ax.legend(fontsize='xx-small', bbox_to_anchor=(0.0,1),loc='lower left')
+    ax.legend(fontsize='xx-small', bbox_to_anchor=(0.0,1), loc='lower left', ncol = 4)
     ax.set_xticks([60,120,180])
     ax.set_ylabel('act. simple')
     ax.set_xlabel('OP')
@@ -566,16 +568,15 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
     figPref.savefig(fig_fdr + 'pref-hist' + output_suffix[:-1] + '.png', dpi = 150)
 
     fig = plt.figure('nLGN-pref', figsize = (6,4))
-    dOpEdges = opEdges - 90 + 90/nOri
     maxLGN = np.max(nLGN_V1)
     ax = fig.add_subplot(221)
     target = nLGN_V1[eSpick]
-    ytarget = dPrefES * 180/nOri
-    HeatMap(target, ytarget, np.arange(maxLGN)+1, dOpEdges, ax, 'Reds', log_scale = pLog)
+    ytarget = dPrefES*dOri
+    HeatMap(target, ytarget, np.arange(maxLGN)+1, dopEdges, ax, 'Reds', log_scale = pLog)
     ax = fig.add_subplot(222)
     target = nLGN_V1[iSpick]
-    ytarget = dPrefIS * 180/nOri
-    HeatMap(target, ytarget, np.arange(maxLGN)+1, dOpEdges, ax, 'Blues', log_scale = pLog)
+    ytarget = dPrefIS*dOri
+    HeatMap(target, ytarget, np.arange(maxLGN)+1, dopEdges, ax, 'Blues', log_scale = pLog)
     ax = fig.add_subplot(223)
     ax.hist(nLGN_V1[epick], np.arange(maxLGN+1))
     ax = fig.add_subplot(224)
@@ -596,6 +597,55 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
 
     markers = ['^r', 'vg', 'og', 'sr', '*k', 'dk']
     ms = 4
+
+    fig = plt.figure('OP_dOri', figsize = (5,5), dpi = 300)
+
+    ax = fig.add_subplot(221)
+    target = iPref_thal_for_ori[spick]*dOri
+    spick = eSpick_act
+    dPref = iPref_thal_for_ori[spick]-iPref[spick]
+    pick = dPref > nOri//2
+    dPref[pick] = nOri - dPref[pick]
+    pick = dPref < -nOri//2
+    dPref[pick] = nOri + dPref[pick]
+    ytarget = dPref*dOri
+    HeatMap(target, ytarget, opEdges, dopEdges, ax, 'Reds', log_scale = pLog)
+    ax.set_ylabel('op spread')
+    ax = fig.add_subplot(222)
+    spick = iSpick_act
+    target = iPref_thal_for_ori[spick]*dOri
+    dPref = iPref_thal_for_ori[spick]-iPref[spick]
+    pick = dPref > nOri//2
+    dPref[pick] = nOri - dPref[pick]
+    pick = dPref < -nOri//2
+    dPref[pick] = nOri + dPref[pick]
+    ytarget = dPref*dOri
+    HeatMap(target, ytarget, opEdges, dopEdges, ax, 'Blues', log_scale = pLog)
+    ax = fig.add_subplot(223)
+    spick = eSpick_act
+    target = iPref_cort_for_ori[spick]*dOri
+    dPref = iPref_cort_for_ori[spick] - iPref_thal_for_ori[spick]
+    pick = dPref > nOri//2
+    dPref[pick] = nOri - dPref[pick]
+    pick = dPref < -nOri//2
+    dPref[pick] = nOri + dPref[pick]
+    ytarget = dPref*dOri
+    HeatMap(target, ytarget, opEdges, dopEdges, ax, 'Reds', log_scale = pLog)
+    ax.set_ylabel('op spread')
+    ax.set_xlabel('orientation')
+    ax = fig.add_subplot(224)
+    spick = iSpick_act
+    target = iPref_cort_for_ori[spick]*dOri
+    dPref = iPref_cort_for_ori[spick] - iPref_thal_for_ori[spick]
+    pick = dPref > nOri//2
+    dPref[pick] = nOri - dPref[pick]
+    pick = dPref < -nOri//2
+    dPref[pick] = nOri + dPref[pick]
+    ytarget = dPref*dOri
+    HeatMap(target, ytarget, opEdges, dopEdges, ax, 'Reds', log_scale = pLog)
+    ax.set_xlabel('orientation')
+
+    fig.savefig(fig_fdr + 'OP_dOri' + output_suffix[:-1] + '.png', dpi = 300)
 
     print(f'prefMax iV1: {dprefMax_pick}')
     fig = plt.figure('thal_set-prefMax', figsize = (10,10), dpi = 300)
@@ -814,8 +864,8 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
         else:
             raise Exception(f'the {i}th dprefMin ({iV1}) has no LGN input!')
 
-        if i == 0:
-            ax.legend()
+        if i == dprefMin_pick.size-1:
+            ax.legend(fontsize='xx-small', bbox_to_anchor=(1,1), loc='upper left')
 
         iblock = iV1//blockSize
         ithread = np.mod(iV1, blockSize)
@@ -890,13 +940,22 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
         
         bars0,_ = np.histogram(orient[epick[nLGN_V1[epick]>SCsplit]], bins = OPbins)
         bars,_ = np.histogram(orient_cort[epick[nLGN_V1[epick]>SCsplit]], bins = OPbins)
+        thal_bars,_ = np.histogram(orient_thal[epick[nLGN_V1[epick]>SCsplit]], bins = OPbins)
         # deal with pi period
+        if not fitTC:
+            assert(bars[-1] == 0) 
+        assert(thal_bars[-1] == 0) 
+
         bars[-1] += bars[0]
         bars = bars[1:]
         bars0[-1] += bars0[0]
         bars0 = bars0[1:]
+        thal_bars[-1] += thal_bars[0]
+        thal_bars = thal_bars[1:]
+
         ax.bar(OPs, bars0, alpha = 0.5, width=180/nOri*0.8, label = 'preset')
         ax.bar(OPs, bars-bars0, alpha = 0.5, width=180/nOri*0.8, label = 'simu.-preset')
+        ax.bar(OPs, thal_bars-bars0, alpha = 0.5, width=180/nOri*0.8, label = 'thal.-preset')
         color = np.tile(np.array([0,0.6,1], dtype = float), (nOri,1))
         color[:,0] = OPs/180
         color[color[:,0] < 0,0] = 0
@@ -905,7 +964,7 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
         for i in range(nOri):
             ax.plot(OPs[i], (ybot + np.min(bars-bars0))/2, '.', ms = 10, mfc=clr.hsv_to_rgb(color[i,:]), mew=0, fillstyle='full', alpha = 0.8)
 
-        ax.legend()
+        ax.legend(fontsize = 'xx-small', frameon = False, loc = 'lower center', ncol = 3, bbox_to_anchor=(0.5,1.0) )
         ax.set_ylabel(f'#E: nLGN>{SCsplit}')
         ax.set_xticks([60,120,180])
 
@@ -1314,13 +1373,16 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
             ax = fig.add_subplot(grid[:,:2]) # fr, cE, cI, depC
             ax2 = ax.twinx()
             ax.plot(op, fr[itheta,iV1], 'k')
+            pref_title = f'V1:{iPref_cort_for_ori[iV1]*dOri:.0f}, gFF_F1F0:{iPref_thal_for_ori[iV1]*dOri:.0f}, preset:{iPref[iV1]*dOri:.0f}'
             if fitTC:
                 ax.plot(theta/np.pi*180, von_Mises(theta, fit_a[iV1], fit_b[iV1], fit_s[iV1], fit_pref[iV1]), ':k')
-                ax.set_title(f'a={fit_a[iV1]:.2f}, b={fit_b[iV1]:.2f}, s={fit_s[iV1]:.2f}, {fit_pref[iV1]*180/np.pi:.0f}, {iV1 in noOpt}, {[iPref_cort[iV1], iPref_cort0[iV1]]}')
+                ax.set_title(f'a={fit_a[iV1]:.2f}, b={fit_b[iV1]:.2f}, s={fit_s[iV1]:.2f}, {fit_pref[iV1]*180/np.pi:.0f}, {iV1 in noOpt}\n' + pref_title, fontsize = 'xx-small')
+            else:
+                ax.set_title(pref_title, fontsize = 'x-small')
 
             ax.set_ylim(bottom = 0)
             ax2.plot(op, cFF[itheta,:,iV1,0].sum(axis = 1)*(1+gFF_F1F0[itheta, iV1]), 'g')
-            ax2.plot(op, np.zeros(op.size), ':y')
+            ax2.plot(op, np.zeros(op.size), '--y')
             ax2.plot(op, cE[itheta,:,iV1,0].sum(axis = 1), 'r')
             ax2.plot(op, depC[itheta,iV1,0], ':m')
             ax2.plot(op, cI[itheta,:,iV1,0].sum(axis = 1), 'b')

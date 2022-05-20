@@ -219,6 +219,7 @@ if plotContrastDist:
     fig.savefig(fig_fdr+'lgn-contrast' + output_suffix + '.png')
 
 if plotStat:
+    print("plotStat, expecting invalid value mean emptyslices")
     fig = plt.figure('LGN_activity', dpi = 600)
     ax = fig.add_subplot(221)
     max_convol_irl = np.max(convol_total, axis = 0)
