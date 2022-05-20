@@ -4,17 +4,29 @@ import warnings
 from sys import stdout
 #warnings.filterwarnings("once", message = "The balance properties of Sobol' points require")
 warnings.filterwarnings("ignore", message = "The balance properties of Sobol\' points require", category=UserWarning)
-def square_pos(per_dis, n, center):
-    sampler = qmc.Sobol(d=2)
-    rands = sampler.random(n)
+
+def square_pos(per_dis, n, center, random = False):
     pos = np.zeros((2,n))
-    pos[0,:] = (rands[:,0]-1/2)*per_dis[0] + center[0]
-    pos[1,:] = (rands[:,1]-1/2)*per_dis[1] + center[1]
+    if random:
+        sampler = qmc.Sobol(d=2)
+        rands = sampler.random(n)
+        pos[0,:] = (rands[:,0]-1/2)*per_dis + center[0]
+        pos[1,:] = (rands[:,1]-1/2)*per_dis + center[1]
+    else:
+        m = int(np.sqrt(n))
+        assert(m*m == n)
+        x, y = np.meshgrid(np.arange(m) + 0.5,np.arange(m) + 0.5)
+        x = x.flatten()/m
+        y = y.flatten()/m
+        assert(x.size == y.size)
+        assert(x.size == n)
+        pos[0,:] = center[0] - per_dis/2 + per_dis*x
+        pos[1,:] = center[1] - per_dis/2 + per_dis*y
     return pos
 
 def square_OP(center, r, phase0, phase, pos, clockwise):
     dis = pos.T - center
-    op = np.arctan2(dis[:,1], dis[:,0])/2 
+    op = np.arctan2(dis[:,1], dis[:,0])/2
     op = op + phase/2
     if clockwise:
         op = -op
