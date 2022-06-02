@@ -5,9 +5,9 @@ from sys import stdout
 #warnings.filterwarnings("once", message = "The balance properties of Sobol' points require")
 warnings.filterwarnings("ignore", message = "The balance properties of Sobol\' points require", category=UserWarning)
 
-def square_pos(per_dis, n, center, random = False):
+def square_pos(per_dis, n, center, rng = None):
     pos = np.zeros((2,n))
-    if random:
+    if rng is None:
         sampler = qmc.Sobol(d=2)
         rands = sampler.random(n)
         pos[0,:] = (rands[:,0]-1/2)*per_dis + center[0]
@@ -22,6 +22,10 @@ def square_pos(per_dis, n, center, random = False):
         assert(x.size == n)
         pos[0,:] = center[0] - per_dis/2 + per_dis*x
         pos[1,:] = center[1] - per_dis/2 + per_dis*y
+        # permutes of exc and inh
+        idx = rng.permutation(np.arange(n))
+        pos[0,:] = pos[0,idx]
+        pos[1,:] = pos[1,idx]
     return pos
 
 def square_OP(center, r, phase0, phase, pos, clockwise):
@@ -43,7 +47,7 @@ def square_OP(center, r, phase0, phase, pos, clockwise):
 
 def assign_square_xyID(n, pos, ratio = 2):
     xyID = np.zeros((2,n), dtype = 'i4')
-    w = int(np.sqrt(n))
+    w = int(np.ceil(np.sqrt(n)))
     xy = np.zeros((2,w*w), dtype = 'i4')
     xy[0,:] = np.tile(np.arange(w), w)
     xy[1,:] = np.repeat(np.arange(w), w)
@@ -51,18 +55,12 @@ def assign_square_xyID(n, pos, ratio = 2):
     pos_id = np.arange(w*w)
     pos = pos*w
     xy = xy.T
-    max_dis = 1
-    #max_dis = 2*w*w
+    max_dis = w
     for i in range(n):
         dis = np.max(np.abs(pos[:,i] - xy), axis = 1)
-        # local algo
-        local_pick = dis <= max_dis
-        #count = 0
-        # slow down x1000!!!
-        #while sum(local_pick) == 0: 
-        #    max_dis *= ratio
-        #    local_pick = np.logical_and(nonreplace_pick,dis <= max_dis)
-        #    count += 1
+        local_pick = np.logical_and(dis <= max_dis, nonreplace_pick)
+        if local_pick.sum() == 0:
+            raise Exception(f'no free tile point within {max_dis}')
         local_dis = dis[local_pick]
         local_id = pos_id[local_pick]
         imin = np.argmin(local_dis)
@@ -76,14 +74,8 @@ def assign_square_xyID(n, pos, ratio = 2):
         if xyID[0,i] == 1 and xyID[1,i] == 1:
             print(f'{i}:{xyID[:,i]}')
         nonreplace_pick[local_id[imin]] = False 
-        #if count > 0:
-        #    print(count, sum(local_pick))
-
-        # global algo
-        #dis[np.logical_not(nonreplace_pick)] = max_dis
-        #imin = np.argmin(dis)
-        #xyID[:,i] = xy[imin,:]
-        #nonreplace_pick[imin] = False
         stdout.write(f'\r {i/n*100:.1f}%')
+    assert(np.logical_not(nonreplace_pick).sum() == n)
+    assert(nonreplace_pick.sum() == w*w - n)
     stdout.write('\n')
     return xyID, w
