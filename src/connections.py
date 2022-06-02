@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gs
 import matplotlib as mpl
 from readPatchOutput import *
+np.seterr(invalid = 'warn')
 
 import sys
 output_suffix = sys.argv[1]
@@ -44,31 +45,31 @@ mk = ['o', 'd']
 compThres = 1
 #sample = np.array([])
 
-#plotStats = True
-#plotLGNsSize = True
-#plotPos = True
-#plotLGN_V1_sample = True
+plotStats = True
+plotLGNsSize = True
+plotPos = True
+plotLGN_V1_sample = True
 plot_nLGN_OS = True
-#plotConFeature_stats = True 
-#plotConFeature_preSynTC = True
-#plotConFeature_sample = True
-#plotCon_sample = True
-#plotLGN_V1_ratio = True
-#plotLGNsSum = True
-#plotBlockWiseComplexDist = True
+plotConFeature_stats = True 
+plotConFeature_preSynTC = True
+plotConFeature_sample = True
+plotCon_sample = True
+plotLGN_V1_ratio = True
+plotLGNsSum = True
+plotBlockWiseComplexDist = True
 
-plotStats = False
-plotLGNsSize = False
-plotPos = False
-plotLGN_V1_sample = False 
+#plotStats = False
+#plotLGNsSize = False
+#plotPos = False
+#plotLGN_V1_sample = False 
 #plot_nLGN_OS = False
-plotConFeature_stats = False
-plotConFeature_preSynTC = False
-plotConFeature_sample = False 
-plotCon_sample = False
-plotLGN_V1_ratio = False
-plotLGNsSum = False
-plotBlockWiseComplexDist = False 
+#plotConFeature_stats = False
+#plotConFeature_preSynTC = False
+#plotConFeature_sample = False 
+#plotCon_sample = False
+#plotLGN_V1_ratio = False
+#plotLGNsSum = False
+#plotBlockWiseComplexDist = False 
 
 LGN_vposFn = res_fdr + 'LGN_vpos'+ res_suffix + ".bin"
 featureFn = res_fdr + 'V1_feature' + res_suffix + ".bin"
@@ -267,6 +268,7 @@ if plot_nLGN_OS:
         ax.hist(iPref[ipick], bins=opEdges)
         nOri *= 2
     fig.savefig(fig_fdr + 'preset-OS_dist' + output_suffix[:-1] + '.png', dpi = 150)
+    plt.close(fig)
     fig = plt.figure('preset-OS_dist_T', figsize = (6,2*nrow))
     iPref = np.mod(feature[1,:]+0.5,1.0)*180 # for ori
     for i in range(nrow):
@@ -277,6 +279,7 @@ if plot_nLGN_OS:
         ax.hist(iPref[ipick], bins=opEdges)
         nOri *= 2
     fig.savefig(fig_fdr + 'preset-OS_dist_T' + output_suffix[:-1] + '.png', dpi = 150)
+    plt.close(fig)
          
 
     iPref = np.mod(feature[1,:] + 0.5, 1.0)*180 # for ori
@@ -341,6 +344,7 @@ if plot_nLGN_OS:
 
 
     fig.savefig(fig_fdr + 'nLGN-OS_dist0' + output_suffix[:-1] + '.png', dpi = 150)
+    plt.close(fig)
 
 if plotLGNsSum:
     fig = plt.figure('LGNsSum', dpi = 300)
@@ -353,6 +357,7 @@ if plotLGNsSum:
     ax.hist(lgnData[ipick], color = 'b', alpha = 0.5, label = 'L')
     ax.set_title('EI')
     fig.savefig(fig_fdr+'LGNsSum'+conLGN_suffix+'.png')
+    plt.close(fig)
 
 if plotBlockWiseComplexDist:
     fig = plt.figure('blockComp', dpi = 300)
@@ -362,6 +367,7 @@ if plotBlockWiseComplexDist:
     pick = ipick[nLGN_V1[ipick] == 0]
     ax.hist(pick//blockSize, bins = np.arange(nblock+1), color = 'b', alpha = 0.5, label = 'Inh.C')
     fig.savefig(fig_fdr+'blockComp'+conLGN_suffix+'.png')
+    plt.close(fig)
 
 if plotLGN_V1_ratio:
     fig = plt.figure('LGN_V1_ratio', dpi = 300)
@@ -409,6 +415,7 @@ if plotLGN_V1_ratio:
         ax0.legend()
         ax0.set_xlabel('lgn Exc')
     fig.savefig(fig_fdr+'LGN_V1_ratio'+conLGN_suffix+conV1_suffix+'.png')
+    plt.close(fig)
     
 if plotPos:
     fig = plt.figure('pos', dpi = 900)
@@ -427,6 +434,7 @@ if plotPos:
 
     ax.set_aspect('equal')
     fig.savefig(fig_fdr+'V1_pos' + conV1_suffix + '.png')
+    plt.close(fig)
     
 if plotStats:
     fig = plt.figure('conStatsSum', dpi = 300)
@@ -467,6 +475,7 @@ if plotStats:
             if i==nType-1:
                 ax3.legend(loc='upper right')
     fig.savefig(fig_fdr+'conStatsSum'+conV1_suffix+'.png')
+    plt.close(fig)
 
     fig = plt.figure('conStrPooled', dpi = 300)
     grid = gs.GridSpec(nType, 1, figure = fig, hspace = 0.2)
@@ -493,6 +502,7 @@ if plotStats:
             if i==nType-1:
                 ax.legend(loc='upper right')
     fig.savefig(fig_fdr+'conStatsPooled'+conV1_suffix+'.png')
+    plt.close(fig)
 
 if plotLGN_V1_sample:
     fig = plt.figure('LGN_V1-sample', dpi = 300)
@@ -551,6 +561,7 @@ if plotLGN_V1_sample:
         ax.set_title(f'{orient*180/np.pi:.1f}')
 
     fig.savefig(fig_fdr+'LGN_V1-sample'+conLGN_suffix+'.png')
+    plt.close(fig)
 
 if plotCon_sample:
     red = np.array([0.0, 1, 1])
@@ -675,6 +686,7 @@ if plotCon_sample:
         ax.plot(pos[bid,0,tid], pos[bid,1,tid],'*k', ms = 1)
         ax.set_aspect('equal')
         fig.savefig(fig_fdr+'V1_conSample-'+f'{bid}-{tid}' + conV1_suffix + '.png')
+        plt.close(fig)
 
 if plotConFeature_stats:
     feat = ('LR', 'OP', 'CS')
@@ -688,6 +700,7 @@ if plotConFeature_stats:
             ax = fig.add_subplot(grid[iF, iType])
             ax.hist(feature[iF, pick], bins = bins[iF])
     fig.savefig(fig_fdr+'conFeature-dist' + conV1_suffix + '.png')
+    plt.close(fig)
 
     cm = ('Reds', 'Blues')
     ranges = (np.array([-1,1]), np.array([0.0, 1.0]), np.array([0.0, 1.0]))
@@ -733,6 +746,7 @@ if plotConFeature_stats:
                 pick = var < 0
                 var[pick] = 0
                 mean_std[1,:,:] = np.sqrt(var)
+                mean_std[np.isnan(mean_std)] = 0
                 
                 for jType in range(nType):
                     igrid = iF*2
@@ -747,6 +761,7 @@ if plotConFeature_stats:
                     ax.set_title('std')
 
         fig.savefig(fig_fdr+f'conFeature-{archType[iType]}'+ conV1_suffix + '.png')
+        plt.close(fig)
 
 if plotConFeature_sample:
     fig = plt.figure('conFeature-sample', figsize = np.array([nFeature*2, ns])*2, dpi = 300)
@@ -817,6 +832,7 @@ if plotConFeature_sample:
             ax2.set_xlabel(f'{mean_std[0,0]:.3f}, {mean_std[1,0]:.3f} | {mean_std[0,1]:.3f}, {mean_std[1,1]:.3f}')
     
     fig.savefig(fig_fdr+'conFeature-sample'+conV1_suffix+'.png')
+    plt.close(fig)
 
 if plotConFeature_preSynTC:
     feat = ('LR', 'OP', 'CS')
@@ -865,3 +881,4 @@ if plotConFeature_preSynTC:
                 ax.set_title(f'{archType[iType]}<-{feat[iF]}')
 
         fig.savefig(fig_fdr+f'conFeature_preSynTC-{archType[iType]}'+ conV1_suffix + '.png')
+        plt.close(fig)

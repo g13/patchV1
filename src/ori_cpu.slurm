@@ -42,8 +42,8 @@ pid+="${!} "
 
 if [ ${ori} -eq 1 ]; then
 	if [ "${generate_V1_connection}" = True ]; then
-		echo python connections.py ${trial_suffix}_${ori} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${data_fdr} ${fig_fdr}
-		python ${fig_fdr}/connections_{V1_connectome_suffix}.py ${trial_suffix}_${ori} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${data_fdr} ${fig_fdr}
+		echo python ${fig_fdr}/connections_${V1_connectome_suffix}.py ${trial_suffix}_${ori} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${data_fdr} ${fig_fdr}
+		python ${fig_fdr}/connections_${V1_connectome_suffix}.py ${trial_suffix}_${ori} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${data_fdr} ${fig_fdr}
 		pid+="${!} "
 	fi
 fi

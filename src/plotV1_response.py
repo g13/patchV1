@@ -37,6 +37,8 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     nsmooth = 0
     lw = 0.1
     SF = 40
+    nsmoothFr = nsmooth
+    nsmoothFreq = nsmooth 
     
     plotRpStat = True 
     plotRpCorr = True
@@ -724,6 +726,10 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         sfig = plt.figure(f'sample-TF', dpi = 600, figsize = [5.0, ns])
         grid = gs.GridSpec(ns, 2, figure = sfig, hspace = 0.2)
         j = 0
+    if np.mod(TFbins,2) == 1:
+        nf = (TFbins+1)//2
+    else:
+        nf = TFbins//2 + 1
 
     for i in range(nV1):
         tsps = np.array(spScatter[i])
@@ -740,7 +746,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
             F2[i,:] = get_FreqComp(smoothed_fr, 2)
             if plotTempMod and pSample and not collectMeanDataOnly and i in sample:
                 amp = np.abs(np.fft.rfft(nsp))/TFbins
-                amp[1:] = amp[1:]*2
+                amp[1:-1] *= 2
                 ax = sfig.add_subplot(grid[j,0])
                 ax.plot(t_tf, nsp, '-k', lw = 0.5)
                 ax.set_ylim(bottom = 0)
@@ -748,7 +754,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                     ax.plot(t_tf, smoothed_fr, '-g', lw = 0.5)
                 ax.set_title(f'FR {(i//blockSize,np.mod(i, blockSize))}')
                 ax = sfig.add_subplot(grid[j,1])
-                ff = np.arange(TFbins//2+1) * TF
+                ff = np.arange(nf) * TF
                 ax.plot(ff, amp, 'g', lw = 0.5, alpha = 0.5)
                 if amp[0] > 0:
                     f1f0 = amp[1]/amp[0]
@@ -1189,7 +1195,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 #ax.hist((sp_range[:-1] + sp_range[1:])/2, bins = sp_range, color = 'b', weights = counts/(1/TF/FRbins), alpha = 0.5)
                 LGN_smooth_fr = movingAvg(counts/(1/TF/FRbins), counts.size, int(1000/TF/16))
                 ax.plot((sp_range[:-1] + sp_range[1:])/2, LGN_smooth_fr, '-b', lw = 2.5*lw)
-                ax.plot(LGN_sp_total, np.zeros(LGN_sp_total.size) + np.max(LGN_fr_sSum)/2, 'og', ms = 0.8)
+                ax.plot(LGN_sp_total, np.zeros(LGN_sp_total.size) + np.max(LGN_fr_sSum)/2, 'sg', ms = 0.2, mew = 0.04)
                 ax2 = ax.twinx()
                 for ig in range(ngFF):
                     ax2.plot(t, _gFF[0,ig,i,:], ':g', lw = (ig+1)/ngFF * lw)
@@ -1372,7 +1378,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                     counts, _ = np.histogram(iLGN_sp, bins = sp_range)
                     iLGN_smooth_fr = movingAvg(counts/(1/TF/FRbins), counts.size, int(1000/TF/16))
                     ax.plot((sp_range[:-1] + sp_range[1:])/2, iLGN_smooth_fr, '-b', lw=2.5*lw)
-                    ax.plot(iLGN_sp, np.zeros(iLGN_sp.size)+np.max(iLGN_fr)/2, '*g', ms = 1.0)
+                    ax.plot(iLGN_sp, np.zeros(iLGN_sp.size)+np.max(iLGN_fr)/2, 'sg', ms = 0.4)
                     ax.set_ylabel(f'#{LGN_V1_ID[iV1][j]}\ns:{LGN_V1_s[iV1][j]:.2e}')
                     ax = fig.add_subplot(grid[3+j,1])
                     for k in range(6):
@@ -1868,6 +1874,39 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
             
     # scatter
     if plotScatterFF:
+        t = nt_ *dt #ms
+        Fs = 1000/tbinSize
+        nbins = int(t/tbinSize) #every 1ms
+        edges = step0*dt + np.arange(nbins+1) * tbinSize 
+        t_tf = (edges[:-1] + edges[1:])/2
+
+        tblock = min(1000, t)
+        NFFT = int(tblock/tbinSize)
+        pad_to = DFFT_pow2(NFFT)
+        #noverlap = NFFT//2
+        noverlap = 0
+        detrend = 'mean'
+             
+        if np.mod(pad_to, 2) == 1:
+            nf = (pad_to+1)//2
+        else:
+            nf = pad_to//2 + 1
+
+        ff = np.arange(nf) * Fs/pad_to
+        
+        ipre = np.argwhere(ff<TF)[-1][0]
+        ipost = np.argwhere(ff>=TF)[0][0]
+        
+        red = np.array([0.0, 1, 1])
+        blue = np.array([0.666666, 1, 1])
+        magenta = np.array([0.8333333, 1, 1])
+        green = np.array([0.333333, 1, 0.5])
+        ms1 = 0.16
+        ms2 = 0.04
+        mk1 = '.'
+        mk2 = 's'
+        sat0 = 0.0
+
         if OPstatus != 2 or usePrefData:
             fig = plt.figure(f'scatterFF', figsize = (12,6), dpi = 1200)
             ax = fig.add_subplot(221)
@@ -1882,30 +1921,10 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
             ax3.set_xlim(step0*dt, (step0+nt_)*dt)
         
             ax2 = fig.add_subplot(224)
-            #ax2_ = ax2.twinx()
-            t = nt_ *dt #ms
-            nbins = np.int(np.round(t/tbinSize)) #every 1ms
-            edges = step0*dt + np.arange(nbins+1) * tbinSize 
-            t_tf = (edges[:-1] + edges[1:])/2
-            ff = np.arange(nbins//2+1) * 1000/t
-        
-            ipre = np.argwhere(ff<TF)[-1][0]
-            ipost = np.argwhere(ff>=TF)[0][0]
-            nsmoothFr = 10 
-            nsmoothFreq = 1 
-        
-            red = np.array([0.0, 1, 1])
-            blue = np.array([0.666666, 1, 1])
-            magenta = np.array([0.8333333, 1, 1])
-            green = np.array([0.333333, 1, 0.5])
-            ms1 = 0.16
-            ms2 = 0.04
-            mk1 = '.'
-            mk2 = 's'
-            sat0 = 0.0
             ax11 = fig.add_subplot(243)
             ax12 = fig.add_subplot(244)
 
+            # Right
             pick = epick[LR[epick] > 0]
             nnE = pick.size
             if nnE > 0:
@@ -1949,26 +1968,17 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         
                 if np.sum(eSpick) > 0:
                     nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(nnE*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'r', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':r', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '>r', ms = 0.5, alpha = 0.5, label = 'exc R')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'r', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'r', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>r', ms = 0.5, alpha = 0.5, label = 'exc R')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'r', lw = 0.5, alpha = 0.5)
         
                 if np.sum(iSpick) > 0:
                     nsp = np.histogram(tsp[iSpick], bins = edges)[0]/(nnI*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'b', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':b', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '<b', ms = 0.5, alpha = 0.5, label = 'inh R')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'b', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'b', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>b', ms = 0.5, alpha = 0.5, label = 'inh R')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'b', lw = 0.5, alpha = 0.5)
 
+            # Left
             pick = epick[LR[epick] < 0]
             nnE = pick.size
             if nnE > 0:
@@ -2012,25 +2022,17 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 if np.sum(eSpick) > 0:
                     nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(np.sum(LR[epick]<0)*tbinSize/1000)
                     data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'm', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':m', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '>m', ms = 0.5, alpha = 0.5, label = 'exc L')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'm', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'm', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>m', ms = 0.5, alpha = 0.5, label = 'exc L')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'm', lw = 0.5, alpha = 0.5)
         
                 if np.sum(iSpick) > 0:
                     nsp = np.histogram(tsp[iSpick], bins = edges)[0]/(np.sum(LR[ipick]<0)*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'g', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':g', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '<g', ms = 0.5, alpha = 0.5, label = 'inh L')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'g', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'g', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>g', ms = 0.5, alpha = 0.5, label = 'inh L')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'g', lw = 0.5, alpha = 0.5)
         
+            # Complex
             pick = epick[nLGN_V1[epick]<=SCsplit]
             nnE = pick.size
             if nnE > 0:
@@ -2067,32 +2069,23 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
 
             if pSC:
                 mode = 'SC'
-                eSpick = np.logical_and(np.mod(isp, blockSize) < nE , nLGN_V1[isp] == 0)
-                iSpick = np.logical_and(np.mod(isp, blockSize) >= nE, nLGN_V1[isp] == 0)
+                eSpick = np.logical_and(np.mod(isp, blockSize) < nE , nLGN_V1[isp] <= SCsplit)
+                iSpick = np.logical_and(np.mod(isp, blockSize) >= nE, nLGN_V1[isp] <= SCsplit)
                 ax.plot(tsp[eSpick], isp[eSpick], ',m')
                 ax.plot(tsp[iSpick], isp[iSpick], ',g')
                 if np.sum(eSpick) > 0:
                     nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(nnE*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'm', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':m', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '>m', ms = 0.5, alpha = 0.5, label = 'exc C')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'm', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'm', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>m', ms = 0.5, alpha = 0.5, label = 'exc C')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'm', lw = 0.5, alpha = 0.5)
         
                 if np.sum(iSpick) > 0:
                     nsp = np.histogram(tsp[iSpick], bins = edges)[0]/(nnI*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'g', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':g', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '<g', ms = 0.5, alpha = 0.5, label = 'inh C')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'g', lw = 0.5, alpha = 0.5)
-
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'g', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '<g', ms = 0.5, alpha = 0.5, label = 'inh C')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'g', lw = 0.5, alpha = 0.5)
+            
+            # Simple
             pick = epick[nLGN_V1[epick] > SCsplit]
             nnE = pick.size
             if nnE > 0:
@@ -2128,32 +2121,22 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 ax12.scatter(pos[0,pick], pos[1,pick], s = ms1*sizeRatio, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk1)
         
             if pSC:
-                eSpick = np.logical_and(np.mod(isp, blockSize) < nE , nLGN_V1[isp] > 0)
-                iSpick = np.logical_and(np.mod(isp, blockSize) >= nE, nLGN_V1[isp] > 0)
+                eSpick = np.logical_and(np.mod(isp, blockSize) < nE , nLGN_V1[isp] > SCsplit)
+                iSpick = np.logical_and(np.mod(isp, blockSize) >= nE, nLGN_V1[isp] > SCsplit)
                 ax.plot(tsp[eSpick], isp[eSpick], ',r')
                 ax.plot(tsp[iSpick], isp[iSpick], ',b')
         
                 if np.sum(eSpick) > 0:
                     nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(nnE*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'r', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':r', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '>r', ms = 0.5, alpha = 0.5, label = 'exc S')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'r', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'r', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>r', ms = 0.5, alpha = 0.5, label = 'exc S')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'r', lw = 0.5, alpha = 0.5)
         
                 if np.sum(iSpick) > 0:
                     nsp = np.histogram(tsp[iSpick], bins = edges)[0]/(nnI*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'b', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':b', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '<b', ms = 0.5, alpha = 0.5, label = 'inh S')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'b', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'b', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>b', ms = 0.5, alpha = 0.5, label = 'inh S')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'b', lw = 0.5, alpha = 0.5)
 
             if not pSC and not pLR:
                 mode = 'EI'
@@ -2163,32 +2146,20 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 ax.plot(tsp[iSpick], isp[iSpick], ',b')
             
                 nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(nblock*nE*tbinSize/1000)
-                data = np.fft.rfft(nsp)
-                amp = np.abs(data)/nbins
-                amp[1:] = amp[1:]*2
-                amp = amp*amp
-                ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'r', lw = 0.5, alpha = 0.5)
-                #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':r', lw = 0.5, alpha = 0.5)
-                ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '>r', ms = 0.5, alpha = 0.5, label = 'exc')
+                psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'r', lw = 0.5, alpha = 0.5)
+                ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>r', ms = 0.5, alpha = 0.5, label = 'exc')
                 ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'r', lw = 0.5, alpha = 0.5)
                 nsp = np.histogram(tsp[iSpick], bins = edges)[0]/(nblock*nI*tbinSize/1000)
-                data = np.fft.rfft(nsp)
-                amp = np.abs(data)/nbins
-                amp[1:] = amp[1:]*2
-                amp = amp*amp
-                ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'b', lw = 0.5, alpha = 0.5)
-                #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':b', lw = 0.5, alpha = 0.5)
-                ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '<b', ms = 0.5, alpha = 0.5, label = 'inh')
+                psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'r', lw = 0.5, alpha = 0.5)
+                ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '<b', ms = 0.5, alpha = 0.5, label = 'inh')
                 ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'b', lw = 0.5, alpha = 0.5)
         
-            ax2.set_yscale('log')
-            ax2.set_xlabel('Hz')
-            #ax2_.set_ylim(bottom = -180, top = 180)
+            ax2.set_xlabel('Frequency (Hz)')
             ax11.set_aspect('equal')
             ax11.set_title('OP-LR')
             ax12.set_title('OP-SC')
             ax12.set_aspect('equal')
-            ax2.legend(loc = 'best')
+            ax2.legend(loc = 'upper right', fontsize = 'x-small', frameon = False)
 
             fign = 'V1-scatterFF'
             if usePrefData:
@@ -2216,27 +2187,6 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
             ax3.set_xlim(step0*dt, (step0+nt_)*dt)
         
             ax2 = fig.add_subplot(224)
-            #ax2_ = ax2.twinx()
-            t = nt_ *dt #ms
-            nbins = np.int(np.round(t/tbinSize)) #every 1ms
-            edges = step0*dt + np.arange(nbins+1) * tbinSize 
-            t_tf = (edges[:-1] + edges[1:])/2
-            ff = np.arange(nbins//2+1) * 1000/t
-        
-            ipre = np.argwhere(ff<TF)[-1][0]
-            ipost = np.argwhere(ff>=TF)[0][0]
-            nsmoothFr = 10 
-            nsmoothFreq = 1 
-        
-            red = np.array([0.0, 1, 1])
-            blue = np.array([0.666666, 1, 1])
-            magenta = np.array([0.8333333, 1, 1])
-            green = np.array([0.333333, 1, 0.5])
-            ms1 = 0.16
-            ms2 = 0.04
-            mk1 = '.'
-            mk2 = 's'
-            sat0 = 0.0
             ax11 = fig.add_subplot(243)
             ax12 = fig.add_subplot(244)
 
@@ -2341,50 +2291,30 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 nnE = np.sum(eSpick)
                 if  nnE > 0:
                     nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(nnE*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'r', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':r', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '>r', ms = 0.5, alpha = 0.5, label = 'exc R OP')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'r', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'r', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>r', ms = 0.5, alpha = 0.5, label = 'exc R OP')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'r', lw = 0.5, alpha = 0.5)
 
                 nnE = np.sum(eSpick_bg)
                 if nnE > 0:
                     nsp = np.histogram(tsp[eSpick_bg], bins = edges)[0]/(nnE*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), ':r', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':r', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), 'vr', ms = 0.5, alpha = 0.5, label = 'exc R non-OP')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), ':r', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'r', ls = ':', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), 'vr', ms = 0.5, alpha = 0.5, label = 'exc R BG')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), ':r', lw = 0.5, alpha = 0.5)
         
                 nnI = np.sum(iSpick)
                 if nnI > 0:
                     nsp = np.histogram(tsp[iSpick], bins = edges)[0]/(nnI*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'b', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':b', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '<b', ms = 0.5, alpha = 0.5, label = 'inh R OP')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'b', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'b', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>b', ms = 0.5, alpha = 0.5, label = 'inh R OP')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'b', lw = 0.5, alpha = 0.5)
 
                 nnI = np.sum(iSpick_bg)
                 if nnI > 0:
                     nsp = np.histogram(tsp[iSpick_bg], bins = edges)[0]/(nnI*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'b', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':b', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '<b', ms = 0.5, alpha = 0.5, label = 'inh R non-OP')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'b', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'b', ls = ':', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), 'vb', ms = 0.5, alpha = 0.5, label = 'inh R BG')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), ':b', lw = 0.5, alpha = 0.5)
 
             pick = eORpick[LR[eORpick] < 0]
             nnE = pick.size
@@ -2484,50 +2414,31 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 nnE = np.sum(eSpick)
                 if nnE > 0:
                     nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(nnE*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'm', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':m', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '>m', ms = 0.5, alpha = 0.5, label = 'exc L OP')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'm', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'm', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>m', ms = 0.5, alpha = 0.5, label = 'exc L OP')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'm', lw = 0.5, alpha = 0.5)
                     
                 nnE = np.sum(eSpick_bg)
                 if nnE > 0:
                     nsp = np.histogram(tsp[eSpick_bg], bins = edges)[0]/(nnE*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), ':m', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':m', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), 'vm', ms = 0.5, alpha = 0.5, label = 'exc L non-OP')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), ':m', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'm', ls = ':', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), 'vm', ms = 0.5, alpha = 0.5, label = 'exc L OP')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), ':m', lw = 0.5, alpha = 0.5)
+                    
 
                 nnI = np.sum(iSpick)
                 if nnI > 0:
                     nsp = np.histogram(tsp[iSpick], bins = edges)[0]/(nnI*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'g', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':g', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '<g', ms = 0.5, alpha = 0.5, label = 'inh L OP')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'g', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'g', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>g', ms = 0.5, alpha = 0.5, label = 'inh L OP')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'g', lw = 0.5, alpha = 0.5)
 
                 nnI = np.sum(iSpick_bg)
                 if nnI > 0:
                     nsp = np.histogram(tsp[iSpick_bg], bins = edges)[0]/(nnI*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), ':g', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':g', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), 'vg', ms = 0.5, alpha = 0.5, label = 'inh L non-OP')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), ':g', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'g', ls = ':', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), 'vg', ms = 0.5, alpha = 0.5, label = 'inh L BG')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'g', lw = 0.5, alpha = 0.5)
         
             pick = eORpick[nLGN_V1[eORpick]<=SCsplit]
             nnE = pick.size
@@ -2628,50 +2539,30 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 nnE = np.sum(eSpick)
                 if nnE > 0:
                     nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(nnE*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'm', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':m', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '>m', ms = 0.5, alpha = 0.5, label = 'exc C OP')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'm', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'm', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>m', ms = 0.5, alpha = 0.5, label = 'exc C OP')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'm', lw = 0.5, alpha = 0.5)
         
                 nnE = np.sum(eSpick_bg)
                 if nnE > 0:
                     nsp = np.histogram(tsp[eSpick_bg], bins = edges)[0]/(nnE*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), ':m', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':m', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), 'vm', ms = 0.5, alpha = 0.5, label = 'exc C non-OP')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), ':m', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'm', ls = ':', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), 'vm', ms = 0.5, alpha = 0.5, label = 'exc C BG')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), ':m', lw = 0.5, alpha = 0.5)
 
                 nnI = np.sum(iSpick)
                 if nnI > 0:
                     nsp = np.histogram(tsp[iSpick], bins = edges)[0]/(nnI*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'g', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':g', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '<g', ms = 0.5, alpha = 0.5, label = 'inh C OP')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'g', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'g', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>g', ms = 0.5, alpha = 0.5, label = 'inh C OP')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'g', lw = 0.5, alpha = 0.5)
 
                 nnI = np.sum(iSpick_bg)
                 if nnI > 0:
                     nsp = np.histogram(tsp[iSpick_bg], bins = edges)[0]/(nnI*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), ':g', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':g', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), 'vg', ms = 0.5, alpha = 0.5, label = 'inh C non-OP')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), ':g', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'g', ls = ':', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), 'vg', ms = 0.5, alpha = 0.5, label = 'inh C BG')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), ':g', lw = 0.5, alpha = 0.5)
 
             pick = eORpick[nLGN_V1[eORpick] > SCsplit]
             nnE = pick.size
@@ -2768,50 +2659,30 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 nnE = np.sum(eSpick)
                 if nnE > 0:
                     nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(nnE*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'r', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':r', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '>r', ms = 0.5, alpha = 0.5, label = 'exc S OP')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'r', lw = 0.5, alpha = 0.5)
-        
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'r', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>r', ms = 0.5, alpha = 0.5, label = 'exc S OP')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'r', lw = 0.5, alpha = 0.5)
+
                 nnE = np.sum(eSpick_bg)
                 if nnE > 0:
                     nsp = np.histogram(tsp[eSpick_bg], bins = edges)[0]/(nnE*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), ':r', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':r', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), 'vr', ms = 0.5, alpha = 0.5, label = 'exc S non-OP')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), ':r', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'r', ls = ':', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), 'vr', ms = 0.5, alpha = 0.5, label = 'exc S BG')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), ':r', lw = 0.5, alpha = 0.5)
 
                 nnI = np.sum(iSpick)
                 if nnI > 0:
                     nsp = np.histogram(tsp[iSpick], bins = edges)[0]/(nnI*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'b', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':b', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '<b', ms = 0.5, alpha = 0.5, label = 'inh S OP')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'b', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'b', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>b', ms = 0.5, alpha = 0.5, label = 'inh S OP')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'b', lw = 0.5, alpha = 0.5)
                     
                 nnI = np.sum(iSpick_bg)
                 if nnI > 0:
                     nsp = np.histogram(tsp[iSpick_bg], bins = edges)[0]/(nnI*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), ':b', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':b', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), 'vb', ms = 0.5, alpha = 0.5, label = 'inh S non-OP')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), ':b', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'b', ls = ':', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), 'vb', ms = 0.5, alpha = 0.5, label = 'inh S BG')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), ':b', lw = 0.5, alpha = 0.5)
 
             n_pSC_pLR = 0
             if not pSC and not pLR:
@@ -2877,59 +2748,37 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 nnE = np.sum(eSpick)
                 if nnE > 0:
                     nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(nnE*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'r', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':r', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '>r', ms = 0.5, alpha = 0.5, label = 'exc OP')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'r', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'r', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>r', ms = 0.5, alpha = 0.5, label = 'exc OP')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'r', lw = 0.5, alpha = 0.5)
 
                 nnE = np.sum(eSpick_bg)
                 if nnE > 0:
                     nsp = np.histogram(tsp[eSpick_bg], bins = edges)[0]/(nnE*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), ':r', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':r', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), 'vr', ms = 0.5, alpha = 0.5, label = 'exc non-OP')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), ':r', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'r', ls = ':', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), 'vr', ms = 0.5, alpha = 0.5, label = 'exc BG')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), ':r', lw = 0.5, alpha = 0.5)
                 
                 nnI = np.sum(iSpick)
                 if nnI > 0:
                     nsp = np.histogram(tsp[iSpick], bins = edges)[0]/(nnI*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), 'b', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':b', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), '<b', ms = 0.5, alpha = 0.5, label = 'inh OP')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'b', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'b', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>b', ms = 0.5, alpha = 0.5, label = 'inh OP')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'b', lw = 0.5, alpha = 0.5)
 
                 nnI = np.sum(iSpick_bg)
                 if nnI > 0:
                     nsp = np.histogram(tsp[iSpick_bg], bins = edges)[0]/(nnI*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
-                    amp = np.abs(data)/nbins
-                    amp[1:] = amp[1:]*2
-                    amp = amp*amp
-                    ax2.plot(ff, movingAvg(amp, amp.size, nsmoothFreq), ':b', lw = 0.5, alpha = 0.5)
-                    #ax2_.plot(ff, movingAvg(np.angle(data, deg = True), amp.size, nsmoothFreq), ':b', lw = 0.5, alpha = 0.5)
-                    ax2.plot(TF, amp[ipre] + (amp[ipost]-amp[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre]), 'vb', ms = 0.5, alpha = 0.5, label = 'inh non-OP')
-                    ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), ':b', lw = 0.5, alpha = 0.5)
+                    psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'b', ls = ':', lw = 0.5, alpha = 0.5)
+                    ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), 'vb', ms = 0.5, alpha = 0.5, label = 'inh BG')
+                    ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), ':b', lw = 0.5, alpha = 0.5)
         
-            ax2.set_yscale('log')
-            ax2.set_xlabel('Hz')
-            #ax2_.set_ylim(bottom = -180, top = 180)
+            ax2.set_xlabel('Frequency (Hz)')
             ax11.set_aspect('equal')
             ax11.set_title('OP-LR')
             ax12.set_title('OP-SC')
             ax12.set_aspect('equal')
-            ax3.legend(loc = 'best')
+            ax3.legend(loc = 'upper right', fontsize = 'x-small', frameon = False)
 
             fign = 'V1-scatterFF_OP'
             if usePrefData:
@@ -3041,8 +2890,15 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         plt.close(fig)
     print('plotting finished')
 
+def DFFT_pow2(N):
+    """ Function for finding the next power of 2 """
+    n = 1
+    while n < N:
+        n *= 2
+    return n
+
 def movingAvg(data, n, m, axis = -1):
-    if m == 1:
+    if m <= 1:
         return data
     else:
         avg_data = np.empty(data.shape)
