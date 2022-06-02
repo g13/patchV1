@@ -150,6 +150,8 @@ int main(int argc, char** argv) {
 	vector<Float> boostOri;
 	vector<PosInt> iOri;
 	vector<Size> nFBperColumn;
+    vector<Float> synPerCon;
+    vector<Float> synPerConFF;
 	Float nsig; // extent of spatial RF sampling in units of std
 	Float tau, mau;
 	Float Itau; // in ms .. cone adaptation at 300ms https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1003289
@@ -195,6 +197,8 @@ int main(int argc, char** argv) {
 		("Itau", po::value<Float>(&Itau)->default_value(300.0), "the light intensity adaptation time-scale of a cone")
 		("sRatioLGN", po::value<vector<Float>>(&sRatioLGN), "scale connection strength from LGN in array of size nType")
 		("sRatioV1", po::value<vector<Float>>(&sRatioV1), "scale connection strength from V1, size of 1 or nType,nType]")
+        ("synPerConFF",  po::value<vector<Float>>(&synPerConFF), "synpases per feedforward connection, size of nType")
+        ("synPerCon",  po::value<vector<Float>>(&synPerCon), "synpases per cortical connection size of [nType, nType]")
 		("gapRatio", po::value<vector<Float>>(&gapRatio), "scale gap junction strength from V1, size of 1 or nTypeI,nTypeI]")
 		("convolRatio", po::value<Float>(&convolRatio)->default_value(1), "scale convol value")
 		("frRatioLGN", po::value<Float>(&frRatioLGN)->default_value(1), "scale LGN firing rate")
@@ -547,8 +551,6 @@ int main(int argc, char** argv) {
 	Size nType;
 	Size nTypeI;
 	vector<Size> typeAccCount;
-    vector<Float> synPerConFF;
-    vector<Float> synPerCon;
 	ifstream fConnectome_cfg(connectome_cfg_filename + conV1_suffix, fstream::in | fstream::binary);
 	if (!fConnectome_cfg) {
 		cout << "Cannot open or find " << connectome_cfg_filename + conV1_suffix <<"\n";
@@ -557,22 +559,35 @@ int main(int argc, char** argv) {
 		fConnectome_cfg.read(reinterpret_cast<char*>(&nType), sizeof(Size));
 		fConnectome_cfg.read(reinterpret_cast<char*>(&nTypeI), sizeof(Size));
 		typeAccCount.assign(nType,0);
-		synPerCon.assign(nType*nType,0);
-		synPerConFF.assign(nType,0);
 		fConnectome_cfg.read(reinterpret_cast<char*>(&typeAccCount[0]), nType*sizeof(Size));
-		fConnectome_cfg.read(reinterpret_cast<char*>(&synPerCon[0]), nType*nType*sizeof(Float));
-		fConnectome_cfg.read(reinterpret_cast<char*>(&synPerConFF[0]), nType*sizeof(Float));
 
 		fConnectome_cfg.close();
 	}
-	cout << "synPer:\n"; 
+
+	if (synPerCon.size() != nType*nType) {
+		cout << "the size of synPerCon has size of " << synPerCon.size() << " != " << nType << " x " << nType << "\n";
+		return EXIT_FAILURE;
+	}
+
+	if (synPerConFF.size() != nType && synPerConFF.size() != 1) {
+		cout << "the size of synPerConFF has size of " << synPerConFF.size() << " != " << nType << " or 1.\n";
+		return EXIT_FAILURE;
+	} else {
+		if (synPerConFF.size() == 1) {
+        	for (PosInt i=1; i<nType; i++) {
+				synPerConFF.push_back(synPerConFF[0]);
+			}
+		}
+    }
+
+	cout << "synPerCon:\n"; 
 	for (PosInt i =0; i< nType; i++) {
 		for (PosInt j =0; j< nType; j++) {
 			cout << synPerCon[i*nType + j] << ", ";
 		}
 	}
 	cout << "\n";
-	cout << "synPerFF:\n"; 
+	cout << "synPerConFF:\n"; 
 	for (PosInt j =0; j< nType; j++) {
 		cout << synPerConFF[j] << ", ";
 	}
@@ -806,16 +821,6 @@ int main(int argc, char** argv) {
 			}
         }
     }
-
-	if (synPerCon.size() != nType*nType) {
-		cout << "the size of synPerCon has size of " << synPerCon.size() << " != " << nType << " x " << nType << "\n";
-		return EXIT_FAILURE;
-	} 
-
-	if (synPerConFF.size() != nType && synPerConFF.size() != 1) {
-		cout << "the size of synPerConFF has size of " << synPerConFF.size() << " != " << nType << " or 1.\n";
-		return EXIT_FAILURE;
-	}
 
     ConductanceShape condFF(&(grFF[0]), &(gdFF[0]), ngTypeFF);
 	ConductanceShape condE(&(grE[0]), &(gdE[0]), ngTypeE);
@@ -3934,38 +3939,38 @@ int main(int argc, char** argv) {
 	fConStats.open(conStats_filename + conV1_suffix, fstream::in | fstream::binary);
 	Float tonicMax;
 	if (!fConStats) {
-		cout << "Cannot open or find " << conStats_filename <<" to read V1 ExcRatios.\n";
+		cout << "Cannot open or find " << conStats_filename <<" to read V1 ffRatio.\n";
 		return EXIT_FAILURE;
 	} else {
 		Size discard;
-		vector<float> ExcRatio(nV1, 0);
+		vector<float> ffRatio(nV1, 0);
 
 		fConStats.read(reinterpret_cast<char*>(&discard),sizeof(Size));
 		assert(discard == nType);
     	fConStats.read(reinterpret_cast<char*>(&discard),sizeof(Size));
 		assert(discard == nV1);
-    	fConStats.read(reinterpret_cast<char*>(&ExcRatio[0]), nV1*sizeof(float));
+    	fConStats.read(reinterpret_cast<char*>(&ffRatio[0]), nV1*sizeof(float));
 		fConStats.close();
-		Float* minExcRatio = new Float[nType];
-		Float* maxExcRatio = new Float[nType];
+		Float* min_ffRatio = new Float[nType];
+		Float* max_ffRatio = new Float[nType];
 		for (PosInt i=0; i<nType; i++) {
-			maxExcRatio[i] = 0;
-			minExcRatio[i] = 1;
+			max_ffRatio[i] = 0;
+			min_ffRatio[i] = 1;
 		}
 		for (PosInt i=0; i<nblock; i++) {
 			for (PosInt j=0; j<nType; j++) {
-				Float tmp_max = *max_element(ExcRatio.begin() + i*neuronPerBlock + typeAcc0[j], ExcRatio.begin() + i*neuronPerBlock + typeAcc0[j+1]);
-				if (tmp_max > maxExcRatio[j]) {
-					maxExcRatio[j] = tmp_max;
+				Float tmp_max = *max_element(ffRatio.begin() + i*neuronPerBlock + typeAcc0[j], ffRatio.begin() + i*neuronPerBlock + typeAcc0[j+1]);
+				if (tmp_max > max_ffRatio[j]) {
+					max_ffRatio[j] = tmp_max;
 				}
-				Float tmp_min = *min_element(ExcRatio.begin() + i*neuronPerBlock + typeAcc0[j], ExcRatio.begin() + i*neuronPerBlock + typeAcc0[j+1]);
-				if (tmp_min < minExcRatio[j]) {
-					minExcRatio[j] = tmp_min;
+				Float tmp_min = *min_element(ffRatio.begin() + i*neuronPerBlock + typeAcc0[j], ffRatio.begin() + i*neuronPerBlock + typeAcc0[j+1]);
+				if (tmp_min < min_ffRatio[j]) {
+					min_ffRatio[j] = tmp_min;
 				}
 			}
 		}
 		for (PosInt j=0; j<nType; j++) {
-			cout << "ExcRatio type " << j << ": [" << minExcRatio[j] << ", " << maxExcRatio[j] << "]\n";
+			cout << "ffRatio type " << j << ": [" << min_ffRatio[j] << ", " << max_ffRatio[j] << "]\n";
 		}
         auto get_boost = [&boostOri, &featureValue, &nV1, &fOri, &readFeature, &nOri](PosInt i, PosInt iType) {
 			Float boost;
@@ -4008,19 +4013,22 @@ int main(int argc, char** argv) {
 					iType++;
 				}
                 Float boosted = get_boost(id, iType);
+                Float relative_tonicRatio = 1-ffRatio[id];
+                Float min_tonicRatio = 1-max_ffRatio[iType];
+                Float max_tonicRatio = 1-min_ffRatio[iType];
 				assert(boosted <= 1);
-				if (maxExcRatio[iType] > minExcRatio[iType]) {
-					iTonicDep[id] = tonicDep[iType]*boosted*(minTonicRatio[iType] + (1-minTonicRatio[iType]) * (ExcRatio[id]-minExcRatio[iType])/(maxExcRatio[iType]-minExcRatio[iType]));
+				if (max_ffRatio[iType] > min_ffRatio[iType]) {
+					iTonicDep[id] = tonicDep[iType]*boosted*(minTonicRatio[iType] + (1-minTonicRatio[iType]) * (relative_tonicRatio-min_tonicRatio)/(max_tonicRatio -min_tonicRatio));
 				} else {
 					iTonicDep[id] = tonicDep[iType]*boosted;
 				}
-				assert(!std::isnan(ExcRatio[id]));
+				assert(!std::isnan(ffRatio[id]));
 				assert(!std::isnan(iTonicDep[id]));
 			}
 		}
 
-		delete []minExcRatio;
-		delete []maxExcRatio;
+		delete []min_ffRatio;
+		delete []max_ffRatio;
 		checkCudaErrors(cudaMemcpy(d_tonicDep,  &(iTonicDep[0]), nV1*sizeof(Float), cudaMemcpyHostToDevice));
 		Float tonicMean = accumulate(iTonicDep.begin(), iTonicDep.end(), 0.0)/nV1;
 		Float tonicMin = *min_element(iTonicDep.begin(), iTonicDep.end());
@@ -6095,7 +6103,7 @@ int main(int argc, char** argv) {
 		//if (it > 500) {
 		//	cudaProfilerStart();
 		//}
-		for (PosInt i = 0; i < nChunk; i++) {
+		for (PosInt i = 0; i < nChunk; i++) { // recal_G_mat
 			if (i >= iSizeSplit) chunkSize = remainChunkSize;
 			size_t mChunkSize = chunkSize * nearBlockSize;
 			size_t gap_mChunkSize = chunkSize * gap_nearBlockSize;
@@ -6237,7 +6245,7 @@ int main(int argc, char** argv) {
             else cout << "no near-neighbor spiking events in the time step\n";
         }
 
-        if (nFar) { 
+        if (nFar) { // recal_G_vec
         	farSpiked = fill_fSpikeTrain(fSpikeTrain,  spikeTrain + nV1*currentTimeSlot, fCurrenSlot, vecID, nVec, nV1);
 			if (farSpiked) {
 				//cout << "it = " << it << ", far spiked!\n";

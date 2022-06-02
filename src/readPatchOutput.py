@@ -183,17 +183,16 @@ def readLGN_fr(fn, prec='f4'):
         LGN_fr = np.fromfile(f,prec, count = nt*nLGN).reshape(nt, nLGN)
     return LGN_fr
 
-def readLGN_sp(fn, prec='f4', nstep = 0):
+def readLGN_sp(fn, prec='f4'):
     with open(fn, 'rb') as f:
         dt = np.fromfile(f, prec, count = 1)[0]
         nt = np.fromfile(f, 'u4', count = 1)[0]
-        if nstep == 0 or nstep > nt:
-            nstep = nt
         nLGN = np.fromfile(f, 'u4', count = 1)[0]
         LGN_spScatter = np.empty(nLGN, dtype = object) 
+        print(nt, dt) 
         for i in range(nLGN):
             LGN_spScatter[i] = []
-        for it in range(nstep):
+        for it in range(nt):
             tsp0 = np.fromfile(f, prec, count = nLGN)
             assert(np.sum(tsp0>0) == np.sum(tsp0>=1))
             tsps = tsp0[tsp0 > 0]
@@ -208,12 +207,14 @@ def readLGN_sp(fn, prec='f4', nstep = 0):
                             dtsp = tsp/nsp
                         else:
                             dtsp = (1-tsp)/nsp
-                        tstart = tsp - (nsp//2)*dtsp
+                        tstart = tsp - (nsp/2)*dtsp
                         for isp in range(nsp):
                             LGN_spScatter[j].append((it + tstart+isp*dtsp)*dt)
                     else:
-                        LGN_spScatter[j].append((it+tsp)*dt)
+                        LGN_spScatter[j].append((it + tsp)*dt)
                     k = k + 1
+                #if 24277 in idxFired:
+                #    print(f'24277 fired at {LGN_spScatter[24277][-1]}')
         for i in range(nLGN):
             LGN_spScatter[i] = np.asarray(LGN_spScatter[i])
     return LGN_spScatter 
@@ -315,7 +316,7 @@ def readSpike(rawDataFn, spFn, prec, sizeofPrec, vThres):
                     tsp = tsps[k] - nsp
                     if nsp > 1:
                         #raise Exception(f'{nsp} spikes from {j} at time step {it}, sInfo = {tsps[k]}!')
-                        multi_spike = multi_spike + nsp 
+                        multi_spike = multi_spike + nsp
                         if 1-tsp > 0.5:
                             dtsp = tsp/nsp
                         else:
@@ -325,7 +326,7 @@ def readSpike(rawDataFn, spFn, prec, sizeofPrec, vThres):
                             spScatter[j][spCount[j] + isp] = ((it + tstart+isp*dtsp)*dt)
                         spCount[j] = spCount[j] + nsp
                     else:
-                        spScatter[j][spCount[j]] = ((it+tsp)*dt)
+                        spScatter[j][spCount[j]] = (it + tsp)*dt
                         spCount[j] = spCount[j] + 1
                     k = k + 1
             if iModel == 0:
@@ -460,6 +461,7 @@ def HeatMap(d1, d2, range1, range2, ax, cm, log_scale = False, intPick = False, 
     ax.plot(np.arange(edge1.size - 1), (tc - edge2[0])/(edge2[-1]-edge2[0])*(edge2.size - 1)-0.5, ':', c=color, lw = 1.0, ms = 1.5)
     ax.plot(np.arange(edge1.size - 1), (tm - edge2[0])/(edge2[-1]-edge2[0])*(edge2.size - 1)-0.5, '*--k', c=color, lw = 1.0, ms = 1.5)
     ax.plot(np.arange(edge1.size - 1), tmost, '-', c='k', lw = 3.0, alpha = 0.5)
+    #ax.set_aspect()
     return image
 
 def TuningCurves(data, bins, percentile, ax, color, tick, ticklabel):

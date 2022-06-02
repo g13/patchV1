@@ -122,21 +122,20 @@ struct initialize_package {
 __global__ 
 __launch_bounds__(blockSize, 1)
 void initialize(curandStateMRG32k3a* __restrict__ state,
-                           Size*  __restrict__ preType,
-                           Float* __restrict__ rden,
-                           Float* __restrict__ raxn,
-                           Float* __restrict__ dden,
-                           Float* __restrict__ daxn,
-                           Float* __restrict__ preF_type,
-                           Float* __restrict__ preS_type,
-                           Size* __restrict__ preN_type,
-                           //Float* __restrict__ LGN_sSum,
-                           Size* __restrict__ d_LGN_V1,
-                           Float* __restrict__ ExcRatio,
-                           Float* __restrict__ extExcRatio,
-                           Float* __restrict__ synPerCon,
-                           Float* __restrict__ synPerConFF,
-						   Float min_FB_ratio, Float C_InhRatio, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, bool ClessI, Float p_n_LGNeff);
+			Size*  __restrict__ preType, // 
+			Float* __restrict__ rden,
+			Float* __restrict__ raxn,
+			Float* __restrict__ dden,
+			Float* __restrict__ daxn,
+			Float* __restrict__ preF_type,
+			Float* __restrict__ preS_type,
+			Size*  __restrict__ preN_type,
+			Float* __restrict__ max_ffRatio,
+			Float* __restrict__ inhRatio,
+			Float* __restrict__ wLGN,
+			Float* __restrict__ max_wLGN,
+			Float* __restrict__ ffRatio,
+            initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, bool ClessI);
 
 __global__ 
 __launch_bounds__(blockSize, 1)

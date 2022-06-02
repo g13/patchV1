@@ -3,10 +3,13 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from bisect import bisect 
 from matplotlib.ticker import (MultipleLocator, FormatStrFormatter,
                                AutoMinorLocator)
 import matplotlib.gridspec as gs
+import matplotlib as mpl
 import matplotlib.colors as clr
+import matplotlib.mlab as mlab
 from matplotlib import cm
 import sys
 from readPatchOutput import *
@@ -15,14 +18,15 @@ np.seterr(invalid = 'raise')
 
 #@profile
 def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
-    sample = np.array([91,72,78,54,84,91,8,6,8,52])*1024 + np.array([649,650,508,196,385,873,190,673,350,806])
+    #sample = np.array([91,72,78,54,84,91,8,6,8,52])*1024 + np.array([649,650,508,196,385,873,190,673,350,806])
+    #sample = np.array([33])*1024 + np.array([678])
     singleOri = False
     SCsplit = 1
     nLGNorF1F0 = True
     ns = 10
     seed = 657890
     np.random.seed(seed)
-    nt_ = 0
+    nt_ = 8000
     nstep = 2000
     step0 = 0
     if nOri > 0:
@@ -40,9 +44,9 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     nsmoothFr = nsmooth
     nsmoothFreq = nsmooth 
     
-    plotRpStat = True 
-    plotRpCorr = True
-    plotScatterFF = True
+    #plotRpStat = True 
+    #plotRpCorr = True
+    #plotScatterFF = True
     plotSample = True
     #plotDepC = True # plot depC distribution over orientation
     #plotLGNsCorr = True
@@ -50,9 +54,9 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     #plotExc_sLGN = True
     #plotLR_rp = True
     
-    #plotRpStat = False 
-    #plotRpCorr = False 
-    #plotScatterFF = False
+    plotRpStat = False 
+    plotRpCorr = False 
+    plotScatterFF = False
     #plotSample = False
     plotDepC = False
     plotLGNsCorr = False 
@@ -128,7 +132,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     rawDataFn = data_fdr + "rawData" + _output_suffix + ".bin"
     LGN_frFn = data_fdr + "LGN_fr" + _output_suffix + ".bin"
     LGN_spFn = data_fdr + "LGN_sp" + _output_suffix
-    meanFn = data_fdr + "mean_data" + _output_suffix + ".bin"
+    statsFn = data_fdr + "mean_data" + _output_suffix + ".bin"
     
     pref_file = data_fdr + 'cort_pref_' + output_suffix0 + '.bin'
     if nOri == 0 and singleOri:
@@ -156,21 +160,21 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     if output_suffix:
         output_suffix = output_suffix + "-"
     
-    if readNewSpike:
-        print('reading LGN connections...')
-        LGN_V1_s = readLGN_V1_s0(LGN_V1_sFn)
-        print('     ID...')
-        LGN_V1_ID, nLGN_V1 = readLGN_V1_ID(LGN_V1_idFn)
-        print('     vpos...')
-        nLGN_I, nLGN_C, nLGN, max_ecc, vCoordSpan, LGN_vpos, LGN_type = readLGN_vpos(LGN_vposFn)
-        print('     fr...')
-        LGN_fr = readLGN_fr(LGN_frFn, prec = prec)
-        print('     spikes...')
-        LGN_spScatter = readLGN_sp(LGN_spFn + ".bin", prec = prec)
-        np.savez(LGN_spFn + '.npz', spName = 'LGN_spScatter', LGN_spScatter = LGN_spScatter, LGN_V1_s = LGN_V1_s, LGN_V1_ID = LGN_V1_ID, nLGN_V1 = nLGN_V1, LGN_vpos = LGN_vpos, LGN_type = LGN_type, LGN_fr = LGN_fr, nLGN = nLGN, nLGN_I = nLGN_I, nLGN_C = nLGN_C)
-        print('complete.')
-    else:
-        if plotExc_sLGN or plotSample or (plotTempMod and pCond):
+    if plotExc_sLGN or plotSample or (plotTempMod and pCond):
+        if readNewSpike:
+            print('reading LGN connections...')
+            LGN_V1_s = readLGN_V1_s0(LGN_V1_sFn)
+            print('     ID...')
+            LGN_V1_ID, nLGN_V1 = readLGN_V1_ID(LGN_V1_idFn)
+            print('     vpos...')
+            nLGN_I, nLGN_C, nLGN, max_ecc, vCoordSpan, LGN_vpos, LGN_type = readLGN_vpos(LGN_vposFn)
+            print('     fr...')
+            LGN_fr = readLGN_fr(LGN_frFn, prec = prec)
+            print('     spikes...')
+            LGN_spScatter = readLGN_sp(LGN_spFn + ".bin", prec = prec)
+            np.savez(LGN_spFn + '.npz', spName = 'LGN_spScatter', LGN_spScatter = LGN_spScatter, LGN_V1_s = LGN_V1_s, LGN_V1_ID = LGN_V1_ID, nLGN_V1 = nLGN_V1, LGN_vpos = LGN_vpos, LGN_type = LGN_type, LGN_fr = LGN_fr, nLGN = nLGN, nLGN_I = nLGN_I, nLGN_C = nLGN_C)
+            print('complete.')
+        else:
             print('loading LGN data...')
             with np.load(LGN_spFn + '.npz', allow_pickle=True) as data:
                 nLGN_V1 = data['nLGN_V1']
@@ -223,7 +227,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         tstep = min(round(10/dt),tstep)
         nstep = nt_//tstep
         interval = tstep - 1
-        print(f'plot {nstep} data points from the {nt_} time steps startingfrom step {step0} dt = {tstep*dt}')
+        print(f'plot {nstep} data points from the {nt_} time steps starting from step {step0} dt = {tstep*dt}')
         nV1 = np.fromfile(f, 'u4', 1)[0] 
         iModel = np.fromfile(f, 'i4', 1)[0] 
         mI = np.fromfile(f, 'u4', 1)[0] 
@@ -281,15 +285,15 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                     OP = np.fromfile(f, 'f4', nV1)
                     OP_preset = np.mod(feature[1,:] + 0.5, 1.0)*np.pi
                 print(f'read OP from {pref_file}')
+                if fitted == 1:
+                    OPrange = np.arange(heatBins+1)/heatBins * 180
+                else:
+                    OPrange = np.arange(nOri+1)/nOri * 180
             except IOError:
                 print(f'Could not open {pref_file}! no cortical OP available, use preset OP instead.') 
                 usePrefData = False
                 OP = np.mod(feature[1,:] + 0.5, 1.0)*np.pi
-            if fitted == 1:
                 OPrange = np.arange(heatBins+1)/heatBins * 180
-            else:
-                OPrange = np.arange(nOri+1)/nOri * 180
-
         else:
             print(f'using preset OP')
             OP = np.mod(feature[1,:] + 0.5, 1.0)*np.pi
@@ -312,7 +316,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     F1F0range = np.arange(heatBins+1)/heatBins * 2
     # time range
     tpick = step0 + np.arange(nstep)*tstep 
-    t = tpick*dt
+    t = (tpick + 1)*dt
     assert(np.sum(epick) + np.sum(ipick) == np.sum(np.arange(nV1)))
     t_in_ms = nt_*dt
     t_in_sec = t_in_ms/1000
@@ -353,17 +357,22 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
             RFfreq = np.fromfile(f, 'f4', _n)
             baRatio = np.fromfile(f, 'f4', _n)
 
-        if 'sample' not in locals():
+        
             if usePrefData:
-                with open(sampleFn, 'rb') as f:
-                    _ns = np.fromfile(f, 'u4', 1)[0]
-                    sample_fr = np.fromfile(f, 'u4', _ns)
-                    sn_max = np.fromfile(f, 'u4', 1)[0]
-                    sample_max = np.fromfile(f, 'u4', sn_max)
-                    sn_min = np.fromfile(f, 'u4', 1)[0]
-                    sample_min = np.fromfile(f, 'u4', sn_min)
-                sample = np.hstack((sample_fr, sample_max, sample_min))
-            else:
+                try:
+                    with open(sampleFn, 'rb') as f:
+                        _ns = np.fromfile(f, 'u4', 1)[0]
+                        sample_fr = np.fromfile(f, 'u4', _ns)
+                        sn_max = np.fromfile(f, 'u4', 1)[0]
+                        sample_max = np.fromfile(f, 'u4', sn_max)
+                        sn_min = np.fromfile(f, 'u4', 1)[0]
+                        sample_min = np.fromfile(f, 'u4', sn_min)
+                    sample = np.hstack((sample_fr, sample_max, sample_min))
+                except IOError:
+                    print(f'Could not open {sampleFn}! no dPrefMinMax sample') 
+                    usePrefData = False
+
+            if 'sample' not in locals():
                 sample = np.random.randint(nV1, size = ns)
                 if False:
                     sample = np.argsort(sfreq)[-ns:]
@@ -461,6 +470,15 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     cI = np.zeros((ngI,nV1,2))
     cFF = np.zeros((ngFF,nV1,2))
     cGap = np.zeros((mI,2)) # gap junction current
+
+    if not usePrefData:
+        r_cE = np.zeros((nV1,nstep))
+        r_cI = np.zeros((nV1,nstep))
+        r_cFF = np.zeros((nV1,nstep))
+        r_depC = np.zeros((nV1,nstep))
+        r_cTotal = np.zeros((nV1,nstep))
+        if iModel == 1:
+            r_w = np.zeros((nV1,nstep))
     
     s_v = np.zeros(nV1)
     s_gFF = np.zeros(nV1)
@@ -539,6 +557,9 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         for i in range(nstep):
             f.seek(nV1*sizeofPrec, 1)
             data = np.fromfile(f, prec, nV1)
+            if not usePrefData:
+                r_depC[:,i] = data
+                r_cTotal[:,i] += r_depC[:,i]
             depC[:,0] = depC[:,0] + data
             depC[:,1] = depC[:,1] + data*data
             if plotSample and pDep:
@@ -546,6 +567,9 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     
             if iModel == 1:
                 data = np.fromfile(f, prec, nV1)
+                if not usePrefData:
+                    r_w[:,i] = data
+                    r_cTotal[:,i] += r_w[:,i]
                 w[:,0] = w[:,0] + data
                 w[:,1] = w[:,1] + data*data
                 if pW and plotSample:
@@ -556,8 +580,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
             v[:,1] = v[:,1] + s_v*s_v
             if pVoltage and plotSample:
                 _v[:,i] = s_v[sample]
-    
-            
+
             if pCond and plotTempMod:
                 tmp_v = tmp_v + s_v
                 if np.mod(per_it+1, stepsPerBin) == 0:
@@ -568,6 +591,9 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
             gFF[:,:,0] = gFF[:,:,0] + s_gFF
             gFF[:,:,1] = gFF[:,:,1] + s_gFF*s_gFF
             x = s_gFF*(vE - s_v)
+            if not usePrefData:
+                r_cFF[:,i] = x.sum(0)
+                r_cTotal[:,i] += r_cFF[:,i]
             cFF[:,:,0] = cFF[:,:,0] + x
             cFF[:,:,1] = cFF[:,:,1] + x*x
             if pCond and plotSample:
@@ -584,6 +610,9 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
             gE[:,:,0] = gE[:,:,0] + s_gE
             gE[:,:,1] = gE[:,:,1] + s_gE*s_gE
             x = s_gE*(vE - s_v)
+            if not usePrefData:
+                r_cE[:,i] = x.sum(0)
+                r_cTotal[:,i] += r_cE[:,i]
             cE[:,:,0] = cE[:,:,0] + x
             cE[:,:,1] = cE[:,:,1] + x*x
             if pCond and plotSample:
@@ -593,6 +622,9 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
             gI[:,:,0] = gI[:,:,0] + s_gI
             gI[:,:,1] = gI[:,:,1] + s_gI*s_gI
             x = s_gI*(vI - s_v)
+            if not usePrefData:
+                r_cI[:,i] = x.sum(0)
+                r_cTotal[:,i] += r_cI[:,i]
             cI[:,:,0] = cI[:,:,0] + x
             cI[:,:,1] = cI[:,:,1] + x*x
             if pCond and plotSample:
@@ -654,6 +686,53 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                     nstack_count = nstack_count + 1
                 per_nt = np.mod(per_nt + 1, TFbins)
     print(f'nstack = {nstack_count}, istack = {per_nt}, rstack = {per_it}')
+    def nextpow2(x):
+        y = 1
+        while y < x: 
+            y *= 2
+        return y
+
+    def traceFreq(arr, nV1, nstep):
+        _dt = tstep*dt
+        nfft = int(1000/(TF*_dt))
+        nblock = (nstep+nfft-1)//nfft
+        pad_to = nextpow2(nfft)
+
+        arr_pad0 = np.zeros(nblock*nfft)
+        padded_data = np.zeros((nblock, pad_to)) 
+        n_pad = nblock*nfft - nstep
+        weighted = np.ones(pad_to,)
+        weighted[:-n_pad] = nblock
+        weighted[-n_pad:pad_to] = max(nblock-1,1)
+        freq = np.fft.rfftfreq(nfft, _dt/1000)
+
+        ret = np.zeros((nV1, 3))
+        #max_freq, amp_ratio, phase
+
+        for i in range(nV1):
+            arr_pad0[:nstep] = arr[i,:]
+            padded_data[:,:nfft] = arr_pad0.reshape((nblock, nfft))
+            data = padded_data.sum(0)/weighted
+            coef = np.fft.rfft(data)
+            amp = np.abs(coef)
+
+            if not nfft % 2:
+                # if we have a even number of frequencies, don't scale NFFT/2
+                amp[1:-1] *= 2
+            else:
+                # if we have an odd number, just don't scale DC
+                amp[1:] *= 2
+                
+            i_freq = np.argmax(amp[1:]) + 1
+            ret[i,0] = freq[i_freq]
+            if amp[0] == 0:
+                assert(amp[i_freq] == 0)
+                ret[i,1] = 0
+            else:
+                ret[i,1] = amp[i_freq]/amp[0]
+            ret[i,2] = np.angle(coef[i_freq])
+
+        return ret
     
     def getMeanStd(arr, n):
         if len(arr.shape) == 3:
@@ -680,20 +759,61 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     getMeanStd(cFF,nstep)
     getMeanStd(cE,nstep)
     getMeanStd(cI,nstep)
+    getMeanStd(cGap,nstep)
+    if not usePrefData:
+        percentiles = [0,20,50,80,100]
+        cTotal_freq = traceFreq(r_cTotal, nV1, nstep)
+        cTotal_percent = np.percentile(r_cTotal, percentiles , axis = 1).T
+        cTotal_mean = np.mean(r_cTotal, axis = 1)
+        cFF_freq = traceFreq(r_cFF, nV1, nstep)
+        cFF_percent = np.percentile(r_cFF, percentiles, axis = 1).T
+        cFF_mean = np.mean(r_cFF, axis = 1)
+        cE_freq = traceFreq(r_cE, nV1, nstep)
+        cE_percent = np.percentile(r_cE, percentiles, axis = 1).T
+        cE_mean = np.mean(r_cE, axis = 1)
+        cI_freq = traceFreq(r_cI, nV1, nstep)
+        cI_percent = np.percentile(r_cI, percentiles, axis = 1).T
+        cI_mean = np.mean(r_cI, axis = 1)
+        depC_freq = traceFreq(r_depC, nV1, nstep)
+        depC_percent = np.percentile(r_depC, percentiles, axis = 1).T
+        depC_mean = np.mean(r_depC, axis = 1)
+        if iModel == 1:
+            w_freq = traceFreq(r_w, nV1, nstep)
+            w_percent = np.percentile(r_w, percentiles, axis = 1).T
+            w_mean = np.mean(r_w, axis = 1)
 
-    with open(meanFn, 'wb') as f:
-        np.array([nV1,mI,ngFF,ngE,ngI], dtype = 'i4').tofile(f)
-        fr.tofile(f)
-        gFF.tofile(f)
-        gE.tofile(f)
-        gI.tofile(f)
-        w.tofile(f)
-        v.tofile(f)
-        depC.tofile(f)
-        cFF.tofile(f)
-        cE.tofile(f)
-        cI.tofile(f)
-        cGap.tofile(f)
+        with open(statsFn, 'wb') as f:
+            np.array([iModel,nV1,mI,ngFF,ngE,ngI], dtype = 'i4').tofile(f)
+            fr.tofile(f)
+            gFF.tofile(f)
+            gE.tofile(f)
+            gI.tofile(f)
+            w.tofile(f)
+            v.tofile(f)
+            depC.tofile(f)
+            cFF.tofile(f)
+            cE.tofile(f)
+            cI.tofile(f)
+            cGap.tofile(f)
+            cTotal_freq.tofile(f)
+            cTotal_percent.tofile(f)
+            cTotal_mean.tofile(f)
+            cFF_freq.tofile(f)
+            cFF_percent.tofile(f)
+            cFF_mean.tofile(f)
+            cE_freq.tofile(f)
+            cE_percent.tofile(f)
+            cE_mean.tofile(f)
+            cI_freq.tofile(f)
+            cI_percent.tofile(f)
+            cI_mean.tofile(f)
+            depC_freq.tofile(f)
+            depC_percent.tofile(f)
+            depC_mean.tofile(f)
+            if iModel == 1:
+                w_freq.tofile(f)
+                w_percent.tofile(f)
+                w_mean.tofile(f)
 
     
     if plotLGNsCorr or plotRpCorr:
@@ -746,7 +866,11 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
             F2[i,:] = get_FreqComp(smoothed_fr, 2)
             if plotTempMod and pSample and not collectMeanDataOnly and i in sample:
                 amp = np.abs(np.fft.rfft(nsp))/TFbins
-                amp[1:-1] *= 2
+                if np.mod(TFbins,2) == 0:
+                    amp[1:-1] *= 2
+                else:
+                    amp[1:] = amp[1:]*2
+
                 ax = sfig.add_subplot(grid[j,0])
                 ax.plot(t_tf, nsp, '-k', lw = 0.5)
                 ax.set_ylim(bottom = 0)
@@ -839,7 +963,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     tF1 = gI_F1[:,0]
     gI_F1F0[gI_F0_0] = tF1[gI_F0_0]/gI_F0[gI_F0_0]
 
-    with open(meanFn, 'ab') as f:
+    with open(statsFn, 'ab') as f:
         F1F0.tofile(f)
         gFF_F1F0.tofile(f)
         gE_F1F0.tofile(f)
@@ -975,6 +1099,10 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     
         if pCond:
             if pSample:
+                if np.mod(gTFbins,2) == 1:
+                    nf = (gTFbins+1)//2
+                else:
+                    nf = gTFbins//2+1
                 sfig = plt.figure(f'gFF_TF-sample', dpi = 600, figsize = [5.0, ns])
                 grid = gs.GridSpec(ns, 2, figure = sfig, hspace = 0.2)
                 for i in range(ns):
@@ -990,8 +1118,12 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                         ax.set_xlabel('time(ms)')
                         ax = sfig.add_subplot(grid[i,1])
                         amp = np.abs(np.fft.rfft(per_gFF[sample[i],:]))/gTFbins
-                        amp[1:] = amp[1:]*2
-                        ff = np.arange(gTFbins//2+1) * TF
+                        if np.mod(gTFbins,2) == 0:
+                            amp[1:-1] *= 2
+                        else:
+                            amp[1:] = amp[1:]*2
+
+                        ff = np.arange(nf) * TF
                         ipre = np.argwhere(ff<TF)[-1][0]
                         ipost = np.argwhere(ff>=TF)[0][0]
                         ax.plot(ff, amp, 'g', lw = 0.5, alpha = 0.5)
@@ -1062,10 +1194,10 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         for i in range(ns):
             iV1 = sample[i]
             if not pSingleLGN:
-                fig = plt.figure(f'V1-sample-{iV1}', dpi = 900, figsize = np.array([6, 5])*1.2)
+                fig = plt.figure(f'V1-sample-{iV1}', dpi = 1200, figsize = np.array([6, 5])*1.2)
                 grid = gs.GridSpec(3, 2, figure = fig, hspace = 0.2, wspace = 0.3)
             else:
-                fig = plt.figure(f'V1-sample-{iV1}', dpi = 900, figsize = np.array([6,nLGN_V1[iV1]+5])*1.2)
+                fig = plt.figure(f'V1-sample-{iV1}', dpi = 1200, figsize = np.array([6,nLGN_V1[iV1]+5])*1.2)
                 grid = gs.GridSpec(nLGN_V1[iV1]+3, 2, figure = fig, hspace = 0.2, wspace = 0.3)
             iblock = iV1//blockSize
             ithread = np.mod(iV1, blockSize)
@@ -1075,12 +1207,30 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
             itype = np.nonzero(np.mod(iV1, blockSize) < typeAcc)[0][0]
             subrange = vT[itype] - vR[itype]
             _vThres = min(vR[itype] + subrange*2, np.max(_v[i,:])) 
-            ax.plot(tsp, np.zeros(len(tsp))+_vThres, 'sk', ms = 0.5, mec = 'k', mfc = 'k', mew = 0.1)
+            ax.plot(tsp, np.zeros(len(tsp))+_vThres, 'sk', ms = 0.5, mec = 'k', mfc = 'k', mew = 0.2)
             #if pVoltage:
             ax.plot(t, _v[i,:], '-k', lw = lw)
             ax.plot(t, np.ones(t.shape), ':k', lw = lw)
             #if pCond:
             ax2 = ax.twinx()
+            if nLGN_V1[iV1] > 0:
+                roll_c = choose_color(nLGN_V1[iV1], mpl.cm.get_cmap('Set2'))
+                for j in range(nLGN_V1[iV1]):
+                    spTmp = np.array(LGN_spScatter[LGN_V1_ID[iV1][j]])
+                    iLGN_sp = spTmp[np.logical_and(spTmp>=step0*dt, spTmp<(nt_+step0)*dt)]
+                    sp_val = np.zeros(iLGN_sp.shape)
+                    for _tsp, iv in zip(iLGN_sp, np.arange(sp_val.size)):
+                        jt = bisect(t, _tsp)
+                        it = jt - 1
+                        if it == -1:
+                            it = 0
+                            sp_val[iv] = _gFF[0,0,i,0]
+                        elif jt == nstep:
+                            jt = nstep - 1
+                            sp_val[iv] = _gFF[0,0,i,-1]
+                        else:
+                            sp_val[iv] = _gFF[0,0,i,it] + (_gFF[0,0,i,jt] - _gFF[0,0,i,it])*(_tsp - t[it])/(t[jt]-t[it])
+                    ax2.plot(iLGN_sp, sp_val, 's', ms = 0.2, mec = roll_c[j,:], mfc = roll_c[j,:], mew = 0.06, alpha = 0.8)
             for ig in range(ngFF):
                 ax2.plot(t, _gFF[0,ig,i,:], '-g', lw = (ig+1)/ngFF * lw)
             for ig in range(ngE):
@@ -1163,8 +1313,11 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 title = f'FR:{fr[iV1]:.3f}, F1F0:{F1F0[iV1]:.3f}, {gFF_F1F0[iV1]:.3f}(gFF)'
             else:
                 title = f'FR:{fr[iV1]:.3f}, F1F0:{F1F0[iV1]:.3f}'
-            ax.set_title(title, fontsize = 'small')
+            _, top = ax.get_ylim()
+            ax.set_ylim(top = top*1.2)
+            ax.text(0.5, 0.85, title, transform=ax.transAxes, fontsize = 'small', horizontalalignment = 'center')
             ax.set_ylabel('current', fontsize = 'small')
+            ax.set_xlabel('ms')
             ax.tick_params(axis='both', labelsize='xx-small', direction='in')
 
             ax.yaxis.grid(True, which='minor', linestyle=':', linewidth = 0.1)
@@ -1181,7 +1334,8 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                     all_pos = LGN_vpos[:,:nLGN_I]
                     all_type = LGN_type[:nLGN_I]
 
-                print(f'LGN id for neuron {iV1}: {LGN_V1_ID[iV1]}')
+                if not pSingleLGN:
+                    print(f'LGN id for neuron {iV1}({iblock}-{ithread}): {LGN_V1_ID[iV1]}')
                 ax = fig.add_subplot(grid[2,0])
                 frTmp = LGN_fr[:, LGN_V1_ID[iV1]]
                 LGN_fr_sSum = np.sum(frTmp[tpick,:] * LGN_V1_s[iV1], axis=-1)
@@ -1195,17 +1349,18 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 #ax.hist((sp_range[:-1] + sp_range[1:])/2, bins = sp_range, color = 'b', weights = counts/(1/TF/FRbins), alpha = 0.5)
                 LGN_smooth_fr = movingAvg(counts/(1/TF/FRbins), counts.size, int(1000/TF/16))
                 ax.plot((sp_range[:-1] + sp_range[1:])/2, LGN_smooth_fr, '-b', lw = 2.5*lw)
-                ax.plot(LGN_sp_total, np.zeros(LGN_sp_total.size) + np.max(LGN_fr_sSum)/2, 'sg', ms = 0.2, mew = 0.04)
+                ax.plot(LGN_sp_total, np.zeros(LGN_sp_total.size) + np.max(LGN_fr_sSum)/2, 'sg', ms = 0.2, mew = 0.4)
                 ax2 = ax.twinx()
                 for ig in range(ngFF):
-                    ax2.plot(t, _gFF[0,ig,i,:], ':g', lw = (ig+1)/ngFF * lw)
+                    ax2.plot(t, _gFF[0,ig,i,:], ':g', lw = (ig+1)/ngFF * 2.5 * lw)
                 ax.tick_params(axis='both', labelsize='xx-small', direction='in')
                 ax2.tick_params(axis='both', labelsize='xx-small', direction='in')
     
                 ax = fig.add_subplot(grid[2,1])
                         #   L-on L-off M-on  M-off  On   Off
-                markers = ('^r', 'vg', '*g', 'dr', '^k', 'vb')
-                tc = ('r', 'g', 'g', 'r', 'k', 'b')
+                markers = ('^r', 'vg', '*g', 'dr', '^b', 'vb')
+                type_labels = ['R-On', 'G-Off', 'G-On', 'R-Off', 'On', 'Off']
+                type_c = ('r', 'g', 'g', 'r', 'k', 'b')
                 iLGN_vpos = LGN_vpos[:, LGN_V1_ID[iV1]]
                 iLGN_type = LGN_type[LGN_V1_ID[iV1]]
     
@@ -1226,10 +1381,6 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                     pick = all_type == j
                     ax.plot(all_pos[0,pick], all_pos[1,pick], markers[j], ms = min_s/max_s*ms, mew = 0.0, alpha = 0.5)
 
-                subRed = np.empty((2,1))
-                subGreen = np.empty((2,1))
-                subOn = np.empty((2,1))
-                subOff = np.empty((2,1))
                 iSubR = 0
                 iSubG = 0
                 iSubOn = 0
@@ -1238,25 +1389,25 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                     jtype = iLGN_type[j]
                     if jtype == 0 or jtype == 3:
                         if iSubR == 0:
-                            subRed = iLGN_vpos[:,j]
+                            subRed = iLGN_vpos[:,j].copy()
                         else:
                             subRed += iLGN_vpos[:,j]
                         iSubR += 1 
                     if jtype == 1 or jtype == 2:
                         if iSubG == 0:
-                            subGreen = iLGN_vpos[:,j]
+                            subGreen = iLGN_vpos[:,j].copy()
                         else:
                             subGreen += iLGN_vpos[:,j]
                         iSubG += 1 
                     if jtype == 4:
                         if iSubOn == 0:
-                            subOn = iLGN_vpos[:,j]
+                            subOn = iLGN_vpos[:,j].copy()
                         else:
                             subOn += iLGN_vpos[:,j]
                         iSubOn += 1 
                     if jtype == 5:
                         if iSubOff == 0:
-                            subOff = iLGN_vpos[:,j]
+                            subOff = iLGN_vpos[:,j].copy()
                         else:
                             subOff += iLGN_vpos[:,j]
                         iSubOff += 1 
@@ -1264,7 +1415,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                     ax.plot(iLGN_vpos[0,j], iLGN_vpos[1,j], markers[jtype], ms = iLGN_v1_s[j]/max_s*ms, mew = ms*0.5)
                     lgn_id = LGN_V1_ID[iV1][j]
                     ix, iy = ellipse(iLGN_vpos[0,j], iLGN_vpos[1,j], LGN_rw[0,lgn_id]*180/np.pi, LGN_rh[0,lgn_id]/LGN_rw[0,lgn_id], LGN_orient[0,lgn_id], n=25)
-                    ax.plot(ix, iy, color=tc[jtype], ls='dotted', lw=0.1)
+                    ax.plot(ix, iy, color=type_c[jtype], ls='dotted', lw=0.1)
 
                 title = ''
                 if iSubR > 0 and iSubG > 0:
@@ -1279,11 +1430,11 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                     subOn /= iSubOn
                     subOff /= iSubOff
                     SF_OnOff = 1/(2*np.linalg.norm(subOn-subOff))
-                    title += f'SF_OnOff: {SF_OnOff:.1f} cycles/deg'
+                    title += f'SF_OnOff: {SF_OnOff:.1f}'
                     ax.plot(subOn[0], subOn[1], 'sk', ms = ms)
                     ax.plot(subOff[0], subOff[1], 'sb', ms = ms)
                 if title:
-                    ax.set_title(title, fontsize='x-small')
+                    ax.text(1.1, 0.8, title +  ' cyc/deg', transform=ax.transAxes, fontsize='x-small')
 
                 orient = OP[iV1] + np.pi/2
                 input_orient = iOri/nOri*np.pi + np.pi/2
@@ -1305,8 +1456,8 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 y[0] = np.min([y[0], np.min(by)])
                 ax.set_xlim(left = x[0] - (x[1]-x[0])*0.1, right = x[1] + (x[1]-x[0])*0.1)
                 ax.set_ylim(bottom = y[0] - (y[1]-y[0])*0.1, top = y[1] + (y[1]-y[0])*0.1)
-                xlim = ax.get_xlim()
-                ylim = ax.get_ylim()
+                left, right = ax.get_xlim()
+                bottom, top = ax.get_ylim()
 
                 sf_x = np.empty(2)
                 sf_y = np.empty(2)
@@ -1361,8 +1512,10 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                     input_y = np.tan(input_orient)*(input_x-cx[iV1]) + cy[iV1]
 
                 ax.plot(input_x, input_y, ':m', lw = 0.15, label='input.')
-                ax.legend(fontsize='xx-small', bbox_to_anchor = (1,1), loc='upper left')
+                ax.legend(fontsize='xx-small', bbox_to_anchor = (1,0.75), loc='upper left')
 
+                ax.set_xlim(left = left, right = right)
+                ax.set_ylim(bottom = bottom, top = top)
                 ax.set_aspect('equal')
                 ax.set_xlabel('deg', fontsize = 'x-small')
                 ax.set_ylabel('deg', fontsize = 'x-small')
@@ -1378,18 +1531,21 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                     counts, _ = np.histogram(iLGN_sp, bins = sp_range)
                     iLGN_smooth_fr = movingAvg(counts/(1/TF/FRbins), counts.size, int(1000/TF/16))
                     ax.plot((sp_range[:-1] + sp_range[1:])/2, iLGN_smooth_fr, '-b', lw=2.5*lw)
-                    ax.plot(iLGN_sp, np.zeros(iLGN_sp.size)+np.max(iLGN_fr)/2, 'sg', ms = 0.4)
-                    ax.set_ylabel(f'#{LGN_V1_ID[iV1][j]}\ns:{LGN_V1_s[iV1][j]:.2e}')
+                    ax.plot(iLGN_sp, np.zeros(iLGN_sp.size)+np.max(iLGN_fr)/2, 'sg', ms = 0.2, mew = 0.4)
+                    ax.tick_params(axis='both', labelsize='xx-small')
+
+                    ax.set_ylabel(f'#{LGN_V1_ID[iV1][j]}({type_labels[iLGN_type[j]]})\ns:{LGN_V1_s[iV1][j]:.2e}', fontsize = 'x-small')
                     ax = fig.add_subplot(grid[3+j,1])
                     for k in range(6):
                         pick = iLGN_type == k
                         ax.plot(iLGN_vpos[0,pick], iLGN_vpos[1,pick], markers[k], ms = 0.4)
                     ax.plot(iLGN_vpos[0,j], iLGN_vpos[1,j], 'ok', ms = 1.0)
                     ax.set_aspect('equal')
-                    ax.set_xlabel('deg', fontsize = 'x-small')
+                    if j == nLGN_V1[iV1] - 1:
+                        ax.set_xlabel('deg', fontsize = 'x-small')
                     ax.set_ylabel('deg', fontsize = 'x-small')
-                    ax.set_xlim(xlim)
-                    ax.set_ylim(ylim)
+                    ax.set_xlim(left = left, right = right)
+                    ax.set_ylim(bottom = bottom, top = top)
                     ax.tick_params(axis='both', labelsize='xx-small', direction='in')
 
             if usePrefData:
@@ -2904,9 +3060,10 @@ def movingAvg(data, n, m, axis = -1):
         avg_data = np.empty(data.shape)
         if np.mod(m,2) == 0:
             m = m + 1
-        s = (m-1)//2
+        s = min((m-1)//2, n)
         if len(data.shape) == 1:
-            avg_data[:s] = [np.mean(data[:i+s]) for i in range(1,s+1)]
+            _seq = [np.mean(data[:i+s]) for i in range(1,s+1)]
+            avg_data[:s] = _seq
             avg_data[-s:] = [np.mean(data[-2*s+i:]) for i in range(s)]
             if n >= m:
                 avg_data[s:-s] = [np.mean(data[i-s:i+s+1]) for i in range(s,n-s)]
@@ -2929,6 +3086,28 @@ def ellipse(cx, cy, a, baRatio, orient, n = 50):
     x = cx + r*np.cos(phi)
     y = cy + r*np.sin(phi)
     return x, y
+
+def choose_color(n, cmap):
+    c = np.array([cmap(x)[:3] for x in np.linspace(0, 1, n)])
+    #hsv_c = np.array([mpl.colors.rgb_to_hsv(color) for color in c])
+    #yellow_hue = [0.15 - 0.1/3, 0.15 + 0.1/3]
+    #n_yellow = np.logical_and(hsv_c[:,0] >= yellow_hue[0], hsv_c[:,0] <= yellow_hue[1]).sum()
+    #if n_yellow > 0:
+    #    i = n
+    #    while i - n_yellow < n:
+    #        i += n_yellow
+    #        c_alt = np.array([cmap(x)[:3] for x in np.linspace(0, 1, i)])
+    #        hsv_c = np.array([mpl.colors.rgb_to_hsv(color) for color in c_alt])
+    #        yellow_pick = np.logical_and(hsv_c[:,0] >= yellow_hue[0], hsv_c[:,0] <= yellow_hue[1])
+    #        n_yellow = yellow_pick.sum()
+    #        
+    #    hsv_c = hsv_c[np.logical_not(yellow_pick), :]
+    #    c = np.array([mpl.colors.hsv_to_rgb(color) for color in hsv_c])
+    #max_lightness = 0.9
+    #lightness = np.array([light if light < max_lightness else max_lightness for light in hsv_c[:,2]])
+    #hsv_c[:,2] = lightness
+    #c = np.array([mpl.colors.hsv_to_rgb(color) for color in hsv_c])
+    return c
 
 if __name__ == "__main__":
 

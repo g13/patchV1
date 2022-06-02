@@ -1313,6 +1313,11 @@ void compute_V_collect_spike_learnFF_fast(
 		}
     }
 
+	bool pInfo = false;
+	//if (blockIdx.x == 33 && threadIdx.x == 678) {
+	if (false) {
+		pInfo = true;
+	}
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
     // TODO: load individual gl, tref
     PosInt itype;
@@ -1457,6 +1462,9 @@ void compute_V_collect_spike_learnFF_fast(
 				f *= 1-p + normed_std*rand;
 			}
 			if (f > 0) {
+				if (pInfo) {
+					printf("\n#V1:%i-%i received LGN %i, (%i,%i) input at %f of size %.1f\n", blockIdx.x, threadIdx.x, i, x, y, tsp_FF, f);
+				}
 				Float ddt;
 				if (backingUpFromRef) {
 					ddt = model.tBack - tsp_FF;
