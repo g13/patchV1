@@ -22,6 +22,7 @@ module load python/intel/3.8.6
 #module load matlab/R2017a
 module list
 
+usePrefData=False
 collectMeanDataOnly=False
 
 if [ "$fitTC" = True ]; then

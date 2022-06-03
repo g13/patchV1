@@ -1592,7 +1592,7 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
             grid = gs.GridSpec(4, 5, figure = fig, hspace = 0.3, wspace = 0.3)
             ax = fig.add_subplot(grid[:2,:2]) # fr, cE, cI, depC
             ax2 = ax.twinx()
-            ax.plot(op, fr[itheta,iV1], 'k')
+            ax.plot(op, fr[itheta,iV1], '-ok')
             pref_title = f'V1:{iPref_cort_for_ori[iV1]*dOri:.0f}, gFF_F1F0:{iPref_thal_for_ori[iV1]*dOri:.0f}, preset:{iPref[iV1]*dOri:.0f}'
             if fitTC:
                 ax.plot(theta/np.pi*180, von_Mises(theta, fit_a[iV1], fit_b[iV1], fit_s[iV1], fit_pref[iV1]), ':k')
