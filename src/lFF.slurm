@@ -1,7 +1,7 @@
 #!/bin/bash
 cd ${HOME}/repos/patchV1/src
 
-t=00:30:00
+t=00:35:00
 echo ${t}
 #fdr0=/scratch/wd554/Jen
 fdr0=/scratch/wd554/patchV1
@@ -15,9 +15,9 @@ waveStage=3 # set stage number
 if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 	#inputFn=32-sequential_10-30_stage_II 
 	#inputFn=32-random3917563_10-30_stage_II 
-	inputFn=32-opponent_10-30_stage_II 
+	inputFn=32-opponent_10-10_stage_II 
 	fdr=wave_concat/wave_II # folder will be made to store figures and configuratoin files
-	op=II_m # theme string to be added to filenames of data and figures
+	op=w2_iwi1_dt25 # theme string to be added to filenames of data and figures
 	op_cfg=wave_II.cfg # the simulation config file to be used
 	new_setup=False
 	lgn=lFF_II # the theme string to be used for LGN_V1 connections
@@ -28,16 +28,16 @@ fi
 relay=false
 if [[ "${waveStage}" = "3" ]] ;then
 	#inputFn=32x3-random3917563_5-15_stage_III_sym
-	inputFn=32x3-opponent_5-10_stage_III_sym
+	inputFn=32x3-opponent_5-10_stage_III_reverse
 	#inputFn=32x3-sequential_5-15_stage_III_sym
 	#inputFn=32x3-135_5-5_stage_III_sym
 	fdr=wave_concat/wave_III
-	op=w3_opp_iwi2_on1off1_cap3_g7
+	op=w3r_opp_iwi2_on1off1_cap3_g0
 	#op=single_test-135
 	op_cfg=wave_III.cfg
 	new_setup=True
 	if [[ "${relay}" = false ]]; then
-		suffix=g7
+		suffix=g0
 		lgn=lFF_III_${suffix}
 		res=lFF_III_${suffix}
 	else
@@ -66,7 +66,9 @@ fi
 
 binary_thres=0.0
 #binary_thres=0.5
-std_ecc=2.6667
+std_ecc=16
+#std_ecc=6
+#std_ecc=2.66667
 seed=1924784 # RANDOM SEED for post-analysis sampling and input randomization 
 # for outputLearnFF.m
 st=2 # figures' output: 0 for temporal, 1 for spatial, 2 for both, otherwise none

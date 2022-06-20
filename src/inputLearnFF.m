@@ -554,8 +554,8 @@ function inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, fdr, squar
 	fwrite(fid,2,'uint');
 	fwrite(fid,1,'uint');
 	fwrite(fid,[mE,mI+mE],'uint');
-	fwrite(fid,[5,5,5,5],'float'); % synapse per cortical connection in float!
-	fwrite(fid,[10,10],'float'); % synapse per FF connection in float!
+	%fwrite(fid,[5,5,5,5],'float'); % synapse per cortical connection in float!
+	%fwrite(fid,[10,10],'float'); % synapse per FF connection in float!
 	fclose(fid);
 	
 	fConStats = [fdr, 'conStats', suffix, '.bin'];

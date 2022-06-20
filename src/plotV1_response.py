@@ -44,9 +44,9 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     nsmoothFr = nsmooth
     nsmoothFreq = nsmooth 
     
-    #plotRpStat = True 
-    #plotRpCorr = True
-    #plotScatterFF = True
+    plotRpStat = True 
+    plotRpCorr = True
+    plotScatterFF = True
     plotSample = True
     #plotDepC = True # plot depC distribution over orientation
     #plotLGNsCorr = True
@@ -54,9 +54,9 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     #plotExc_sLGN = True
     #plotLR_rp = True
     
-    plotRpStat = False 
-    plotRpCorr = False 
-    plotScatterFF = False
+    #plotRpStat = False 
+    #plotRpCorr = False 
+    #plotScatterFF = False
     #plotSample = False
     plotDepC = False
     plotLGNsCorr = False 
@@ -86,7 +86,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     #pDep = False
     #pLog = False
     
-    pSingleLGN = True
+    pSingleLGN = False
     pSC = True
     #pSC = False
 
@@ -132,7 +132,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     rawDataFn = data_fdr + "rawData" + _output_suffix + ".bin"
     LGN_frFn = data_fdr + "LGN_fr" + _output_suffix + ".bin"
     LGN_spFn = data_fdr + "LGN_sp" + _output_suffix
-    statsFn = data_fdr + "mean_data" + _output_suffix + ".bin"
+    statsFn = data_fdr + "traceStats" + _output_suffix + ".bin"
     
     pref_file = data_fdr + 'cort_pref_' + output_suffix0 + '.bin'
     if nOri == 0 and singleOri:
@@ -704,7 +704,13 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         weighted = np.ones(pad_to,)
         weighted[:-n_pad] = nblock
         weighted[-n_pad:pad_to] = max(nblock-1,1)
-        freq = np.fft.rfftfreq(nfft, _dt/1000)
+
+        if np.mod(pad_to, 2) == 1:
+            nf = (pad_to+1)//2
+        else:
+            nf = pad_to//2 + 1
+
+        freq = np.arange(nf) * 1000/_dt/pad_to
 
         ret = np.zeros((nV1, 3))
         #max_freq, amp_ratio, phase
@@ -759,28 +765,26 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     getMeanStd(cFF,nstep)
     getMeanStd(cE,nstep)
     getMeanStd(cI,nstep)
+    cTotal = np.zeros((nV1,2))
+    cTotal[:,0] = r_cTotal.sum(1)
+    cTotal[:,1] = np.sum(r_cTotal*r_cTotal, axis = 1)
+    getMeanStd(cTotal,nstep)
     getMeanStd(cGap,nstep)
     if not usePrefData:
         percentiles = [0,20,50,80,100]
         cTotal_freq = traceFreq(r_cTotal, nV1, nstep)
         cTotal_percent = np.percentile(r_cTotal, percentiles , axis = 1).T
-        cTotal_mean = np.mean(r_cTotal, axis = 1)
         cFF_freq = traceFreq(r_cFF, nV1, nstep)
         cFF_percent = np.percentile(r_cFF, percentiles, axis = 1).T
-        cFF_mean = np.mean(r_cFF, axis = 1)
         cE_freq = traceFreq(r_cE, nV1, nstep)
         cE_percent = np.percentile(r_cE, percentiles, axis = 1).T
-        cE_mean = np.mean(r_cE, axis = 1)
         cI_freq = traceFreq(r_cI, nV1, nstep)
         cI_percent = np.percentile(r_cI, percentiles, axis = 1).T
-        cI_mean = np.mean(r_cI, axis = 1)
         depC_freq = traceFreq(r_depC, nV1, nstep)
         depC_percent = np.percentile(r_depC, percentiles, axis = 1).T
-        depC_mean = np.mean(r_depC, axis = 1)
         if iModel == 1:
             w_freq = traceFreq(r_w, nV1, nstep)
             w_percent = np.percentile(r_w, percentiles, axis = 1).T
-            w_mean = np.mean(r_w, axis = 1)
 
         with open(statsFn, 'wb') as f:
             np.array([iModel,nV1,mI,ngFF,ngE,ngI], dtype = 'i4').tofile(f)
@@ -794,27 +798,21 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
             cFF.tofile(f)
             cE.tofile(f)
             cI.tofile(f)
+            cTotal.tofile(f)
             cGap.tofile(f)
             cTotal_freq.tofile(f)
             cTotal_percent.tofile(f)
-            cTotal_mean.tofile(f)
             cFF_freq.tofile(f)
             cFF_percent.tofile(f)
-            cFF_mean.tofile(f)
             cE_freq.tofile(f)
             cE_percent.tofile(f)
-            cE_mean.tofile(f)
             cI_freq.tofile(f)
             cI_percent.tofile(f)
-            cI_mean.tofile(f)
             depC_freq.tofile(f)
             depC_percent.tofile(f)
-            depC_mean.tofile(f)
             if iModel == 1:
                 w_freq.tofile(f)
                 w_percent.tofile(f)
-                w_mean.tofile(f)
-
     
     if plotLGNsCorr or plotRpCorr:
         getMeanStd(gFF_gTot_ratio,nstep)

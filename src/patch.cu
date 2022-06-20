@@ -68,6 +68,7 @@ int main(int argc, char** argv) {
 	bool use_v0;
 	bool virtual_LGN;
     bool symmetricHomeo;
+	bool CmoreDep;
 	int rebound;
 	int learning;
 	int iModel;
@@ -266,6 +267,7 @@ int main(int argc, char** argv) {
 		("SCsplit", po::value<Size>(&SCsplit)->default_value(0), "simple complex split at nLGN > SCsplit (simple)")
 		("noisyDep", po::value<vector<Float>>(&noisyDep), "noisy depolarization borrow from NMC model")
 		("tonicDep", po::value<vector<Float>>(&tonicDep), "tonic depolarization borrow from NMC model")
+		("CmoreDep", po::value<bool>(&CmoreDep)->default_value(true), "allow more depolarization for complex cells")
 		("tau_noise", po::value<Float>(&tau_noise)->default_value(0), "auto-correlation decay time scale of the correlated gaussian noise")
 		("minTonicRatio", po::value<vector<Float>>(&minTonicRatio), "minimum tonic depolarization ratio of size [nType]")
 		("synFailFF", po::value<vector<Float>>(&synFailFF), "FF synpase failure rate of size nType")
@@ -2750,10 +2752,7 @@ int main(int argc, char** argv) {
 	vector<Float> fOri;
 	if (nOri > 0) {
     	if (boostOri.size() > 0) {
-			if (iOri.size() == 0) {
-    	        cout << "when boostOri is set, iOri needs to be set.\n";
-    	        return EXIT_FAILURE; 
-			}
+			bool boost_condition = false;
     	    if (boostOri.size() != 2 && boostOri.size() != 2*nType) {
     	        cout << "boostOri need 2 x nType elements: [baseline, std] x nType.\n";
     	        return EXIT_FAILURE; 
@@ -2765,7 +2764,17 @@ int main(int argc, char** argv) {
     	                boostOri.push_back(boostOri[1]);
     	            }
     	        }
+    	        for (PosInt i = 0; i < nType; i++) {
+					if (boostOri[i*2 + 1] != 0) {
+						boost_condition = true;
+						break;
+					}
+				}
     	    }
+			if (boost_condition && iOri.size() == 0) {
+    	        cout << "when boostOri[std] is set, iOri needs to be set.\n";
+    	        return EXIT_FAILURE; 
+			}
     	} 
 		
 		if (iOri.size() > 0) {
@@ -4013,12 +4022,16 @@ int main(int argc, char** argv) {
 					iType++;
 				}
                 Float boosted = get_boost(id, iType);
-                Float relative_tonicRatio = 1-ffRatio[id];
-                Float min_tonicRatio = 1-max_ffRatio[iType];
-                Float max_tonicRatio = 1-min_ffRatio[iType];
-				assert(boosted <= 1);
-				if (max_ffRatio[iType] > min_ffRatio[iType]) {
-					iTonicDep[id] = tonicDep[iType]*boosted*(minTonicRatio[iType] + (1-minTonicRatio[iType]) * (relative_tonicRatio-min_tonicRatio)/(max_tonicRatio -min_tonicRatio));
+				if (CmoreDep) {
+					Float relative_tonicRatio = 1-ffRatio[id];
+                	Float min_tonicRatio = 1-max_ffRatio[iType];
+                	Float max_tonicRatio = 1-min_ffRatio[iType];
+					assert(boosted <= 1);
+					if (max_ffRatio[iType] > min_ffRatio[iType]) {
+						iTonicDep[id] = tonicDep[iType]*boosted*(minTonicRatio[iType] + (1-minTonicRatio[iType]) * (relative_tonicRatio-min_tonicRatio)/(max_tonicRatio -min_tonicRatio));
+					} else {
+						iTonicDep[id] = tonicDep[iType]*boosted;
+					}
 				} else {
 					iTonicDep[id] = tonicDep[iType]*boosted;
 				}

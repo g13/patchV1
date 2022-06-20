@@ -1411,13 +1411,14 @@ void compute_V_collect_spike_learnFF_fast(
 
 	Float p = synFailFF[itype];
 	Float nSyn = synPerConFF[itype];
+	Float _noisyDep = noisyDep[itype]*(vT[itype] - vR[itype]);
 
 	if (tau_noise == 0) {
-		noise = square_root(2*noisyDep[itype]*abs(model.depC)*dt);
+		noise = square_root(2*_noisyDep*dt);
 		if (noise > 0) noise *= normal(&state);
 	} else {
 		Float exp_noise = exponential(-dt/tau_noise);
-		noise = noise*(exp_noise-1) + square_root(noisyDep[itype]*abs(model.depC)/tau_noise*(1-exp_noise*exp_noise)) * normal(&state);
+		noise = noise*(exp_noise-1) + square_root(_noisyDep/tau_noise*(1-exp_noise*exp_noise)) * normal(&state);
 	}
 
 	bool backingUpFromRef = model.tBack < dt && model.tBack > 0;
@@ -1425,7 +1426,8 @@ void compute_V_collect_spike_learnFF_fast(
 	dep[tid] = model.depC + noise;
 	last_noise[tid] = noise;
 
-	/*if (tid == 960) {
+	/*
+	if (tid == 960) {
 		Float local_gap = threadIdx.x >= nE ? gap[iChunk][gap_id]: 0;
 		printf("before #%u: v = %.3f, tBack = %.3f, vT = %.3f, deltaT = %.3f, a0 = %.3f, a1 = %.3f, b0 = %.3f, b1 = %.3f, gapS = %.3f, gap = %.3f, w=%.3f, w0=%.3f, depC = %.3f, dep = %.3f\n", tid, model.v0, model.tBack, model.vT, model.deltaT, model.a0, model.a1, model.b0, model.b1, local_gapS, local_gap, model.w, model.w0, model.depC);
 		assert(v[tid] == model.v0);

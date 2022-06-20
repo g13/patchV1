@@ -107,10 +107,10 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
 
     LGN_fr = np.empty((nOri,nLGN)) 
     LGN_fr_weighted = np.empty((nOri, nV1_0)) 
-    mean_data_files = [data_fdr+"mean_data" + output_suffix + str(iOri+1) + ".bin" for iOri in range(nOri)]
+    perOriStats_files = [data_fdr+"traceStats" + output_suffix + str(iOri+1) + ".bin" for iOri in range(nOri)]
 
     for i in range(nOri):
-        with open(mean_data_files[i], 'rb') as f:
+        with open(perOriStats_files[i], 'rb') as f:
             if i == 0:
                 iModel = np.fromfile(f, 'i4', count=1)[0]
                 nV1 = np.fromfile(f, 'i4', count=1)[0]
@@ -130,26 +130,22 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
                 cFF = np.empty((nOri,ngFF,nV1,2))
                 cE = np.empty((nOri,ngE,nV1,2))
                 cI = np.empty((nOri,ngI,nV1,2))
+                cTotal = np.empty((nOri,nV1,2))
                 cGap = np.empty((nOri,nI,2))
                 cTotal_freq = np.empty((nOri,nV1,3))
                 cTotal_percent = np.empty((nOri,nV1,5))
-                cTotal_mean = np.empty((nOri,nV1))
                 cFF_freq = np.empty((nOri,nV1,3))
                 cFF_percent = np.empty((nOri,nV1,5))
-                cFF_mean = np.empty((nOri,nV1))
                 cE_freq = np.empty((nOri,nV1,3))
                 cE_percent = np.empty((nOri,nV1,5))
-                cE_mean = np.empty((nOri,nV1))
                 cI_freq = np.empty((nOri,nV1,3))
                 cI_percent = np.empty((nOri,nV1,5))
-                cI_mean = np.empty((nOri,nV1))
                 depC_freq = np.empty((nOri,nV1,3))
                 depC_percent = np.empty((nOri,nV1,5))
-                depC_mean = np.empty((nOri,nV1))
                 if iModel == 1:
                     w_freq = np.empty((nOri,nV1,3))
                     w_percent = np.empty((nOri,nV1,5))
-                    w_mean = np.empty((nOri,nV1))
+
                 F1F0    = np.empty((nOri,nV1))
                 gFF_F1F0= np.empty((nOri,nV1))
                 gE_F1F0 = np.empty((nOri,nV1))
@@ -174,26 +170,22 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
             cFF[i,:,:,:] = np.fromfile(f, 'f8', count = ngFF*2*nV1).reshape((ngFF,nV1,2))
             cE[i,:,:,:] = np.fromfile(f, 'f8', count = ngE*2*nV1).reshape((ngE,nV1,2))
             cI[i,:,:,:] = np.fromfile(f, 'f8', count = ngI*2*nV1).reshape((ngI,nV1,2))
+            cTotal[i,:,:] = np.fromfile(f, 'f8', count = 2*nV1).reshape((nV1,2))
             cGap[i,:,:] = np.fromfile(f, 'f8', count = 2*nI).reshape((nI,2))
+
             cTotal_freq[i,:,:] = np.fromfile(f, 'f8', count = 3*nV1).reshape((nV1,3))
             cTotal_percent[i,:,:] = np.fromfile(f, 'f8', count = 5*nV1).reshape((nV1,5))
-            cTotal_mean[i,:] = np.fromfile(f, 'f8', count = nV1)
             cFF_freq[i,:,:] = np.fromfile(f, 'f8', count = 3*nV1).reshape((nV1,3))
             cFF_percent[i,:,:] = np.fromfile(f, 'f8', count = 5*nV1).reshape((nV1,5))
-            cFF_mean[i,:] = np.fromfile(f, 'f8', count = nV1)
             cE_freq[i,:,:] = np.fromfile(f, 'f8', count = 3*nV1).reshape((nV1,3))
             cE_percent[i,:,:] = np.fromfile(f, 'f8', count = 5*nV1).reshape((nV1,5))
-            cE_mean[i,:] = np.fromfile(f, 'f8', count = nV1)
             cI_freq[i,:,:] = np.fromfile(f, 'f8', count = 3*nV1).reshape((nV1,3))
             cI_percent[i,:,:] = np.fromfile(f, 'f8', count = 5*nV1).reshape((nV1,5))
-            cI_mean[i,:] = np.fromfile(f, 'f8', count = nV1)
             depC_freq[i,:,:] = np.fromfile(f, 'f8', count = 3*nV1).reshape((nV1,3))
             depC_percent[i,:,:] = np.fromfile(f, 'f8', count = 5*nV1).reshape((nV1,5))
-            depC_mean[i,:] = np.fromfile(f, 'f8', count = nV1)
             if iModel == 1:
                 w_freq[i,:,:] = np.fromfile(f, 'f8', count = 3*nV1).reshape((nV1,3))
                 w_percent[i,:,:] = np.fromfile(f, 'f8', count = 5*nV1).reshape((nV1,5))
-                w_mean[i,:] = np.fromfile(f, 'f8', count = nV1)
             F1F0[i,:] = np.fromfile(f, 'f8', count = nV1)
             gFF_F1F0[i,:] = np.fromfile(f, 'f8', count = nV1)
             gE_F1F0[i,:] = np.fromfile(f, 'f8', count = nV1)
@@ -1602,40 +1594,48 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
 
             ax.set_ylim(bottom = 0)
 
-            ax2.plot(op, cTotal_percent[itheta,iV1,2], ':k', lw = lw)
-            ax2.fill_between(op, cTotal_percent[itheta,iV1,1], cTotal_percent[itheta,iV1,3], facecolor = 'k', alpha = 0.4)
-            ax2.fill_between(op, cTotal_percent[itheta,iV1,0], cTotal_percent[itheta,iV1,4], facecolor = 'k', alpha = 0.2)
-            ax2.plot(op, cTotal_mean[itheta,iV1], '--k', lw = lw)
+            # substrate layer of 0-20%, 80-100%
+            ax2.fill_between(op, depC_percent[itheta,iV1,0], depC_percent[itheta,iV1,1], facecolor = 'm', alpha = 0.2)
+            ax2.fill_between(op, depC_percent[itheta,iV1,3], depC_percent[itheta,iV1,4], facecolor = 'm', alpha = 0.2)
+            if iModel:
+                ax2.fill_between(op, w_percent[itheta,iV1,0], w_percent[itheta,iV1,1], facecolor = 'c', alpha = 0.2)
+                ax2.fill_between(op, w_percent[itheta,iV1,3], w_percent[itheta,iV1,4], facecolor = 'c', alpha = 0.2)
+            ax2.fill_between(op, cTotal_percent[itheta,iV1,0], cTotal_percent[itheta,iV1,1], facecolor = 'k', alpha = 0.2)
+            ax2.fill_between(op, cTotal_percent[itheta,iV1,3], cTotal_percent[itheta,iV1,4], facecolor = 'k', alpha = 0.2)
+            ax2.fill_between(op, cFF_percent[itheta,iV1,0], cFF_percent[itheta,iV1,1], facecolor = 'g', alpha = 0.2)
+            ax2.fill_between(op, cFF_percent[itheta,iV1,3], cFF_percent[itheta,iV1,4], facecolor = 'g', alpha = 0.2)
+            ax2.fill_between(op, cE_percent[itheta,iV1,0], cE_percent[itheta,iV1,1], facecolor = 'r', alpha = 0.2)
+            ax2.fill_between(op, cE_percent[itheta,iV1,3], cE_percent[itheta,iV1,4], facecolor = 'r', alpha = 0.2)
+            ax2.fill_between(op, cI_percent[itheta,iV1,0], cI_percent[itheta,iV1,1], facecolor = 'b', alpha = 0.2)
+            ax2.fill_between(op, cI_percent[itheta,iV1,3], cI_percent[itheta,iV1,4], facecolor = 'b', alpha = 0.2)
 
-            ax2.plot(op, cFF[itheta,:,iV1,0].sum(axis = 1)*(1+gFF_F1F0[itheta, iV1]), 'g', lw = lw)
-            ax2.plot(op, cFF_percent[itheta,iV1,2], ':g', lw = lw)
-            ax2.fill_between(op, cFF_percent[itheta,iV1,1], cFF_percent[itheta,iV1,3], facecolor = 'g', alpha = 0.4)
-            ax2.fill_between(op, cFF_percent[itheta,iV1,0], cFF_percent[itheta,iV1,4], facecolor = 'g', alpha = 0.2)
-            ax2.plot(op, cFF_mean[itheta,iV1], '--g', lw = lw)
-
-            ax2.plot(op, cE_percent[itheta,iV1,2], ':r', lw = lw)
-            ax2.fill_between(op, cE_percent[itheta,iV1,1], cE_percent[itheta,iV1,3], facecolor = 'r', alpha = 0.4)
-            ax2.fill_between(op, cE_percent[itheta,iV1,0], cE_percent[itheta,iV1,4], facecolor = 'r', alpha = 0.2)
-            ax2.plot(op, cE_mean[itheta,iV1], '--r', lw = lw)
-            
-            ax2.plot(op, cI_percent[itheta,iV1,2], ':b', lw = lw)
-            ax2.fill_between(op, cI_percent[itheta,iV1,1], cI_percent[itheta,iV1,3], facecolor = 'b', alpha = 0.4)
-            ax2.fill_between(op, cI_percent[itheta,iV1,0], cI_percent[itheta,iV1,4], facecolor = 'b', alpha = 0.2)
-            ax2.plot(op, cI_mean[itheta,iV1], '--b', lw = lw)
-
-            ax2.plot(op, depC[itheta,iV1,0], ':m', lw = lw)
-            ax2.plot(op, depC_percent[itheta,iV1,2], ':m', lw = lw)
+            # substrate layer of 20%-80%
             ax2.fill_between(op, depC_percent[itheta,iV1,1], depC_percent[itheta,iV1,3], facecolor = 'm', alpha = 0.4)
-            ax2.fill_between(op, depC_percent[itheta,iV1,0], depC_percent[itheta,iV1,4], facecolor = 'm', alpha = 0.2)
-            ax2.plot(op, depC_mean[itheta,iV1], '--m', lw = lw)
+            if iModel:
+                ax2.fill_between(op, w_percent[itheta,iV1,1], w_percent[itheta,iV1,3], facecolor = 'c', alpha = 0.4)
+            ax2.fill_between(op, cTotal_percent[itheta,iV1,1], cTotal_percent[itheta,iV1,3], facecolor = 'k', alpha = 0.4)
+            ax2.fill_between(op, cFF_percent[itheta,iV1,1], cFF_percent[itheta,iV1,3], facecolor = 'g', alpha = 0.4)
+            ax2.fill_between(op, cE_percent[itheta,iV1,1], cE_percent[itheta,iV1,3], facecolor = 'r', alpha = 0.4)
+            ax2.fill_between(op, cI_percent[itheta,iV1,1], cI_percent[itheta,iV1,3], facecolor = 'b', alpha = 0.4)
 
+            # mean, median
+            ax2.plot(op, depC_percent[itheta,iV1,2], ':m', lw = lw)
+            ax2.plot(op, depC[itheta,iV1,0], '--m', lw = lw)
             if iModel:
                 ax2.plot(op, w_percent[itheta,iV1,2], ':c', lw = lw)
-                ax2.fill_between(op, w_percent[itheta,iV1,1], w_percent[itheta,iV1,3], facecolor = 'c', alpha = 0.4)
-                ax2.fill_between(op, w_percent[itheta,iV1,0], w_percent[itheta,iV1,4], facecolor = 'c', alpha = 0.2)
-                ax2.plot(op, w_mean[itheta,iV1], '--c', lw = lw)
+                ax2.plot(op, w[itheta,iV1,0], '--c', lw = lw)
+            ax2.plot(op, cTotal_percent[itheta,iV1,2], ':k', lw = lw)
+            ax2.plot(op, cTotal[itheta,iV1,0], '--k', lw = lw)
+            ax2.plot(op, cFF_percent[itheta,iV1,2], ':g', lw = lw)
+            ax2.plot(op, cFF[itheta,:,iV1,0].sum(1), '--g', lw = lw)
+            ax2.plot(op, cE_percent[itheta,iV1,2], ':r', lw = lw)
+            ax2.plot(op, cE[itheta,:,iV1,0].sum(1), '--r', lw = lw)
+            ax2.plot(op, cI_percent[itheta,iV1,2], ':b', lw = lw)
+            ax2.plot(op, cI[itheta,:,iV1,0].sum(1), '--b', lw = lw)
 
-            ax2.plot(op, np.zeros(op.size), '--y', lw = lw)
+            left, right = ax2.get_xlim()
+            ax2.plot([left, right], [0, 0], '--y', lw = 3*lw)
+            ax2.set_xlim(left = left, right = right)
             ax.set_xlabel('orientation')
             ax.set_ylabel('fr')
             ax2.set_ylabel('current')
@@ -1643,8 +1643,8 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
             ax = fig.add_subplot(grid[2:,:2]) # gE, gI, gapI
             if nLGN_V1[iV1] > 0:
                 ax.plot(op, gFF_max[itheta,iV1], 'g')
-            ax.plot(op, gE[itheta,:,iV1,0].sum(axis = 1), 'r')
-            ax.plot(op, gI[itheta,:,iV1,0].sum(axis = 1), 'b')
+            ax.plot(op, gE[itheta,:,iV1,0].sum(1), 'r')
+            ax.plot(op, gI[itheta,:,iV1,0].sum(1), 'b')
             ax2 = ax.twinx()
             ax2.plot(op, gFF_F1F0[itheta,iV1], ':g')
             ax2.plot(op, F1F0[itheta,iV1], ':k')

@@ -12,11 +12,11 @@ fitTC=False
 nOri=6
 TF=8
 SF=40
-singleOri=False
-#singleOri=True
+#singleOri=False
+singleOri=True
 one_ori=1
 
-trial_suffix=new
+trial_suffix=newDep
 res_suffix=square-single_layer
 patch=patch_fast
 
@@ -34,7 +34,7 @@ genCon_cfg=connectome.cfg
 TF=8 # input frequency if applicable
 nOri=6 # total # orientaton if applicable
 OPstatus=1 
-usePrefData=True # use fitted preference from plotTC replot plotV1_response.py
+usePrefData=False # use fitted preference from plotTC replot plotV1_response.py
 collectMeanDataOnly=False # no plots, just collect average data
 
 fig_fdr=${fdr0}/${trial_suffix} # figures and configs
