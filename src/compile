@@ -21,20 +21,20 @@ sm=sm_70
 rm -f patch.o 
 nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -$gptflag -std=c++11 -$optflag -c patch.cu
 
-#rm -f coredynamics.o
-#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -$gptflag -std=c++11 -$optflag -c coredynamics.cu
+rm -f coredynamics.o
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -$gptflag -std=c++11 -$optflag -c coredynamics.cu
 
 rm -f discrete_convol.o
 nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -$optflag -c discrete_input_convol.cu
 
-#rm -f cuda_util.o
-#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -$optflag -c util/cuda_util.cu -o cuda_util.o
+rm -f cuda_util.o
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -$optflag -c util/cuda_util.cu -o cuda_util.o
 
-#rm -f stats.o
-#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -std=c++11 -$optflag -c stats.cu
+rm -f stats.o
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -std=c++11 -$optflag -c stats.cu
 
-#rm -f condShape.o
-#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -std=c++11 -$optflag -c condShape.cu
+rm -f condShape.o
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -std=c++11 -$optflag -c condShape.cu
 
 nvcc -arch=$sm -lcudadevrt -lcudart -lboost_filesystem -lboost_program_options condShape.o patch.o cuda_util.o stats.o discrete_input_convol.o coredynamics.o -$optflag -o /home/wd554/bin/patch_fast
 #nvcc -arch=$sm -lcudadevrt -lcudart -lboost_filesystem -lboost_system -lboost_program_options condShape.o patch.o cuda_util.o stats.o discrete_input_convol.o coredynamics.o -$optflag -o /home/wd554/bin/patch_fast

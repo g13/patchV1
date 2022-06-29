@@ -13,19 +13,20 @@ nOri=6
 TF=8
 SF=40
 singleOri=False
+#singleOri=True
 one_ori=1
 
-trial_suffix=test0
+trial_suffix=newDep
 res_suffix=square-single_layer
 patch=patch_fast
 
-generate_V1_connection=True
+generate_V1_connection=False
 generate_LGN_V1_connection=True
 
 patch_cfg=ori.cfg
 
-LGN_V1_suffix=4nLGN
-V1_connectome_suffix=4nLGN
+LGN_V1_suffix=opt_new
+V1_connectome_suffix=adjust
 
 retino_cfg=LGN_V1.cfg
 genCon_cfg=connectome.cfg

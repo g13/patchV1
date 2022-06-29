@@ -12,9 +12,12 @@ from matplotlib.ticker import (MultipleLocator, FormatStrFormatter,
                                AutoMinorLocator)
 import matplotlib.gridspec as gs
 import matplotlib.colors as clr
+from matplotlib.patches import Patch
+from matplotlib.lines import Line2D
 from matplotlib import cm
 import sys
 from readPatchOutput import *
+from plotV1_response import ellipse
 #import multiprocessing as mp
 np.seterr(invalid = 'raise')
 
@@ -46,7 +49,7 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
     #plotTC = False
     #plotFR = False
     #plotSample = False
-    plotLGNsSize = False
+    #plotLGNsSize = False
     #plotF1F0 = False
     #plotOSI = False
     #plotSpatialOP = False
@@ -54,7 +57,7 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
     plotTC = True
     plotFR = True 
     plotSample = True
-    #plotLGNsSize = True
+    plotLGNsSize = True
     plotF1F0 = True
     plotOSI = True
     plotSpatialOP = True
@@ -67,6 +70,8 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
     LGN_V1_ID_file = res_fdr + 'LGN_V1_idList'+conLGN_suffix+'.bin'
     LGN_V1_s_file = res_fdr + 'LGN_V1_sList'+conLGN_suffix+'.bin'
     LGN_frFn = data_fdr + "LGN_fr" + output_suffix 
+    LGN_propFn = data_fdr + "LGN" + output_suffix + "1.bin"
+    V1_RFpropFn = res_fdr + "V1_RFprop" + conLGN_suffix + ".bin"
 
     pref_file = data_fdr+'cort_pref' + output_suffix[:-1] + '.bin'
     fit_file = data_fdr+'fit_data' + output_suffix[:-1] + '.bin'
@@ -84,15 +89,30 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
     LGN_V1_s = readLGN_V1_s0(LGN_V1_s_file)
     LGN_V1_ID, nLGN_V1 = readLGN_V1_ID(LGN_V1_ID_file)
     nLGN_I, nLGN_C, nLGN, max_ecc, vCoordSpan, LGN_vpos, LGN_type = readLGN_vpos(LGN_vposFn)
-
     nV1_0 = nLGN_V1.size
+
+    with open(LGN_propFn, 'rb') as f:
+        print(nLGN)
+        print(prec)
+        f.seek((nLGN+1)*4+sizeofPrec*4*nLGN, 1)
+        LGN_rw = np.fromfile(f, prec, 2*nLGN).reshape(2,nLGN)
+        LGN_rh = np.fromfile(f, prec, 2*nLGN).reshape(2,nLGN)
+        LGN_orient = np.fromfile(f, prec, 2*nLGN).reshape(2,nLGN)
+
+    with open(V1_RFpropFn, 'rb') as f:
+        _nV1 = np.fromfile(f, 'u4', 1)[0]
+        assert(nV1_0 == _nV1)
+        f.seek(4*_nV1* sizeofPrec, 1)
+        sfreq = np.fromfile(f, prec, count = _nV1)
+
     LGN_fr = np.empty((nOri,nLGN)) 
     LGN_fr_weighted = np.empty((nOri, nV1_0)) 
-    mean_data_files = [data_fdr+"mean_data" + output_suffix + str(iOri+1) + ".bin" for iOri in range(nOri)]
+    perOriStats_files = [data_fdr+"traceStats" + output_suffix + str(iOri+1) + ".bin" for iOri in range(nOri)]
 
     for i in range(nOri):
-        with open(mean_data_files[i], 'rb') as f:
+        with open(perOriStats_files[i], 'rb') as f:
             if i == 0:
+                iModel = np.fromfile(f, 'i4', count=1)[0]
                 nV1 = np.fromfile(f, 'i4', count=1)[0]
                 nI = np.fromfile(f, 'i4', count=1)[0]
                 if nV1 != nV1_0:
@@ -110,18 +130,34 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
                 cFF = np.empty((nOri,ngFF,nV1,2))
                 cE = np.empty((nOri,ngE,nV1,2))
                 cI = np.empty((nOri,ngI,nV1,2))
+                cTotal = np.empty((nOri,nV1,2))
                 cGap = np.empty((nOri,nI,2))
+                cTotal_freq = np.empty((nOri,nV1,3))
+                cTotal_percent = np.empty((nOri,nV1,5))
+                cFF_freq = np.empty((nOri,nV1,3))
+                cFF_percent = np.empty((nOri,nV1,5))
+                cE_freq = np.empty((nOri,nV1,3))
+                cE_percent = np.empty((nOri,nV1,5))
+                cI_freq = np.empty((nOri,nV1,3))
+                cI_percent = np.empty((nOri,nV1,5))
+                depC_freq = np.empty((nOri,nV1,3))
+                depC_percent = np.empty((nOri,nV1,5))
+                if iModel == 1:
+                    w_freq = np.empty((nOri,nV1,3))
+                    w_percent = np.empty((nOri,nV1,5))
+
                 F1F0    = np.empty((nOri,nV1))
                 gFF_F1F0= np.empty((nOri,nV1))
                 gE_F1F0 = np.empty((nOri,nV1))
                 gI_F1F0 = np.empty((nOri,nV1))
             else:
+                _iModel = np.fromfile(f, 'i4', count=1)[0]
                 _nV1 = np.fromfile(f, 'i4', count=1)[0]
                 _nI = np.fromfile(f, 'i4', count=1)[0]
                 _ngFF = np.fromfile(f, 'i4', count=1)[0]
                 _ngE = np.fromfile(f, 'i4', count=1)[0]
                 _ngI = np.fromfile(f, 'i4', count=1)[0]
-                if _nI != nI or _nV1 != nV1 or _ngFF != ngFF or _ngE != ngE or _ngI != ngI:
+                if _nI != nI or _nV1 != nV1 or _ngFF != ngFF or _ngE != ngE or _ngI != ngI or _iModel != iModel:
                     raise Exception("mean data files are not consistent")
     
             fr[i,:] = np.fromfile(f, 'f8', count = nV1)
@@ -134,7 +170,22 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
             cFF[i,:,:,:] = np.fromfile(f, 'f8', count = ngFF*2*nV1).reshape((ngFF,nV1,2))
             cE[i,:,:,:] = np.fromfile(f, 'f8', count = ngE*2*nV1).reshape((ngE,nV1,2))
             cI[i,:,:,:] = np.fromfile(f, 'f8', count = ngI*2*nV1).reshape((ngI,nV1,2))
+            cTotal[i,:,:] = np.fromfile(f, 'f8', count = 2*nV1).reshape((nV1,2))
             cGap[i,:,:] = np.fromfile(f, 'f8', count = 2*nI).reshape((nI,2))
+
+            cTotal_freq[i,:,:] = np.fromfile(f, 'f8', count = 3*nV1).reshape((nV1,3))
+            cTotal_percent[i,:,:] = np.fromfile(f, 'f8', count = 5*nV1).reshape((nV1,5))
+            cFF_freq[i,:,:] = np.fromfile(f, 'f8', count = 3*nV1).reshape((nV1,3))
+            cFF_percent[i,:,:] = np.fromfile(f, 'f8', count = 5*nV1).reshape((nV1,5))
+            cE_freq[i,:,:] = np.fromfile(f, 'f8', count = 3*nV1).reshape((nV1,3))
+            cE_percent[i,:,:] = np.fromfile(f, 'f8', count = 5*nV1).reshape((nV1,5))
+            cI_freq[i,:,:] = np.fromfile(f, 'f8', count = 3*nV1).reshape((nV1,3))
+            cI_percent[i,:,:] = np.fromfile(f, 'f8', count = 5*nV1).reshape((nV1,5))
+            depC_freq[i,:,:] = np.fromfile(f, 'f8', count = 3*nV1).reshape((nV1,3))
+            depC_percent[i,:,:] = np.fromfile(f, 'f8', count = 5*nV1).reshape((nV1,5))
+            if iModel == 1:
+                w_freq[i,:,:] = np.fromfile(f, 'f8', count = 3*nV1).reshape((nV1,3))
+                w_percent[i,:,:] = np.fromfile(f, 'f8', count = 5*nV1).reshape((nV1,5))
             F1F0[i,:] = np.fromfile(f, 'f8', count = nV1)
             gFF_F1F0[i,:] = np.fromfile(f, 'f8', count = nV1)
             gE_F1F0[i,:] = np.fromfile(f, 'f8', count = nV1)
@@ -583,21 +634,44 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
     ax.hist(nLGN_V1[ipick], np.arange(maxLGN+1))
     fig.savefig(fig_fdr + 'nLGN-pref' + output_suffix[:-1] + '.png', dpi = 150)
 
+
+    fig = plt.figure('nLGN-sfreq', figsize = (6,3.5))
+    maxLGN = np.max(nLGN_V1)
+    ax = fig.add_subplot(121)
+    target = nLGN_V1[eSpick]
+    ytarget = sfreq[eSpick]
+    HeatMap(target, ytarget, np.arange(maxLGN)+1, maxLGN, ax, 'Reds', log_scale = pLog)
+    ax.set_xlabel('nLGN')
+    ax.set_ylabel('sfreq (cyc/deg)')
+    ax = fig.add_subplot(122)
+    target = nLGN_V1[iSpick]
+    ytarget = sfreq[iSpick]
+    HeatMap(target, ytarget, np.arange(maxLGN)+1, maxLGN, ax, 'Blues', log_scale = pLog)
+    ax.set_xlabel('nLGN')
+    ax.set_ylabel('sfreq (cyc/deg)')
+    fig.savefig(fig_fdr + 'nLGN-sfreq' + output_suffix[:-1] + '.png', dpi = 150)
+
     fig = plt.figure('nLGN-OS_dist', figsize = (6,4))
     ax = fig.add_subplot(121)
     target = nLGN_V1[epick]
     ytarget = iPref_cort_for_ori[epick] * dOri
     HeatMap(target, ytarget, np.arange(maxLGN)+1, opEdges, ax, 'Reds', log_scale = pLog)
+    ax.set_xlabel('nLGN')
+    ax.set_ylabel('iPref_cort')
 
     ax = fig.add_subplot(122)
     target = nLGN_V1[epick]
     ytarget = iPref[epick] * dOri
     HeatMap(target, ytarget, np.arange(maxLGN)+1, opEdges, ax, 'Reds', log_scale = pLog)
+    ax.set_xlabel('nLGN')
+    ax.set_ylabel('iPref_preset')
     fig.savefig(fig_fdr + 'nLGN-OS_dist' + output_suffix[:-1] + '.png', dpi = 150)
 
-    markers = ['^r', 'vg', 'og', 'sr', '*k', 'dk']
-    ms = 4
+    markers = ['^r', 'vg', '*g', 'dr', '^b', 'vb']
+    type_labels = ['Red-On', 'Green-Off', 'Green-On', 'Red-Off', 'On', 'Off']
+    type_c = ('r', 'g', 'g', 'r', 'k', 'b')
 
+    ms = 4
     fig = plt.figure('OP_dOri', figsize = (5,5), dpi = 300)
 
     ax = fig.add_subplot(221)
@@ -672,15 +746,69 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
 
             if plotLGNsSize:
                 for j in range(nLGN_V1[iV1]):
-                    ax.plot(iLGN_vpos[0,j], iLGN_vpos[1,j], markers[iLGN_type[j]], ms = iLGN_ms[j]/max_s*ms, mec = 'k', mew = ms/4)
+                    ax.plot(iLGN_vpos[0,j], iLGN_vpos[1,j], markers[iLGN_type[j]], ms = iLGN_ms[j]/max_s*ms*1.5, mec = 'k', mew = ms/9)
                 x0 = np.average(iLGN_vpos[0,:], weights = iLGN_ms)
                 y0 = np.average(iLGN_vpos[1,:], weights = iLGN_ms)
             else:
                 for j in range(len(markers)):
                     pick = iLGN_type == j
-                    ax.plot(iLGN_vpos[0,pick], iLGN_vpos[1,pick], markers[j], ms = ms, mec = 'k', mew = ms/4)
+                    ax.plot(iLGN_vpos[0,pick], iLGN_vpos[1,pick], markers[j], ms = ms, mec = 'k', mew = ms/9)
                 x0 = np.average(iLGN_vpos[0,:])
                 y0 = np.average(iLGN_vpos[1,:])
+
+            iSubR = 0
+            iSubG = 0
+            iSubOn = 0
+            iSubOff = 0
+            for j in range(nLGN_V1[iV1]):
+                jtype = iLGN_type[j]
+
+                lgn_id = LGN_V1_ID[iV1][j]
+                ix, iy = ellipse(iLGN_vpos[0,j], iLGN_vpos[1,j], LGN_rw[0,lgn_id]*180/np.pi, LGN_rh[0,lgn_id]/LGN_rw[0,lgn_id], LGN_orient[0,lgn_id], n=25)
+                ax.plot(ix, iy, color=type_c[jtype], ls='dotted', lw=0.1)
+
+                if jtype == 0 or jtype == 3:
+                    if iSubR == 0:
+                        subRed = iLGN_vpos[:,j].copy()
+                    else:
+                        subRed += iLGN_vpos[:,j]
+                    iSubR += 1 
+                if jtype == 1 or jtype == 2:
+                    if iSubG == 0:
+                        subGreen = iLGN_vpos[:,j].copy()
+                    else:
+                        subGreen += iLGN_vpos[:,j]
+                    iSubG += 1 
+                if jtype == 4:
+                    if iSubOn == 0:
+                        subOn = iLGN_vpos[:,j].copy()
+                    else:
+                        subOn += iLGN_vpos[:,j]
+                    iSubOn += 1 
+                if jtype == 5:
+                    if iSubOff == 0:
+                        subOff = iLGN_vpos[:,j].copy()
+                    else:
+                        subOff += iLGN_vpos[:,j]
+                    iSubOff += 1 
+
+            SF_text = ''
+            if iSubR > 0 and iSubG > 0:
+                subRed /= iSubR
+                subGreen /= iSubG
+                SF_RG = 1/(2*np.linalg.norm(subRed-subGreen))
+                ax.plot(subRed[0], subRed[1], 'sr', ms = ms, alpha = 0.5)
+                ax.plot(subGreen[0], subGreen[1], 'sg', ms = ms, alpha = 0.5)
+                SF_text += f'SF_RG: {SF_RG:.1f}'
+
+            if iSubOn > 0 and iSubOff > 0:
+                subOn /= iSubOn
+                subOff /= iSubOff
+                SF_OnOff = 1/(2*np.linalg.norm(subOn-subOff))
+                ax.plot(subOn[0], subOn[1], 'sk', ms = ms, alpha = 0.5)
+                ax.plot(subOff[0], subOff[1], 'sb', ms = ms, alpha = 0.5)
+                SF_text += f'SF_OnOff: {SF_OnOff:.1f}'
+
             if max_fr[iV1] > 0:
                 orient = iPref_cort_for_ori[iV1]/nOri*np.pi + np.pi/2
                 if orient > np.pi:
@@ -718,6 +846,9 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
                 daspect = x[1]-x[0]
             ax.set_xlim(left = x[1] - daspect*1.1, right = x[0] + daspect*1.1)
             ax.set_ylim(bottom = y[1] - daspect*1.1, top = y[0] + daspect*1.1)
+            if SF_text:
+                ax.text(0.5, 0.85, SF_text +  'cycles/deg', transform=ax.transAxes, ha='center', fontsize='x-small')
+
 
             if np.diff(y)[0] > np.diff(x)[0]:
                 if max_fr[iV1] > 0:
@@ -747,15 +878,24 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
             raise Exception(f'the {i}th dprefMin ({iV1}) has no LGN input!')
 
         if i == dprefMax_pick.size-1:
+            legend_elements = []
+            for m, l in zip(markers, type_labels):
+                legend_elements.append(Line2D([0], [0], marker=m[0], color=m[1], label = l))
+            marker_legend = plt.legend(handles=legend_elements, bbox_to_anchor = (1,0), loc='lower left', fontsize='xx-small')
             ax.legend(fontsize='xx-small', bbox_to_anchor=(1,1), loc='upper left')
+            ax.add_artist(marker_legend)
 
+        ax.tick_params(axis = 'x', labelsize = 'xx-small')
+        ax.tick_params(axis = 'y', labelsize = 'xx-small')
         iblock = iV1//blockSize
         ithread = np.mod(iV1, blockSize)
         title = f'{iblock}-{ithread}:'
         if max_fr[iV1] > 0:
-            title = title + f'cort({orient*180/np.pi:.0f}),'
+            title = title + f'cort({orient*180/np.pi:.0f})\n'
+        else: 
+            title = title + '\n'
         title = title + f'thal({orient_thal*180/np.pi:.0f}-{orient_thal_theory*180/np.pi:.0f}), preset({orient_set*180/np.pi:.0f})'
-        ax.set_title(title)
+        ax.set_title(title, fontsize = 'x-small')
         i = i+1
     fig.savefig(fig_fdr+'thal_set-prefMax'+conLGN_suffix + output_suffix[:-1] +'.png')
 
@@ -785,11 +925,11 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
             min_s = np.min(iLGN_ms)
             for j in range(len(markers)):
                 pick = all_type == j
-                ax.plot(all_pos[0,pick], all_pos[1,pick], markers[j], ms = ms, mec = None, mew = 0, alpha = 0.6)
+                ax.plot(all_pos[0,pick], all_pos[1,pick], markers[j], ms = min_s/max_s*ms, mec = None, mew = 0, alpha = 0.6)
 
             if plotLGNsSize:
                 for j in range(nLGN_V1[iV1]):
-                    ax.plot(iLGN_vpos[0,j], iLGN_vpos[1,j], markers[iLGN_type[j]], ms = iLGN_ms[j]/max_s*ms, mec = 'k', mew = ms/4)
+                    ax.plot(iLGN_vpos[0,j], iLGN_vpos[1,j], markers[iLGN_type[j]], ms = iLGN_ms[j]/max_s*ms*1.5, mec = 'k', mew = ms/9)
                 x0 = np.average(iLGN_vpos[0,:], weights = iLGN_ms)
                 y0 = np.average(iLGN_vpos[1,:], weights = iLGN_ms)
             else:
@@ -799,6 +939,53 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
                 x0 = np.average(iLGN_vpos[0,:])
                 y0 = np.average(iLGN_vpos[1,:])
 
+            iSubR = 0
+            iSubG = 0
+            iSubOn = 0
+            iSubOff = 0
+            for j in range(nLGN_V1[iV1]):
+                jtype = iLGN_type[j]
+                if jtype == 0 or jtype == 3:
+                    if iSubR == 0:
+                        subRed = iLGN_vpos[:,j].copy()
+                    else:
+                        subRed += iLGN_vpos[:,j]
+                    iSubR += 1 
+                if jtype == 1 or jtype == 2:
+                    if iSubG == 0:
+                        subGreen = iLGN_vpos[:,j].copy()
+                    else:
+                        subGreen += iLGN_vpos[:,j]
+                    iSubG += 1 
+                if jtype == 4:
+                    if iSubOn == 0:
+                        subOn = iLGN_vpos[:,j].copy()
+                    else:
+                        subOn += iLGN_vpos[:,j]
+                    iSubOn += 1 
+                if jtype == 5:
+                    if iSubOff == 0:
+                        subOff = iLGN_vpos[:,j].copy()
+                    else:
+                        subOff += iLGN_vpos[:,j]
+                    iSubOff += 1 
+
+            SF_text = ''
+            if iSubR > 0 and iSubG > 0:
+                subRed /= iSubR
+                subGreen /= iSubG
+                SF_RG = 1/(2*np.linalg.norm(subRed-subGreen))
+                ax.plot(subRed[0], subRed[1], 'sr', ms = ms, alpha = 0.5)
+                ax.plot(subGreen[0], subGreen[1], 'sg', ms = ms, alpha = 0.5)
+                SF_text += f'SF_RG: {SF_RG:.1f}'
+
+            if iSubOn > 0 and iSubOff > 0:
+                subOn /= iSubOn
+                subOff /= iSubOff
+                SF_OnOff = 1/(2*np.linalg.norm(subOn-subOff))
+                ax.plot(subOn[0], subOn[1], 'sk', ms = ms, alpha = 0.5)
+                ax.plot(subOff[0], subOff[1], 'sb', ms = ms, alpha = 0.5)
+                SF_text += f'SF_OnOff: {SF_OnOff:.1f}'
             if max_fr[iV1] > 0:
                 orient = iPref_cort_for_ori[iV1]/nOri*np.pi + np.pi/2
                 if orient > np.pi:
@@ -834,8 +1021,11 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
                 daspect = y[1]-y[0]
             else:
                 daspect = x[1]-x[0]
+
             ax.set_xlim(left = x[1] - daspect*1.1, right = x[0] + daspect*1.1)
             ax.set_ylim(bottom = y[1] - daspect*1.1, top = y[0] + daspect*1.1)
+            if SF_text:
+                ax.text(0.5, 0.85, SF_text +  ' cyc/deg', transform=ax.transAxes, ha='center', fontsize='x-small')
 
             if np.diff(y)[0] > np.diff(x)[0]:
                 if max_fr[iV1] > 0:
@@ -865,15 +1055,23 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
             raise Exception(f'the {i}th dprefMin ({iV1}) has no LGN input!')
 
         if i == dprefMin_pick.size-1:
+            for m, l in zip(markers, type_labels):
+                legend_elements.append(Line2D([0], [0], marker=m[0], color=m[1], label = l))
+            marker_legend = plt.legend(handles=legend_elements, bbox_to_anchor = (1,0), loc='lower left', fontsize='xx-small')
             ax.legend(fontsize='xx-small', bbox_to_anchor=(1,1), loc='upper left')
+            ax.add_artist(marker_legend)
 
+        ax.tick_params(axis = 'x', labelsize = 'xx-small')
+        ax.tick_params(axis = 'y', labelsize = 'xx-small')
         iblock = iV1//blockSize
         ithread = np.mod(iV1, blockSize)
         title = f'{iblock}-{ithread}:'
         if max_fr[iV1] > 0:
-            title = title + f'cort({orient*180/np.pi:.0f}),'
+            title = title + f'cort({orient*180/np.pi:.0f})\n'
+        else: 
+            title = title + '\n'
         title = title + f'thal({orient_thal*180/np.pi:.0f}-{orient_thal_theory*180/np.pi:.0f}), preset({orient_set*180/np.pi:.0f})'
-        ax.set_title(title)
+        ax.set_title(title, fontsize = 'x-small')
         i = i+1
     fig.savefig(fig_fdr+'thal_set-prefMin'+conLGN_suffix+ output_suffix[:-1]+'.png')
     with open(sampleFn, 'ab') as f:
@@ -1361,18 +1559,32 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
         theta = np.linspace(0, np.pi, 37)
         itheta = np.arange(nOri)
         itheta = np.insert(itheta, 0, nOri-1)
+        def plotPhase(arr, phase_range, color):
+            i = 0
+            for it in itheta:
+                i_phase = 1000/arr[it, 0]
+                phase = (arr[it,2]+np.pi)/(2*np.pi)*i_phase
+                n_phase = int(phase_range/i_phase)
+                r_phase = np.mod(phase_range, i_phase)
+                if r_phase > i_phase:
+                    n_phase += 1
+                phase_point = np.arange(n_phase)*i_phase + phase
+                ax.plot(np.zeros(n_phase) + op[i], phase_point, '_', c = color, alpha = 0.5)
+                i += 1
+
         #sampleList = np.unique(np.hstack((sample,noOpt))).astype('i4')
         sampleList = sample
         i = 0
+        lw = 0.5
         for iV1 in sampleList:
         #for iV1 in np.array(noOpt):
             iblock = iV1//blockSize
             ithread = np.mod(iV1, blockSize)
-            fig = plt.figure('sampleTC-{iblock}-{ithread}', figsize = (6,4))
-            grid = gs.GridSpec(2, 5, figure = fig, hspace = 0.3, wspace = 0.3)
-            ax = fig.add_subplot(grid[:,:2]) # fr, cE, cI, depC
+            fig = plt.figure('sampleTC-{iblock}-{ithread}', figsize = (6,6))
+            grid = gs.GridSpec(4, 5, figure = fig, hspace = 0.3, wspace = 0.3)
+            ax = fig.add_subplot(grid[:2,:2]) # fr, cE, cI, depC
             ax2 = ax.twinx()
-            ax.plot(op, fr[itheta,iV1], 'k')
+            ax.plot(op, fr[itheta,iV1], '-ok')
             pref_title = f'V1:{iPref_cort_for_ori[iV1]*dOri:.0f}, gFF_F1F0:{iPref_thal_for_ori[iV1]*dOri:.0f}, preset:{iPref[iV1]*dOri:.0f}'
             if fitTC:
                 ax.plot(theta/np.pi*180, von_Mises(theta, fit_a[iV1], fit_b[iV1], fit_s[iV1], fit_pref[iV1]), ':k')
@@ -1381,20 +1593,58 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
                 ax.set_title(pref_title, fontsize = 'x-small')
 
             ax.set_ylim(bottom = 0)
-            ax2.plot(op, cFF[itheta,:,iV1,0].sum(axis = 1)*(1+gFF_F1F0[itheta, iV1]), 'g')
-            ax2.plot(op, np.zeros(op.size), '--y')
-            ax2.plot(op, cE[itheta,:,iV1,0].sum(axis = 1), 'r')
-            ax2.plot(op, depC[itheta,iV1,0], ':m')
-            ax2.plot(op, cI[itheta,:,iV1,0].sum(axis = 1), 'b')
+
+            # substrate layer of 0-20%, 80-100%
+            ax2.fill_between(op, depC_percent[itheta,iV1,0], depC_percent[itheta,iV1,1], facecolor = 'm', alpha = 0.2)
+            ax2.fill_between(op, depC_percent[itheta,iV1,3], depC_percent[itheta,iV1,4], facecolor = 'm', alpha = 0.2)
+            if iModel:
+                ax2.fill_between(op, w_percent[itheta,iV1,0], w_percent[itheta,iV1,1], facecolor = 'c', alpha = 0.2)
+                ax2.fill_between(op, w_percent[itheta,iV1,3], w_percent[itheta,iV1,4], facecolor = 'c', alpha = 0.2)
+            ax2.fill_between(op, cTotal_percent[itheta,iV1,0], cTotal_percent[itheta,iV1,1], facecolor = 'k', alpha = 0.2)
+            ax2.fill_between(op, cTotal_percent[itheta,iV1,3], cTotal_percent[itheta,iV1,4], facecolor = 'k', alpha = 0.2)
+            ax2.fill_between(op, cFF_percent[itheta,iV1,0], cFF_percent[itheta,iV1,1], facecolor = 'g', alpha = 0.2)
+            ax2.fill_between(op, cFF_percent[itheta,iV1,3], cFF_percent[itheta,iV1,4], facecolor = 'g', alpha = 0.2)
+            ax2.fill_between(op, cE_percent[itheta,iV1,0], cE_percent[itheta,iV1,1], facecolor = 'r', alpha = 0.2)
+            ax2.fill_between(op, cE_percent[itheta,iV1,3], cE_percent[itheta,iV1,4], facecolor = 'r', alpha = 0.2)
+            ax2.fill_between(op, cI_percent[itheta,iV1,0], cI_percent[itheta,iV1,1], facecolor = 'b', alpha = 0.2)
+            ax2.fill_between(op, cI_percent[itheta,iV1,3], cI_percent[itheta,iV1,4], facecolor = 'b', alpha = 0.2)
+
+            # substrate layer of 20%-80%
+            ax2.fill_between(op, depC_percent[itheta,iV1,1], depC_percent[itheta,iV1,3], facecolor = 'm', alpha = 0.4)
+            if iModel:
+                ax2.fill_between(op, w_percent[itheta,iV1,1], w_percent[itheta,iV1,3], facecolor = 'c', alpha = 0.4)
+            ax2.fill_between(op, cTotal_percent[itheta,iV1,1], cTotal_percent[itheta,iV1,3], facecolor = 'k', alpha = 0.4)
+            ax2.fill_between(op, cFF_percent[itheta,iV1,1], cFF_percent[itheta,iV1,3], facecolor = 'g', alpha = 0.4)
+            ax2.fill_between(op, cE_percent[itheta,iV1,1], cE_percent[itheta,iV1,3], facecolor = 'r', alpha = 0.4)
+            ax2.fill_between(op, cI_percent[itheta,iV1,1], cI_percent[itheta,iV1,3], facecolor = 'b', alpha = 0.4)
+
+            # mean, median
+            ax2.plot(op, depC_percent[itheta,iV1,2], ':m', lw = lw)
+            ax2.plot(op, depC[itheta,iV1,0], '--m', lw = lw)
+            if iModel:
+                ax2.plot(op, w_percent[itheta,iV1,2], ':c', lw = lw)
+                ax2.plot(op, w[itheta,iV1,0], '--c', lw = lw)
+            ax2.plot(op, cTotal_percent[itheta,iV1,2], ':k', lw = lw)
+            ax2.plot(op, cTotal[itheta,iV1,0], '--k', lw = lw)
+            ax2.plot(op, cFF_percent[itheta,iV1,2], ':g', lw = lw)
+            ax2.plot(op, cFF[itheta,:,iV1,0].sum(1), '--g', lw = lw)
+            ax2.plot(op, cE_percent[itheta,iV1,2], ':r', lw = lw)
+            ax2.plot(op, cE[itheta,:,iV1,0].sum(1), '--r', lw = lw)
+            ax2.plot(op, cI_percent[itheta,iV1,2], ':b', lw = lw)
+            ax2.plot(op, cI[itheta,:,iV1,0].sum(1), '--b', lw = lw)
+
+            left, right = ax2.get_xlim()
+            ax2.plot([left, right], [0, 0], '--y', lw = 3*lw)
+            ax2.set_xlim(left = left, right = right)
             ax.set_xlabel('orientation')
             ax.set_ylabel('fr')
             ax2.set_ylabel('current')
 
-            ax = fig.add_subplot(grid[:,3:]) # gE, gI, gapI
+            ax = fig.add_subplot(grid[2:,:2]) # gE, gI, gapI
             if nLGN_V1[iV1] > 0:
                 ax.plot(op, gFF_max[itheta,iV1], 'g')
-            ax.plot(op, gE[itheta,:,iV1,0].sum(axis = 1), 'r')
-            ax.plot(op, gI[itheta,:,iV1,0].sum(axis = 1), 'b')
+            ax.plot(op, gE[itheta,:,iV1,0].sum(1), 'r')
+            ax.plot(op, gI[itheta,:,iV1,0].sum(1), 'b')
             ax2 = ax.twinx()
             ax2.plot(op, gFF_F1F0[itheta,iV1], ':g')
             ax2.plot(op, F1F0[itheta,iV1], ':k')
@@ -1404,6 +1654,43 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
             if ithread < mI:
                 iI = iblock*mI + ithread - mE
                 ax.plot(op, cGap[itheta, iI, 0], 'c')
+
+            ax = fig.add_subplot(grid[:2,3:]) # gE, gI, gapI
+            msRatio = 5
+            ax.plot(op, cTotal_freq[itheta,iV1, 0], '-k', alpha = 0.5)
+            ax.scatter(op, cTotal_freq[itheta,iV1, 0], s = cTotal_freq[itheta,iV1, 1]*msRatio, c = 'k', alpha = 0.5)
+
+            ax.plot(op, cFF_freq[itheta,iV1, 0], '-g', alpha = 0.5)
+            ax.scatter(op, cFF_freq[itheta,iV1, 0], s = cFF_freq[itheta,iV1, 1]*msRatio, c = 'g', alpha = 0.5)
+
+            ax.plot(op, cE_freq[itheta,iV1, 0], '-r', alpha = 0.5)
+            ax.scatter(op, cE_freq[itheta,iV1, 0], s = cE_freq[itheta,iV1, 1]*msRatio, c = 'r', alpha = 0.5)
+
+            ax.plot(op, cI_freq[itheta,iV1, 0], '-b', alpha = 0.5)
+            ax.scatter(op, cI_freq[itheta,iV1, 0], s = cI_freq[itheta,iV1, 1]*msRatio, c = 'b', alpha = 0.5)
+
+            ax.plot(op, depC_freq[itheta,iV1, 0], '-m', alpha = 0.5)
+            ax.scatter(op, depC_freq[itheta,iV1, 0], s = depC_freq[itheta,iV1, 1]*msRatio, c = 'm', alpha = 0.5)
+            ax.set_ylabel('Freq Hz')
+            min_freq = np.min(np.hstack((cFF_freq[:,iV1,0], cE_freq[:,iV1,0],cI_freq[:,iV1,0],depC_freq[:,iV1,0],cTotal_freq[:,iV1,0])))
+
+            if iModel:
+                ax.plot(op, w_freq[itheta,iV1, 0], '-c')
+                ax.scatter(op, w_freq[itheta,iV1, 0], s = w_freq[itheta,iV1, 1], c = 'c', alpha = 0.5)
+                min_freq = min(min_freq, w_freq[:,iV1,0].min())
+
+            ax = fig.add_subplot(grid[2:,3:]) # gE, gI, gapI
+            
+            phase_range = 1000/min_freq
+            plotPhase(cTotal_freq[:,iV1,:], phase_range, 'k')
+            plotPhase(cFF_freq[:,iV1,:], phase_range, 'g')
+            plotPhase(cE_freq[:,iV1,:], phase_range, 'r')
+            plotPhase(cI_freq[:,iV1,:], phase_range, 'b')
+            plotPhase(depC_freq[:,iV1,:], phase_range, 'm')
+            if iModel:
+                plotPhase(w_freq[:,iV1,:], phase_range, 'c')
+            ax.set_ylabel('Phase as time (ms)')
+            ax.set_ylim(bottom = 0)
 
             if i < ns:
                 fig.savefig(fig_fdr+ f'sampleTC-{iblock}-{ithread}#{nLGN_V1[iV1]}' +output_suffix[:-1]+ '.png', dpi = 300)

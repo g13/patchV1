@@ -38,7 +38,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
     nsmooth = 0
     lw = 0.1
     
-    #plotRpStat = True 
+    plotRpStat = True 
     #plotRpCorr = True
     #plotScatterFF = True
     plotSample = True
@@ -48,7 +48,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
     #plotExc_sLGN = True
     #plotLR_rp = True
     
-    plotRpStat = False 
+    #plotRpStat = False 
     plotRpCorr = False 
     plotScatterFF = False
     #plotSample = False

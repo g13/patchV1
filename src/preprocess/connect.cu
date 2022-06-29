@@ -13,12 +13,12 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
 			Float* __restrict__ preF_type,
 			Float* __restrict__ preS_type,
 			Size*  __restrict__ preN_type,
-			Size* __restrict__ nLGN_V1,
-			Float* __restrict__ ExcRatio,
-			Float* __restrict__ extExcRatio,
-            Float* __restrict__ synPerCon,
-            Float* __restrict__ synPerConFF,
-			Float min_FB_ratio, Float C_InhRatio, initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, bool ClessI, Float preset_nLGN)
+			Float* __restrict__ max_ffRatio,
+			Float* __restrict__ inhRatio,
+			Float* __restrict__ wLGN,
+			Float* __restrict__ max_wLGN,
+			Float* __restrict__ ffRatio,
+            initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, bool ClessI)
 {
     //__shared__ reduced[warpSize];
     Size id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -41,56 +41,54 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
 	}
 
 
-	Float preset_LGN_syn = preset_nLGN*synPerConFF[type];
-	Float preset_Cortical_syn = init_pack.nTypeMat[type]*synPerCon[type];
-	//Float totalExcSyn = preset_LGN_syn + preset_Cortical_syn;
+	Float min_wCort = init_pack.nTypeMat[type]*init_pack.sTypeMat[type];
+    Float _max_wLGN = max_wLGN[type];
+    Float _wLGN = wLGN[id];
+    Float _max_ffRatio = max_ffRatio[type];
 
-	Float LGN_syn = nLGN_V1[id]*synPerConFF[type];
-    Float inhRatio = 1.0;
-    Float ratio;
-	if (init_pack.nTypeMat[type] == 0 || synPerCon[type] == 0) {
-		ratio = 1.0;
-	} else {
-		ratio = (preset_Cortical_syn - LGN_syn)/preset_Cortical_syn;
-		//ratio = (preset_Cortical_syn - (LGN_syn - preset_LGN_syn))/preset_Cortical_syn;
+    Float ratio = 0;
+    Float _inhRatio = 1;
+	if (min_wCort > 0) {
+        ratio = _wLGN/_max_wLGN;
 		if (ClessI) {
-			inhRatio = LGN_syn/preset_LGN_syn;
+			_inhRatio += inhRatio[type] * ratio;
 		}
 	}
-    if (ratio < min_FB_ratio) ratio = min_FB_ratio;
-    if (inhRatio < C_InhRatio) inhRatio = C_InhRatio;
+	ffRatio[id] = ratio * _max_ffRatio;
+	//if (ffRatio[id] < 0) {
+	//	printf("max_ffRatio = %f, ratio = %f, wLGN = %f, max_wLGN = %f\n", _max_ffRatio, ratio, _wLGN, _max_wLGN);
+	//	assert(ffRatio[id] >= 0);
+	//}
 
-	ExcRatio[id] = ratio;
+    Float _cortRatio = (1 - _max_ffRatio*ratio)/(1 - _max_ffRatio);
+	//if (_cortRatio <= 0) {
+	//	printf("_cortRatio = %f, max_ffRatio = %f, ratio = %f\n", _cortRatio, _max_ffRatio, ratio);
+	//	assert(_cortRatio > 0);
+	//}
+	//assert(_inhRatio > 0);
+
 	for (PosInt i=0; i<nType; i++) {
 		PosInt tid = i*networkSize+id;
 		PosInt ttid = i*nType + type;
         if (CmoreN) {
-			Float excessRatio = 1.0;
+			Float fpreN;
             if (i < init_pack.iArchType[0]) {
-				Float fpreN = ratio*init_pack.nTypeMat[ttid]*(1-extExcRatio[type]);
-				Size preN = static_cast<Size>(rounding(fpreN));
-                preN_type[tid] = preN;
-				excessRatio *= fpreN/preN;
+				fpreN = init_pack.nTypeMat[ttid] * _cortRatio;
             } else {
-				Float fpreN = init_pack.nTypeMat[ttid]*inhRatio;
-				Size preN = static_cast<Size>(rounding(fpreN));
-    	        preN_type[tid] = preN;
-				excessRatio *= fpreN/preN;
-				//if (blockIdx.x == 0) {
-				//	printf("%u inhratio = %.2f, preN = %u\n", threadIdx.x, inhRatio, preN);
-				//}
+			    fpreN = init_pack.nTypeMat[ttid] * _inhRatio;
             }
-    	    preS_type[tid] = init_pack.sTypeMat[ttid]*excessRatio;
+			Size preN = static_cast<Size>(rounding(fpreN));
+            preN_type[tid] = preN;
+
+    	    preS_type[tid] = init_pack.sTypeMat[ttid] * fpreN/preN;
         } else {
     	    preN_type[tid] = init_pack.nTypeMat[ttid];
             if (i < init_pack.iArchType[0]) {
-                preS_type[tid] = ratio*init_pack.sTypeMat[ttid]*(1-extExcRatio[type]);
+                preS_type[tid] = init_pack.sTypeMat[ttid] * _cortRatio;
             } else {
-    	        //preS_type[tid] = (ratio+ LGN_sSum/init_pack.sumType[i*nType+0])*init_pack.sTypeMat[ttid];
-    	        preS_type[tid] = init_pack.sTypeMat[ttid]*inhRatio;
+    	        preS_type[tid] = init_pack.sTypeMat[ttid] * _inhRatio;
             }
         }
-		//printf("%u-%u-%u: LGN_sSum = %f,  %u*%f = %f\n", blockIdx.x, threadIdx.x, i, LGN_sSum, preN_type[tid], preS_type[tid], preN_type[tid] * preS_type[tid]);
         for (PosInt j=0; j<nFeature; j++) {
             PosInt fid = (j*nType + i)*networkSize + id;
             preF_type[fid] = init_pack.typeFeatureMat[j*nType*nType+ttid];
@@ -1128,8 +1126,8 @@ void generate_symmetry(PosInt* __restrict__ clusterID,
 				printf("%u-%u: %f\n",i, i_os[i], v_os[i]);
 			}
 
-			Size h_id = iblock*nearNeighborBlock*nI*nI + clusterID[blockIdx.x]*nI*nI + i_os[i]*nI + threadIdx.x;
-			Size g_id = bid*nearNeighborBlock*nI*nI + nid*nI*nI + threadIdx.x*nI + i_os[i];
+			//Size h_id = iblock*nearNeighborBlock*nI*nI + clusterID[blockIdx.x]*nI*nI + i_os[i]*nI + threadIdx.x;
+			//Size g_id = bid*nearNeighborBlock*nI*nI + nid*nI*nI + threadIdx.x*nI + i_os[i];
 
 			if (xrand < prob) {
 				if (v_os[i] > 0) { // home->guest

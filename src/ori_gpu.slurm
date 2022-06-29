@@ -2,7 +2,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --job-name=plotV1
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=5
+#SBATCH --cpus-per-task=3
 #SBATCH --mem=64GB
 #SBATCH --time=01:00:00
 #SBATCH -o log/pV1_%J.out
@@ -41,8 +41,8 @@ else
 fi
 
 pid=""
-echo python ${fig_fdr}/plotLGN_response_${trial_suffix}.py ${trial_suffix}_${ori} ${LGN_V1_suffix} ${data_fdr} ${fig_fdr} ${readNewSpike}
-python ${fig_fdr}/plotLGN_response_${trial_suffix}.py ${trial_suffix}_${ori} ${LGN_V1_suffix} ${data_fdr} ${fig_fdr} ${readNewSpike} &
+echo python ${fig_fdr}/plotLGN_response_${trial_suffix}.py ${trial_suffix}_${ori} ${LGN_V1_suffix} ${data_fdr} ${fig_fdr}
+python ${fig_fdr}/plotLGN_response_${trial_suffix}.py ${trial_suffix}_${ori} ${LGN_V1_suffix} ${data_fdr} ${fig_fdr} &
 pid+="${!} "
 
 echo python ${fig_fdr}/plotV1_response_${trial_suffix}.py ${trial_suffix} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}

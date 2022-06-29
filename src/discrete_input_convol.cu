@@ -1726,6 +1726,9 @@ void LGN_nonlinear(
             //    printf("LGN# %u fired\n");
             //}
             //printf("LGN fired, ");
+			//if (id == 24277) {
+			//	printf("\nLGN (%i, %i) fired at %f\n", x, y, tsp);
+			//}
         }
         leftTimeRate[id] = lTR;
         state[id] = local_state;

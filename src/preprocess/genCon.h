@@ -64,7 +64,7 @@ void initializePreferenceFunctions(Size nFeature) {
     checkCudaErrors(cudaMemcpyToSymbol(pref, h_pref, nFunc*sizeof(pFeature), 0, cudaMemcpyHostToDevice));
 }
 
-void read_LGN_sSum(std::string filename, Float sSum[], Float sSumMax[], Float sSumMean[], Size typeAcc[], Size nType, Size nblock, bool print) {
+void read_wLGN(std::string filename, Float sSum[], Float sSumMin[], Float sSumMax[], Size typeAcc[], Size nType, Size nblock, bool print) {
     std::ifstream input_file;
     input_file.open(filename, std::fstream::in | std::fstream::binary);
     if (!input_file) {
@@ -74,13 +74,16 @@ void read_LGN_sSum(std::string filename, Float sSum[], Float sSumMax[], Float sS
     Size nList, maxList;
     input_file.read(reinterpret_cast<char*>(&nList), sizeof(Size));
     input_file.read(reinterpret_cast<char*>(&maxList), sizeof(Size));
+	if (print) {
+		std::cout << "nList = " << nList << "\n";
+		std::cout << "maxList = " << maxList << "\n";
+	}
 
     Float *array = new Float[nList*maxList];
     Size *nTypeCount = new Size[nType];
     for (PosInt i=0; i<nType; i++) {
-        //sSumMean[i] = 0.0;
         sSumMax[i] = 0.0;
-        sSumMean[i] = 0.0;
+        sSumMin[i] = maxList;
         if (i == 0) {
             nTypeCount[i] = typeAcc[i];
         } else {
@@ -102,21 +105,20 @@ void read_LGN_sSum(std::string filename, Float sSum[], Float sSumMax[], Float sS
                 break;
             }
         }
-        sSumMean[k] += sSum[i];
         if (sSum[i] > sSumMax[k]) {
             sSumMax[k] = sSum[i];
         }
+        if (sSum[i] < sSumMin[k]) {
+            sSumMin[k] = sSum[i];
+        }
         if (print) {
-            std::cout << i << ": ";
+            std::cout << i << ", type " << k << " sum " << sSum[i] << ": ";
             for (PosInt j=0; j<listSize; j++) {
                 std::cout << array[i*maxList + j];
                 if (j == listSize-1) std::cout << "\n";
                 else std::cout << ", ";
             }
         }
-    }
-    for (PosInt i=0; i<nType; i++) {
-        sSumMean[i] /= nTypeCount[i];
     }
     delete []array;
     delete []nTypeCount;

@@ -13,19 +13,14 @@ from os import path
 np.seterr(divide='warn', invalid='warn')
 
 import sys
-if len(sys.argv) < 6:
+if len(sys.argv) < 5:
     print(sys.argv)
-    raise Exception(' need all 6 arguments, no default values available')
+    raise Exception(' need all 5 arguments, no default values available')
 else:
     output_suffix = sys.argv[1]
     input_suffix = sys.argv[2]
     data_fdr = sys.argv[3]
     fig_fdr = sys.argv[4]
-    if sys.argv[5] == 'True':
-        readNewSpike = True 
-        print('read new spikes')
-    else:
-        readNewSpike = False
 
 print(output_suffix)
 print(input_suffix)
@@ -149,7 +144,7 @@ with open(output_fn, 'rb') as f:
         luminance[it,:] = data[iLGN]
         contrast[it,:,:] = np.fromfile(f, prec, count = 2*nLGN).reshape(2,nLGN)
 
-LGN_spScatter = readLGN_sp(LGN_spFn, prec = prec, nstep = nt_)
+LGN_spScatter = readLGN_sp(LGN_spFn, prec = prec)
 
 nbins = int(FRbins*t_in_sec)
 realLGN_fr = np.empty((nbins,nLGN))
@@ -253,3 +248,4 @@ if plotStat:
     ax.legend(fontsize='xx-small')
     ax.set_xlabel('mean fr')
     fig.savefig(fig_fdr+'LGN_activity'+output_suffix+'.png')
+print('LGN plots finished')
