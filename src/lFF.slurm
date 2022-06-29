@@ -1,7 +1,7 @@
 #!/bin/bash
 cd ${HOME}/repos/patchV1/src
 
-t=00:35:00
+t=00:30:00
 echo ${t}
 #fdr0=/scratch/wd554/Jen
 fdr0=/scratch/wd554/patchV1
@@ -10,18 +10,19 @@ data_fdr=${fdr0} # outputFolder in cfg
 
 
 patch=patch_fast
-waveStage=3 # set stage number
+waveStage=2 # set stage number
 
 if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 	#inputFn=32-sequential_10-30_stage_II 
 	#inputFn=32-random3917563_10-30_stage_II 
-	inputFn=32-opponent_10-10_stage_II 
+	inputFn=32-opponent_10-10_stage_II
 	fdr=wave_concat/wave_II # folder will be made to store figures and configuratoin files
-	op=w2_iwi1_dt25 # theme string to be added to filenames of data and figures
+	op=w2_iwi1_rLTD0 # theme string to be added to filenames of data and figures
 	op_cfg=wave_II.cfg # the simulation config file to be used
 	new_setup=False
-	lgn=lFF_II # the theme string to be used for LGN_V1 connections
-	res=lFF_II # the theme string to be used for V1, LGN positions etc.
+	suffix=iwi1
+	lgn=lFF_II_${suffix} # the theme string to be used for LGN_V1 connections
+	res=lFF_II_${suffix} # the theme string to be used for V1, LGN positions etc.
 	squareOrCircle=true # initial LGN-recruitment shape 
 fi
 
@@ -32,12 +33,12 @@ if [[ "${waveStage}" = "3" ]] ;then
 	#inputFn=32x3-sequential_5-15_stage_III_sym
 	#inputFn=32x3-135_5-5_stage_III_sym
 	fdr=wave_concat/wave_III
-	op=w3r_opp_iwi2_on1off1_cap3_g0
+	op=w3r_opp_iwi2_on1off1_cap3_g7
 	#op=single_test-135
 	op_cfg=wave_III.cfg
 	new_setup=True
 	if [[ "${relay}" = false ]]; then
-		suffix=g0
+		suffix=g7
 		lgn=lFF_III_${suffix}
 		res=lFF_III_${suffix}
 	else
@@ -66,8 +67,14 @@ fi
 
 binary_thres=0.0
 #binary_thres=0.5
-std_ecc=16
+std_ecc=0
+#std_ecc=16
+#std_ecc=12
+#std_ecc=8
 #std_ecc=6
+#std_ecc=5
+#std_ecc=4
+#std_ecc=3
 #std_ecc=2.66667
 seed=1924784 # RANDOM SEED for post-analysis sampling and input randomization 
 # for outputLearnFF.m
@@ -168,17 +175,17 @@ then
 fi
 
 
-date
-echo plotLGN_response.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
-plotLGN_response.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
-
-date
-echo plotV1_fr.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} & 
-plotV1_fr.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} &
-
-date
-echo plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} & 
-plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
+#date
+#echo plotLGN_response.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
+#plotLGN_response.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
+#
+#date
+#echo plotV1_fr.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} & 
+#plotV1_fr.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} &
+#
+#date
+#echo plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} & 
+#plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
 
 date
 echo matlab -nodisplay -nosplash -r "outputLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle}, ${use_local_max});exit;" &

@@ -7,7 +7,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 		return
 	else
 		if nargin < 11
-			use_local_max = 1;
+		    use_local_max = 1;
 		end
 	end
 
@@ -27,7 +27,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	end
 	%%%% HERE %%%%
     top_thres = 0.8; % threshold to count connections of max strength, fluctuates below max
-	thres_out = 0; % under which ratio of max LGN connection strength will not be used to plot spatial RF
+	thres_out = 0.2; % under which ratio of max LGN connection strength will not be used to plot spatial RF
 	os_out = 0.5; % under which ratio of max LGN connection strength will not be used to calculate the orientation and its selectivity. 
 	nstep = 1000; % total steps to sample from the trace of weight's temporal evolution.
 	nbins = 20; % bins for histogram
@@ -292,7 +292,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 			set(gca, 'XTickLabel', []);
         end
 
-        [onS, offS, os, orient] = determine_os_str(LGN_vpos, LGN_V1_ID, LGN_type, sLGN, nV1, nLGN_V1, min_dis, os_out);
+        [onS, offS, os, overlap, orient] = determine_os_str(LGN_vpos, LGN_V1_ID, LGN_type, sLGN, nV1, nLGN_V1, min_dis, os_out, nLGN_1D);
         subplot(nit,4,4*(i-1)+1)
 		hold on
         h=histogram(onS-offS, 20);
@@ -313,7 +313,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
         for j=1:11
             counts(j) = counts(j)*mean(os(bin == j));
         end
-        bar(x_op, counts, 'FaceColor', 'b', 'BarWidth', 0.9);
+        bar(x_op, counts, 'FaceColor', 'b');
         if i==1
 	        title('OP dist')
 	        ylabel('#V1 weighted by os')
@@ -402,7 +402,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	sLGN = fread(fid, [nV1, max_LGNperV1], 'float')'; % transposed
     fclose(fid);
 
-    [onS, offS, os, orient] = determine_os_str(LGN_vpos, LGN_V1_ID, LGN_type, sLGN, nV1, nLGN_V1, min_dis, os_out);
+    [onS, offS, os, overlap, orient] = determine_os_str(LGN_vpos, LGN_V1_ID, LGN_type, sLGN, nV1, nLGN_V1, min_dis, os_out, nLGN_1D);
 
 	epick = zeros(mE*nblock,1);
 	ipick = zeros(mI*nblock,1);
@@ -418,45 +418,65 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
     [countsE, ~, ~] = histcounts(dS(epick), 'BinEdges', dS_edges);
     [countsI, ~, ~] = histcounts(dS(ipick), 'BinEdges', dS_edges);
 	x_ds = (dS_edges(1:nbins) + dS_edges(2:nbins+1))/2;
-    b = bar(x_ds, [countsE; countsI], 'FaceColor', 'flat');
-	b(1).CData = [1, 0, 0];
-	b(2).CData = [0, 0, 1];
+    hold on
+    b = bar(x_ds, countsE, 'FaceColor', 'r');
+    b = bar(x_ds, countsI, 'FaceColor', 'b');
+    hold off
 	legend('E', 'I')
 	xlabel('sOn-sOff')
 	ylabel('#V1')
+    alpha(.5);
 
 	subplot(2,2,2)
     [countsE, ~, binE] = histcounts(orient(epick)*180/pi, 'BinEdges', linspace(0,360,nop));
     [countsI, ~, binI] = histcounts(orient(ipick)*180/pi, 'BinEdges', linspace(0,360,nop));
-    b = bar(x_op, [countsE; countsI], 'FaceColor', 'flat');
-	b(1).CData = [1, 0, 0];
-	b(2).CData = [0, 0, 1];
+    hold on
+    b = bar(x_op, countsE, 'FaceColor', 'r');
+    b = bar(x_op, countsI, 'FaceColor', 'b');
+    hold off
 	xlabel('OP (deg)')
 	ylabel('#V1')
+    alpha(.5);
 	
+	subplot(2,2,4)
 	osE = os(epick);
 	osI = os(ipick);
-	subplot(2,2,4)
+	overlapE = overlap(epick);
+	overlapI = overlap(ipick);
+    ocountsE = countsE;
+    ocountsI = countsI;
     for i=1:(nop-1)
         countsE(i) = countsE(i)*mean(osE(binE == i));
         countsI(i) = countsI(i)*mean(osI(binI == i));
+        ocountsE(i) = ocountsE(i)*(1-mean(overlapE(binE == i)));
+        ocountsI(i) = ocountsI(i)*(1-mean(overlapI(binI == i)));
     end
-    b = bar(x_op, [countsE; countsI], 'FaceColor', 'flat');
-	b(1).CData = [1, 0, 0];
-	b(2).CData = [0, 0, 1];
+    hold on
+    bar(x_op, countsE, 'FaceColor', 'r');
+    bar(x_op, countsI, 'FaceColor', 'b');
+    bar(x_op, ocountsE, 'FaceColor', 'm');
+    bar(x_op, ocountsI, 'FaceColor', 'c');
+    hold off
 	xlabel('OP (deg)')
 	ylabel('#V1 weighted by os')
+    alpha(.5);
 
 	subplot(2,2,3)
 	osEdges = linspace(0,1,nop);
     [countsE, ~, ~] = histcounts(osE, 'BinEdges', osEdges);
     [countsI, ~, ~] = histcounts(osI, 'BinEdges', osEdges);
+    [ocountsE, ~, ~] = histcounts(overlapE, 'BinEdges', osEdges);
+    [ocountsI, ~, ~] = histcounts(overlapI, 'BinEdges', osEdges);
 	x_os = (osEdges(1:nop-1) + osEdges(2:nop))/2;
-    b = bar(x_os, [countsE; countsI], 'FaceColor', 'flat');
-	b(1).CData = [1, 0, 0];
-	b(2).CData = [0, 0, 1];
-	xlabel('dis/(Ron+Roff)')
+    hold on
+    bar(x_os, countsE, 'FaceColor', 'r');
+    bar(x_os, countsI, 'FaceColor', 'b');
+    bar(x_os, ocountsE, 'FaceColor', 'm');
+    bar(x_os, ocountsI, 'FaceColor', 'c');
+    hold off
+	xlabel('dis/(Ron+Roff) or overlap')
 	ylabel('#V1')
+    alpha(.5);
 
 	set(f, 'OuterPosition', [.1, .1, 6, 6]);
 	set(f, 'innerPosition', [.1, .1, 6, 6]);
@@ -592,7 +612,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	    	            set(gca,'YDir','reverse')
 						set(gca,'YTickLabel', []);
 						set(gca,'XTickLabel', []);
-						local_nCon = sum(sum(stmp0>=thres_out*gmax));
+						local_nCon = sum(sum(stmp0>=thres_out*gmaxLGN));
 	    	            if itype == 1
 							title(['t', num2str(double(qt(i))/nt*100,'%.0f'),'%-n',num2str(local_nCon),'-p',num2str(local_max/gmaxLGN*100,'%.0f'),'%'], 'FontSize', 5);
                         else
@@ -738,8 +758,9 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 end
 
 
-function [onS, offS, os, orient] = determine_os_str(pos, id, type, s, n, m, min_dis, os_out)
+function [onS, offS, os, overlap, orient] = determine_os_str(pos, id, type, s, n, m, min_dis, os_out, nLGN_1D)
     orient = zeros(n,1);
+    overlap = zeros(n,1);
     os = zeros(n,1);
 	onS = zeros(n,1);
 	offS = zeros(n,1);
@@ -748,63 +769,74 @@ function [onS, offS, os, orient] = determine_os_str(pos, id, type, s, n, m, min_
         all_type = type(all_id);
         all_s = s(1:m(i),i);
 
+        sLGN = zeros(nLGN_1D*nLGN_1D*2,1);
+	    sLGN(all_id) = all_s; 
+		sLGN = reshape(sLGN, [nLGN_1D*2, nLGN_1D]);
+	    on_s = sLGN(1:2:(nLGN_1D*2),:);
+	    off_s = sLGN(2:2:(nLGN_1D*2),:);
+        overlap_pick = and(on_s>0, off_s>0);
+        max_s = max(on_s, off_s);
+        min_s = min(on_s, off_s);
+        smaller_size = min(sum(on_s>0,'all'), sum(off_s>0,'all'));
+        overlap(i) = sum(min_s(overlap_pick)./max_s(overlap_pick),'all')/smaller_size;
+
         on_s = all_s(all_type == 4);
         on_id = all_id(all_type == 4);
 		sPick = on_s > max(on_s) * os_out;
         onPick = on_id(sPick);
-		onS(i) = sum(on_s(sPick));
+		onS(i) = sum(on_s);
         on_pos = mean(pos(onPick,:), 1);
 
         off_s = all_s(all_type == 5);
         off_id = all_id(all_type == 5);
 		sPick = off_s > max(off_s) * os_out;
         offPick = off_id(sPick);
-		offS(i) = sum(off_s(sPick));
+		offS(i) = sum(off_s);
         off_pos = mean(pos(offPick,:), 1);
 
         dis_vec = [on_pos(1)-off_pos(1), off_pos(2)-on_pos(2)];
 		on_off_dis = sqrt(dis_vec*dis_vec');
 		if on_off_dis <= min_dis/2
-            os(i) = 0;
             orient(i) = nan;
+            os(i) = 0;
         else
-			proj = dis_vec./on_off_dis;
 			orient(i) = atan2(off_pos(2)-on_pos(2), on_pos(1)-off_pos(1)); % spin around as the imagesc
-
-			if length(onPick) > 1
-				rel_pos = pos(onPick,:) - on_pos;
-        		on_dis = sqrt(sum(rel_pos.*rel_pos,2));
-				cos_on = (rel_pos./on_dis)*proj';
-        		proj_on = on_dis.*cos_on;
-				max_on_p = max(proj_on(proj_on>=0));
-				max_on_m = max(abs(proj_on(proj_on<=0)));
-				r_on = max_on_p*(max_on_p/max_on_m);
-				if isnan(r_on)
-					r_on = min_dis/2;
-				end
-			else
-				r_on = min_dis/2;
-			end
-
-			if length(offPick) > 1
-				rel_pos = pos(offPick,:) - off_pos;
-        		off_dis = sqrt(sum(rel_pos.*rel_pos,2));
-				cos_off = (rel_pos./off_dis)*proj';
-        		proj_off = off_dis.*cos_off;
-				max_off_p = max(proj_off(proj_off>=0));
-				max_off_m = max(abs(proj_off(proj_off<=0)));
-				r_off = max_off_p*(max_off_p/max_off_m);
-				if isnan(r_off)
-					r_off = min_dis/2;
-				end
-			else
-				r_off = min_dis/2;
-			end
-
-        	os(i) = on_off_dis/(r_on+r_off);
         	if orient(i) < 0
         	    orient(i) = orient(i) + 2*pi;
         	end
-		end
+		    proj = dis_vec./on_off_dis;
+
+		    if length(onPick) > 1
+		    	rel_pos = pos(onPick,:) - on_pos;
+            	on_dis = sqrt(sum(rel_pos.*rel_pos,2)); % std of dist to center
+		    	cos_on = (rel_pos./on_dis)*proj';
+            	proj_on = on_dis.*cos_on; % ??
+		    	max_on_p = max(proj_on(proj_on>=0));
+		    	max_on_m = max(abs(proj_on(proj_on<=0)));
+		    	r_on = max_on_p*(max_on_p/max_on_m);
+		    	if isnan(r_on)
+		    		r_on = min_dis/2;
+		    	end
+		    else
+		    	r_on = min_dis/2;
+		    end
+
+		    if length(offPick) > 1
+		    	rel_pos = pos(offPick,:) - off_pos;
+            	off_dis = sqrt(sum(rel_pos.*rel_pos,2));
+		    	cos_off = (rel_pos./off_dis)*proj';
+            	proj_off = off_dis.*cos_off;
+		    	max_off_p = max(proj_off(proj_off>=0));
+		    	max_off_m = max(abs(proj_off(proj_off<=0)));
+		    	r_off = max_off_p*(max_off_p/max_off_m);
+		    	if isnan(r_off)
+		    		r_off = min_dis/2;
+		    	end
+		    else
+		    	r_off = min_dis/2;
+		    end
+
+            os(i) = on_off_dis/(r_on+r_off);
+        end
     end
 end

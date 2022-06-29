@@ -12,8 +12,8 @@ fitTC=False
 nOri=6
 TF=8
 SF=40
-#singleOri=False
-singleOri=True
+singleOri=False
+#singleOri=True
 one_ori=1
 
 trial_suffix=newDep
