@@ -47,7 +47,7 @@ Float get_acuity(Float ecc) {
 }
 
 vector<vector<Float>> retinotopic_connection(
-        vector<vector<Size>> &poolList,
+        vector<vector<PosInt>> &poolList,
         RandomEngine &rGen,
         Float p_n_LGNeff,
         Size max_LGNeff,
@@ -67,10 +67,12 @@ vector<vector<Float>> retinotopic_connection(
         vector<Float> &cx, // V1 VF position (final)
         vector<Float> &cy,
         const vector<Float> &ecc,
+        vector<Float> &subregion_ratio,
         Int SimpleComplex,
         Float conThres,
         Float ori_tol,
         Float disLGN,
+		Float dmax,
 		bool strictStrength,
 		bool top_pick
 ) {
@@ -139,8 +141,7 @@ vector<vector<Float>> retinotopic_connection(
 			if (conThres >= 0) {
 				Float qfreq;
 				RF->setup_param(m, sfreq[i], phase[i], 1.0, theta[i], a[i], baRatio[i], RefType[i], strictStrength, envelopeSig);
-				//m = RF->construct_connection_thres(x, y, iType, poolList[i], strengthList, rGen, maxN, conThres, modAmp_nCon[i], qfreq, cart.first[i], cart.second[i], i);
-				m = RF->construct_connection_opt(x, y, iType, poolList[i], strengthList, modAmp_nCon[i], qfreq, cart.first[i], cart.second[i], i, ori_tol, get_acuity(ecc[i])/a[i]*disLGN, p_n_LGNeff);
+				m = RF->construct_connection_opt(x, y, iType, poolList[i], strengthList, modAmp_nCon[i], qfreq, cart.first[i], cart.second[i], i, ori_tol, get_acuity(ecc[i])/a[i]*disLGN, p_n_LGNeff, dmax);
 				sfreq[i] = qfreq;
 			} else {
             	if (SimpleComplex == 0) {
@@ -156,14 +157,33 @@ vector<vector<Float>> retinotopic_connection(
 			if (m > 0) { 
 				x.clear();
 				y.clear();
+				Float count_On = 0;
+				Float count_Off = 0;
 				for (Size j = 0; j < m; j++) {
-					x.push_back(cart0.first[poolList[i][j]]);
-					y.push_back(cart0.second[poolList[i][j]]);
+					PosInt LGN_id = poolList[i][j];
+					x.push_back(cart0.first[LGN_id]);
+					y.push_back(cart0.second[LGN_id]);
+					switch (LGNtype[LGN_id]) {
+						case InputType::LonMoff: case InputType::MoffLon: case InputType::OnOff: 
+							count_On += strengthList[j];
+							break;
+						case InputType::MonLoff: case InputType::LoffMon: case InputType::OffOn: 
+							count_Off += strengthList[j];
+							break;
+						default:
+							cout << "unknown input type.\n";
+					}
 				}
 				tie(cx[i], cy[i]) = average2D<Float>(x, y);
+				if (count_On > count_Off) {
+					subregion_ratio[i] = count_On / (count_On + count_Off);
+				} else {
+					subregion_ratio[i] = -count_Off / (count_On + count_Off);
+				}
 			} else {
 				cx[i] = cart.first[i];
 				cy[i] = cart.second[i];
+				subregion_ratio[i] = 0;
 			}
             phase[i] = RF->phase;
 			// reset reusable variables
@@ -173,6 +193,7 @@ vector<vector<Float>> retinotopic_connection(
 			cx[i] = cart.first[i];
 			cy[i] = cart.second[i];
             phase[i] = 0;
+			subregion_ratio[i] = 0;
 			// empty list of connection strength, idList is already empty
 			srList.push_back(vector<Float>());
 		}
@@ -352,7 +373,7 @@ void vf_pool_CUDA( // for each eye
                 use tentative radius of interest rmap(e_i,p_i) on Sheet 1 and make sure that it contains at least one neuron, otherwsie only include the nearest one to the poolList.
 */
 
-vector<vector<Size>> retinotopic_vf_pool(
+vector<vector<PosInt>> retinotopic_vf_pool(
         pair<vector<Float>,vector<Float>> &cart,
         pair<vector<Float>,vector<Float>> &cart0,
         vector<Float> &VFposEcc,
@@ -502,6 +523,7 @@ int main(int argc, char *argv[]) {
 	Float conThres;
 	Float ori_tol;
 	Float disLGN;
+	Float dmax;
 	bool strictStrength;
 	bool top_pick;
     vector<Float> pureComplexRatio;
@@ -532,6 +554,7 @@ int main(int argc, char *argv[]) {
 		("conThres", po::value<Float>(&conThres)->default_value(-1), "connect to LGN using conThres")
 		("ori_tol", po::value<Float>(&ori_tol)->default_value(15), "tolerance of preset orientation deviation in degree")
 		("disLGN", po::value<Float>(&disLGN)->default_value(1.0), "average visual distance between LGN cells")
+		("dmax", po::value<Float>(&dmax)->default_value(1.5), "subregion LGN oriented distance max in units of disLGN")
 		("strictStrength", po::value<bool>(&strictStrength)->default_value(true), "make nLGN*sLGN strictly as preset")
 		("pureComplexRatio", po::value<vector<Float>>(&pureComplexRatio), "determine the proportion of simple and complex in V1 of size nType")
 		("typeAccCount",po::value<vector<Size>>(&typeAccCount), "neuronal types' discrete accumulative distribution size of nType")
@@ -741,7 +764,7 @@ int main(int argc, char *argv[]) {
     vector<Float> a; // radius of the VF, to be filled
 	vector<Float> baRatio = generate_baRatio(n, rGen);
     cout << "max pool of LGN = " << maxLGNperV1pool << "\n";
-    vector<vector<Size>> poolList = retinotopic_vf_pool(cart, cart0, VFposEcc, useCuda, rGen, baRatio, a, theta, LR, nL, mL, m, maxLGNperV1pool, seed, LGN_V1_RFratio);
+    vector<vector<PosInt>> poolList = retinotopic_vf_pool(cart, cart0, VFposEcc, useCuda, rGen, baRatio, a, theta, LR, nL, mL, m, maxLGNperV1pool, seed, LGN_V1_RFratio);
     Size minPool_L = maxLGNperV1pool; 
     Size maxPool_L = 0; 
     Float meanPool_L = 0; 
@@ -991,7 +1014,8 @@ int main(int argc, char *argv[]) {
 
 	vector<Float> cx(n);
 	vector<Float> cy(n);
-    vector<vector<Float>> srList = retinotopic_connection(poolList, rGen, p_n_LGNeff, max_LGNeff, envelopeSig, n, cart, cart0, V1Type, theta, phase, sfreq, modAmp_nCon, baRatio, a, RefType, LGNtype, cx, cy, VFposEcc, SimpleComplex, conThres, ori_tol, disLGN, strictStrength, top_pick);
+	vector<Float> subregion_ratio(n);
+    vector<vector<Float>> srList = retinotopic_connection(poolList, rGen, p_n_LGNeff, max_LGNeff, envelopeSig, n, cart, cart0, V1Type, theta, phase, sfreq, modAmp_nCon, baRatio, a, RefType, LGNtype, cx, cy, VFposEcc, subregion_ratio, SimpleComplex, conThres, ori_tol, dmax, disLGN, strictStrength, top_pick);
 
     if (!readFromFile) {
         ofstream fV1_RFpreset(V1_RFpreset_filename, fstream::out | fstream::binary);
@@ -1112,6 +1136,43 @@ int main(int argc, char *argv[]) {
     cout << "# totalConnectionStd: " << square_root(pool2 - meanPool*meanPool) << "\n";
     cout << "# totalStrength: [" << minSum << ", " << meanSum << ", " << maxSum << "]\n";
     cout << "# totalStrengthStd: " << square_root(sum2 - meanSum*meanSum) << "\n";
+
+    cout << "balance between (L)on (L)off subregions: " <<  accumulate(subregion_ratio.begin(), subregion_ratio.end(), 0.0)/n << "\n";
+	
+	Float minOn = 1;
+	Float sumOn = 0;
+	Float maxOn = 0;
+	Float minOff = 1;
+	Float sumOff = 0;
+	Float maxOff = 0;
+	Float sum2On = 0;
+	Float sum2Off = 0;
+	Size nonzero_On = 0;
+	Size nonzero_Off = 0;
+    for (PosInt i=0; i<n; i++) {
+		if (poolList[i].size() > 0) {
+			Float subr = subregion_ratio[i];
+			if (subr < 0) {
+				nonzero_Off++;
+				subr = -subr;
+				if (subr < minOff) minOff = subr;
+				if (subr > maxOff) maxOff = subr;
+				sumOff += subr;
+				sum2Off += subr*subr;
+			} else {
+				nonzero_On++;
+				if (subr < minOn) minOn = subr;
+				if (subr > maxOn) maxOn = subr;
+				sumOn += subr;
+				sum2On += subr*subr;
+			}
+		}
+	}
+	Float meanOn = sumOn/nonzero_On;
+	Float meanOff = sumOff/nonzero_Off;
+    cout << "subregion balance within one V1 neuron: \n";
+	cout << "	Lon, Moff or On subregion: " << minOn << ", " << meanOn << "(" << square_root(sum2On/nonzero_On - meanOn*meanOn) << "), " << maxOn << "\n";
+	cout << "	Loff, Mon or Off subregion: " << minOff << ", " << meanOff << "(" << square_root(sum2Off/nonzero_Off - meanOff*meanOff) << "), " << maxOff << "\n";
 
 	/*
 	cout << ic_max << "has max connections:\n";

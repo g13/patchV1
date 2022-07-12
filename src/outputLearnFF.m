@@ -7,7 +7,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 		return
 	else
 		if nargin < 11
-		    use_local_max = 1;
+		    use_local_max = 1
 		end
 	end
 
@@ -261,14 +261,20 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
         end
         max20(:,i,1) = histcounts(sum(s_on>gmaxLGN*top_thres, 1), 'BinEdges', 0:max_LGNperV1/2);
         max20(:,i,2) = histcounts(sum(s_off>gmaxLGN*top_thres, 1), 'BinEdges', 0:max_LGNperV1/2);
-        if i == nit
+        
+        min0(:,i,1) = histcounts(sum(s_on==0, 1), 'BinEdges', 0:max_LGNperV1/2);
+        min0(:,i,2) = histcounts(sum(s_off==0, 1), 'BinEdges', 0:max_LGNperV1/2);
+
+		if i == nit
             nmax = sum(s_on > gmaxLGN*top_thres, 1);
             avg_on_max = mean(nmax(nmax > 0));
             nmax = sum(s_off > gmaxLGN*top_thres, 1);
             avg_off_max = mean(nmax(nmax > 0));
+            nmin = sum(s_on == 0, 1);
+            avg_on_min = mean(nmin(nmin > 0));
+            nmin = sum(s_off == 0, 1);
+            avg_off_min = mean(nmin(nmin > 0));
         end
-        min0(:,i,1) = histcounts(sum(s_on==0, 1), 'BinEdges', 0:max_LGNperV1/2);
-        min0(:,i,2) = histcounts(sum(s_off==0, 1), 'BinEdges', 0:max_LGNperV1/2);
 
         sLGN_on = mean(sLGN_on,3);
         sLGN_off = mean(sLGN_off,3);
@@ -383,6 +389,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	imagesc([1, nit], [1, max_LGNperV1/2], counts./max(counts), clims);
 	colormap('gray');
     ylabel('# == 0');
+    title(['on: ', num2str(avg_on_min,'%.2f')]);
     xlabel('sample time');
 	set(gca,'YDir','normal')
 
@@ -390,6 +397,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
     counts = min0(:,:,2);
 	imagesc([1, nit], [1, max_LGNperV1/2], counts./max(counts), clims);
 	colormap('gray');
+    title(['off: ', num2str(avg_off_min,'%.2f')]);
 	set(gca,'YDir','normal')
 
 	set(f, 'OuterPosition', [.1, .1, max_LGNperV1/2, nit*0.75]/4);
@@ -603,9 +611,9 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 	    	            stmp0 = sLGN(itype:2:(nLGN_1D*2),:,i);
 						local_max = max(abs(stmp0(:)));
 						if use_local_max == 1
-							stmp = stmp0./local_max;
-						else
 							stmp = stmp0./gmax;
+						else
+							stmp = stmp0./gmaxLGN;
 						end
 	    	            imagesc([1 nLGN_1D], [1,nLGN_1D],stmp', clims);
 	    	        	daspect([1,1,1]);
@@ -684,6 +692,10 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
             if gmax == 0
                 continue;
             end
+			if use_local_max ~= 1
+				gmax = gmaxLGN;
+			end
+				
 	        gmin = min(tLGN(:));
 			if examSingle
 				f = figure('PaperPosition',[.1 .1 8 8]);

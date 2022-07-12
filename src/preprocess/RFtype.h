@@ -659,7 +659,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         }
         return nConnected;
     }
-    virtual Size construct_connection_opt(std::vector<Float> &x, std::vector<Float> &y, std::vector<InputType> &iType, std::vector<Size> &idList, std::vector<Float> &strengthList, Float zero, Float &true_sfreq, Float vx, Float vy, PosInt iV1, Float ori_tol, Float disLGN, Float sSum) {
+    virtual Size construct_connection_opt(std::vector<Float> &x, std::vector<Float> &y, std::vector<InputType> &iType, std::vector<Size> &idList, std::vector<Float> &strengthList, Float zero, Float &true_sfreq, Float vx, Float vy, PosInt iV1, Float ori_tol, Float disLGN, Float sSum, Float dmax) {
         Size nConnected;
         if (n > 0) {
             if (zero > 0) {
@@ -695,7 +695,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 				}
 
                 // make connection and update ID and strength list
-                nConnected = connect_opt_new(idList, strengthList, iType, biPick, envelope_value, norm_x, norm_y, n, iOnOff, iV1, ori_tol, disLGN, sSum);
+                nConnected = connect_opt_new(idList, strengthList, iType, biPick, envelope_value, norm_x, norm_y, n, iOnOff, iV1, ori_tol, disLGN, sSum, dmax);
 				idList.shrink_to_fit();
 				true_sfreq = sfreq;
             } else {
@@ -1260,7 +1260,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 		}
         return idList.size();
     }
-    virtual Size connect_opt_new(std::vector<Size> &idList, std::vector<Float> &strengthList, std::vector<InputType> &iType, std::vector<Int> &biPick, std::vector<Float> envelope_value, std::vector<Float> &norm_x, std::vector<Float> &norm_y, Size n, Int iOnOff, PosInt iV1, Float ori_tol, Float disLGN, Float sSum, Float dmax = 2.0) {
+    virtual Size connect_opt_new(std::vector<Size> &idList, std::vector<Float> &strengthList, std::vector<InputType> &iType, std::vector<Int> &biPick, std::vector<Float> envelope_value, std::vector<Float> &norm_x, std::vector<Float> &norm_y, Size n, Int iOnOff, PosInt iV1, Float ori_tol, Float disLGN, Float sSum, Float dmax = 1.5) {
         ori_tol = ori_tol/180*M_PI;
         Float min_tan = tangent(ori_tol);
 

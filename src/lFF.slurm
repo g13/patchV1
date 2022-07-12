@@ -17,10 +17,10 @@ if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 	#inputFn=32-random3917563_10-30_stage_II 
 	inputFn=32-opponent_10-10_stage_II
 	fdr=wave_concat/wave_II # folder will be made to store figures and configuratoin files
-	op=w2_iwi1_rLTD0 # theme string to be added to filenames of data and figures
+	op=w2_iwi2 # theme string to be added to filenames of data and figures
 	op_cfg=wave_II.cfg # the simulation config file to be used
-	new_setup=False
-	suffix=iwi1
+	new_setup=True
+	suffix=iwi2
 	lgn=lFF_II_${suffix} # the theme string to be used for LGN_V1 connections
 	res=lFF_II_${suffix} # the theme string to be used for V1, LGN positions etc.
 	squareOrCircle=true # initial LGN-recruitment shape 
@@ -94,6 +94,7 @@ nOri=0
 v1=${lgn} # cortical V1 connections used the same theme as LGN to V1 connections
 
 echo ${op} # echo/print out the variable "op" in the job's output file
+echo ${suffix}
 
 fig_fdr=${fdr0}/${fdr}
 
@@ -175,17 +176,17 @@ then
 fi
 
 
-#date
-#echo plotLGN_response.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
-#plotLGN_response.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
-#
-#date
-#echo plotV1_fr.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} & 
-#plotV1_fr.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} &
-#
-#date
-#echo plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} & 
-#plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
+date
+echo plotLGN_response.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
+plotLGN_response.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
+
+date
+echo plotV1_fr.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} & 
+plotV1_fr.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} &
+
+date
+echo plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} & 
+plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
 
 date
 echo matlab -nodisplay -nosplash -r "outputLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle}, ${use_local_max});exit;" &

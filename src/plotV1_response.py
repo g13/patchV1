@@ -51,7 +51,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     #plotDepC = True # plot depC distribution over orientation
     #plotLGNsCorr = True
     #plotTempMod = True 
-    #plotExc_sLGN = True
+    plotExc_sLGN = True
     #plotLR_rp = True
     
     #plotRpStat = False 
@@ -61,7 +61,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     plotDepC = False
     plotLGNsCorr = False 
     plotTempMod = False 
-    plotExc_sLGN = False
+    #plotExc_sLGN = False
     plotLR_rp = False 
     
     pSample = True

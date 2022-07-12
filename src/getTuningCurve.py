@@ -1055,6 +1055,7 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
             raise Exception(f'the {i}th dprefMin ({iV1}) has no LGN input!')
 
         if i == dprefMin_pick.size-1:
+            legend_elements = []
             for m, l in zip(markers, type_labels):
                 legend_elements.append(Line2D([0], [0], marker=m[0], color=m[1], label = l))
             marker_legend = plt.legend(handles=legend_elements, bbox_to_anchor = (1,0), loc='lower left', fontsize='xx-small')
