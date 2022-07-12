@@ -1,19 +1,23 @@
 #!/bin/bash
 set -e
 
-repo=${CRD}
+repo=/root/autodl-tmp/patchV1
+# repo=/home/wd554/repos/patchV1
 cfg_fdr=${repo}/src
-fdr0=${CWD}
+fdr0=/root/autodl-tmp/data
 res_fdr=$fdr0/resource # stimulus, V1-static and LGN-static files
 in_fdr=$fdr0/resource # inputFolder in cfg
-data_fdr=$fdr0 # outputFolder in cfg
+data_fdr=$fdr0/data # outputFolder in cfg
 
 fitTC=False
 nOri=6
 TF=8
 SF=40
+#singleOri=False
+singleOri=True
+one_ori=1
 
-trial_suffix=test
+trial_suffix=newDep
 res_suffix=square-single_layer
 patch=patch_fast
 
@@ -22,8 +26,8 @@ generate_LGN_V1_connection=True
 
 patch_cfg=ori.cfg
 
-LGN_V1_suffix=4nLGN
-V1_connectome_suffix=4nLGN
+LGN_V1_suffix=opt_new
+V1_connectome_suffix=adjust
 
 retino_cfg=LGN_V1.cfg
 genCon_cfg=connectome.cfg
@@ -31,7 +35,7 @@ genCon_cfg=connectome.cfg
 TF=8 # input frequency if applicable
 nOri=6 # total # orientaton if applicable
 OPstatus=1 
-usePrefData=True # use fitted preference from plotTC replot plotV1_response.py
+usePrefData=False # use fitted preference from plotTC replot plotV1_response.py
 collectMeanDataOnly=False # no plots, just collect average data
 
 fig_fdr=${fdr0}/${trial_suffix} # figures and configs
@@ -68,6 +72,11 @@ else
 	fitDataReady=False
 fi
 
+if [ ! -d "${cfg_fdr}/log" ]
+then
+	mkdir -p ${cfg_fdr}/log
+fi
+
 if [ -d "$fig_fdr" ]
 then
 	echo overwrite contents in $fig_fdr
@@ -76,7 +85,7 @@ else
 fi
 
 cp ${cfg_fdr}/patchTC ${fig_fdr}/patchTC_${trial_suffix}
-cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/${trial_suffix}-ori_1.cfg
+cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/patch_${trial_suffix}.cfg
 
 if [ "${generate_LGN_V1_connection}" = True ]
 then
@@ -91,9 +100,13 @@ echo configuration files copied
 
 cp ${repo}/src/plotV1_response.py ${fig_fdr}/plotV1_response_${trial_suffix}.py
 cp ${repo}/src/plotLGN_response.py ${fig_fdr}/plotLGN_response_${trial_suffix}.py
-cp ${repo}/src/getTuningCurve.py ${fig_fdr}/getTuningCurve_${trial_suffix}.py
+if [ "$singleOri" = False ]; then
+	cp ${repo}/src/getTuningCurve.py ${fig_fdr}/getTuningCurve_${trial_suffix}.py
+fi
 echo plotting files copied
 
+set -e
+jobList=""
 export plotOnly
 export nOri
 export TF
@@ -110,11 +123,48 @@ export fitDataReady
 export patch
 export usePrefData
 export readNewSpike
+export generate_V1_connection
+export singleOri
+export plotOnly
+
+date=date
+#`date+"%Y_%m_%d_%H-%M-%S"`
 
 if [ "$plotTConly" = False ]; then
-	ori=1
-	export ori
-	./ori-nonhpc
+	if [ "$singleOri" = False ]; then
+		if [ "$plotOnly" = False ]; then
+			cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/${trial_suffix}-ori_1.cfg
+			cp ${fig_fdr}/${trial_suffix}-ori_1.cfg ${fig_fdr}/${trial_suffix}-ori_2.cfg
+		fi
+
+		jobID=""
+		for ori in $( seq 1 $nOri )
+		do
+			export ori
+			./ori.sh > log/${trial_suffix}_${ori}_${date}_${plotOnly}.out 2>&1 &
+			jobID+="${!} "
+			if [ "$plotOnly" = False ]; then
+				if [ "${ori}" -lt "${nOri}" ]; then
+					vim -s ${cfg_fdr}/nextOri_cfg.keys ${fig_fdr}/${trial_suffix}-ori_$((ori+1)).cfg
+					if [ "$((ori+1))" -lt "${nOri}" ]; then
+						cp ${fig_fdr}/${trial_suffix}-ori_$((ori+1)).cfg ${fig_fdr}/${trial_suffix}-ori_$((ori+2)).cfg
+					fi
+				fi
+			fi
+		done
+		wait $jobID
+		./plotTC.sh > log/pTC_${trial_suffix}_${date}.out &
+		job=$!
+	else
+		ori=$one_ori
+		if [ "$plotOnly" = False ]; then
+			cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/${trial_suffix}-ori_${ori}.cfg
+		fi
+		export ori
+		./ori.sh > log/${trial_suffix}_${ori}_${date}_${plotOnly}_singleOri.out 2>&1 &
+		job=$!
+	fi
 else
-	./plotTC-nonhpc
+	./plotTC.sh > log/pTC_${trial_suffix}_${date}.out &
+	job=$!
 fi
