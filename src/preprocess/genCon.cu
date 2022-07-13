@@ -17,7 +17,7 @@ int main(int argc, char *argv[])
     Size maxNeighborBlock, nearNeighborBlock;
 	Size maxDistantNeighbor, gap_maxDistantNeighbor;
 	vector<Size> nTypeHierarchy;
-    string V1_type_filename, V1_feature_filename, V1_pos_filename, LGN_V1_s_filename, suffix, conLGN_suffix, LGN_V1_cfg_filename, output_cfg_filename;
+    string V1_feature_filename, V1_pos_filename, LGN_V1_s_filename, suffix, conLGN_suffix, LGN_V1_cfg_filename, output_cfg_filename;
 	string V1_conMat_filename, V1_delayMat_filename, V1_gapMat_filename;
 	string V1_vec_filename, V1_gapVec_filename;
 	string block_pos_filename, neighborBlock_filename, stats_filename;
@@ -38,15 +38,19 @@ int main(int argc, char *argv[])
     vector<Float> typeFeatureMat, gap_fTypeMat;
     vector<Size> nTypeMat, nInhGap;
 
+	string inputFolder, resourceFolder;
+
 	po::options_description generic_opt("Generic options");
 	generic_opt.add_options()
         ("seed", po::value<BigSize>(&seed)->default_value(7641807), "seed for RNG")
-		("cfg_file,c", po::value<string>()->default_value("connectome.cfg"), "filename for configuration file")
-		("help,h", "print usage");
+	("cfg_file,c", po::value<string>()->default_value("connectome.cfg"), "filename for configuration file")
+	("help,h", "print usage");
 
 	Float minConTol;
 	po::options_description input_opt("output options");
 	input_opt.add_options()
+		("inputFolder", po::value<string>(&inputFolder)->default_value(""), "where the input data files at(unless starts with !), must end with /")
+		("resourceFolder", po::value<string>(&resourceFolder)->default_value(""), "where the resource files at(unless starts with !), must end with /")
         ("DisGauss", po::value<Float>(&disGauss), "if set true, conn. prob. based on distance will follow a 2D gaussian with a variance. of (raxn*raxn + rden*rden)/(2*ln(2))*disGauss, otherwise 0 will based on the overlap of the area specified by raxn and rden")
         ("strictStrength", po::value<bool>(&strictStrength), "strictly match preset summed connection")
         ("CmoreN", po::value<bool>(&CmoreN), "if true complex gets more connections otherwise stronger strength")
@@ -58,11 +62,11 @@ int main(int argc, char *argv[])
         ("dDend", po::value<vector<Float>>(&dDend), "vector of dendrites' densities, size of nType")
         ("dAxon", po::value<vector<Float>>(&dAxon), "vector of axons' densities, size of nType")
         ("synapticLoc", po::value<vector<Float>>(&synapticLoc), " maximal synaptic location relative to the soma, percentage of dendrite, of different presynaptic type, size of [nType, nType], nType = sum(nTypeHierarchy), row_id -> postsynaptic, column_id -> presynaptic")
-		("nTypeHierarchy", po::value<vector<Size>>(&nTypeHierarchy), "a vector of hierarchical types differs in non-functional properties: reversal potentials, characteristic lengths of dendrite and axons, e.g. in size of nArchtype, {Exc-Pyramidal, Exc-stellate; Inh-PV, Inh-SOM, Inh-LTS} then the vector would be {3, 2}, with Exc and Inh being arch type")
-		("max_ffRatio", po::value<vector<Float>>(&max_ffRatio), "max LGN contribution")
-		("inhRatio", po::value<vector<Float>>(&inhRatio), "extra inhibition ratio for ? cells")
-		("ClessI", po::value<bool>(&ClessI), "lesser inhibition for complex cell")
-		("minConTol", po::value<Float>(&minConTol), "minimum difference tolerance of the number of preset cortical connections")
+	("nTypeHierarchy", po::value<vector<Size>>(&nTypeHierarchy), "a vector of hierarchical types differs in non-functional properties: reversal potentials, characteristic lengths of dendrite and axons, e.g. in size of nArchtype, {Exc-Pyramidal, Exc-stellate; Inh-PV, Inh-SOM, Inh-LTS} then the vector would be {3, 2}, with Exc and Inh being arch type")
+	("max_ffRatio", po::value<vector<Float>>(&max_ffRatio), "max LGN contribution")
+	("inhRatio", po::value<vector<Float>>(&inhRatio), "extra inhibition ratio for ? cells")
+	("ClessI", po::value<bool>(&ClessI), "lesser inhibition for complex cell")
+	("minConTol", po::value<Float>(&minConTol), "minimum difference tolerance of the number of preset cortical connections")
         ("sTypeMat", po::value<vector<Float>>(&sTypeMat), "connection strength matrix between neuronal types, size of [nType, nType], nType = sum(nTypeHierarchy), row_id -> postsynaptic, column_id -> presynaptic")
         ("gap_sTypeMat", po::value<vector<Float>>(&gap_sTypeMat), "gap junction strength matrix between inhibitory neuronal types, size of [nTypeI, nTypeI], nTypeI = nTypeHierarchy[1], row_id -> postsynaptic, column_id -> presynaptic")
         ("nTypeMat", po::value<vector<Size>>(&nTypeMat), "#connection matrix between neuronal types, size of [nType, nType], nType = sum(nTypeHierarchy), row_id -> postsynaptic, column_id -> presynaptic")
@@ -90,10 +94,10 @@ int main(int argc, char *argv[])
         ("fV1_gapMat", po::value<string>(&V1_gapMat_filename)->default_value("V1_gapMat"), "file that stores V1 to V1 gap junction within the neighboring blocks")
         ("fV1_vec", po::value<string>(&V1_vec_filename)->default_value("V1_vec"), "file that stores V1 to V1 connection ID, strength and transmission delay outside the neighboring blocks")
         ("fV1_gapVec", po::value<string>(&V1_gapVec_filename)->default_value("V1_gapVec"), "file that stores V1 to V1 gap-junction ID, strength and transmission delay outside the neighboring blocks")
-		("fBlock_pos", po::value<string>(&block_pos_filename)->default_value("block_pos"), "file that stores the center coord of each block")
-		("fNeighborBlock", po::value<string>(&neighborBlock_filename)->default_value("neighborBlock"), "file that stores the neighboring blocks' ID for each block")
-		("fConnectome_cfg", po::value<string>(&output_cfg_filename)->default_value("connectome_cfg"), "file stores parameters in current cfg_file")
-		("fStats", po::value<string>(&stats_filename)->default_value("conStats"), "file that stores the statistics of connections");
+	("fBlock_pos", po::value<string>(&block_pos_filename)->default_value("block_pos"), "file that stores the center coord of each block")
+	("fNeighborBlock", po::value<string>(&neighborBlock_filename)->default_value("neighborBlock"), "file that stores the neighboring blocks' ID for each block")
+	("fConnectome_cfg", po::value<string>(&output_cfg_filename)->default_value("connectome_cfg"), "file stores parameters in current cfg_file")
+	("fStats", po::value<string>(&stats_filename)->default_value("conStats"), "file that stores the statistics of connections");
 
 	po::options_description cmdline_options;
 	cmdline_options.add(generic_opt).add(input_opt).add(output_opt);
@@ -116,6 +120,27 @@ int main(int argc, char *argv[])
 		cout << "No configuration file is given, default values are used for non-specified parameters\n";
 	}
 	po::notify(vm);
+
+	if (V1_feature_filename.at(0) != '!'){
+		V1_feature_filename = resourceFolder + V1_feature_filename;
+	} else {
+		V1_feature_filename.erase(0,1);
+    }
+	if (V1_pos_filename.at(0) != '!'){
+		V1_pos_filename = resourceFolder + V1_pos_filename;
+    } else {
+		V1_pos_filename.erase(0,1);
+	}
+	if (LGN_V1_cfg_filename.at(0) != '!'){
+		LGN_V1_cfg_filename = inputFolder + LGN_V1_cfg_filename;
+    } else {
+		LGN_V1_cfg_filename.erase(0,1);
+	}
+	if (LGN_V1_s_filename.at(0) != '!'){
+		LGN_V1_s_filename = inputFolder + LGN_V1_s_filename;
+    } else {
+		LGN_V1_s_filename.erase(0,1);
+	}
 
     ifstream fV1_pos, fV1_feature;
     ofstream fV1_conMat, fV1_delayMat, fV1_gapMat, fV1_vec, fV1_gapVec;

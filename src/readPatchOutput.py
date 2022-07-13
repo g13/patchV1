@@ -459,8 +459,8 @@ def HeatMap(d1, d2, range1, range2, ax, cm, log_scale = False, intPick = False, 
     color = 'k'
 
     ax.plot(np.arange(edge1.size - 1), (tc - edge2[0])/(edge2[-1]-edge2[0])*(edge2.size - 1)-0.5, ':', c=color, lw = 1.0, ms = 1.5)
-    ax.plot(np.arange(edge1.size - 1), (tm - edge2[0])/(edge2[-1]-edge2[0])*(edge2.size - 1)-0.5, '*--k', c=color, lw = 1.0, ms = 1.5)
-    ax.plot(np.arange(edge1.size - 1), tmost, '-', c='k', lw = 3.0, alpha = 0.5)
+    ax.plot(np.arange(edge1.size - 1), (tm - edge2[0])/(edge2[-1]-edge2[0])*(edge2.size - 1)-0.5, '*--', c=color, lw = 1.0, ms = 1.5)
+    ax.plot(np.arange(edge1.size - 1), tmost, '-', c=color, lw = 3.0, alpha = 0.5)
     #ax.set_aspect()
     return image
 

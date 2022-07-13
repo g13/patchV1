@@ -17,7 +17,7 @@ np.seterr(invalid = 'raise')
 
 
 #@profile
-def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
+def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
     #sample = np.array([91,72,78,54,84,91,8,6,8,52])*1024 + np.array([649,650,508,196,385,873,190,673,350,806])
     #sample = np.array([33])*1024 + np.array([678])
     singleOri = False
@@ -126,6 +126,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     conLGN_suffix = "_" + conLGN_suffix
     conV1_suffix = "_" + conV1_suffix
     data_fdr = data_fdr+"/"
+    setup_fdr = setup_fdr+"/"
     res_fdr = res_fdr+"/"
     fig_fdr = fig_fdr+"/"
     
@@ -142,10 +143,12 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     parameterFn = data_fdr + "patchV1_cfg" +_output_suffix + ".bin"
 
     LGN_propFn = data_fdr + "LGN" + _output_suffix + ".bin"
-    LGN_V1_sFn = res_fdr + "LGN_V1_sList" + conLGN_suffix + ".bin"
-    LGN_V1_idFn = res_fdr + "LGN_V1_idList" + conLGN_suffix + ".bin"
-    conStats_Fn = res_fdr + "conStats" + conV1_suffix + ".bin"
-    V1_RFpropFn = res_fdr + "V1_RFprop" + conLGN_suffix + ".bin"
+
+    LGN_V1_sFn = setup_fdr + "LGN_V1_sList" + conLGN_suffix + ".bin"
+    LGN_V1_idFn = setup_fdr + "LGN_V1_idList" + conLGN_suffix + ".bin"
+    V1_RFpropFn = setup_fdr + "V1_RFprop" + conLGN_suffix + ".bin"
+    conStats_Fn = setup_fdr + "conStats" + conV1_suffix + ".bin"
+
     LGN_vposFn = res_fdr + 'LGN_vpos'+ res_suffix + ".bin"
     featureFn = res_fdr + 'V1_feature' + res_suffix + ".bin"
     V1_allposFn = res_fdr + 'V1_allpos' + res_suffix + ".bin"
@@ -3111,7 +3114,7 @@ if __name__ == "__main__":
 
     if len(sys.argv) < 15:
         print(sys.argv)
-        raise Exception('not enough argument for plotV1_response(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus)')
+        raise Exception('not enough argument for plotV1_response(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus)')
     else:
         output_suffix = sys.argv[1]
         print(output_suffix)
@@ -3123,34 +3126,36 @@ if __name__ == "__main__":
         print(conV1_suffix)
         res_fdr = sys.argv[5]
         print(res_fdr)
-        data_fdr = sys.argv[6]
+        setup_fdr = sys.argv[6]
+        print(setup_fdr)
+        data_fdr = sys.argv[7]
         print(data_fdr)
-        fig_fdr = sys.argv[7]
+        fig_fdr = sys.argv[8]
         print(fig_fdr)
-        TF = float(sys.argv[8])
+        TF = float(sys.argv[9])
         print(TF)
-        iOri = int(sys.argv[9])
-        nOri = int(sys.argv[10])
+        iOri = int(sys.argv[10])
+        nOri = int(sys.argv[11])
         print(f'{iOri}/{nOri}')
-        if sys.argv[11] == 'True':
+        if sys.argv[12] == 'True':
             readNewSpike = True 
             print('read new spikes')
         else:
             readNewSpike = False
             print('read stored spikes')
-        if sys.argv[12] == 'True':
+        if sys.argv[13] == 'True':
             usePrefData = True 
             print('using fitted data')
         else:
             usePrefData = False
             print('not using fitted data')
-        if sys.argv[13] == 'True':
+        if sys.argv[14] == 'True':
             collectMeanDataOnly= True 
             print('collect mean data only')
         else:
             collectMeanDataOnly = False
 
-        OPstatus = int(sys.argv[14])
+        OPstatus = int(sys.argv[15])
         if OPstatus != 0 and OPstatus != 1 and OPstatus != 2:
             raise Exception(f'OPstatus = {OPstatus} but it can only be 0: no OP plots, 1: preset OP plots, 2: update OP plots only')
         else:
@@ -3161,4 +3166,4 @@ if __name__ == "__main__":
             if OPstatus == 2:
                 print('update OP plots only')
 
-    plotV1_response(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus)
+    plotV1_response(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus)

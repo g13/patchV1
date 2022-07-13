@@ -1,12 +1,11 @@
 #!/bin/bash
 set -e
 
-repo=/root/autodl-tmp/patchV1
-# repo=/home/wd554/repos/patchV1
+repo=$HOME/repos/patchV1
 cfg_fdr=${repo}/src
-fdr0=/root/autodl-tmp/data
-res_fdr=$fdr0/resource # stimulus, V1-static and LGN-static files
-in_fdr=$fdr0/resource # inputFolder in cfg
+fdr0=/root/autodl-tmp/wd
+res_fdr=/root/autodl-tmp/public/resource # stimulus, V1-static and LGN-static files
+setup_fdr=$fdr0/setup # inputFolder in cfg
 data_fdr=$fdr0/data # outputFolder in cfg
 
 fitTC=False
@@ -111,6 +110,7 @@ export plotOnly
 export nOri
 export TF
 export res_fdr
+export setup_fdr
 export data_fdr
 export fig_fdr
 export res_suffix
@@ -127,8 +127,7 @@ export generate_V1_connection
 export singleOri
 export plotOnly
 
-date=date
-#`date+"%Y_%m_%d_%H-%M-%S"`
+date=$(eval date +"%Y_%m_%d_%H-%M-%S")
 
 if [ "$plotTConly" = False ]; then
 	if [ "$singleOri" = False ]; then

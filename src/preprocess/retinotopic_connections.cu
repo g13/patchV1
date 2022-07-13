@@ -515,24 +515,25 @@ vector<vector<PosInt>> retinotopic_vf_pool(
  
 int main(int argc, char *argv[]) {
 	namespace po = boost::program_options;
-    bool readFromFile, useCuda;
+    	bool readFromFile, useCuda;
 	Float p_n_LGNeff;
 	Size max_LGNeff;
 	Size maxLGNperV1pool;
-    Int SimpleComplex;
+    	Int SimpleComplex;
 	Float conThres;
 	Float ori_tol;
 	Float disLGN;
 	Float dmax;
 	bool strictStrength;
 	bool top_pick;
-    vector<Float> pureComplexRatio;
+    	vector<Float> pureComplexRatio;
 	vector<Size> typeAccCount;
-    Float LGN_V1_RFratio;
-    Float envelopeSig;
-    BigSize seed;
-    vector<Size> nRefTypeV1_RF, V1_RefTypeID;
-    vector<Float> V1_RFtypeAccDist, V1_RefTypeDist;
+    	Float LGN_V1_RFratio;
+    	Float envelopeSig;
+    	BigSize seed;
+    	vector<Size> nRefTypeV1_RF, V1_RefTypeID;
+    	vector<Float> V1_RFtypeAccDist, V1_RefTypeDist;
+	string resourceFolder;
 	string LGN_vpos_filename, V1_vpos_filename, V1_RFpreset_filename, V1_feature_filename, suffix;
 	po::options_description generic("generic options");
 	generic.add_options()
@@ -562,12 +563,13 @@ int main(int argc, char *argv[]) {
 		("nRefTypeV1_RF", po::value<vector<Size>>(&nRefTypeV1_RF), "determine the number of cone/ON-OFF combinations for each V1 RF type")
 		("V1_RefTypeID", po::value<vector<Size>>(&V1_RefTypeID), "determine the ID of the available cone/ON-OFF combinations in each V1 RF type")
 		("V1_RefTypeDist", po::value<vector<Float>>(&V1_RefTypeDist), "determine the relative portion of the available cone/ON-OFF combinations in each V1 RF type")
+		("resourceFolder", po::value<string>(&resourceFolder)->default_value(""), "where the resource files at(unless starts with !), must end with /")
 		("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file that stores V1 neurons' parameters")
 		("fV1_RFpreset", po::value<string>(&V1_RFpreset_filename)->default_value("V1_RFpreset.bin"), "file that stores V1 neurons' parameters")
 		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"), "file that stores LGN position in visual field (and on-cell off-cell label)")
 		("fV1_vpos", po::value<string>(&V1_vpos_filename)->default_value("V1_vpos.bin"), "file that stores V1 position in visual field)");
 
-    string V1_RFprop_filename, idList_filename, sList_filename, output_cfg_filename;
+    	string V1_RFprop_filename, idList_filename, sList_filename, output_cfg_filename;
 	po::options_description output_opt("output options");
 	output_opt.add_options()
 		("suffix", po::value<string>(&suffix)->default_value(""), "suffix for output file")
@@ -597,6 +599,22 @@ int main(int argc, char *argv[]) {
 		cout << "No configuration file is given, default values are used for non-specified parameters\n";
 	}
 	po::notify(vm);
+
+	if (V1_feature_filename.at(0) != '!'){
+		V1_feature_filename = resourceFolder + V1_feature_filename;
+	} else {
+		V1_feature_filename.erase(0,1);
+    }
+	if (LGN_vpos_filename.at(0) != '!'){
+		LGN_vpos_filename = resourceFolder + LGN_vpos_filename;
+    } else {
+		LGN_vpos_filename.erase(0,1);
+    }
+	if (V1_vpos_filename.at(0) != '!'){
+		V1_vpos_filename = resourceFolder + V1_vpos_filename;
+    } else {
+		V1_vpos_filename.erase(0,1);
+	}
     
     if (!suffix.empty()) {
         suffix = '_' + suffix;

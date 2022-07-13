@@ -14,8 +14,9 @@ res_suffix = sys.argv[2]
 conLGN_suffix = sys.argv[3]
 conV1_suffix = sys.argv[4]
 res_fdr = sys.argv[5]
-data_fdr = sys.argv[6]
-fig_fdr = sys.argv[7]
+setup_fdr = sys.argv[6]
+data_fdr = sys.argv[7]
+fig_fdr = sys.argv[8]
 
 if res_suffix:
     res_suffix = "_" + res_suffix 
@@ -35,6 +36,8 @@ if fig_fdr[-1] != "/":
     fig_fdr = fig_fdr + "/"
 if res_fdr[-1] != "/":
     res_fdr = res_fdr + "/"
+if setup_fdr[-1] != "/":
+    setup_fdr = res_fdr + "/"
 if data_fdr[-1] != "/":
     data_fdr = data_fdr + "/"
 
@@ -75,14 +78,15 @@ LGN_vposFn = res_fdr + 'LGN_vpos'+ res_suffix + ".bin"
 featureFn = res_fdr + 'V1_feature' + res_suffix + ".bin"
 V1_allposFn = res_fdr + 'V1_allpos' + res_suffix + ".bin"
 parameterFn = data_fdr + "patchV1_cfg" +output_suffix + ".bin"
-conMat_file = res_fdr + 'V1_conMat'+conV1_suffix+'.bin'
-delayMat_file = res_fdr + 'V1_delayMat'+conV1_suffix+'.bin'
-vec_file = res_fdr + 'V1_vec'+conV1_suffix+'.bin'
-blkPos_file = res_fdr + 'block_pos'+conV1_suffix+'.bin'
-nabaBlk_file = res_fdr + 'neighborBlock'+conV1_suffix+'.bin'
-stats_file = res_fdr + 'conStats'+conV1_suffix+'.bin'
-LGN_V1_ID_file = res_fdr + 'LGN_V1_idList'+conLGN_suffix+'.bin'
-LGN_V1_s_file = res_fdr + 'LGN_V1_sList'+conLGN_suffix+'.bin'
+
+conMat_file = setup_fdr + 'V1_conMat'+conV1_suffix+'.bin'
+delayMat_file = setup_fdr + 'V1_delayMat'+conV1_suffix+'.bin'
+vec_file = setup_fdr + 'V1_vec'+conV1_suffix+'.bin'
+blkPos_file = setup_fdr + 'block_pos'+conV1_suffix+'.bin'
+nabaBlk_file = setup_fdr + 'neighborBlock'+conV1_suffix+'.bin'
+stats_file = setup_fdr + 'conStats'+conV1_suffix+'.bin'
+LGN_V1_ID_file = setup_fdr + 'LGN_V1_idList'+conLGN_suffix+'.bin'
+LGN_V1_s_file = setup_fdr + 'LGN_V1_sList'+conLGN_suffix+'.bin'
 
 prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN = read_cfg(parameterFn)
 

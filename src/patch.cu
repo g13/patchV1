@@ -302,7 +302,7 @@ int main(int argc, char** argv) {
 		("use_v0", po::value<bool>(&use_v0)->default_value(false), "use v0 to initialize membrane potential, otherwise is set according to depC")
 		("useNewLGN", po::value<bool>(&useNewLGN)->default_value(true), "regenerate the a new ensemble of LGN parameters according to their distribution");
 
-	string inputFolder, outputFolder;
+	string inputFolder, outputFolder, resourceFolder;
 	// files
 	string connectome_cfg_filename, patchV1_cfg_filename, restore;
 	string output_suffix, output_suffix0; // suffix to be added to all output filename
@@ -321,7 +321,8 @@ int main(int argc, char** argv) {
 	string LGN_convol_filename, LGN_gallery_filename, outputB4V1_filename, rawData_filename, learnData_FF_filename, learnData_V1_filename, sLGN_filename, LGN_sp_filename;
 	top_opt.add_options()
 		//inputs:
-		("inputFolder", po::value<string>(&inputFolder)->default_value(""), "where the input data files at, must end with /")
+		("inputFolder", po::value<string>(&inputFolder)->default_value(""), "where the input data files at (unless starts with !), must end with /")
+		("resourceFolder", po::value<string>(&resourceFolder)->default_value(""), "where the resource files at (unless starts with !), must end with /")
 		("res_suffix", po::value<string>(&res_suffix)->default_value(""), "suffix for resource files")
 		("conV1_suffix", po::value<string>(&conV1_suffix)->default_value(""), "suffix for V1 connectome files")
 		("conLGN_suffix", po::value<string>(&conLGN_suffix)->default_value(""), "suffix for LGN to V1 connectome files")
@@ -390,66 +391,96 @@ int main(int argc, char** argv) {
 		po::notify(vm);
 	}
 
-	if (!vm["inputFolder"].defaulted()) {
-		cout << "unspecified input files will be read from " << inputFolder << "\n";
-		if (vm["fConnectome_cfg"].defaulted()){
-			connectome_cfg_filename = inputFolder + connectome_cfg_filename;
-		}
-		if (!vm["fSnapshot"].defaulted()){ // if defaulted, no restore, otherwise put restore file in the inputFolder
-			restore = inputFolder + restore;
-		}
-		if (vm["fLGN_switch"].defaulted()){
-			LGN_switch_filename = inputFolder + LGN_switch_filename;
-		}
-		if (vm["fStimulus"].defaulted()){
-			stimulus_filename = inputFolder + stimulus_filename;
-		}
-		if (vm["fLGN_vpos"].defaulted()){
-			LGN_vpos_filename = inputFolder + LGN_vpos_filename;
-		}
-		if (vm["fLGN_V1_ID"].defaulted()){
-			LGN_V1_ID_filename = inputFolder + LGN_V1_ID_filename;
-		}
-		if (vm["fLGN_V1_s"].defaulted()){
-			LGN_V1_s_filename = inputFolder + LGN_V1_s_filename;
-		}
-		if (vm["fLGN_surfaceID"].defaulted()){
-			LGN_surfaceID_filename = inputFolder + LGN_surfaceID_filename;
-		}
-		if (vm["fV1_allpos"].defaulted()){
-			V1_allpos_filename = inputFolder + V1_allpos_filename;
-		}
-		if (vm["fV1_feature"].defaulted()){
-			V1_feature_filename = inputFolder + V1_feature_filename;
-		}
-		if (vm["fV1_conMat"].defaulted()){
-			V1_conMat_filename = inputFolder + V1_conMat_filename;
-		}
-		if (vm["fV1_delayMat"].defaulted()){
-			V1_delayMat_filename = inputFolder + V1_delayMat_filename;
-		}
-		if (vm["fV1_gapMat"].defaulted()){
-			V1_gapMat_filename = inputFolder + V1_gapMat_filename;
-		}
-		if (vm["fConStats"].defaulted()){
-			conStats_filename = inputFolder + conStats_filename;
-		}
-		if (vm["fV1_vec"].defaulted()){
-			V1_vec_filename = inputFolder + V1_vec_filename;
-		}
-		if (vm["fV1_gapVec"].defaulted()){
-			V1_gapVec_filename = inputFolder + V1_gapVec_filename;
-		}
-		if (vm["fNeighborBlock"].defaulted()){
-			neighborBlock_filename = inputFolder + neighborBlock_filename;
-		}
-		// not in use
-		//if (!vm["fV1_RF"].defaulted(){
-		//	V1_RF_filename = inputFolder + V1_RF_filename;
-		//}
+	if (stimulus_filename.at(0) != '!'){
+		stimulus_filename = resourceFolder + stimulus_filename;
 	} else {
-		cout << "inputFolder defaulted to current folder\n";
+        stimulus_filename.erase(0,1);
+    }
+	if (LGN_surfaceID_filename.at(0) != '!'){
+		LGN_surfaceID_filename = resourceFolder + LGN_surfaceID_filename;
+	} else {
+        LGN_surfaceID_filename.erase(0,1);
+    }
+	if (V1_allpos_filename.at(0) != '!'){
+		V1_allpos_filename = resourceFolder + V1_allpos_filename;
+	} else {
+        V1_allpos_filename.erase(0,1);
+    }
+	if (V1_feature_filename.at(0) != '!'){
+		V1_feature_filename = resourceFolder + V1_feature_filename;
+	} else {
+        V1_feature_filename.erase(0,1);
+    }
+	if (LGN_vpos_filename.at(0) != '!'){
+		LGN_vpos_filename = resourceFolder + LGN_vpos_filename;
+	} else {
+        LGN_vpos_filename.erase(0,1);
+    }
+
+	if (connectome_cfg_filename.at(0) != '!'){
+		connectome_cfg_filename = inputFolder + connectome_cfg_filename;
+	} else {
+        connectome_cfg_filename.erase(0,1);
+    }
+
+    // if defaulted, no restore, otherwise put restore file in the inputFolder
+	if (!vm["fSnapshot"].defaulted()){ 
+        if (restore.at(0) != '!') {
+		    restore = inputFolder + restore;
+        } else {
+		    restore.erase(0,1);
+        }
 	}
+	if (LGN_switch_filename.at(0) != '!'){
+		LGN_switch_filename = inputFolder + LGN_switch_filename;
+	} else {
+        LGN_switch_filename.erase(0,1);
+    }
+	if (LGN_V1_ID_filename.at(0) != '!'){
+		LGN_V1_ID_filename = inputFolder + LGN_V1_ID_filename;
+	} else {
+        LGN_V1_ID_filename.erase(0,1);
+    }
+	if (LGN_V1_s_filename.at(0) != '!'){
+		LGN_V1_s_filename = inputFolder + LGN_V1_s_filename;
+	} else {
+        LGN_V1_s_filename.erase(0,1);
+    }
+	if (V1_conMat_filename.at(0) != '!'){
+		V1_conMat_filename = inputFolder + V1_conMat_filename;
+	} else {
+        V1_conMat_filename.erase(0,1);
+    }
+	if (V1_delayMat_filename.at(0) != '!'){
+		V1_delayMat_filename = inputFolder + V1_delayMat_filename;
+	} else {
+        V1_delayMat_filename.erase(0,1);
+    }
+	if (V1_gapMat_filename.at(0) != '!'){
+		V1_gapMat_filename = inputFolder + V1_gapMat_filename;
+	} else {
+        V1_gapMat_filename.erase(0,1);
+    }
+	if (conStats_filename.at(0) != '!'){
+		conStats_filename = inputFolder + conStats_filename;
+	} else {
+        conStats_filename.erase(0,1);
+    }
+	if (V1_vec_filename.at(0) != '!'){
+		V1_vec_filename = inputFolder + V1_vec_filename;
+	} else {
+        V1_vec_filename.erase(0,1);
+    }
+	if (V1_gapVec_filename.at(0) != '!'){
+		V1_gapVec_filename = inputFolder + V1_gapVec_filename;
+	} else {
+        V1_gapVec_filename.erase(0,1);
+    }
+	if (neighborBlock_filename.at(0) != '!'){
+		neighborBlock_filename = inputFolder + neighborBlock_filename;
+	} else {
+        neighborBlock_filename.erase(0,1);
+    }
 
 	if (!vm["outputFolder"].defaulted()) {
 		bf::path outputPath(outputFolder);
@@ -457,37 +488,58 @@ int main(int argc, char** argv) {
 			cout << "creating output folder: " << outputFolder << "\n";
 			bf::create_directory(outputPath);
 		}
-		if (vm["fPatchV1_cfg"].defaulted()){
-			patchV1_cfg_filename = outputFolder + patchV1_cfg_filename;
-		}
-		if (vm["fLGN"].defaulted()){
-			LGN_filename = outputFolder + LGN_filename;
-		}
-		if (vm["fLGN_fr"].defaulted()){
-			LGN_fr_filename = outputFolder + LGN_fr_filename;
-		}
-		if (vm["fRawData"].defaulted()){
-			rawData_filename = outputFolder + rawData_filename;
-		}
-		if (vm["fLearnData_FF"].defaulted()){
-			learnData_FF_filename = outputFolder + learnData_FF_filename;
-		}
-		if (vm["f_sLGN"].defaulted()){
-			sLGN_filename = outputFolder + sLGN_filename;
-		}
-		if (vm["fLGN_sp"].defaulted()){
-			LGN_sp_filename = outputFolder + LGN_sp_filename;
-		}
-		if (vm["fOutputFrame"].defaulted()){
-			outputFrame_filename = outputFolder + outputFrame_filename;
-		}
-		if (vm["fOutputB4V1"].defaulted()){
-			outputB4V1_filename = outputFolder + outputB4V1_filename;
-		}
-		if (vm["fLGN_gallery"].defaulted()){
-			LGN_gallery_filename = outputFolder + LGN_gallery_filename;
-		}
-	}
+    }
+
+	if (patchV1_cfg_filename.at(0) != '!'){
+		patchV1_cfg_filename = outputFolder + patchV1_cfg_filename;
+	} else {
+        patchV1_cfg_filename.erase(0,1);
+    }
+	if (LGN_filename.at(0) != '!'){
+		LGN_filename = outputFolder + LGN_filename;
+	} else {
+        LGN_filename.erase(0,1);
+    }
+	if (LGN_fr_filename.at(0) != '!'){
+		LGN_fr_filename = outputFolder + LGN_fr_filename;
+	} else {
+        LGN_fr_filename.erase(0,1);
+    }
+	if (rawData_filename.at(0) != '!'){
+		rawData_filename = outputFolder + rawData_filename;
+	} else {
+        rawData_filename.erase(0,1);
+    }
+	if (learnData_FF_filename.at(0) != '!'){
+		learnData_FF_filename = outputFolder + learnData_FF_filename;
+	} else {
+        learnData_FF_filename.erase(0,1);
+    }
+	if (sLGN_filename.at(0) != '!'){
+		sLGN_filename = outputFolder + sLGN_filename;
+	} else {
+        sLGN_filename.erase(0,1);
+    }
+	if (LGN_sp_filename.at(0) != '!'){
+		LGN_sp_filename = outputFolder + LGN_sp_filename;
+	} else {
+        LGN_sp_filename.erase(0,1);
+    }
+	if (outputFrame_filename.at(0) != '!'){
+		outputFrame_filename = outputFolder + outputFrame_filename;
+	} else {
+        outputFrame_filename.erase(0,1);
+    }
+	if (outputB4V1_filename.at(0) != '!'){
+		outputB4V1_filename = outputFolder + outputB4V1_filename;
+	} else {
+        outputB4V1_filename.erase(0,1);
+    }
+	if (LGN_gallery_filename.at(0) != '!'){
+		LGN_gallery_filename = outputFolder + LGN_gallery_filename;
+	} else {
+        LGN_gallery_filename.erase(0,1);
+    }
     
 	if (ignoreRetinogeniculateDelay) {
 		cout << "ignoreRetinogeniculateDelay = " << ignoreRetinogeniculateDelay << "\n";

@@ -10,5 +10,5 @@ nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std
 nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c Dow_et_al_1981.cu -o dow.o
 
 # -lcurand
-nvcc -arch=$sm -lcudadevrt -lcudart -lboost_program_options retino.o dow.o -o /root/autodl-tmp/bin/retino
+nvcc -arch=$sm -lcudadevrt -lcudart -lboost_program_options retino.o dow.o -o $HOME/bin/retino
 cd ..
