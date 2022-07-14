@@ -1,5 +1,5 @@
 % connection strength heatmaps % better to choose from testLearnFF 
-function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, LGN_switch, mix, st, examSingle, use_local_max)
+function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr, fig_fdr, LGN_switch, mix, st, examSingle, use_local_max)
 	step0 = 1; % starting time step
 	nt_ = 0; % ending time step
 	if nargin < 10
@@ -13,6 +13,7 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 
 	fig_fdr = [fig_fdr, '/'];
 	res_fdr = [res_fdr, '/'];
+	setup_fdr = [setup_fdr, '/'];
 	data_fdr = [data_fdr, '/'];
 
 	rng(1390843)
@@ -43,9 +44,10 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, data_fdr, fig_fdr, L
 
 	fV1_allpos = [res_fdr, 'V1_allpos', isuffix0, '.bin'];
 	fLGN_vpos = [res_fdr, 'LGN_vpos', isuffix0, '.bin'];
-	LGN_V1_id_fn = [res_fdr, 'LGN_V1_idList', isuffix, '.bin']
-	fLGN_switch = [res_fdr,'LGN_switch', isuffix, '.bin'];
-	fConnectome = [res_fdr, 'connectome_cfg', isuffix, '.bin'];
+
+	LGN_V1_id_fn = [setup_fdr, 'LGN_V1_idList', isuffix, '.bin']
+	fLGN_switch = [setup_fdr,'LGN_switch', isuffix, '.bin'];
+	fConnectome = [setup_fdr, 'connectome_cfg', isuffix, '.bin'];
 
 	fid = fopen(fLGN_vpos, 'r');
 	nLGN = fread(fid, 1, 'uint') % # ipsi-lateral LGN 

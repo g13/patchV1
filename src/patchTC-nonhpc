@@ -9,14 +9,14 @@ setup_fdr=$fdr0/setup # inputFolder in cfg
 data_fdr=$fdr0/data # outputFolder in cfg
 
 fitTC=False
-nOri=2 # total # orientaton if applicable
+nOri=6 # total # orientaton if applicable
 TF=8 # input frequency if applicable
 SF=40
-singleOri=False
-#singleOri=True
-#one_ori=1
+#singleOri=False
+singleOri=True
+one_ori=1
 
-trial_suffix=newDep
+trial_suffix=4th
 res_suffix=square-single_layer
 patch=patch_fast
 
@@ -138,7 +138,7 @@ if [ "$plotTConly" = False ]; then
 		for ori in $( seq 1 $nOri )
 		do
 			export ori
-			./ori.sh > log/pTC_${trial_suffix}_${plotOnly}_${date}_${ori}.out 2>&1 &
+			./ori.sh > log/pOri_${date}_${trial_suffix}_${ori}_${plotOnly}.out 2>&1 &
 			jobID+="${!} "
 			if [ "$plotOnly" = False ]; then
 				if [ "${ori}" -lt "${nOri}" ]; then
@@ -150,7 +150,7 @@ if [ "$plotTConly" = False ]; then
 			fi
 		done
 		wait $jobID
-		./plotTC.sh > log/pTC_${trial_suffix}_${date}.out &
+		./plotTC.sh > log/pTC_${date}_${trial_suffix}.out &
 		job=$!
 	else
 		ori=$one_ori
@@ -158,11 +158,11 @@ if [ "$plotTConly" = False ]; then
 			cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/${trial_suffix}-ori_${ori}.cfg
 		fi
 		export ori
-		./ori.sh > log/pSingle_${trial_suffix}_${plotOnly}_${date}_${ori}.out 2>&1 &
+		./ori.sh > log/pSingle_${date}_${trial_suffix}_${ori}_${plotOnly}.out 2>&1 &
 		job=$!
 	fi
 else
-	./plotTC.sh > log/pTC_${trial_suffix}_${date}.out 2>&1 &
+	./plotTC.sh > log/pTC_${date}_${trial_suffix}.out 2>&1 &
 	job=$!
 fi
 

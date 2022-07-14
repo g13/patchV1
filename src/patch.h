@@ -26,7 +26,7 @@
 #include "global.h"
 #include "MACRO.h"
 
-inline void read_LGN(std::string filename, Float* &array, Size &maxList, Float s_ratio[], Size typeAcc[], Size nType, bool pinMem, bool print) {
+inline void read_LGN(std::string filename, Float* &array, Size &maxList, Float s_ratio[], Size typeAcc[], Size nType, bool pinMem, bool store_dsLGN, bool print) {
 	std::ifstream input_file;
 	input_file.open(filename, std::fstream::in | std::fstream::binary);
 	if (!input_file) {
@@ -40,7 +40,11 @@ inline void read_LGN(std::string filename, Float* &array, Size &maxList, Float s
 	std::cout << nList << ", " << maxList << "\n";
     size_t arraySize = nList*maxList;
     if (pinMem) {
-        checkCudaErrors(cudaMallocHost((void**) &array, arraySize*sizeof(Float)));
+        int m = 1;
+        if (store_dsLGN) {
+            m = 3;
+        }
+        checkCudaErrors(cudaMallocHost((void**) &array, m*arraySize*sizeof(Float)));
     } else {
         array = new Float[arraySize];
     }

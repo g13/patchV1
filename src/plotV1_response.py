@@ -27,7 +27,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     seed = 657890
     np.random.seed(seed)
     nt_ = 8000
-    nstep = 2000
+    nstep = 1000
     step0 = 0
     if nOri > 0:
         stiOri = np.pi*np.mod(iOri/nOri, 1.0)
@@ -125,10 +125,15 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     res_suffix = "_" + res_suffix
     conLGN_suffix = "_" + conLGN_suffix
     conV1_suffix = "_" + conV1_suffix
-    data_fdr = data_fdr+"/"
-    setup_fdr = setup_fdr+"/"
-    res_fdr = res_fdr+"/"
-    fig_fdr = fig_fdr+"/"
+
+    if res_fdr[-1] != "/":
+        res_fdr = res_fdr+"/"
+    if setup_fdr[-1] != "/":
+        setup_fdr = setup_fdr+"/"
+    if data_fdr[-1] != "/":
+        data_fdr = data_fdr+"/"
+    if fig_fdr[-1] != "/":
+        fig_fdr = fig_fdr+"/"
     
     rawDataFn = data_fdr + "rawData" + _output_suffix + ".bin"
     LGN_frFn = data_fdr + "LGN_fr" + _output_suffix + ".bin"

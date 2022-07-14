@@ -5,7 +5,8 @@ t=00:30:00
 echo ${t}
 #fdr0=/scratch/wd554/Jen
 fdr0=/scratch/wd554/patchV1
-res_fdr=${fdr0}/resource # inputFolder in cfg stimulus, V1-static, LGN-static and connectome files
+res_fdr=${fdr0}/resource # resourceFolder in cfg stimulus, V1-static, LGN-static
+setup_fdr=${fdr0}/setup # inputFolder in cfg LGN-V1 and V1 connectome files
 data_fdr=${fdr0} # outputFolder in cfg
 
 
@@ -42,7 +43,7 @@ if [[ "${waveStage}" = "3" ]] ;then
 		lgn=lFF_III_${suffix}
 		res=lFF_III_${suffix}
 	else
-		#fAsInput=${fdr0}/sLGN_32_ii.bin
+		#fAsInput=${data_fdr}/sLGN_32_ii.bin
 		fAsInput=
 		if [ -z "${fAsInput}" ]; 
 		then
@@ -139,7 +140,6 @@ then
 	mkdir log
 fi
 
-#isuffix=0
 sbatch <<EOT
 #!/bin/bash
 #SBATCH --gres=gpu:${gpu}
@@ -160,15 +160,15 @@ module load boost/intel/1.74.0
 module load matlab/2020b
 module list
 
-cd ${fdr0}
+cd ${data_fdr}
 date
 
 if [ "${plotOnly}" = False ];
 then
 	if [ "${new_setup}" = True ];
 	then
-		echo matlab -nodisplay -nosplash -r "inputLearnFF('${inputFn}','${lgn}', ${seed}, ${std_ecc}, '${res}', ${waveStage}, '${res_fdr}', ${squareOrCircle}, '${fAsInput}', ${relay}, ${binary_thres});exit;"
-		matlab -nodisplay -nosplash -r "inputLearnFF('${inputFn}', '${lgn}', ${seed}, ${std_ecc}, '${res}', ${waveStage}, '${res_fdr}', ${squareOrCircle}, '${fAsInput}', ${relay}, ${binary_thres});exit;"
+		echo matlab -nodisplay -nosplash -r "inputLearnFF('${inputFn}','${lgn}', ${seed}, ${std_ecc}, '${res}', ${waveStage}, '${res_fdr}', '${setup_fdr}', ${squareOrCircle}, '${fAsInput}', ${relay}, ${binary_thres});exit;"
+		matlab -nodisplay -nosplash -r "inputLearnFF('${inputFn}', '${lgn}', ${seed}, ${std_ecc}, '${res}', ${waveStage}, '${res_fdr}', '${setup_fdr}', ${squareOrCircle}, '${fAsInput}', ${relay}, ${binary_thres});exit;"
 	fi
 	date
 	${patch} -c ${fig_fdr}/${op}.cfg
@@ -185,29 +185,30 @@ echo plotV1_fr.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} &
 plotV1_fr.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} &
 
 date
-echo plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} & 
-plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
+echo plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus} & 
+plotV1_response_lFF.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
 
 date
-echo matlab -nodisplay -nosplash -r "outputLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle}, ${use_local_max});exit;" &
-matlab -nodisplay -nosplash -r "outputLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle}, ${use_local_max});exit;" &
+echo matlab -nodisplay -nosplash -r "outputLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${setup_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle}, ${use_local_max});exit;" &
+matlab -nodisplay -nosplash -r "outputLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${setup_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle}, ${use_local_max});exit;" &
 
 #date
-#echo matlab -nodisplay -nosplash -r "testLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', 233, 5000);exit;" &
-#matlab -nodisplay -nosplash -r "testLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${data_fdr}', '${fig_fdr}', 233, 5000);exit;" &
+#echo matlab -nodisplay -nosplash -r "testLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${setup_fdr}', '${data_fdr}', '${fig_fdr}', 233, 5000);exit;" &
+#matlab -nodisplay -nosplash -r "testLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${setup_fdr}', '${data_fdr}', '${fig_fdr}', 233, 5000);exit;" &
 
 #python patchOutput.py ${op} ${data_fdr} &
 
-#echo python getReceptiveField_lFF.py collecting ${op} ${lgn} ${data_fdr} ${isuffix} 1
-#python getReceptiveField_lFF.py collecting ${op} ${lgn} ${data_fdr} ${isuffix} 1
-#echo python getReceptiveField_lFF.py plotting ${isuffix} ${op} ${res} ${lgn} ${data_fdr} ${nOri} ${isuffix}
-#python getReceptiveField_lFF.py plotting ${isuffix} ${op} ${res} ${lgn} ${data_fdr} ${nOri} ${isuffix}
+#isuffix=0
+#echo python getReceptiveField_lFF.py collecting ${op} ${lgn} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${isuffix} ${seed} 1
+#python getReceptiveField_lFF.py collecting ${op} ${lgn} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${isuffix} ${seed} 1
+#echo python getReceptiveField_lFF.py plotting ${isuffix} ${res} ${lgn} ${op} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${nOri} ${isuffix}
+#python getReceptiveField_lFF.py plotting ${isuffix} ${res} ${lgn} ${op} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${nOri} ${isuffix}
 #
 #isuffix=1
-#echo python getReceptiveField_lFF.py collecting ${op} ${lgn} ${data_fdr} ${isuffix} 1
-#python getReceptiveField_lFF.py collecting ${op} ${lgn} ${data_fdr} ${isuffix} 1
-#echo python getReceptiveField_lFF.py plotting ${isuffix} ${op} ${res} ${lgn} ${data_fdr} ${nOri} ${isuffix}
-#python getReceptiveField_lFF.py plotting ${isuffix} ${op} ${res} ${lgn} ${data_fdr} $nOri $isuffix
+#echo python getReceptiveField_lFF.py collecting ${op} ${lgn} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${isuffix} ${seed} 1
+#python getReceptiveField_lFF.py collecting ${op} ${lgn} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${isuffix} ${seed} 1
+#echo python getReceptiveField_lFF.py plotting ${isuffix} ${res} ${lgn} ${op} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${nOri} ${isuffix}
+#python getReceptiveField_lFF.py plotting ${isuffix} ${res} ${lgn} ${op} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${nOri} ${isuffix}
 
 wait
 date

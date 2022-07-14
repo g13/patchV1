@@ -4,9 +4,10 @@
 % std_ecc: initial connections weights to be gaussian distributed if nonzero
 % suffix0: theme string %lgn0 in lFF.slurm
 % stage: retinal wave stages, takes 2 or 3
-function inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, fdr, squareOrCircle, sInput, relay, binary_thres)
+function inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_fdr, squareOrCircle, sInput, relay, binary_thres)
 
-	fdr = [fdr,'/'] %inputFolder in cfg
+	res_fdr = [res_fdr,'/'] %resourceFolder in cfg
+	setup_fdr = [setup_fdr,'/'] %inputFolder in cfg
 
 	con_std = 0
 
@@ -60,16 +61,16 @@ function inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, fdr, squar
 	    suffix = ['_', suffix];
 	end
 
-	fLGN_V1_ID = [fdr, 'LGN_V1_idList', suffix, '.bin'];
-	fLGN_V1_s = [fdr, 'LGN_V1_sList', suffix, '.bin'];
-	fV1_RFprop = [fdr, 'V1_RFprop', suffix, '.bin'];
-	fLGN_switch = [fdr, 'LGN_switch', suffix, '.bin'];
+	fLGN_V1_ID = [setup_fdr, 'LGN_V1_idList', suffix, '.bin'];
+	fLGN_V1_s = [setup_fdr, 'LGN_V1_sList', suffix, '.bin'];
+	fV1_RFprop = [setup_fdr, 'V1_RFprop', suffix, '.bin'];
+	fLGN_switch = [setup_fdr, 'LGN_switch', suffix, '.bin'];
 
-	fV1_vposFn = [fdr, 'V1_vpos', suffix0, '.bin'];
-	fV1_allpos = [fdr, 'V1_allpos', suffix0, '.bin'];
-	fV1_feature = [fdr, 'V1_feature', suffix0, '.bin'];
-	fLGN_vpos = [fdr, 'LGN_vpos', suffix0, '.bin'];
-	fLGN_surfaceID = [fdr, 'LGN_surfaceID', suffix0, '.bin'];
+	fV1_vposFn = [res_fdr, 'V1_vpos', suffix0, '.bin'];
+	fV1_allpos = [res_fdr, 'V1_allpos', suffix0, '.bin'];
+	fV1_feature = [res_fdr, 'V1_feature', suffix0, '.bin'];
+	fLGN_vpos = [res_fdr, 'LGN_vpos', suffix0, '.bin'];
+	fLGN_surfaceID = [res_fdr, 'LGN_surfaceID', suffix0, '.bin'];
 	
 	%parvoMagno = 1 % parvo
 	parvoMagno = 2 % magno 

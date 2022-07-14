@@ -29,6 +29,7 @@ def normalize(sta, ns, ntau_step, height, width, init):
     vmax = np.zeros(ns)
     for i in range(ns):
         data = sta[i,:,1,:,:].reshape(ntau_step,height*width) - init
+
         vmin[i] = np.min(data)
         vmax[i] = np.max(data)
         axis[i, :, :, :] = data.reshape(ntau_step,height,width)
@@ -56,7 +57,7 @@ def vpos_to_ppos(x0, y0, ecc, polar, normViewDistance):
     y = y0 + r*np.sin(polar)
     return x, y
 
-def getReceptiveField(spikeInfo, inputFn, frameRate, output_fdr, output_suffix, suffix, sampleList, nstep, dt):
+def getReceptiveField(spikeInfo, inputFn, frameRate, res_fdr, setup_fdr, data_fdr, fig_fdr, output_suffix, suffix, sampleList, nstep, dt):
     ns = sampleList.size
     nFrame, width, height, initL, initM, initS, frames, buffer_ecc, ecc, neye = read_input_frames(inputFn) 
     print(nFrame)
@@ -184,9 +185,9 @@ def getReceptiveField(spikeInfo, inputFn, frameRate, output_fdr, output_suffix, 
     #    if ssInfo[i].size > 0:
     #        sta[i, :, :, :, :] /= ssInfo[i].size
     if checkFrame:
-        fig.savefig(output_fdr + '/' + inputFn[:-4] + '.png', dpi = 300)
+        fig.savefig(fig_fdr + '/' + inputFn[:-4] + '.png', dpi = 300)
 
-    with open('STA_samples' + _output_suffix + '-' + suffix + '.bin', 'wb') as f:
+    with open(data_fdr + 'STA_samples' + _output_suffix + '-' + suffix + '.bin', 'wb') as f:
         np.array([ns, ntau_step, height, width], dtype='u4').tofile(f)
         np.array([buffer_ecc, ecc], dtype='f4').tofile(f)
         np.array([neye]).astype('u4').tofile(f)
@@ -196,7 +197,7 @@ def getReceptiveField(spikeInfo, inputFn, frameRate, output_fdr, output_suffix, 
         nsp.tofile(f)
         sta.tofile(f)
 
-    with open('STA_pop' + _output_suffix + '-' + suffix + '.bin', 'wb') as f:
+    with open(data_fdr + 'STA_pop' + _output_suffix + '-' + suffix + '.bin', 'wb') as f:
         np.array([ns, height, width], dtype='u4').tofile(f)
         np.array([buffer_ecc, ecc], dtype='f4').tofile(f)
         np.array([neye]).astype('u4').tofile(f)
@@ -206,7 +207,7 @@ def getReceptiveField(spikeInfo, inputFn, frameRate, output_fdr, output_suffix, 
         #popSF.tofile(f)
         #pop.tofile(f)
 
-def plotSta(isuffix, output_suffix, res_suffix, conLGN_suffix, output_fdr, nf, hasOP = False):
+def plotSta(isuffix, res_suffix, conLGN_suffix, output_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, nf, hasOP = False):
 
     if isuffix == 0:
         suffix = 'LGN'
@@ -215,25 +216,31 @@ def plotSta(isuffix, output_suffix, res_suffix, conLGN_suffix, output_fdr, nf, h
     if isuffix != 0 and isuffix != 1:
         raise Exception('wrong isuffix value, 0 for LGN 1 for V1')
 
+    if res_fdr[-1] != '/':
+        res_fdr = res_fdr + '/'
+    if data_fdr[-1] != '/':
+        data_fdr = data_fdr + '/'
+    if setup_fdr[-1] != '/':
+        setup_fdr = setup_fdr + '/'
+
+    res_suffix = "_" + res_suffix
+
     _output_suffix = '_' + output_suffix
     LGN_V1_idFn = "LGN_V1_idList_" + conLGN_suffix + ".bin"
     if nf == 0:
         parameterFn = "patchV1_cfg" +_output_suffix + ".bin"
     else:
         parameterFn = "patchV1_cfg" +_output_suffix + "_1.bin"
+    parameterFn = data_fdr + parameterFn
+    pref_file = data_fdr + 'cort_pref_' + output_suffix + '.bin'
 
-    print(parameterFn)
+    LGN_vposFn = res_fdr + 'LGN_vpos'+ res_suffix + ".bin"
+    featureFn = res_fdr + 'V1_feature' + res_suffix + ".bin"
+    V1_allposFn = res_fdr + 'V1_allpos' + res_suffix + ".bin"
 
-    res_suffix = "_" + res_suffix
-
-    LGN_vposFn = 'LGN_vpos'+ res_suffix + ".bin"
-    featureFn = 'V1_feature' + res_suffix + ".bin"
-    V1_allposFn = 'V1_allpos' + res_suffix + ".bin"
-    #LGN_vposFn = res_fdr + 'LGN_vpos'+ res_suffix + ".bin"
-    #featureFn = res_fdr + 'V1_feature' + res_suffix + ".bin"
-    #V1_allposFn = res_fdr + 'V1_allpos' + res_suffix + ".bin"
-
-    prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1, nstep, dt, normViewDistance, L_x0, L_y0, R_x0, R_y0 = read_cfg(parameterFn, True)
+    prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1, nstep, dt, normViewDistance, L_x0, L_y0, R_x0, R_y0, virtual_LGN = read_cfg(parameterFn, True)
+    if virtual_LGN:
+        raise Exception('not implemented for virtual_LGN')
 
     LGN_V1_ID, nLGN_V1 = readLGN_V1_ID(LGN_V1_idFn)
     nLGN_I, nLGN_C, nLGN, max_ecc, vCoordSpan, LGN_vpos, LGN_type, polar0, ecc0 = readLGN_vpos(LGN_vposFn, True)
@@ -257,7 +264,6 @@ def plotSta(isuffix, output_suffix, res_suffix, conLGN_suffix, output_fdr, nf, h
 
     if hasOP:
         if nf > 0:
-            pref_file = 'cort_pref_' + output_suffix + '.bin'
             try:
                 f = open(pref_file, 'rb')
             except IOError:
@@ -275,7 +281,7 @@ def plotSta(isuffix, output_suffix, res_suffix, conLGN_suffix, output_fdr, nf, h
         ntrial = 1
 
     for i in range(ntrial):
-        with open(sample_data_files[i], 'rb') as f:
+        with open(data_fdr + sample_data_files[i], 'rb') as f:
             if i == 0:
                 ns, ntau_step, height, width = np.fromfile(f, 'u4', 4)
                 buffer_ecc, ecc = np.fromfile(f, 'f4', 2)
@@ -514,9 +520,9 @@ def plotSta(isuffix, output_suffix, res_suffix, conLGN_suffix, output_fdr, nf, h
             ax.plot(np.arange(ntau_step), np.zeros(ntau_step), ':k', lw = 0.1)
             ax.axis('off')
             if isuffix == 1:
-                fig.savefig(output_fdr + '/' + f'sampleRF_snapshots-{output_suffix}-{suffix}-{id//neuronPerBlock}-{np.mod(id,neuronPerBlock)}#{nLGN_V1[id]}'  + '.png', dpi = 2000)
+                fig.savefig(fig_fdr + '/' + f'sampleRF_snapshots-{output_suffix}-{suffix}-{id//neuronPerBlock}-{np.mod(id,neuronPerBlock)}#{nLGN_V1[id]}'  + '.png', dpi = 2000)
             else:
-                fig.savefig(output_fdr + '/' + f'sampleRF_snapshots-{output_suffix}-{suffix}-{id}.png', dpi = 2000)
+                fig.savefig(fig_fdr + '/' + f'sampleRF_snapshots-{output_suffix}-{suffix}-{id}.png', dpi = 2000)
 
             plt.close(fig)
 
@@ -542,31 +548,36 @@ def find_denorm(u1, u2, MorN):
 
 if __name__ == "__main__":
     if sys.argv[1] == 'collecting':
-        if len(sys.argv) < 6:
-            raise Exception('not enough argument for getReceptiveField.py collecting/plotting output_suffix, conLGN_suffix, output_fdr, LGN_or_V1, one')
+        if len(sys.argv) < 10:
+            raise Exception('not enough argument for getReceptiveField.py collecting output_suffix, conLGN_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, LGN_or_V1, seed, one')
         output_suffix = sys.argv[2]
         conLGN_suffix = '_' + sys.argv[3]
-        output_fdr = sys.argv[4]
-        LGN_or_V1 = int(sys.argv[5])
-        if len(sys.argv) < 7:
+        res_fdr = sys.argv[4]
+        setup_fdr = sys.argv[5]
+        data_fdr = sys.argv[6]
+        fig_fdr = sys.argv[7]
+        LGN_or_V1 = int(sys.argv[8])
+        seed = int(sys.argv[9])
+        if len(sys.argv) < 11:
             one = False
         else:
-            if sys.argv[6] == True or sys.argv[6] == '1':
+            if sys.argv[10] == True or sys.argv[10] == '1':
                 one = True
-            elif sys.argv[6] == False or sys.argv[6] == '0':
+            elif sys.argv[10] == False or sys.argv[10] == '0':
                 one = False
             else:
                 raise Exception('one can only be True(1) or False(0)')
 
         _output_suffix = '_' + output_suffix
+        if data_fdr[-1] != '/':
+            data_fdr = data_fdr + '/'
 
-        parameterFn = "patchV1_cfg" +_output_suffix + ".bin"
-        spDataFn = "V1_spikes" + _output_suffix
-        LGN_spFn = "LGN_sp" + _output_suffix
+        parameterFn = data_fdr + "patchV1_cfg" +_output_suffix + ".bin"
+        spDataFn = data_fdr + "V1_spikes" + _output_suffix
+        LGN_spFn = data_fdr + "LGN_sp" + _output_suffix
 
         prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1, nstep, dt, normViewDistance, L_x0, L_y0, R_x0, R_y0 = read_cfg(parameterFn, True)
 
-        seed = 7689237
         np.random.seed(seed)
         if LGN_or_V1 == 0:
             with np.load(LGN_spFn + '.npz', allow_pickle=True) as data:
@@ -586,7 +597,7 @@ if __name__ == "__main__":
             else:
                 max_frFn = 'max_fr_' + output_suffix + '.bin'
 
-            with open(max_frFn, 'rb') as f:
+            with open(data_fdr + max_frFn, 'rb') as f:
                 max_fr = np.fromfile(f, 'f8', nV1)
             blockSize = nE + nI
             nblock = nV1//blockSize
@@ -599,24 +610,29 @@ if __name__ == "__main__":
             sampleList = np.random.randint(nV1, size = ns, dtype = 'u4')
             suffix = 'V1'
 
-        getReceptiveField(spScatter, inputFn, frameRate, output_fdr, output_suffix, suffix, sampleList, nstep, dt)
+        getReceptiveField(spScatter, inputFn, frameRate, res_fdr, setup_fdr, data_fdr, fig_fdr, output_suffix, suffix, sampleList, nstep, dt)
 
     if sys.argv[1] == 'plotting':
+        if len(sys.argv) < 11:
+            raise Exception('not enough argument for getReceptiveField.py plotting isuffix, res_suffix, conLGN_suffix, output_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, nf, LGN_or_V1')
         
         isuffix = int(sys.argv[2])
-        output_suffix = sys.argv[3]
-        res_suffix = int(sys.argv[4])
-        conLGN_suffix = sys.argv[5]
-        output_fdr = sys.argv[6]
-        nf = int(sys.argv[7])
-        if len(sys.argv) < 8:
+        res_suffix = sys.argv[3]
+        conLGN_suffix = sys.argv[4]
+        output_suffix = sys.argv[5]
+        res_fdr = sys.argv[6]
+        setup_fdr = sys.argv[7]
+        data_fdr = sys.argv[8]
+        fig_fdr = sys.argv[9]
+        nf = int(sys.argv[10])
+        if len(sys.argv) < 12:
             hasOP = False
         else:
-            if sys.argv[8] == True or sys.argv[8] == '1':
+            if sys.argv[11] == True or sys.argv[11] == '1':
                 hasOP = True
-            elif sys.argv[8] == False or sys.argv[8] == '0':
+            elif sys.argv[11] == False or sys.argv[11] == '0':
                 hasOP = False
             else:
                 raise Exception('hasOP can only be True(1) or False(0)')
-        
-        plotSta(isuffix, output_suffix, res_suffix, conLGN_suffix, output_fdr, nf, hasOP)
+
+        plotSta(isuffix, res_suffix, conLGN_suffix, output_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, nf, hasOP)

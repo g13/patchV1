@@ -45,7 +45,6 @@ int main(int argc, char** argv) {
     checkCudaErrors(cudaDeviceGetLimit(&size_stack, cudaLimitStackSize));
     printf("Heap size found to be %f; Stack size found to be %f\n",(float)(size_heap)/1024.0/1024.0,(float)(size_stack)/1024.0/1024.0);
     
-	bool storeSpatial = true;
 	Float dt; // in ms, better in fractions of binary 
 	Float dot;
 	bool print_log;
@@ -69,6 +68,7 @@ int main(int argc, char** argv) {
 	bool virtual_LGN;
     bool symmetricHomeo;
 	bool CmoreDep;
+    bool store_dsLGN;
 	int rebound;
 	int learning;
 	int iModel;
@@ -300,6 +300,7 @@ int main(int argc, char** argv) {
 		("delPrevSnapshot", po::value<bool>(&delPrevSnapshot)->default_value(true), "delete old snapshot")
 		("asInit", po::value<bool>(&asInit)->default_value(true), "use snapshot for initialization not to resume previous simulation")
 		("use_v0", po::value<bool>(&use_v0)->default_value(false), "use v0 to initialize membrane potential, otherwise is set according to depC")
+		("store_dsLGN", po::value<bool>(&store_dsLGN)->default_value(false), "store LGN_V1 LTP and LTD to dsLGN_filename");
 		("useNewLGN", po::value<bool>(&useNewLGN)->default_value(true), "regenerate the a new ensemble of LGN parameters according to their distribution");
 
 	string inputFolder, outputFolder, resourceFolder;
@@ -318,7 +319,7 @@ int main(int argc, char** argv) {
 	string LGN_surfaceID_filename;
 	string LGN_filename, LGN_vpos_filename, LGN_V1_s_filename, LGN_V1_ID_filename; // inputs
 	string LGN_fr_filename, outputFrame_filename; // outputs
-	string LGN_convol_filename, LGN_gallery_filename, outputB4V1_filename, rawData_filename, learnData_FF_filename, learnData_V1_filename, sLGN_filename, LGN_sp_filename;
+	string LGN_convol_filename, LGN_gallery_filename, outputB4V1_filename, rawData_filename, learnData_FF_filename, learnData_V1_filename, sLGN_filename, dsLGN_filename, LGN_sp_filename;
 	top_opt.add_options()
 		//inputs:
 		("inputFolder", po::value<string>(&inputFolder)->default_value(""), "where the input data files at (unless starts with !), must end with /")
@@ -352,8 +353,9 @@ int main(int argc, char** argv) {
 		("fLGN", po::value<string>(&LGN_filename)->default_value("LGN"), "file that stores all the information of LGN neurons")
 		("fLGN_fr", po::value<string>(&LGN_fr_filename)->default_value("LGN_fr"), "file stores LGN firing rates")
 		("fRawData", po::value<string>(&rawData_filename)->default_value("rawData"), "file that stores V1 response (spike, v, g) over time")
-		("fLearnData_FF", po::value<string>(&learnData_FF_filename)->default_value("learnData_FF"), "file that stores LGN->V1 connection strength and the related variables over time, make sure learnData_FF=2")
-		("f_sLGN", po::value<string>(&sLGN_filename)->default_value("sLGN"), "file that stores the LGN->V1 connection strength over time, make sure learnData_FF>0")
+		("fLearnData_FF", po::value<string>(&learnData_FF_filename)->default_value("learnData_FF"), "file that stores LGN->V1 connection strength and the related variables over time, make sure learnData_FF = 2")
+		("f_sLGN", po::value<string>(&sLGN_filename)->default_value("sLGN"), "file that stores the LGN->V1 connection strength over time, make sure learnData_FF > 0")
+		("f_dsLGN", po::value<string>(&dsLGN_filename)->default_value("dsLGN"), "file that stores the LGN->V1 LTP, LTD  over time, make sure learnData_FF > 0")
 		("sampleInterval_LGN_V1", po::value<Size>(&sampleInterval_LGN_V1)->default_value(100), "sample interval of LGN_V1 connection strength")
 		("fLGN_sp", po::value<string>(&LGN_sp_filename)->default_value("LGN_sp"), "write LGN spikes to file")
 		("fOutputFrame", po::value<string>(&outputFrame_filename)->default_value("outputFrame"), "file that stores firing rate from LGN and/or V1 (in physical location or visual field) spatially to be ready for frame production") // TEST 
@@ -519,6 +521,11 @@ int main(int argc, char** argv) {
 		sLGN_filename = outputFolder + sLGN_filename;
 	} else {
         sLGN_filename.erase(0,1);
+    }
+	if (dsLGN_filename.at(0) != '!'){
+		dsLGN_filename = outputFolder + dsLGN_filename;
+	} else {
+        dsLGN_filename.erase(0,1);
     }
 	if (LGN_sp_filename.at(0) != '!'){
 		LGN_sp_filename = outputFolder + LGN_sp_filename;
@@ -1350,7 +1357,7 @@ int main(int argc, char** argv) {
 	ofstream fLGN_fr; // outputs
 	ofstream fLGN_sp;
 	ofstream fLGN_gallery, fOutputB4V1;
-	ofstream fRawData, fOutputFrame, fLearnData_FF, f_sLGN;
+	ofstream fRawData, fOutputFrame, fLearnData_FF, f_sLGN, f_dsLGN;
 
 	float init_L, init_M, init_S;
 	Size width;
@@ -4155,9 +4162,10 @@ int main(int argc, char** argv) {
 
 	Size max_LGNperV1;
 	Float* LGN_V1_s;
-	read_LGN(LGN_V1_s_filename + conLGN_suffix, LGN_V1_s, max_LGNperV1, &(sRatioLGN[0]), &(typeAccCount[0]), nType, learnData_FF>0, print_log); // assign LGN_V1_s and max_LGNperV1
+	read_LGN(LGN_V1_s_filename + conLGN_suffix, LGN_V1_s, max_LGNperV1, &(sRatioLGN[0]), &(typeAccCount[0]), nType, learnData_FF>0, store_dsLGN, print_log); // assign LGN_V1_s and max_LGNperV1
 	Float* sLGN;
 	size_t sLGN_size = static_cast<size_t>(max_LGNperV1)*nV1*sizeof(Float);
+
 	checkCudaErrors(cudaMalloc((void**)&sLGN, sLGN_size));
 	usingGMem += sLGN_size;
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
@@ -4665,6 +4673,41 @@ int main(int argc, char** argv) {
 		    		f_sLGN.write((char*) &(gmaxLGN[0]), nLearnTypeFF*sizeof(Float));
 		    		f_sLGN.write((char*) &FF_InfRatio, sizeof(Float));
 				}
+            }
+            if (store_dsLGN) {
+			    if (!restore.empty() && !asInit) {
+            	    f_dsLGN.open(dsLGN_filename + output_suffix, fstream::out | fstream::in | fstream::binary | fstream::ate);
+                } else {
+            	    f_dsLGN.open(dsLGN_filename + output_suffix, fstream::out | fstream::binary);
+                }
+                if (!f_dsLGN) {
+		        	cout << "Cannot open or find " << sLGN_filename + output_suffix <<" to store the LGN->V1 connection strength over time.\n";
+		        	return EXIT_FAILURE;
+                } else {
+                    if (!restore.empty() && !asInit) {
+			    		streampos eof = f_dsLGN.tellp();
+			    		f_dsLGN.seekp(0);
+			    		f_dsLGN.write((char*)&nt0, sizeof(Size));
+			    		f_dsLGN.seekp(eof);
+                    } else {
+                        f_dsLGN.write((char*) &nt, sizeof(Size));
+		        		f_dsLGN.write((char*) &sampleInterval_LGN_V1, sizeof(Size));
+		        		f_dsLGN.write((char*) &dt, sizeof(Float));
+		        		f_dsLGN.write((char*) &nV1, sizeof(Size));
+		        		f_dsLGN.write((char*) &sRatioLGN[0], sizeof(Float));
+		        		f_dsLGN.write((char*) &nLearnTypeFF_E, sizeof(Size));
+		        		f_dsLGN.write((char*) &nLearnTypeFF_I, sizeof(Size));
+		        		f_dsLGN.write((char*) &(gmaxLGN[0]), nLearnTypeFF*sizeof(Float));
+                        for (PosInt i=0; i<nLearnTypeFF_E; i++) {
+		        		    f_dsLGN.write((char*) &(lFF_E_post.A_ratio[i]), sizeof(Float));
+                        }
+                        for (PosInt i=0; i<nLearnTypeFF_I; i++) {
+		        		    f_dsLGN.write((char*) &(lFF_I_post.A_ratio[i]), sizeof(Float));
+                        }
+		        		f_dsLGN.write((char*) &(targetFR[0]), 2*sizeof(Float));
+		        		f_dsLGN.write((char*) &learnData_FF, sizeof(int));
+                    }
+                }
             }
         }
         
@@ -5318,7 +5361,7 @@ int main(int argc, char** argv) {
 			if (learning) {
 				if (learnData_FF == 0) {
 					LGN_V1_s = (Float*) (r_randState + nLGN); 
-					lVarFFpost = LGN_V1_s + sLGN_size/sizeof(Float);
+					lVarFFpost = LGN_V1_s + max_LGNperV1*nV1;
 					r_lVarFFpre = lVarFFpost + learnVarFFsize;
 				} else {
 					r_lVarFFpre = (Float*) (r_randState + nLGN);
@@ -5947,6 +5990,14 @@ int main(int argc, char** argv) {
                 }
                 if (it%sampleInterval_LGN_V1 == 0) {
                     f_sLGN.write((char*) LGN_V1_s, sLGN_size);
+                    if (store_dsLGN && learnData_FF < 2)
+                        if (targetFR[0] > 0) {
+                            f_dsLGN.write((char*) (lVarFFpost+learnVarFFsize0), nE*nblock*2*sizeof(Float));
+                        }
+                        if (targetFR[1] > 0) {
+                            f_dsLGN.write((char*) (lVarFFpost+learnVarFFsize0+nE*nblock*2), nI*nblock*sizeof(Float));
+                        }
+                    }
                 }
             }
 			currentTimeSlot++;
@@ -6436,7 +6487,19 @@ int main(int argc, char** argv) {
 		        cudaMemcpyAsync(lVarFFpost+learnVarFFsize0, learnVar+learnVarFFsize0, learnVarFFsize1*sizeof(Float), cudaMemcpyDeviceToHost, mainStream);
             #endif
 		    cudaEventRecord(learnFF_event, mainStream);
+        } else {
+            if (store_dsLGN && (it+1)%sampleInterval_LGN_V1 == 0) {
+                #ifdef CHECK
+		            checkCudaErrors(cudaMemcpyAsync(lVarFFpost+learnVarFFsize0, learnVar+learnVarFFsize0, (nV1+nE*nblock)*sizeof(Float), cudaMemcpyDeviceToHost, mainStream));
+                #else
+		            cudaMemcpyAsync(lVarFFpost+learnVarFFsize0, learnVar+learnVarFFsize0, (nV1+nE*nblock)*sizeof(Float), cudaMemcpyDeviceToHost, mainStream);
+                #endif
+                #ifdef SYNC
+                    checkCudaErrors(cudaDeviceSynchronize());
+                #endif
+            }
         }
+
         #ifdef SYNC
             checkCudaErrors(cudaDeviceSynchronize());
         #endif
@@ -6561,9 +6624,9 @@ int main(int argc, char** argv) {
 				if (learning) {
 					if (!learnData_FF) { 
 						LGN_V1_s = (Float*) (r_randState + nLGN); 
-						lVarFFpost = LGN_V1_s + sLGN_size/sizeof(Float);
+						lVarFFpost = LGN_V1_s + max_LGNperV1*nV1;
 						r_lVarFFpre = lVarFFpost + learnVarFFsize; 
-					} else { // TODO: read from leanData_FF
+					} else { // TODO: read from learnData_FF
 						r_lVarFFpre = (Float*) (r_randState + nLGN);
 					}
 
@@ -6673,6 +6736,14 @@ int main(int argc, char** argv) {
 		fLearnData_FF.write((char*) lVarFFpost, learnVarFFsize*sizeof(Float));
         if (nt%sampleInterval_LGN_V1 == 0) {
             f_sLGN.write((char*) LGN_V1_s, sLGN_size);
+            if (store_dsLGN && learnData_FF < 2) {
+                if (targetFR[0] > 0) {
+                    f_dsLGN.write((char*) (lVarFFpost+learnVarFFsize0), nE*nblock*2*sizeof(Float));
+                }
+                if (targetFR[1] > 0) {
+                    f_dsLGN.write((char*) (lVarFFpost+learnVarFFsize0+nE*nblock*2), nI*nblock*sizeof(Float));
+                }
+            }
         }
     }
 	cout << "simulation for " << output_suffix0 << " done.\n";
@@ -6762,6 +6833,9 @@ int main(int argc, char** argv) {
             fLearnData_FF.close();
             f_sLGN.close();
         }
+        if (store_dsLGN) {
+            f_dsLGN.close();
+        }
         if (getLGN_sp) {
             fLGN_sp.close();
         }
@@ -6828,7 +6902,7 @@ int main(int argc, char** argv) {
         if (getLGN_sp) {
 		    checkCudaErrors(cudaFreeHost(LGN_sInfo));
         }
-        if (learnData_FF>1 || getLGN_sp) {
+        if (learnData_FF > 1 || getLGN_sp) {
 		    checkCudaErrors(cudaFree(d_LGN_sInfo));
         }
 		checkCudaErrors(cudaFreeHost(pinnedMem));
