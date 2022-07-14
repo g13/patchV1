@@ -1,9 +1,9 @@
 #!/bin/bash
+conda activate general
 set -e
 
 cd ${data_fdr}
 patch_cfg=${fig_fdr}/${trial_suffix}-ori_${ori}.cfg
-
 
 date
 if [ "$plotOnly" = False ]; then
@@ -40,3 +40,4 @@ fi
 
 wait $pid
 date
+conda activate base

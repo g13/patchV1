@@ -1,5 +1,7 @@
 #!/bin/bash
 
+conda activate general
+
 date
 pid=""
 echo python ${fig_fdr}/getTuningCurve_${trial_suffix}.py ${trial_suffix} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${nOri} ${fitTC} ${fitDataReady}
@@ -32,3 +34,4 @@ if [ "${usePrefData}" = True ]; then
 	wait $pid
 fi
 date
+conda activate base
