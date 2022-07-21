@@ -12,9 +12,9 @@ fitTC=False
 nOri=6 # total # orientaton if applicable
 TF=8 # input frequency if applicable
 SF=40
-#singleOri=False
-singleOri=True
-one_ori=1
+singleOri=False
+#singleOri=True
+#one_ori=1
 
 trial_suffix=4th
 res_suffix=square-single_layer
@@ -140,6 +140,7 @@ if [ "$plotTConly" = False ]; then
 			export ori
 			./ori.sh > log/pOri_${date}_${trial_suffix}_${ori}_${plotOnly}.out 2>&1 &
 			jobID+="${!} "
+            sleep 1
 			if [ "$plotOnly" = False ]; then
 				if [ "${ori}" -lt "${nOri}" ]; then
 					vim -s ${cfg_fdr}/nextOri_cfg.keys ${fig_fdr}/${trial_suffix}-ori_$((ori+1)).cfg

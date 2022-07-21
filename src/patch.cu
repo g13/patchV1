@@ -300,7 +300,7 @@ int main(int argc, char** argv) {
 		("delPrevSnapshot", po::value<bool>(&delPrevSnapshot)->default_value(true), "delete old snapshot")
 		("asInit", po::value<bool>(&asInit)->default_value(true), "use snapshot for initialization not to resume previous simulation")
 		("use_v0", po::value<bool>(&use_v0)->default_value(false), "use v0 to initialize membrane potential, otherwise is set according to depC")
-		("store_dsLGN", po::value<bool>(&store_dsLGN)->default_value(false), "store LGN_V1 LTP and LTD to dsLGN_filename");
+		("store_dsLGN", po::value<bool>(&store_dsLGN)->default_value(false), "store LGN_V1 LTP and LTD to dsLGN_filename")
 		("useNewLGN", po::value<bool>(&useNewLGN)->default_value(true), "regenerate the a new ensemble of LGN parameters according to their distribution");
 
 	string inputFolder, outputFolder, resourceFolder;
@@ -5990,7 +5990,7 @@ int main(int argc, char** argv) {
                 }
                 if (it%sampleInterval_LGN_V1 == 0) {
                     f_sLGN.write((char*) LGN_V1_s, sLGN_size);
-                    if (store_dsLGN && learnData_FF < 2)
+                    if (store_dsLGN && learnData_FF < 2) {
                         if (targetFR[0] > 0) {
                             f_dsLGN.write((char*) (lVarFFpost+learnVarFFsize0), nE*nblock*2*sizeof(Float));
                         }
