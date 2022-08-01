@@ -139,6 +139,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     LGN_frFn = data_fdr + "LGN_fr" + _output_suffix + ".bin"
     LGN_spFn = data_fdr + "LGN_sp" + _output_suffix
     statsFn = data_fdr + "traceStats" + _output_suffix + ".bin"
+    pTuningFn = data_fdr + "pTuning" + _output_suffix + ".bin"
     
     pref_file = data_fdr + 'cort_pref_' + output_suffix0 + '.bin'
     if nOri == 0 and singleOri:
@@ -161,9 +162,13 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
 
     sampleFn = data_fdr + "OS_sampleList_" + output_suffix0 + ".bin"
 
-    prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN = read_cfg(parameterFn)
+    prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, _virtual_LGN, tonicDep, noisyDep = read_cfg(parameterFn)
     blockSize = typeAcc[-1]
     print(f'blockSize = {blockSize}')
+
+    with open(pTuningFn, 'wb') as f:
+        pTuning = np.hstack((sRatioV1.astype('f8'), sRatioLGN.astype('f8'), noisyDep.astype('f8'), tonicDep.astype('f8')))
+        pTuning.tofile(f)
     
     if output_suffix:
         output_suffix = output_suffix + "-"
@@ -974,6 +979,26 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         gFF_F1F0.tofile(f)
         gE_F1F0.tofile(f)
         gI_F1F0.tofile(f)
+
+    with open(pTuningFn, 'ab') as f:
+
+        def describe_data_tofile(data):
+            stats = np.array([np.mean(data), np.std(data), np.min(data), np.median(data), np.max(data)])
+            stats.tofile(f)
+            binned, edge = np.histogram(data, 20)
+            binned.tofile(f)
+            edge.tofile(f)
+            return
+
+        describe_data_tofile(fr[epick])
+        eSpick = epick[np.logical_and(nLGN_V1[epick] > SCsplit, F0[epick] > 0)]
+        eCpick = epick[np.logical_and(nLGN_V1[epick] <= SCsplit, F0[epick] > 0)]
+        describe_data_tofile(F1F0[eSpick])
+        describe_data_tofile(F1F0[eCpick])
+
+        describe_data_tofile(fr[ipick])
+        describe_data_tofile(F1F0[ipick])
+
 
     if collectMeanDataOnly:
         return None

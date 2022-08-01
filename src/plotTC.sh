@@ -1,6 +1,7 @@
 #!/bin/bash
 eval "$(conda shell.bash hook)"
 conda activate general
+set -e
 
 date
 pid=""

@@ -3210,7 +3210,13 @@ int main(int argc, char** argv) {
 		cout << "Cannot open or find " << V1_vec_filename + conV1_suffix <<" to read V1 connection to farther neighbor.\n";
 		return EXIT_FAILURE;
 	} else {
+        int connectLongRange;
+		fV1_vec.read(reinterpret_cast<char*>(&connectLongRange), sizeof(int));
 		fV1_vec.read(reinterpret_cast<char*>(&nVec[0]), nV1*sizeof(Size));
+        if (connectLongRange == 1) {
+            cout << "read long-range connections to vec\n";
+		    fV1_vec.seekg(nV1*sizeof(Size), fV1_vec.cur);
+        }
 		for (PosInt i=0; i<nV1; i++) {
 			if (nVec[i] > 0) {
 				vector<PosInt> tmp(nVec[i]);
@@ -3238,6 +3244,7 @@ int main(int argc, char** argv) {
                 nFar += nVec[i];
 			}
 		}
+        cout << "max non-block connection: " << *max_element(nVec.begin(), nVec.end()) << "\n";
 	}
 	fV1_vec.close();
 
@@ -6790,9 +6797,12 @@ int main(int argc, char** argv) {
 		fPatchV1_cfg.write((char*) &L_y0, sizeof(Float));
 		fPatchV1_cfg.write((char*) &R_x0, sizeof(Float));
 		fPatchV1_cfg.write((char*) &R_y0, sizeof(Float));
+		fPatchV1_cfg.write((char*) &(tonicDep[0]), nType*sizeof(Float));	
+		fPatchV1_cfg.write((char*) &(noisyDep[0]), nType*sizeof(Float));	
+        int iVirtual_LGN = virtual_LGN;
+		fPatchV1_cfg.write((char*) &iVirtual_LGN, sizeof(int));	
 
 		fPatchV1_cfg.write((char*) &seed, sizeof(PosIntL));	
-		fPatchV1_cfg.write((char*) &nType, sizeof(Size));	
 		fPatchV1_cfg.write((char*) &iModel, sizeof(int));	
 		fPatchV1_cfg.write((char*) &learning, sizeof(int));	
 		fPatchV1_cfg.write((char*) &ngTypeFF, sizeof(Size));	

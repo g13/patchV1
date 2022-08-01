@@ -5,18 +5,24 @@ np.seterr(invalid = 'raise')
 
 def read_input_frames(fn):
     with open(fn) as f:
-        inputType = np.fromfile(f, 'i4', 1)[0]
-        nFrame = np.fromfile(f, 'u4', 1)[0]
-        height = np.fromfile(f, 'u4', 1)[0]
-        width = np.fromfile(f, 'u4', 1)[0]
-        if inputType < 0:
+        virtual_LGN = np.fromfile(f, 'i4', 1)[0]
+        nFrame, height, width = np.fromfile(f, 'u4', 3)
+        if virtual_LGN < 0:
             initL, initM, initS = np.fromfile(f, 'f4', 3)
             print(f'blank frame init values:{[initL, initM, initS]}')
             buffer_ecc, ecc = np.fromfile(f, 'f4', 2)
+            neye = np.fromfile(f,'u4', 1)[0]
+            frames = np.fromfile(f, 'f4', height*width*nFrame*3).reshape(nFrame, 3, height, width)
         else:
-            ecc = np.fromfile(f, 'f4', 1)
-        neye = np.fromfile(f,'u4', 1)[0]
-        frames = np.fromfile(f, 'f4', height*width*nFrame*3).reshape(nFrame, 3, height, width)
+            if virtual_LGN == 0:
+                nInputType = 2
+            if virtual_LGN == 1:
+                nInputType = 4
+            if virtual_LGN == 2:
+                nInputType = 6
+            ecc = np.fromfile(f, 'f4', 1)[0]
+            neye = np.fromfile(f,'u4', 1)[0]
+            frames = np.fromfile(f, 'f4', height*width*nFrame*nInputType).reshape(nFrame, nInputType, height, width)
 
     if inputType < 0:
         return nFrame, width, height, initL, initM, initS, frames, buffer_ecc, ecc, neye
@@ -60,6 +66,8 @@ def read_cfg(fn, rn = False):
         nt = np.fromfile(f,'u4',1)[0] 
         dt = np.fromfile(f,prec,1)[0] 
         normViewDistance, L_x0, L_y0, R_x0, R_y0 = np.fromfile(f, prec, 5)
+        tonicDep = np.fromfile(f,prec,nType) 
+        noisyDep = np.fromfile(f,prec,nType) 
         iVirtual_LGN = np.fromfile(f, 'i4', 1)[0]
         if iVirtual_LGN == 1:
             virtual_LGN = True
@@ -75,9 +83,9 @@ def read_cfg(fn, rn = False):
         print(f'sRatioLGN = {sRatioLGN}, sRatioV1 = {sRatioV1}')
         print(f'nLGN = {nLGN}, nV1 = {nV1}, dt = {dt}, nt = {nt}')
     if rn:
-        return prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1, nt, dt, normViewDistance, L_x0, L_y0, R_x0, R_y0, virtual_LGN
+        return prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1, nt, dt, normViewDistance, L_x0, L_y0, R_x0, R_y0, virtual_LGN, tonicDep, noisyDep
     else:
-        return prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN
+        return prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN, tonicDep, noisyDep
 
 def readLGN_V1_s0(fn, rnLGN_V1 = False, prec='f4'):
     with open(fn, 'rb') as f:

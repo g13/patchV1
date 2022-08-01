@@ -94,7 +94,7 @@ function inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, s
 
 
 
-	fid = fopen([fdr, inputFn, '.cfg'], 'r');
+	fid = fopen([res_fdr, inputFn, '.cfg'], 'r');
 	nStage = fread(fid, 1, 'uint')
     nOri = fread(fid, nStage, 'uint')
 	nRep = fread(fid, nStage, 'uint')
@@ -467,7 +467,7 @@ function inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, s
 				set(gca,'XTickLabel', []);
 	    	    colormap('gray');
 			end
-	        saveas(f, [fdr,'sLGN_V1-init-',num2str(i), suffix, '-sep.png']);
+	        saveas(f, [setup_fdr,'sLGN_V1-init-',num2str(i), suffix, '-sep.png']);
 		end
 	end
 	fclose(fid);
@@ -475,14 +475,14 @@ function inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, s
 	% by setting useNewLGN to false, populate LGN.bin follow the format in patch.cu
 	
 	% not in use, only self block is included
-	fNeighborBlock = [fdr, 'neighborBlock', suffix, '.bin'];
+	fNeighborBlock = [setup_fdr, 'neighborBlock', suffix, '.bin'];
 	% not in use, may use if cortical inhibition is needed
-	fV1_delayMat = [fdr, 'V1_delayMat', suffix, '.bin']; % zeros
-	fV1_conMat = [fdr, 'V1_conMat', suffix, '.bin']; % zeros
-	fV1_vec = [fdr, 'V1_vec', suffix, '.bin']; % zeros
+	fV1_delayMat = [setup_fdr, 'V1_delayMat', suffix, '.bin']; % zeros
+	fV1_conMat = [setup_fdr, 'V1_conMat', suffix, '.bin']; % zeros
+	fV1_vec = [setup_fdr, 'V1_vec', suffix, '.bin']; % zeros
 	
-	fV1_gapMat = [fdr, 'V1_gapMat', suffix, '.bin']; % zeros
-	fV1_gapVec = [fdr, 'V1_gapVec', suffix, '.bin']; % zeros
+	fV1_gapMat = [setup_fdr, 'V1_gapMat', suffix, '.bin']; % zeros
+	fV1_gapVec = [setup_fdr, 'V1_gapVec', suffix, '.bin']; % zeros
 	
 	nearNeighborBlock = nblock;
 	cid = fopen(fV1_conMat, 'w');
@@ -541,6 +541,8 @@ function inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, s
 	
 	
 	fid = fopen(fV1_vec, 'w');
+    connectlongRange = 0
+	fwrite(fid, connectLongRange, 'uint');
 	nVec = zeros(nV1,1);
 	fwrite(fid, nVec, 'uint');
 	fclose(fid);
@@ -550,7 +552,7 @@ function inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, s
 	fwrite(fid, nGapVec, 'uint');
 	fclose(fid);
 	
-	fConnectome = [fdr, 'connectome_cfg', suffix, '.bin'];
+	fConnectome = [setup_fdr, 'connectome_cfg', suffix, '.bin'];
 	fid = fopen(fConnectome, 'w');
 	fwrite(fid,2,'uint');
 	fwrite(fid,1,'uint');
@@ -559,7 +561,7 @@ function inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, s
 	%fwrite(fid,[10,10],'float'); % synapse per FF connection in float!
 	fclose(fid);
 	
-	fConStats = [fdr, 'conStats', suffix, '.bin'];
+	fConStats = [setup_fdr, 'conStats', suffix, '.bin'];
 	fid = fopen(fConStats, 'w');
 	fwrite(fid,2,'uint');
 	fwrite(fid,nV1,'uint');

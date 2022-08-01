@@ -251,7 +251,7 @@ def plotSta(isuffix, res_suffix, conLGN_suffix, output_suffix, res_fdr, setup_fd
     featureFn = res_fdr + 'V1_feature' + res_suffix + ".bin"
     V1_allposFn = res_fdr + 'V1_allpos' + res_suffix + ".bin"
 
-    prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1, nstep, dt, normViewDistance, L_x0, L_y0, R_x0, R_y0, virtual_LGN = read_cfg(parameterFn, True)
+    prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1, nstep, dt, normViewDistance, L_x0, L_y0, R_x0, R_y0, virtual_LGN, _, _ = read_cfg(parameterFn, True)
     if virtual_LGN:
         raise Exception('not implemented for virtual_LGN')
 
@@ -590,7 +590,7 @@ if __name__ == "__main__":
         spDataFn = data_fdr + "V1_spikes" + _output_suffix
         LGN_spFn = data_fdr + "LGN_sp" + _output_suffix
 
-        prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1, nstep, dt, normViewDistance, L_x0, L_y0, R_x0, R_y0 = read_cfg(parameterFn, True)
+        prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, nLGN, nV1, nstep, dt, normViewDistance, L_x0, L_y0, R_x0, R_y0, virtual_LGN, _, _ = read_cfg(parameterFn, True)
 
         np.random.seed(seed)
         if LGN_or_V1 == 0:

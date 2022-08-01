@@ -1,4 +1,5 @@
 #!/bin/bash
+# plotTConly, fitDataReady/plotOnly, readNewSpike
 set -e
 
 repo=$HOME/repos/patchV1
@@ -12,21 +13,21 @@ fitTC=False
 nOri=6 # total # orientaton if applicable
 TF=8 # input frequency if applicable
 SF=40
-singleOri=False
-#singleOri=True
-#one_ori=1
+#singleOri=False
+singleOri=True
+one_ori=1
 
 trial_suffix=4th
 res_suffix=square-single_layer
 patch=patch_fast
 
-generate_V1_connection=False
+generate_V1_connection=True
 generate_LGN_V1_connection=True
 
 patch_cfg=ori.cfg
 
 LGN_V1_suffix=opt_new
-V1_connectome_suffix=adjust
+V1_connectome_suffix=long_range
 
 retino_cfg=LGN_V1.cfg
 genCon_cfg=connectome.cfg
