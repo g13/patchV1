@@ -274,7 +274,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             else:
                 ax.set_xticks([]) 
 
-            onS,offS,os,overlap,orient = determine_os_str(LGN_vpos, LGN_V1_ID, LGN_type, sLGN, nV1, nLGN_V1, min_dis, os_out, nLGN_1D)
+            onS, offS, os, overlap, orient = determine_os_str(LGN_vpos, LGN_V1_ID, LGN_type, sLGN, nV1, nLGN_V1, min_dis, os_out, nLGN_1D)
 
             ax = fig.add_subplot(nit, 4, 4 * i + 1)
             _, binEdges, _ = ax.hist(onS - offS, bins = 20)
@@ -290,13 +290,15 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                 ax.set_xticks([]) 
 
             ax = fig.add_subplot(nit,4,4 * i + 2)
-            binned = np.digitize(orient * 180 / np.pi, bins = op_edges)
-            counts = np.zeros(nop-1)
-            for j in range(nop-1):
-                counts[j] = np.sum(binned == j)
-                if counts[j] > 0:
-                    counts[j] *= np.mean(os[binned == j])
-            ax.bar(x_op, counts, color = 'b')
+            #binned = np.digitize(orient * 180 / np.pi, bins = op_edges)
+            #counts = np.zeros(nop-1)
+            #for j in range(nop-1):
+            #    counts[j] = np.sum(binned == j)
+            #    if counts[j] > 0:
+            #        counts[j] *= np.mean(os[binned == j])
+            #ax.bar(x_op, counts, color = 'b')
+            ax.hist(orient * 180 / np.pi, bins = op_edges, weights = os, color = 'b')
+
             if i == 0:
                 ax.set_title('OP dist')
                 ax.set_ylabel('#V1 weighted by os')
@@ -337,9 +339,9 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             normed_counts = counts/np.max(counts)
         else:
             normed_counts = np.zeros((nit, max_LGNperV1 // 2))
-        ax.imshow(normed_counts, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('gray'))
+        ax.imshow(normed_counts.T, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('gray'))
         ax.set_ylabel(f'# > {top_thres * 100:.0f}% max')
-        ax.set_title(f'on ({avg_on_max:.2f})/{capacity:.2f})')
+        ax.set_title(f'on ({avg_on_max:.2f}/{capacity:.2f})')
 
         ax = fig.add_subplot(2,2,2)
         counts = max20[1,:,:]
@@ -347,8 +349,8 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             normed_counts = counts/np.max(counts)
         else:
             normed_counts = np.zeros((nit, max_LGNperV1 // 2))
-        ax.imshow(normed_counts, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('gray'))
-        ax.set_title(f'on ({avg_off_max:.2f})/{capacity:.2f})')
+        ax.imshow(normed_counts.T, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('gray'))
+        ax.set_title(f'on ({avg_off_max:.2f}/{capacity:.2f})')
 
         ax = fig.add_subplot(2,2,3)
         counts = min0[0,:,:]
@@ -356,7 +358,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             normed_counts = counts/np.max(counts)
         else:
             normed_counts = np.zeros((nit, max_LGNperV1 // 2))
-        ax.imshow(normed_counts, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('gray'))
+        ax.imshow(normed_counts.T, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('gray'))
 
         ax.set_ylabel('# == 0')
         ax.set_title(f'on: {avg_on_min:.2f}')
@@ -367,7 +369,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             normed_counts = counts/np.max(counts)
         else:
             normed_counts = np.zeros((nit, max_LGNperV1 // 2))
-        ax.imshow(normed_counts, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('gray'))
+        ax.imshow(normed_counts.T, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('gray'))
         ax.set_title(f'off: {avg_off_min:.2f}')
         fig.savefig(f'{fig_fdr}max_min_tDist{osuffix}{rtime}.png')
         plt.close(fig)
@@ -375,7 +377,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         f.seek(max_LGNperV1 * nV1 * (nt_ - 1) * 4 + nskip*4, 0)
         sLGN = np.fromfile(f, 'f4', max_LGNperV1* nV1).reshape(max_LGNperV1, nV1).T
     
-    onS,offS,os,overlap,orient = determine_os_str(LGN_vpos, LGN_V1_ID, LGN_type, sLGN, nV1, nLGN_V1, min_dis, os_out, nLGN_1D)
+    onS, offS, os, overlap, orient = determine_os_str(LGN_vpos, LGN_V1_ID, LGN_type, sLGN, nV1, nLGN_V1, min_dis, os_out, nLGN_1D)
     epick = np.zeros(mE * nblock, dtype = 'u4')
     ipick = np.zeros(mI * nblock, dtype = 'u4')
     for i in range(nblock):
@@ -385,12 +387,14 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
     fig = plt.figure('stats-LGN_V1', figsize = (6,6), dpi = 300)
     ax = fig.add_subplot(2,2,1)
     dS = onS - offS
-    dS_edges = np.histogram_bin_edges(dS, bins = nbins)
-    countsE, _ = np.histogram(dS[epick], bins = dS_edges)
-    countsI, _ = np.histogram(dS[ipick], bins = dS_edges)
-    x_ds = (dS_edges[:-1] + dS_edges[1:]) / 2
-    ax.bar(x_ds, countsE, color = 'r', alpha = 0.5)
-    ax.bar(x_ds, countsI, color = 'b', alpha = 0.5)
+    #dS_edges = np.histogram_bin_edges(dS, bins = nbins)
+    #countsE, _ = np.histogram(dS[epick], bins = dS_edges)
+    #countsI, _ = np.histogram(dS[ipick], bins = dS_edges)
+    #x_ds = (dS_edges[:-1] + dS_edges[1:]) / 2
+    #ax.bar(x_ds, countsE, color = 'r', alpha = 0.5)
+    #ax.bar(x_ds, countsI, color = 'b', alpha = 0.5)
+    _, _edges, _ = ax.hist(dS[epick], bins = nbins, weights = os[epick], color = 'r', alpha = 0.5)
+    ax.hist(dS[ipick], bins = _edges, weights = os[ipick], color = 'b', alpha = 0.5)
     ax.legend(['E','I'])
     ax.set_xlabel('sOn-sOff')
     ax.set_ylabel('#V1')
@@ -399,8 +403,10 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
     binI = np.digitize(orient[ipick] * 180 / np.pi, bins = op_edges)
     countsE = np.array([np.sum(binE == i) for i in range(nop-1)])
     countsI = np.array([np.sum(binI == i) for i in range(nop-1)])
-    b = ax.bar(x_op, countsE, color = 'r', alpha = 0.5)
-    b = ax.bar(x_op, countsI, color = 'b', alpha = 0.5)
+
+    w = op_edges[1] - op_edges[0]
+    ax.bar(x_op, countsE, width = w, color = 'r', alpha = 0.5)
+    ax.bar(x_op, countsI, width = w, color = 'b', alpha = 0.5)
     ax.set_xlabel('OP (deg)')
     ax.set_ylabel('#V1')
     ax = fig.add_subplot(2,2,4)
@@ -408,8 +414,8 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
     osI = os[ipick]
     overlapE = overlap[epick]
     overlapI = overlap[ipick]
-    ocountsE = countsE
-    ocountsI = countsI
+    ocountsE = countsE.copy()
+    ocountsI = countsI.copy()
     for i in range(nop-1):
         if countsE[i] > 0:
             countsE[i] *= np.mean(osE[binE == i])
@@ -418,10 +424,11 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             countsI[i] *=  np.mean(osI[binI == i])
             ocountsI[i] *= (1 - np.mean(overlapI[binI == i]))
     
-    ax.bar(x_op, countsE, color = 'r')
-    ax.bar(x_op, countsI, color = 'b')
-    ax.bar(x_op, ocountsE, color = 'm')
-    ax.bar(x_op, ocountsI, color = 'c')
+    ax.bar(x_op, countsE, width = w, color = 'r', alpha = 0.5)
+    ax.bar(x_op, countsI, width = w, color = 'b', alpha = 0.5)
+    ax.bar(x_op, -ocountsE, width = w, color = 'm', alpha = 0.5)
+    ax.bar(x_op, -ocountsI, width = w, color = 'c', alpha = 0.5)
+
     ax.set_xlabel('OP (deg)')
     ax.set_ylabel('#V1 weighted by os')
     ax = fig.add_subplot(2,2,3)
@@ -431,10 +438,11 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
     ocountsE, _ = np.histogram(overlapE, bins = osEdges)
     ocountsI, _ = np.histogram(overlapI, bins = osEdges)
     x_os = (osEdges[:-1] + osEdges[1:]) / 2
-    ax.bar(x_os,countsE, color = 'r')
-    ax.bar(x_os,countsI, color = 'b')
-    ax.bar(x_os,ocountsE, color = 'm')
-    ax.bar(x_os,ocountsI, color = 'c')
+    w = osEdges[1] - osEdges[0]
+    ax.bar(x_os, countsE, width = w, color = 'r', alpha = 0.5)
+    ax.bar(x_os, countsI, width = w, color = 'b', alpha = 0.5)
+    ax.bar(x_os, ocountsE, width = w, color = 'm', alpha = 0.5)
+    ax.bar(x_os, ocountsI, width = w, color = 'c', alpha = 0.5)
     ax.set_xlabel('dis/(Ron+Roff) or overlap')
     ax.set_ylabel('#V1')
     fig.savefig(f'{fig_fdr}stats-LGN_V1{osuffix}{rtime}.png')
@@ -543,11 +551,19 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                             stmp = stmp0 / gmax
                             stmp[stmp < thres_out] = 0
                             im = ax.imshow(stmp, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('gray'))
-                            plt.colorbar(im)
+
+                            pos_bbox = ax.get_position()
                             ax.set_aspect('equal')
                             ax.set_yticks([])
                             ax.set_xticks([])
                             ax.set_title(f'{local_nCon:.0f}', fontsize = 5)
+
+                            pos = pos_bbox.get_points()
+                            bar_width = (pos[1,0] - pos[0,0]) * 0.15
+                            pad = bar_width
+                            cax = plt.axes([pos[1,0] + pad, pos[0,1], bar_width, pos[1,1] - pos[0,1]])
+                            plt.colorbar(im, cax = cax)
+
                         if np.mod(i+1,nit0) == 0:
                             row = row + 1
 
@@ -620,12 +636,12 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                 ax.set_yticks([])
             for i in range(ntype):
                 ax = fig.add_subplot(ntype, 3, (3*i+1, 3*i+2))
-                ax.plot(it * dt, tLGN[:,LGN_type[LGN_V1_ID[iV1, :nLGN_V1[iV1]]] == types[i]] / gmax * 100, '-')
-                ax.set_title(f'type{types[i]} input takes {typeInput[i] * 100:.1f}%')
+                ax.plot(it * dt/1000, tLGN[:,LGN_type[LGN_V1_ID[iV1, :nLGN_V1[iV1]]] == types[i]] / gmax * 100, '-')
+                ax.set_title(f'type{types[i]} input activation level {typeInput[i] * 100:.1f}%')
                 ax.set_ylim(0,100)
                 ax.set_ylabel('strength % of max')
-                if i == ntype:
-                    plt.xlabel('ms')
+                if i == ntype-1:
+                    plt.xlabel('s')
             edges = np.linspace(0,100,nbins)
             for i in range(nit):
                 ax = fig.add_subplot(nit, 3, 3*(i+1))
@@ -633,6 +649,8 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                     ax.hist(tLGN[qtt[i], LGN_type[LGN_V1_ID[iV1,:nLGN_V1[iV1]]] == types[j]] / gmax * 100, bins = edges, alpha = 0.5)
                 if i == nit-1:
                     ax.set_xlabel(f'strength % of max0, on:off= {onS[iV1] / offS[iV1]:.1f}')
+                else:
+                    ax.set_xticks([])
 
             fig.savefig(f'{fig_fdr}tLGN_V1-{iV1}{osuffix}{rtime}.png')
             plt.close(fig)

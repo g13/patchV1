@@ -10,7 +10,7 @@ import sys
 import matplotlib.pyplot as plt
 
 def randq(m, n, pos, r0, stdev, squareOrCircle):
-    r2 = np.sum(np.power(pos*pos, 2), axis = 0)
+    r2 = np.sum(np.power(pos, 2), axis = 0)
     idx = np.arange(m)
     if squareOrCircle:
         ndm = np.sum(np.max(np.abs(pos), axis = 0) > r0)
@@ -238,17 +238,15 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
         nLGNperV1 = int(np.round(nLGN_square * 2 * pCon))
     else:
         nLGN_circ = np.sum(np.sum(LGN_vpos0 * LGN_vpos0, axis = 0) <= max_ecc * max_ecc * radiusRatio * radiusRatio)
-        nLGNperV1 = np.round(nLGN_circ * 2 * pCon)
+        nLGNperV1 = int(np.round(nLGN_circ * 2 * pCon))
     
     if np.mod(nLGNperV1,2) == 1:
         nLGNperV1 = nLGNperV1 + 1
     
-    nLGNperV1
     # number of E and I connecitons based on LGN connections
     nI = int(np.min([nLGNperV1 // 4,mI]))
     nE = int(np.min([nLGNperV1,mE]))
     with open(fLGN_V1_ID, 'wb') as f:
-    
         np.array([nV1], dtype = 'u4').tofile(f)
         idx = np.zeros((nV1,nLGNperV1), dtype = 'u4')
         for i in range(nV1):

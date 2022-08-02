@@ -8,7 +8,7 @@ setup_fdr=${fdr0}/setup # inputFolder in cfg LGN-V1 and V1 connectome files
 data_fdr=${fdr0}/data # outputFolder in cfg
 
 patch=patch_fast
-waveStage=2 # set stage number
+waveStage=3 # set stage number
 
 if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 	#inputFn=32-sequential_10-30_stage_II 
@@ -27,16 +27,16 @@ fi
 relay=false
 if [[ "${waveStage}" = "3" ]] ;then
 	#inputFn=32x3-random3917563_5-15_stage_III_sym
-	inputFn=32x3-opponent_5-10_stage_III_reverse
+	inputFn=32x3-opponent_5-5_stage_III_sym
 	#inputFn=32x3-sequential_5-15_stage_III_sym
 	#inputFn=32x3-135_5-5_stage_III_sym
 	fdr=wave_concat/wave_III
-	op=w3r_opp_iwi2_on1off1_cap3_g7
+	op=w3_opp_iwi1
 	#op=single_test-135
 	op_cfg=wave_III.cfg
 	new_setup=True
 	if [[ "${relay}" = false ]]; then
-		suffix=g7
+		suffix=g6
 		lgn=lFF_III_${suffix}
 		res=lFF_III_${suffix}
 		fAsInput=''
@@ -65,9 +65,9 @@ fi
 
 binary_thres=0.0
 #binary_thres=0.5
-std_ecc=0
+#std_ecc=0
 #std_ecc=16
-#std_ecc=12
+std_ecc=12
 #std_ecc=8
 #std_ecc=6
 #std_ecc=5
