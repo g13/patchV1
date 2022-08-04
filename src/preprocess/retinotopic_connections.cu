@@ -244,16 +244,6 @@ vector<Size> draw_from_radius(
     return index;
 }
 
-__host__
-__device__
-__forceinline__
-bool inside_ellipse(Float x, Float y, Float theta, Float a, Float b, Float &value) {
-    Float tx = cosine(theta) * x + sine(theta) * y;
-	Float ty = -sine(theta) * x + cosine(theta) * y;
-	value = (tx*tx/(a*a) + ty*ty/(b*b));
-	return value <= 1.0-1e-7;
-}
-
 __launch_bounds__(1024,2)
 __global__
 void vf_pool_CUDA( // for each eye

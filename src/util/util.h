@@ -10,6 +10,15 @@
 #include <cassert>
 #include "../types.h"
 
+
+__host__ __device__
+bool inside_ellipse(Float x, Float y, Float theta, Float a, Float b, Float &value) {
+    Float tx = cosine(theta) * x + sine(theta) * y;
+	Float ty = -sine(theta) * x + cosine(theta) * y;
+	value = (tx*tx/(a*a) + ty*ty/(b*b));
+	return value <= 1.0-1e-7;
+}
+
 inline Float get_rand_from_gauss(Float p[], std::default_random_engine &rGen, std::function<bool(Float)> &outOfBound) {
     static std::normal_distribution<Float> norm(0.0, 1.0);
 	Float v;

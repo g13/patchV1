@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gs
 import matplotlib as mpl
 from readPatchOutput import *
+from plotV1_response import ellipse
 np.seterr(invalid = 'warn')
 
 import sys
@@ -41,62 +42,63 @@ if setup_fdr[-1] != "/":
 if data_fdr[-1] != "/":
     data_fdr = data_fdr + "/"
 
-seed = 6578872
+seed = 6578873
 np.random.seed(seed)
-ns = 5
+ns = 12
 mk = ['o', 'd']
 compThres = 1
 #sample = np.array([])
 
 plotStats = True
-plotLGNsSize = True
-plotPos = True
-plotLGN_V1_sample = True
-plot_nLGN_OS = True
+#plotLGNsSize = True
+#plotPos = True
+#plotLGN_V1_sample = True
+#plot_nLGN_OS = True
 plotConFeature_stats = True 
-plotConFeature_preSynTC = True
+#plotConFeature_preSynTC = True
 plotConFeature_sample = True
 plotCon_sample = True
-plotLGN_V1_ratio = True
-plotLGNsSum = True
-plotBlockWiseComplexDist = True
+#plotLGN_V1_ratio = True
+#plotLGNsSum = True
+#plotBlockWiseComplexDist = True
 
 #plotStats = False
-#plotLGNsSize = False
-#plotPos = False
-#plotLGN_V1_sample = False 
-#plot_nLGN_OS = False
+plotLGNsSize = False
+plotPos = False
+plotLGN_V1_sample = False 
+plot_nLGN_OS = False
 #plotConFeature_stats = False
-#plotConFeature_preSynTC = False
+plotConFeature_preSynTC = False
 #plotConFeature_sample = False 
 #plotCon_sample = False
-#plotLGN_V1_ratio = False
-#plotLGNsSum = False
-#plotBlockWiseComplexDist = False 
+plotLGN_V1_ratio = False
+plotLGNsSum = False
+plotBlockWiseComplexDist = False 
 
 LGN_vposFn = res_fdr + 'LGN_vpos'+ res_suffix + ".bin"
 featureFn = res_fdr + 'V1_feature' + res_suffix + ".bin"
 V1_allposFn = res_fdr + 'V1_allpos' + res_suffix + ".bin"
-parameterFn = data_fdr + "patchV1_cfg" +output_suffix + ".bin"
+parameterFn = data_fdr + "patchV1_cfg" + output_suffix + ".bin"
 
-conMat_file = setup_fdr + 'V1_conMat'+conV1_suffix+'.bin'
-delayMat_file = setup_fdr + 'V1_delayMat'+conV1_suffix+'.bin'
-vec_file = setup_fdr + 'V1_vec'+conV1_suffix+'.bin'
-blkPos_file = setup_fdr + 'block_pos'+conV1_suffix+'.bin'
-nabaBlk_file = setup_fdr + 'neighborBlock'+conV1_suffix+'.bin'
-stats_file = setup_fdr + 'conStats'+conV1_suffix+'.bin'
-LGN_V1_ID_file = setup_fdr + 'LGN_V1_idList'+conLGN_suffix+'.bin'
-LGN_V1_s_file = setup_fdr + 'LGN_V1_sList'+conLGN_suffix+'.bin'
+conMat_file = setup_fdr + 'V1_conMat' + conV1_suffix + '.bin'
+delayMat_file = setup_fdr + 'V1_delayMat' + conV1_suffix + '.bin'
+vec_file = setup_fdr + 'V1_vec' + conV1_suffix + '.bin'
+blkPos_file = setup_fdr + 'block_pos' + conV1_suffix + '.bin'
+nabaBlk_file = setup_fdr + 'neighborBlock' + conV1_suffix + '.bin'
+stats_file = setup_fdr + 'conStats' + conV1_suffix + '.bin'
+connectomeFn = setup_fdr + "connectome_cfg" + conV1_suffix + ".bin"
+
+LGN_V1_ID_file = setup_fdr + 'LGN_V1_idList' + conLGN_suffix + '.bin'
+LGN_V1_s_file = setup_fdr + 'LGN_V1_sList' + conLGN_suffix + '.bin'
 
 prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN, _, _ = read_cfg(parameterFn)
 
 typeAcc = np.hstack((0, typeAcc))
 print(typeAcc)
 
-
 sampleBlockId = [13]
 
-with open(V1_allposFn, 'r') as f:
+with open(V1_allposFn, 'rb') as f:
     nblock = np.fromfile(f, 'u4', count=1)[0]
     blockSize = np.fromfile(f, 'u4', count=1)[0]
     networkSize = nblock*blockSize
@@ -146,25 +148,33 @@ with open(delayMat_file, 'rb') as f:
 with open(vec_file, 'rb') as f:
     connectLongRange = np.fromfile(f, 'i4', count = 1)[0]
     print(f'connectLongRange = {connectLongRange}')
-    nVec = np.fromfile(f, 'u4', count = networkSize)
+    nTotalVec = np.fromfile(f, 'u4', count = networkSize)
     if connectLongRange == 1:
-        longRange_nVec = np.fromfile(f, 'u4', count = networkSize)
-        print(f'number of long-range connections: {np.min(longRange_nVec)}, {np.mean(longRange_nVec)}, {np.max(longRange_nVec)}')
+        nVec = np.fromfile(f, 'u4', count = networkSize)
+        longRange_nVec = nTotalVec - nVec
+        print(f'number of long-range connections outside block: {np.min(longRange_nVec[longRange_nVec>0])}, {np.mean(longRange_nVec)}, {np.max(longRange_nVec)}')
     else:
         longRange_nVec = np.zeros(networkSize, dtype = int)
-    print(f'number of connections outside block: {np.min(nVec)}, {np.mean(nVec)}, {np.max(nVec)}')
+        print(f'no long-range connections made')
+    print(f'number of near-range connections outside block: {np.min(nVec)}, {np.mean(nVec)}, {np.max(nVec)}')
     vecID = np.empty(networkSize, dtype=object)
     conVec = np.empty(networkSize, dtype=object)
     delayVec = np.empty(networkSize, dtype=object)
     for i in range(networkSize):
-        if nVec[i] > 0:
-            vecID[i] = np.fromfile(f, 'u4', count = nVec[i])
-            conVec[i] = np.fromfile(f, 'f4', count = nVec[i])
-            delayVec[i] = np.fromfile(f, 'f4', count = nVec[i])
+        if nTotalVec[i] > 0:
+            vecID[i] = np.fromfile(f, 'u4', count = nTotalVec[i])
+            conVec[i] = np.fromfile(f, 'f4', count = nTotalVec[i])
+            delayVec[i] = np.fromfile(f, 'f4', count = nTotalVec[i])
         else:
             vecID[i] = np.array([])
             conVec[i] = np.array([])
             delayVec[i] = np.array([])
+
+if connectLongRange:
+    with open(connectomeFn, 'rb') as f:
+        f.seek(-2*4, 2)
+        longRangeLOI, longRangeSOI = np.fromfile(f, 'f4', 2)
+        print(f'longRangeROI: {(longRangeSOI, longRangeLOI)}')
 
 max_str = np.zeros((networkSize, 2))
 for ib in range(nblock):
@@ -176,7 +186,7 @@ for ib in range(nblock):
 
         vec_max = np.zeros(blockSize, dtype = int)
         for j in range(ib*blockSize, (ib+1)*blockSize):
-            if nVec[j] > 0:
+            if nTotalVec[j] > 0:
                 if jType == 0:
                     pick = vecID[j] % blockSize < typeAcc[nTypeE]
                 else:
@@ -263,15 +273,23 @@ def circular_diff(v0, vs, minv, maxv):
     return v_diff
 
 if 'sample' not in locals():
+    nType0 = nType
+    nType = 1
     sample = np.zeros(ns*nType, dtype = int)
-    i = 0
-    for iblock in np.random.choice(np.arange(nblock), size = ns, replace = False):
-        for iType in range(nType): 
-            sample[i] = iblock*blockSize + np.random.randint(typeAcc[iType],typeAcc[iType+1])
-            i = i + 1
-    
-    sample[-1] = np.array([5*1024+931])
-    print(f'samples: {sample}')
+    #i = 0
+    #for iblock in np.random.choice(np.arange(nblock), size = ns, replace = False):
+    #    for iType in range(nType): 
+    #        sample[i] = iblock*blockSize + np.random.randint(typeAcc[iType],typeAcc[iType+1])
+    #        i = i + 1
+    mid_blocks = np.tile(np.array([4,5,6]),3)*10 + np.repeat(np.array([4,5,6]),3)
+    mid_idx = np.empty(nType, dtype = object)
+    for j in range(nType):
+        mid_idx[j] = np.hstack([np.arange(i*blockSize + typeAcc[j], i*blockSize + typeAcc[j+1]) for i in mid_blocks])
+    for i in range(ns):
+        for j in range(nType):
+            sample[nType*i + j] = np.random.choice(mid_idx[j][np.logical_and(feature[1,mid_idx[j]] >= i/ns, feature[1,mid_idx[j]] < (i+1)/ns)], 1)
+    nType = nType0
+
 else:
     ns = sample.size
 
@@ -299,7 +317,7 @@ if plot_nLGN_OS:
         ax = fig.add_subplot(nrow,2,2*i+2)
         ax.hist(iPref[ipick], bins=opEdges)
         nOri *= 2
-    fig.savefig(fig_fdr + 'preset-OS_dist' + output_suffix[:-2] + '.png', dpi = 150)
+    fig.savefig(res_fdr + 'preset-OS_dist' + res_suffix + '.png', dpi = 150)
     plt.close(fig)
     fig = plt.figure('preset-OS_dist_T', figsize = (6,2*nrow))
     iPref = np.mod(feature[1,:]+0.5,1.0)*180 # for ori
@@ -310,7 +328,7 @@ if plot_nLGN_OS:
         ax = fig.add_subplot(nrow,2,2*i+2)
         ax.hist(iPref[ipick], bins=opEdges)
         nOri *= 2
-    fig.savefig(fig_fdr + 'preset-OS_dist_T' + output_suffix[:-2] + '.png', dpi = 150)
+    fig.savefig(res_fdr + 'preset-OS_dist_T' + res_suffix + '.png', dpi = 150)
     plt.close(fig)
          
 
@@ -375,8 +393,10 @@ if plot_nLGN_OS:
             ax.set_title(f'for all nLGN>0')
 
 
-    fig.savefig(fig_fdr + 'nLGN-OS_dist0' + output_suffix[:-2] + '.png', dpi = 150)
+    fig.savefig(setup_fdr + 'nLGN-OS_dist0' + conV1_suffix + '.png', dpi = 150)
     plt.close(fig)
+
+iPref = np.mod(feature[1,:] + 0.5, 1.0)*180 # for ori
 
 if plotLGNsSum:
     fig = plt.figure('LGNsSum', dpi = 300)
@@ -388,7 +408,7 @@ if plotLGNsSum:
     ax.hist(lgnData[epick], color = 'r', alpha = 0.5, label = 'R')
     ax.hist(lgnData[ipick], color = 'b', alpha = 0.5, label = 'L')
     ax.set_title('EI')
-    fig.savefig(fig_fdr+'LGNsSum'+conLGN_suffix+'.png')
+    fig.savefig(setup_fdr + 'LGNsSum' + conLGN_suffix + '.png')
     plt.close(fig)
 
 if plotBlockWiseComplexDist:
@@ -398,7 +418,8 @@ if plotBlockWiseComplexDist:
     ax.hist(pick//blockSize, bins = np.arange(nblock+1), color = 'r', alpha = 0.5, label = 'Exc.C')
     pick = ipick[nLGN_V1[ipick] == 0]
     ax.hist(pick//blockSize, bins = np.arange(nblock+1), color = 'b', alpha = 0.5, label = 'Inh.C')
-    fig.savefig(fig_fdr+'blockComp'+conLGN_suffix+'.png')
+    ax.legend()
+    fig.savefig(setup_fdr + 'blockComp' + conLGN_suffix + '.png')
     plt.close(fig)
 
 if plotLGN_V1_ratio:
@@ -446,7 +467,7 @@ if plotLGN_V1_ratio:
         ax0.hist(lgnData[typeID]*sRatioLGN[i], bins = np.arange(max_nLGN+1), label = f'type_{i}', alpha = 0.5)
         ax0.legend()
         ax0.set_xlabel('lgn Exc')
-    fig.savefig(fig_fdr+'LGN_V1_ratio'+conLGN_suffix+conV1_suffix+'.png')
+    fig.savefig(fig_fdr + 'LGN_V1_ratio' + conLGN_suffix + conV1_suffix + '.png')
     plt.close(fig)
     
 if plotPos:
@@ -465,7 +486,7 @@ if plotPos:
                     plt.plot(blkPos[0,nabaBlkId[i][j]], blkPos[1,nabaBlkId[i][j]], 'sk', ms = 0.2)
 
     ax.set_aspect('equal')
-    fig.savefig(fig_fdr+'V1_pos' + conV1_suffix + '.png')
+    fig.savefig(setup_fdr + 'V1_pos' + conV1_suffix + '.png')
     plt.close(fig)
     
 if plotStats:
@@ -576,8 +597,15 @@ if plotLGN_V1_sample:
             x = np.array([np.min(iLGN_vpos[0,:]), np.max(iLGN_vpos[0,:])])
             y = np.array([np.min(iLGN_vpos[1,:]), np.max(iLGN_vpos[1,:])])
 
-            ax.set_xlim(left = x[1] - (x[1]-x[0])*1.1, right = x[0] + (x[1]-x[0])*1.1)
-            ax.set_ylim(bottom = y[1] - (y[1]-y[0])*1.1, top = y[0] + (y[1]-y[0])*1.1)
+            if nLGN_V1[iV1] > 1:
+                xl = x[1]-x[0]
+                yl = y[1]-y[0]
+            else:
+                xl = LGN_vpos[0,1]-LGN_vpos[0,0]
+                yl = LGN_vpos[1,1]-LGN_vpos[1,0]
+
+            ax.set_xlim(left = x[1] - xl*1.1, right = x[0] + xl*1.1)
+            ax.set_ylim(bottom = y[1] - yl*1.1, top = y[0] + yl*1.1)
 
             if np.diff(y)[0] > np.diff(x)[0]:
                 x = (y-y0) / np.tan(orient) + x0
@@ -673,11 +701,9 @@ if plotCon_sample:
             msI_size = conMat[bid,j,matI_pick,tid]
 
             if msE_size.size > 0:
-                print(f'E con strength for sample {i//blockSize}-{np.mod(i,blockSize)} in {j}th block from the left eye: {msE_size}')
                 ax.scatter(pos[jbid,0,matE_pick], pos[jbid,1,matE_pick], s = mSize*msE_size/max_str[i, 0], marker = marker, facecolor = None, edgecolor = 'r', alpha = alpha)
                 #ax.plot(pos[jbid,0,matE_pick], pos[jbid,1,matE_pick], marker, mec='r', mfc = None, ms = ms1*1.1)
             if msI_size.size > 0:
-                print(f'I con strength for sample {i//blockSize}-{np.mod(i,blockSize)} in {j}th block from the left eye: {msI_size}')
                 ax.scatter(pos[jbid,0,matI_pick], pos[jbid,1,matI_pick], s = mSize*msI_size/max_str[i, 1], marker = marker, facecolor = None, edgecolor = 'b', alpha = alpha)
                 #ax.plot(pos[jbid,0,matI_pick], pos[jbid,1,matI_pick], marker, mec='b', mfc = None, ms = ms1*1.1)
 
@@ -696,17 +722,15 @@ if plotCon_sample:
             msI_size = conMat[bid,j,matI_pick,tid]
 
             if msE_size.size > 0:
-                print(f'E con strength for sample {i//blockSize}-{np.mod(i,blockSize)} in {j}th block from the right eye: {msE_size}')
-                ax.scatter(pos[jbid,0,matE_pick], pos[jbid,1,matE_pick], s = mSize*msE_size/max_str[i, 0], marker = marker, facecolor = None, edgecolor = 'r', linewidths = 0.1, alpha = alpha)
+                ax.scatter(pos[jbid,0,matE_pick], pos[jbid,1,matE_pick], s = mSize*msE_size/max_str[i, 0], marker = marker, facecolor = None, edgecolor = 'r', linewidths = 0.02, alpha = alpha)
                 #ax.plot(pos[jbid,0,matE_pick], pos[jbid,1,matE_pick], marker, mec='r', mfc = None, ms = ms1*1.1)
             if msI_size.size > 0:
-                print(f'I con strength for sample {i//blockSize}-{np.mod(i,blockSize)} in {j}th block from the right eye: {msI_size}')
-                ax.scatter(pos[jbid,0,matI_pick], pos[jbid,1,matI_pick], s = mSize*msI_size/max_str[i, 1], marker = marker, facecolor = None, edgecolor = 'b', linewidths = 0.05, alpha = alpha)
+                ax.scatter(pos[jbid,0,matI_pick], pos[jbid,1,matI_pick], s = mSize*msI_size/max_str[i, 1], marker = marker, facecolor = None, edgecolor = 'b', linewidths = 0.02, alpha = alpha)
                 #ax.plot(pos[jbid,0,matI_pick], pos[jbid,1,matI_pick], marker, mec='b', mfc = None, ms = ms1*1.1)
 
-        if nVec[i] > 0:
-            vID = vecID[i][: (nVec[i]-longRange_nVec[i])]
-            cStr = conVec[i][: (nVec[i]-longRange_nVec[i])]
+        if nTotalVec[i] > 0:
+            vID = vecID[i][: nVec[i]]
+            cStr = conVec[i][: nVec[i]]
             # pre outside the block
             # left, exc
             LE_pick = np.logical_and(LR[vID] < 0, vID % blockSize < typeAcc[nTypeE])
@@ -741,8 +765,8 @@ if plotCon_sample:
                 ax.scatter(pos[vbid,0,vtid], pos[vbid,1,vtid], s = mSize*msI_size/max_str[i, 1], marker = '*', facecolor = None, edgecolor = 'r', alpha = alpha)
             
         if longRange_nVec[i] > 0:
-            vID = vecID[i][longRange_nVec[i]:]
-            cStr = conVec[i][longRange_nVec[i]:]
+            vID = vecID[i][nVec[i]:]
+            cStr = conVec[i][nVec[i]:]
             # pre outside the block
             # left, exc
             LE_pick = np.logical_and(LR[vID] < 0, vID % blockSize < typeAcc[nTypeE])
@@ -777,7 +801,12 @@ if plotCon_sample:
                 ax.scatter(pos[vbid,0,vtid], pos[vbid,1,vtid], s = mSize*msI_size/max_str[i,1 ], marker = '>', facecolor = None, edgecolor = 'r', alpha = alpha)
 
         ax.plot(pos[bid,0,tid], pos[bid,1,tid],'*k', mfc = None, mew = 0.05, ms = 1, alpha = alpha)
+        
+        bx, by = ellipse(pos[bid,0,tid], pos[bid,1,tid], longRangeSOI, longRangeLOI/longRangeSOI, iPref[i]*np.pi/180)
+        ax.plot(bx, by, '--k', lw = 0.05)
+
         ax.set_aspect('equal')
+        ax.set_title(f'neuron {bid}-{tid} preset to {iPref[i]:.0f} deg')
         fig.savefig(fig_fdr+'V1_conSample-'+f'{bid}-{tid}' + conV1_suffix + '.png')
         plt.close(fig)
 
@@ -893,7 +922,7 @@ if plotConFeature_sample:
                     color = mpl.colors.hsv_to_rgb(np.stack(((m_diff+rangeFeature[i])/(2*rangeFeature[i]), np.ones(npre), np.ones(npre)), axis = 1))
                     ax.scatter(pos[jbid,0,typePick[mat_pick]], pos[jbid,1,typePick[mat_pick]], s = 0.1, c=color, marker = mk[iType], edgecolors = 'none')
                     total_diff[iType].append(m_diff)
-            if nVec[ipost] > 0:
+            if nTotalVec[ipost] > 0:
                 # pre outside the block
                 vbid = vecID[ipost]//blockSize
                 vtid = vecID[ipost] - blockSize*vbid
@@ -924,7 +953,7 @@ if plotConFeature_sample:
             ax.set_aspect('equal')
             ax2.set_xlabel(f'{mean_std[0,0]:.3f}, {mean_std[1,0]:.3f} | {mean_std[0,1]:.3f}, {mean_std[1,1]:.3f}')
     
-    fig.savefig(fig_fdr+'conFeature-sample'+conV1_suffix+'.png')
+    fig.savefig(setup_fdr + 'conFeature-sample' + conV1_suffix + '.png')
     plt.close(fig)
 
 if plotConFeature_preSynTC:
@@ -936,11 +965,12 @@ if plotConFeature_preSynTC:
     logScale = False 
     tick = (np.array([0,2]), np.array([0,0.25,0.5,0.75,1.0])-0.5, np.array([0,1]))
     ticklabel = np.array([['Ipsi', 'Contra'], [f'{t*180:.0f}' for t in tick[1]], ['C', 'S']], dtype = object)
-    for iType in range(nType):
+    for iType in range(nType): #post
         fig = plt.figure(f'conFeature_preSynTC-{archType[iType]}', figsize = np.array([nFeature, nType])*4 ,dpi = 300)
         grid = gs.GridSpec(nFeature, nType*2, figure = fig, hspace = 0.5, wspace = 0.5)
         for iF in range(nFeature): # ipost
             iTypeN = typeAcc[iType+1]-typeAcc[iType]
+            #               preType, preSynaptic
             data = np.empty((nType,iTypeN*nblock), dtype = object)
             longRange_data = np.empty((nType,iTypeN*nblock), dtype = object)
             hasLongRange = np.zeros(nType, dtype = bool)
@@ -968,11 +998,11 @@ if plotConFeature_preSynTC:
                         for iq in range(iTypeN):
                             weight = cStr[cStr[:,iq]>0, iq]
                             data[jType,i*iTypeN+iq].extend(value[cStr[:,iq] > 0,iq]*weight)
-
+                iq = 0
                 for j in ipost:
                     if nVec[j] > 0:
-                        ipre = vecID[j][: (nVec[j] - longRange_nVec[j])]
-                        cStr = conVec[j][: (nVec[j] - longRange_nVec[j])]
+                        ipre = vecID[j][:nVec[j]]
+                        cStr = conVec[j][:nVec[j]]
                         jFeature = feature[iF,ipre]
                         if iF == 0:
                             value = np.abs(jFeature - feature[iF,j])
@@ -984,10 +1014,11 @@ if plotConFeature_preSynTC:
                             pick = np.logical_and(ipre % blockSize >= typeAcc[jType], ipre % blockSize < typeAcc[jType+1])
                             if pick.any():
                                 weight = cStr[pick]
-                                data[jType, j-i*blockSize-typeAcc[iType]].extend(value[pick]*weight)
+                                data[jType, i*iTypeN + iq].extend(value[pick]*weight)
+
                     if longRange_nVec[j] > 0:
-                        ipre = vecID[j][longRange_nVec[j]:]
-                        cStr = conVec[j][longRange_nVec[j]:]
+                        ipre = vecID[j][nVec[j]:]
+                        cStr = conVec[j][nVec[j]:]
                         jFeature = feature[iF,ipre]
                         if iF == 0:
                             value = np.abs(jFeature - feature[iF,j])
@@ -999,8 +1030,9 @@ if plotConFeature_preSynTC:
                             pick = np.logical_and(ipre % blockSize >= typeAcc[jType], ipre % blockSize < typeAcc[jType+1])
                             if pick.any():
                                 weight = cStr[pick]
-                                longRange_data[jType, j-i*blockSize-typeAcc[iType]].extend(value[pick]*weight)
+                                longRange_data[jType, i*iTypeN + iq].extend(value[pick]*weight)
                                 hasLongRange[jType] = True
+                    iq += 1
             
             for i in range(nType):
                 for j in range(iTypeN*nblock):
@@ -1011,10 +1043,12 @@ if plotConFeature_preSynTC:
                 TuningCurves(data[jType,:], bins[iF], percentile, ax, color[jType], tick[iF], ticklabel[iF])
                 ax.set_title(f'{archType[iType]}<-{feat[iF]}')
 
+                ax = fig.add_subplot(grid[iF, jType*2+1])
                 if hasLongRange[jType]:
-                    ax = fig.add_subplot(grid[iF, jType*2+1])
                     TuningCurves(longRange_data[jType,:], bins[iF], percentile, ax, color[jType], tick[iF], ticklabel[iF])
                     ax.set_title(f'longRange {archType[iType]}<-{feat[iF]}')
+                else:
+                    ax.set_title(f'no long-range connection made\n from type {jType} to {iType}')
 
-        fig.savefig(fig_fdr+f'conFeature_preSynTC-{archType[iType]}'+ conV1_suffix + '.png')
+        fig.savefig(setup_fdr + f'conFeature_preSynTC-{archType[iType]}' + conV1_suffix + '.png')
         plt.close(fig)

@@ -31,8 +31,8 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
     nit0 = 20
     ns = 10
     
-    #V1_pick = [203,752,365,360,715,467,743]; # specify the IDs of V1 neurons to be sampled. If set, ns will be ignored.
-    V1_pick = np.array([203])
+    V1_pick = [203,752,365,360,715,467,743]; # specify the IDs of V1 neurons to be sampled. If set, ns will be ignored.
+    #V1_pick = np.array([203])
     nop = 12
     ############
     

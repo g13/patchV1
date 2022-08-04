@@ -28,7 +28,7 @@ int main(int argc, char *argv[])
     bool CmoreN, ClessI;
     bool connectLongRange;
 	Size usingPosDim;
-	Float longRangeROI;
+	Float longRangeLOI, longRangeSOI;
 	Float disGauss;
 	vector<Float> rDend, rAxon;
 	vector<Float> dDend, dAxon;
@@ -57,18 +57,19 @@ int main(int argc, char *argv[])
         ("rDend", po::value<vector<Float>>(&rDend), "a vector of dendritic extensions' radius, size of nType ")
         ("rAxon", po::value<vector<Float>>(&rAxon), "a vector of axonic extensions' radius, size of nType")
         ("dScale",po::value<Float>(&dScale)->default_value(1.0),"a scaling ratio of all the neurites' lengths <radius>")
-        ("longRangeROI", po::value<Float>(&longRangeROI), "ROI of long-range cortical input")
+        ("longRangeLOI", po::value<Float>(&longRangeLOI), "radius of major axis for long-range cortical input")
+        ("longRangeSOI", po::value<Float>(&longRangeSOI), "radius of minor axis for long-range cortical input")
         ("longRange_typeFeatureMat", po::value<vector<Float>>(&longRange_typeFeatureMat), "long-range connection feature depedence")
         ("longRange_sTypeMat", po::value<vector<Float>>(&longRange_sTypeMat), "long-range connection strength")
         ("longRange_nTypeMat", po::value<vector<Size>>(&longRange_nTypeMat), "long-range connection number")
         ("dDend", po::value<vector<Float>>(&dDend), "vector of dendrites' densities, size of nType")
         ("dAxon", po::value<vector<Float>>(&dAxon), "vector of axons' densities, size of nType")
         ("synapticLoc", po::value<vector<Float>>(&synapticLoc), " maximal synaptic location relative to the soma, percentage of dendrite, of different presynaptic type, size of [nType, nType], nType = sum(nTypeHierarchy), row_id -> postsynaptic, column_id -> presynaptic")
-	("nTypeHierarchy", po::value<vector<Size>>(&nTypeHierarchy), "a vector of hierarchical types differs in non-functional properties: reversal potentials, characteristic lengths of dendrite and axons, e.g. in size of nArchtype, {Exc-Pyramidal, Exc-stellate; Inh-PV, Inh-SOM, Inh-LTS} then the vector would be {3, 2}, with Exc and Inh being arch type")
-	("max_ffRatio", po::value<vector<Float>>(&max_ffRatio), "max LGN contribution")
-	("inhRatio", po::value<vector<Float>>(&inhRatio), "extra inhibition ratio for ? cells")
-	("ClessI", po::value<bool>(&ClessI), "lesser inhibition for complex cell")
-	("nConTol", po::value<Float>(&nConTol), "minimum difference tolerance of the number of preset cortical connections")
+	    ("nTypeHierarchy", po::value<vector<Size>>(&nTypeHierarchy), "a vector of hierarchical types differs in non-functional properties: reversal potentials, characteristic lengths of dendrite and axons, e.g. in size of nArchtype, {Exc-Pyramidal, Exc-stellate; Inh-PV, Inh-SOM, Inh-LTS} then the vector would be {3, 2}, with Exc and Inh being arch type")
+	    ("max_ffRatio", po::value<vector<Float>>(&max_ffRatio), "max LGN contribution")
+	    ("inhRatio", po::value<vector<Float>>(&inhRatio), "extra inhibition ratio for ? cells")
+	    ("ClessI", po::value<bool>(&ClessI), "lesser inhibition for complex cell")
+	    ("nConTol", po::value<Float>(&nConTol), "minimum difference tolerance of the number of preset cortical connections")
         ("sTypeMat", po::value<vector<Float>>(&sTypeMat), "connection strength matrix between neuronal types, size of [nType, nType], nType = sum(nTypeHierarchy), row_id -> postsynaptic, column_id -> presynaptic")
         ("gap_sTypeMat", po::value<vector<Float>>(&gap_sTypeMat), "gap junction strength matrix between inhibitory neuronal types, size of [nTypeI, nTypeI], nTypeI = nTypeHierarchy[1], row_id -> postsynaptic, column_id -> presynaptic")
         ("nTypeMat", po::value<vector<Size>>(&nTypeMat), "#connection matrix between neuronal types, size of [nType, nType], nType = sum(nTypeHierarchy), row_id -> postsynaptic, column_id -> presynaptic")
@@ -96,10 +97,10 @@ int main(int argc, char *argv[])
         ("fV1_gapMat", po::value<string>(&V1_gapMat_filename)->default_value("V1_gapMat"), "file that stores V1 to V1 gap junction within the neighboring blocks")
         ("fV1_vec", po::value<string>(&V1_vec_filename)->default_value("V1_vec"), "file that stores V1 to V1 connection ID, strength and transmission delay outside the neighboring blocks")
         ("fV1_gapVec", po::value<string>(&V1_gapVec_filename)->default_value("V1_gapVec"), "file that stores V1 to V1 gap-junction ID, strength and transmission delay outside the neighboring blocks")
-	("fBlock_pos", po::value<string>(&block_pos_filename)->default_value("block_pos"), "file that stores the center coord of each block")
-	("fNeighborBlock", po::value<string>(&neighborBlock_filename)->default_value("neighborBlock"), "file that stores the neighboring blocks' ID for each block")
-	("fConnectome_cfg", po::value<string>(&output_cfg_filename)->default_value("connectome_cfg"), "file stores parameters in current cfg_file")
-	("fStats", po::value<string>(&stats_filename)->default_value("conStats"), "file that stores the statistics of connections");
+	    ("fBlock_pos", po::value<string>(&block_pos_filename)->default_value("block_pos"), "file that stores the center coord of each block")
+	    ("fNeighborBlock", po::value<string>(&neighborBlock_filename)->default_value("neighborBlock"), "file that stores the neighboring blocks' ID for each block")
+	    ("fConnectome_cfg", po::value<string>(&output_cfg_filename)->default_value("connectome_cfg"), "file stores parameters in current cfg_file")
+	    ("fStats", po::value<string>(&stats_filename)->default_value("conStats"), "file that stores the statistics of connections");
 
 	po::options_description cmdline_options;
 	cmdline_options.add(generic_opt).add(input_opt).add(output_opt);
@@ -346,6 +347,13 @@ int main(int argc, char *argv[])
     if (typeAccCount.size() != nType) {
         cout << "the accumulative distribution of neuronal type <typeAccCount> has size of " << typeAccCount.size() << ", should be " << nType << ",  <nType>\n";
         return EXIT_FAILURE;
+    }
+
+    if (longRangeLOI <= 0) {
+        cout << "longRangeLOI must be positive\n";
+    }
+    if (longRangeSOI <= 0) {
+        cout << "longRangeSOI must be positive\n";
     }
 
     //if (FF_FB_ratio == 0) {
@@ -1567,6 +1575,7 @@ int main(int argc, char *argv[])
         // maximum visual field and physical distance from a exc neuron to its block center
         vector<Float> max_vDis(nblock,0);
         vector<Float> max_dis(nblock,0);
+
         for (PosInt ib=0; ib<nblock; ib++) {
             for (PosInt type = 0; type < nType; type++) {
                 for (PosInt it = typeAcc0[type]; it < typeAcc0[type+1]; it++) {
@@ -1582,18 +1591,49 @@ int main(int argc, char *argv[])
                 }
             }
         }
+        //for (PosInt ib = 0; ib<nblock; ib++) {
+        //    printf("block %d, pos (%.2f, %.2f)[%.2f], vpos (%.2f, %.2f)[%.2f]\n", ib, block_x[ib], block_y[ib], max_dis[ib], block_vx[ib], block_vy[ib], max_vDis[ib]);
+        //}
         Float est_blockArea = power(*max_element(max_dis.begin(), max_dis.end()), 2) * 2;
-        Size nb = ceiling(M_PI*(longRangeROI*longRangeROI - blockROI*blockROI)/est_blockArea);
-        if (nb > nblock) nb = nblock;
         Float max_raxn = 0;
+        vector<Float> local_dis(nType,0);
         # pragma unroll
         for (PosInt jtype = 0; jtype < nType; jtype++) {
             if (max_raxn < rAxon[jtype]) {
                 max_raxn = rAxon[jtype];
             }
+            if (disGauss > 0) {
+                Float var = 0;
+                for (PosInt itype = 0; itype < nType; itype++) {
+		            Float variance = (rAxon[itype]*rAxon[itype] + rDend[jtype]*rDend[jtype])/(2*logarithm(2))*disGauss*disGauss;
+                    if (var < variance) {
+                        var = variance;
+                    }
+                }
+                local_dis[jtype] = 3*square_root(var);
+            } else {
+                Float r = 0;
+                for (PosInt itype = 0; itype < nType; itype++) {
+                    Float radius = rAxon[itype] + rDend[jtype];
+                    if (r < radius) {
+                        r = radius;
+                    }
+                }
+                local_dis[jtype] = r;
+            }
         }
-        Float linearMagRatio = square_root(phys_span[0]*phys_span[1]/vis_span[0]/vis_span[1]);
-        printf("phys span (%lf, %lf), vis span (%lf, %lf)\n", phys_span[0], phys_span[1], vis_span[0], vis_span[1]);
+
+        Float nearRangeROI = *max_element(local_dis.begin(), local_dis.end());
+        Size nb = ceiling(M_PI*(longRangeLOI*longRangeSOI - nearRangeROI*nearRangeROI)/est_blockArea)*2;
+        //if (nb > nblock) nb = nblock;
+        nb = nblock;
+        Float linearMagRatio0 = square_root(phys_span[0]*phys_span[1]/vis_span[0]/vis_span[1]);
+        Float linearMagRatio = 0;
+        for (PosInt ib=0; ib<nb; ib++) {
+            linearMagRatio += max_dis[ib]/max_vDis[ib];
+        }
+        linearMagRatio /= nb;
+        cout << "linear magnification ratio = " << linearMagRatio << "( " << linearMagRatio0 << ")  mm/deg\n";
         printf("est_blockArea = %f\n", est_blockArea);
 
         vector<Size> nLongRange(nType);
@@ -1603,11 +1643,10 @@ int main(int argc, char *argv[])
             if (nq < nLongRange[itype]) nq = nLongRange[itype];
         }
         nq = ceiling(nq*(1+nConTol));
-        cout << "linear magnification ratio = " << linearMagRatio << " mm/deg\n";
         cout << "nq = " << nq << " max long-range connections\n";
-        cout << "long-range connections covers " <<  nb << " square blocks\n";
-        nq *= 10;
-        cout << "connection ROI = " << (rDend[0] + max_raxn)/linearMagRatio << ", longRange ROI = " << longRangeROI << ", blockROI = " << blockROI << "\n";
+        cout << "long-range connections covers " << nb << " square blocks by estimation\n";
+        nq *= 5; // just to be prudent
+        cout << "connection ROI = " << (rDend[0] + max_raxn)/linearMagRatio << ", longRange ROI = (" << longRangeLOI << ", " << longRangeSOI << "), nearRangeROI = " << nearRangeROI << "\n";
         longRange_vecID.assign(networkSize*nq, 0);
         longRange_conVec.assign(networkSize*nq, 0);
         longRange_delayVec.assign(networkSize*nq, 0);
@@ -1630,12 +1669,11 @@ int main(int argc, char *argv[])
             if (nLongRange[itype] == 0) {
                 continue;
             }
-            Float vis_width = (rDend[itype] + max_raxn)/linearMagRatio;
-            printf("vis_width =  %f\n", vis_width);
             for (PosInt ib=0; ib<nblock; ib++) {
                 for (PosInt it = typeAcc0[itype]; it < typeAcc0[itype+1]; it++) {
                     PosInt i = ib*blockSize + it;
-                    Float alpha = featureValue[networkSize + i];
+                    Float alpha = featureValue[networkSize + i] + M_PI/2;
+                    if (alpha > M_PI/2) alpha -= M_PI;
                     Float cx = pos[i];
                     Float cy = pos[networkSize+i];
                     Float v_cx = vpos[i];
@@ -1655,60 +1693,57 @@ int main(int argc, char *argv[])
                             Float dx = block_x[jb] - cx;
                             Float dy = block_y[jb] - cy;
                             Float distance = square_root(power(dx,2) + power(dy,2));
-                            if (distance - max_dis[jb] > longRangeROI || distance + max_dis[jb] < blockROI) {
+                            if (distance - max_dis[jb] > longRangeLOI || distance + max_dis[jb] < local_dis[itype]) { // closest distance larger than major radius or farthest radius inside near range ROI, skip
                                 continue;
                             }
                             Float v_dx = block_vx[jb] - v_cx;
                             Float v_dy = block_vy[jb] - v_cy;
-                            Float vDis = square_root(power(v_dx, 2) + power(v_dy, 2));
-                            Float theta = atan(v_dy, v_dx) - alpha;
-                            if (theta > M_PI/2) {
-                                theta = M_PI - theta;
-                            } else {
-                                if (theta < -M_PI/2) {
-                                    theta += M_PI;
+                            Float value;
+                            if (!inside_ellipse(v_dx, v_dy, alpha, longRangeSOI/linearMagRatio, longRangeLOI/linearMagRatio, value)) { // block center not inside
+                                Float vDis = square_root(power(v_dx, 2) + power(v_dy, 2));
+                                Float vDisRatio = vDis/max_vDis[jb];
+                                v_dx -= vDisRatio * v_dx;
+                                v_dy -= vDisRatio * v_dy;
+                                if (!inside_ellipse(v_dx, v_dy, alpha, longRangeSOI/linearMagRatio, longRangeLOI/linearMagRatio, value)) { // block edge not inside
+                                    if (vDis > max_vDis[jb]) { // block not crossing, skip
+                                        continue; 
+                                    }
                                 }
                             }
 
-                            //if (cosine(theta) * vDis - max_vDis[jb] > vis_width ) {
-                            Float vDis2axis = cosine(theta) * vDis - max_vDis[jb];
-                            if (vDis2axis > cosine(M_PI/12) * vDis && vDis2axis > vis_width) {
-                                continue; 
-                            }
+                            //Float theta = atan(v_dy, v_dx) - alpha;
+                            //if (theta > M_PI/2) {
+                            //    theta = M_PI - theta;
+                            //} else {
+                            //    if (theta < -M_PI/2) {
+                            //        theta += M_PI;
+                            //    }
+                            //}
+                            
                             for (PosInt jt = typeAcc0[jtype]; jt < typeAcc0[jtype+1]; jt++) {
                                 PosInt j = jb*blockSize + jt;
                                 v_dx = vpos[j] - v_cx;
                                 v_dy = vpos[networkSize + j] - v_cy;
-                                vDis = square_root(power(v_dx, 2) + power(v_dy, 2));
-                                theta = atan(v_dy, v_dx) - alpha;
-                                if (theta > M_PI/2) {
-                                    theta = M_PI - theta;
-                                } else {
-                                    if (theta < -M_PI/2) {
-                                        theta += M_PI;
-                                    }
-                                }
-                                        
-                                vDis2axis = cosine(theta) * vDis;
-                                if (theta > M_PI/12 &&  vDis2axis> vis_width) {
+                                if (!inside_ellipse(v_dx, v_dy, alpha, longRangeSOI/linearMagRatio, longRangeLOI/linearMagRatio, value)) { // point not inside
                                     continue; 
                                 } else {
-                                    Float distance = vDis2axis * linearMagRatio;
-                                    Float p = connect(distance, rAxon[jtype], rDend[itype]*synapticLoc[nType*itype + jtype], disGauss);
+                                    Float p = 1;
+                                    for (Size iFeature = 0; iFeature < nFeature; iFeature++) {
+					                    p *= pref_func[iFeature](featureValue[iFeature*networkSize + i], featureValue[iFeature*networkSize + j], longRange_typeFeatureMat[iFeature*nType*nType + itype*nType + jtype]);
+                                    }
                                     if (p > 0) {
-                                        for (Size iFeature = 0; iFeature < nFeature; iFeature++) {
-					                        p *= pref_func[iFeature](featureValue[iFeature*networkSize + i], featureValue[iFeature*networkSize + j], longRange_typeFeatureMat[iFeature*nType*nType + itype*nType + jtype]);
-                                        }
-                                        if (p > 0) {
-                                            sumP[jtype] += p;
-                                            sumN[jtype] ++;
-                                            qConVec[iq] = p;
-                                            dx = pos[j] - cx;
-                                            dy = pos[networkSize + j] - cy;
-                                            distance = square_root(power(dx, 2) + power(dy, 2));
-                                            qDelayVec[iq] = distance;
-                                            qVecID[iq] = j;
-                                            iq ++;
+                                        sumP[jtype] += p;
+                                        sumN[jtype] ++;
+                                        qConVec[iq] = p;
+                                        dx = pos[j] - cx;
+                                        dy = pos[networkSize + j] - cy;
+                                        distance = square_root(power(dx, 2) + power(dy, 2));
+                                        qDelayVec[iq] = distance;
+                                        qVecID[iq] = j;
+                                        iq ++;
+                                        if (iq > nb*blockSize) {
+                                            cout << "nb estimation too low " << iq << "\n";
+                                            return EXIT_FAILURE;
                                         }
                                     }
                                 }
@@ -1755,7 +1790,7 @@ int main(int argc, char *argv[])
                             ratio[jtype] = longRange_sTypeMat[itype*nType + jtype] * longRange_nTypeMat[itype*nType + jtype]/sumP[jtype];
                             sumP[jtype] = 0;
                         }
-                        for (PosInt j = 0; j < iq; j++) {
+                        for (PosInt j = 0; j < cq; j++) {
                             for (PosInt jtype = 0; jtype < nType; jtype++) {
                                 if (longRange_vecID[j] % blockSize < typeAccCount[jtype]) {
                                     longRange_conVec[i*nq + j] *= ratio[jtype];
@@ -2282,6 +2317,8 @@ int main(int argc, char *argv[])
 		fConnectome_cfg.write((char*) (&rAxon[0]), nType*sizeof(Float));
 		fConnectome_cfg.write((char*) (&dDend[0]), nType*sizeof(Float));
 		fConnectome_cfg.write((char*) (&dAxon[0]), nType*sizeof(Float));
+		fConnectome_cfg.write((char*) &longRangeLOI, sizeof(Float));
+		fConnectome_cfg.write((char*) &longRangeSOI, sizeof(Float));
 		fConnectome_cfg.close();
 	}
 
