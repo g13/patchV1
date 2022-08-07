@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as clr
 import sys
     
-def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr, fig_fdr, LGN_switch, mix, st, examSingle, use_local_max): 
+def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr, fig_fdr, LGN_switch, mix, st, examSingle, use_local_max, examLTD = True):
     step0 = 0
     nt_ = 0
     
@@ -31,12 +31,13 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
     nit0 = 20
     ns = 10
     
-    V1_pick = [203,752,365,360,715,467,743]; # specify the IDs of V1 neurons to be sampled. If set, ns will be ignored.
+    V1_pick = np.array([203,752,365,360,715,467,743]); # specify the IDs of V1 neurons to be sampled. If set, ns will be ignored.
     #V1_pick = np.array([203])
     nop = 12
     ############
     
     f_sLGN = data_fdr+'sLGN'+osuffix+'.bin'
+    f_dsLGN = data_fdr+'dsLGN'+osuffix+'.bin'
     learnDataFn = data_fdr+'learnData_FF'+osuffix+'.bin'
     V1_frFn = data_fdr+'max_fr'+osuffix+'.bin'
 
@@ -66,14 +67,16 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         nt, sampleInterval = np.fromfile(f,'u4', 2)
         dt = np.fromfile(f, 'f4', 1)[0]
         nV1, max_LGNperV1 = np.fromfile(f, 'u4', 2)
-        sRatio = np.fromfile(f, 'f4', 1)[0]
-        nLearnFF = np.fromfile(f, 'u4', 1)[0]
+        sRatio = np.fromfile(f, 'f4', 2)
+        nLearnFF_E, nLearnFF_I = np.fromfile(f, 'u4', 2)
+        nLearnFF = nLearnFF_E + nLearnFF_I
+        sRatio = np.array(nLearnFF_E * [sRatio[0]]  + nLearnFF_I * [sRatio[1]])
         gmaxLGN = np.fromfile(f, 'f4', nLearnFF) * sRatio
         FF_InfRatio = np.fromfile(f, 'f4', 1)[0]
-        nskip = (8 + nLearnFF)
-        capacity = max_LGNperV1 * sRatio * FF_InfRatio / gmaxLGN[0] / top_thres
-        print(capacity, top_thres, gmaxLGN[0])
-
+        nskip = (10 + nLearnFF)
+        capacity = max_LGNperV1 * sRatio * FF_InfRatio / gmaxLGN / top_thres
+        print(capacity, top_thres, gmaxLGN)
+    
     with open(fV1_allpos, 'rb') as f:
         nblock = np.fromfile(f, 'u4', 1)[0]
 
@@ -83,6 +86,8 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         mI = blockSize - mE
         synPerCon = np.fromfile(f, 'f4', 4)
         synPerFF = np.fromfile(f, 'f4', 2)
+    nE = mE*nblock
+    nI = mI*nblock
     
     try:
         with open(V1_frFn,'rb') as f:
@@ -339,9 +344,9 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             normed_counts = counts/np.max(counts)
         else:
             normed_counts = np.zeros((nit, max_LGNperV1 // 2))
-        ax.imshow(normed_counts.T, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('gray'))
+        ax.imshow(normed_counts.T, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('Reds'))
         ax.set_ylabel(f'# > {top_thres * 100:.0f}% max')
-        ax.set_title(f'on ({avg_on_max:.2f}/{capacity:.2f})')
+        ax.set_title(f'on ({avg_on_max:.2f}/{capacity[0]:.2f})')
 
         ax = fig.add_subplot(2,2,2)
         counts = max20[1,:,:]
@@ -349,8 +354,8 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             normed_counts = counts/np.max(counts)
         else:
             normed_counts = np.zeros((nit, max_LGNperV1 // 2))
-        ax.imshow(normed_counts.T, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('gray'))
-        ax.set_title(f'on ({avg_off_max:.2f}/{capacity:.2f})')
+        ax.imshow(normed_counts.T, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('Blues'))
+        ax.set_title(f'on ({avg_off_max:.2f}/{capacity[0]:.2f})')
 
         ax = fig.add_subplot(2,2,3)
         counts = min0[0,:,:]
@@ -358,7 +363,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             normed_counts = counts/np.max(counts)
         else:
             normed_counts = np.zeros((nit, max_LGNperV1 // 2))
-        ax.imshow(normed_counts.T, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('gray'))
+        ax.imshow(normed_counts.T, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('Reds'))
 
         ax.set_ylabel('# == 0')
         ax.set_title(f'on: {avg_on_min:.2f}')
@@ -369,7 +374,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             normed_counts = counts/np.max(counts)
         else:
             normed_counts = np.zeros((nit, max_LGNperV1 // 2))
-        ax.imshow(normed_counts.T, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('gray'))
+        ax.imshow(normed_counts.T, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('Blues'))
         ax.set_title(f'off: {avg_off_min:.2f}')
         fig.savefig(f'{fig_fdr}max_min_tDist{osuffix}{rtime}.png')
         plt.close(fig)
@@ -448,10 +453,11 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
     fig.savefig(f'{fig_fdr}stats-LGN_V1{osuffix}{rtime}.png')
     plt.close(fig)
     print('stats finished')
+
     ################## HERE ##################
     
     if st == 2 or st == 1:
-        sLGN_all = np.zeros((ns,nit,nLGN))
+        sLGN_all = np.zeros((ns, nit, nLGN))
         with open(f_sLGN, 'rb') as f:
             f.seek(nskip * 4, 1)
             # skip times
@@ -578,6 +584,86 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         tstep = int(np.round(range_nt / nstep))
         it = np.arange(step0, nt_, tstep)
         nstep = it.size
+
+        if examLTD:
+            lAvg = np.zeros((nstep, nV1))
+            data = np.zeros(nV1)
+            with open(f_dsLGN, 'rb') as f:
+                f.seek(9*4, 1)
+                A_LTP = np.fromfile(f, 'f4', nLearnFF)*sRatio
+                rLTD_E = np.fromfile(f, 'f4', nLearnFF_E)
+                rLTD_I = np.fromfile(f, 'f4', nLearnFF_I)
+                targetFR = np.fromfile(f, 'f4', 2)
+                learnData_FF = np.fromfile(f, 'i4', 1)[0]
+                print(f'rLTD = {rLTD_E, rLTD_I}, targetFR = {targetFR}, A_LTP = {A_LTP}') 
+                if learnData_FF >= 2:
+                    with open(learnDataFn, 'rb') as fq: 
+                        fq.seek(10*4, 1)
+                        dskip = 0
+                        dskip += nLGN*4 # LGN_sInfo
+                        dskip += nLGN*nLearnTypeFF*4 # vLTP
+                        dskip += 2*nV1*4 # gFF, V1_sInfo
+                        dskip += max_LGNperV1*nV1*4 # LGN_V1_s
+                        dskip += 2*nLearnFF_E*nE*4 # vLTD_E, vTripE
+                        dskip += 2*nLearnFF_I*nI*4 # vLTD_I, vTripI
+                        fq.seek(dskip * step0, 1)
+                        if nLearnFF_E > 0:
+                            dataE = np.fromfile(fq, 'f4', 2*nE).reshape(nE, 2)
+                            data[epick] = dataE[:,0]
+                        if nLearnFF_I > 0:
+                            dataI = np.fromfile(fq, 'f4', nI)
+                            data[ipick] = dataI
+                        lAvg[0,:] = data
+                        for j in range(1,nstep):
+                            fq.seek(dskip * (tstep - 1), 1)
+                            if nLearnFF_E > 0:
+                                dataE = np.fromfile(fq, 'f4', 2*nE).reshape(nE, 2)
+                                data[epick] = dataE[:,0]
+                            if nLearnFF_I > 0:
+                                dataI = np.fromfile(fq, 'f4', nI)
+                                data[ipick] = dataI
+                            lAvg[j,:] = data
+                else:
+                    f.seek((2*nE + nI) * step0 * 4, 1)
+                    if nLearnFF_E > 0:
+                        dataE = np.fromfile(f, 'f4', 2*nE).reshape(nE, 2)
+                        data[epick] = dataE[:,0]
+                    if nLearnFF_I > 0:
+                        dataI = np.fromfile(f, 'f4', nI)
+                        data[ipick] = dataI
+                    lAvg[0,:] = data
+                    for j in range(1,nstep):
+                        f.seek((2*nE + nI) * (tstep - 1) * 4, 1)
+                        if nLearnFF_E > 0:
+                            dataE = np.fromfile(f, 'f4', 2*nE).reshape(nE, 2)
+                            data[epick] = dataE[:,0]
+                        if nLearnFF_I > 0:
+                            dataI = np.fromfile(f, 'f4', nI)
+                            data[ipick] = dataI
+                        lAvg[j,:] = data
+
+            LTD = np.zeros((nstep, nV1))
+            avgFR = np.zeros((nstep, nV1))
+            avgFR[:,epick] = lAvg[:,epick]
+            if nLearnFF_E > 0:
+                LTD[:,epick] = np.power(lAvg[:,epick],2)*rLTD_E[0]
+            avgFR[:,ipick] = lAvg[:,ipick]
+            if nLearnFF_I > 0:
+                LTD[:,ipick] = np.power(lAvg[:,ipick],2)*rLTD_I[0]
+
+            fig = plt.figure('t_LTD')
+            if nLearnFF_E > 0:
+                ax = fig.add_subplot(121)
+                ax.imshow(LTD[:,epick].T/np.max(LTD[:,epick]), aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('Reds'))
+                ax.set_xlabel('time')
+                ax.set_ylabel('neuron ID')
+            if nLearnFF_I > 0:
+                ax = fig.add_subplot(122)
+                ax.imshow(LTD[:,ipick].T/np.max(LTD[:,ipick]), aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('Blues'))
+                ax.set_ylabel('neuron ID')
+                ax.set_xlabel('time')
+            fig.savefig(f'{fig_fdr}t_LTD.png')
+
         qtt = np.floor(np.linspace(0, nstep-1, nit)).astype('i4')
         tLGN_all = np.zeros((ns, nstep, max_LGNperV1))
         with open(f_sLGN, 'rb') as f:
@@ -622,9 +708,12 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                 fig.savefig(f'{fig_fdr}tLGN_V1_single-{iV1}{osuffix}{rtime}.png')
                 plt.close(fig)
 
-            fig = plt.figure(f'tLGN_V1-{iV1}', figsize = (8,6), dpi = 300)
+            fig = plt.figure(f'tLGN_V1-{iV1}', figsize = (8,9), dpi = 500)
             if LGN_switch:
-                ax = plt.subplot(21,3,(3*10 + 1, 3*10 + 2))
+                if examLTD:
+                    ax = plt.subplot(31,3,(3*15 + 1, 3*15 + 2))
+                else:
+                    ax = plt.subplot(21,3,(3*10 + 1, 3*10 + 2))
                 status_t = 0
                 for i in range(nStatus):
                     current_nt = np.round(statusDur[i] * 1000 / dt)
@@ -635,14 +724,27 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                 ax.set_xticks([])
                 ax.set_yticks([])
             for i in range(ntype):
-                ax = fig.add_subplot(ntype, 3, (3*i+1, 3*i+2))
-                ax.plot(it * dt/1000, tLGN[:,LGN_type[LGN_V1_ID[iV1, :nLGN_V1[iV1]]] == types[i]] / gmax * 100, '-')
+                if examLTD:
+                    ax = fig.add_subplot(ntype+1, 3, (3*i+1, 3*i+2))
+                else:
+                    ax = fig.add_subplot(ntype, 3, (3*i+1, 3*i+2))
+                ax.plot(it * dt/1000, tLGN[:,LGN_type[LGN_V1_ID[iV1, :nLGN_V1[iV1]]] == types[i]] / gmax * 100, '-', alpha = 0.5)
                 ax.set_title(f'type{types[i]} input activation level {typeInput[i] * 100:.1f}%')
                 ax.set_ylim(0,100)
                 ax.set_ylabel('strength % of max')
-                if i == ntype-1:
-                    plt.xlabel('s')
+                if i == ntype-1 and not examLTD:
+                    ax.set_xlabel('s')
             edges = np.linspace(0,100,nbins)
+            if examLTD:
+                ax = fig.add_subplot(ntype+1, 3, (3*ntype+1, 3*ntype+2))
+                ax.plot(it * dt/1000, LTD[:,i]/A_LTP[0]*100 , ':k', lw = 0.5, alpha = 0.5)
+                ax.set_ylabel('LTD / LTP ratio %')
+                ax2 = ax.twinx()
+                ax2.plot(it * dt/1000, avgFR[:,i],'-b', lw = 0.5, alpha = 0.5)
+                ax2.plot(it[-1] * dt/1000, targetFR[0], '*r', alpha = 0.5, label = 'target FR')
+                ax2.set_ylabel('avg. filtered FR (Hz)')
+                ax.set_xlabel('time (s)')
+
             for i in range(nit):
                 ax = fig.add_subplot(nit, 3, 3*(i+1))
                 for j in range(ntype):
@@ -651,6 +753,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                     ax.set_xlabel(f'strength % of max0, on:off= {onS[iV1] / offS[iV1]:.1f}')
                 else:
                     ax.set_xticks([])
+                ax.set_yticks([])
 
             fig.savefig(f'{fig_fdr}tLGN_V1-{iV1}{osuffix}{rtime}.png')
             plt.close(fig)
@@ -706,7 +809,9 @@ def determine_os_str(pos, ids, types, s, n, m, min_dis, os_out, nLGN_1D):
             if onPick.size > 1:
                 rel_pos = pos[:,onPick] - on_pos.reshape(2,1)
                 on_dis = np.sqrt(np.sum(rel_pos*rel_pos, axis = 0))
-                cos_on = np.sum((rel_pos / on_dis) * proj.reshape(2,1), axis = 0)
+                pick = on_dis > 0
+                cos_on = np.zeros(onPick.size)
+                cos_on[pick] = np.sum((rel_pos[:,pick] / on_dis[pick]) * proj.reshape(2,1), axis = 0)
                 proj_on = on_dis*cos_on
                 max_on_p = np.max(proj_on[proj_on >= 0])
                 max_on_m = np.max(np.abs(proj_on[proj_on <= 0]))
@@ -718,7 +823,9 @@ def determine_os_str(pos, ids, types, s, n, m, min_dis, os_out, nLGN_1D):
             if offPick.size > 1:
                 rel_pos = pos[:,offPick] - off_pos.reshape(2,1)
                 off_dis = np.sqrt(np.sum(rel_pos * rel_pos, axis = 0))
-                cos_off = np.sum((rel_pos / off_dis) * proj.reshape(2,1), axis = 0)
+                pick = off_dis > 0
+                cos_off = np.zeros(offPick.size)
+                cos_off[pick] = np.sum((rel_pos[:,pick] / off_dis[pick]) * proj.reshape(2,1), axis = 0)
                 proj_off = off_dis*cos_off
                 max_off_p = np.max(proj_off[proj_off >= 0])
                 max_off_m = np.max(np.abs(proj_off[proj_off <= 0]))

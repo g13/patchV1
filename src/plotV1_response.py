@@ -28,7 +28,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     np.random.seed(seed)
     nt_ = 8000
     nstep = 1000
-    step0 = 0
+    t0 = 500
     if nOri > 0:
         stiOri = np.pi*np.mod(iOri/nOri, 1.0)
     else:
@@ -41,7 +41,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     nsmooth = 0
     lw = 0.1
     SF = 40
-    nsmoothFr = nsmooth
+    nsmoothFr = int(1000/TF)
     nsmoothFreq = nsmooth 
     
     plotRpStat = True 
@@ -229,9 +229,10 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     with open(rawDataFn, 'rb') as f:
         dt = np.fromfile(f, prec, 1)[0] 
         nt = np.fromfile(f, 'u4', 1)[0] 
+        step0 = int(t0/dt)
         if step0 >= nt:
             step0 = 0
-            print('step0 is too large, set back to 0.')
+            print('t0 is too large, set back to 0.')
         if nt_ == 0 or step0 + nt_ >= nt:
             nt_ = nt - step0
         if nstep > nt_:
@@ -2049,8 +2050,10 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     
         corticalI = np.sum(gI[:,:,0], axis = 0)
         ax = fig.add_subplot(224)
-        ax.plot(FF_sSum[epick], (cortical[epick]+FF_irl[epick])/corticalI[epick], '*r', ms = 0.1)
-        ax.plot(FF_sSum[ipick], (cortical[ipick]+FF_irl[ipick])/corticalI[ipick], '*b', ms = 0.1)
+        if (corticalI[epick] > 0).all():
+            ax.plot(FF_sSum[epick], (cortical[epick]+FF_irl[epick])/corticalI[epick], '*r', ms = 0.1)
+        if (corticalI[ipick] > 0).all():
+            ax.plot(FF_sSum[ipick], (cortical[ipick]+FF_irl[ipick])/corticalI[ipick], '*b', ms = 0.1)
         ax.set_xlabel('FF_sSum')
         ax.set_ylabel('(gE+gFF)/gI')
         ax.set_xlim(left = 0)
@@ -2335,11 +2338,11 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(nblock*nE*tbinSize/1000)
                 psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'r', lw = 0.5, alpha = 0.5)
                 ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>r', ms = 0.5, alpha = 0.5, label = 'exc')
-                ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'r', lw = 0.5, alpha = 0.5)
+                ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'r', lw = 0.5, alpha = 0.5)
                 nsp = np.histogram(tsp[iSpick], bins = edges)[0]/(nblock*nI*tbinSize/1000)
                 psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'r', lw = 0.5, alpha = 0.5)
                 ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '<b', ms = 0.5, alpha = 0.5, label = 'inh')
-                ax3.plot(edges[:-1], movingAvg(nsp, nbins, nsmoothFr), 'b', lw = 0.5, alpha = 0.5)
+                ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'b', lw = 0.5, alpha = 0.5)
         
             ax2.set_xlabel('Frequency (Hz)')
             ax11.set_aspect('equal')
@@ -2347,6 +2350,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
             ax12.set_title('OP-SC')
             ax12.set_aspect('equal')
             ax2.legend(loc = 'upper right', fontsize = 'x-small', frameon = False)
+            ax3.set_ylabel('Avg. FR. Hz')
 
             fign = 'V1-scatterFF'
             if usePrefData:
@@ -2475,29 +2479,33 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                     ax.plot(tsp[iSpick_bg], isp_OP, ',b')
                 ax.plot([step0*dt, (step0+nt_)*dt], [npLR, npLR], '-k', lw = 0.05)
         
-                nnE = np.sum(eSpick)
-                if  nnE > 0:
+                pick = eORpick[LR[eORpick] > 0]
+                nnE = pick.size
+                if  np.sum(eSpick) > 0:
                     nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(nnE*tbinSize/1000)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'r', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>r', ms = 0.5, alpha = 0.5, label = 'exc R OP')
                     ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'r', lw = 0.5, alpha = 0.5)
 
-                nnE = np.sum(eSpick_bg)
-                if nnE > 0:
+                pick = epick[np.logical_and(dOP[epick] > dOri, LR[epick] > 0)]
+                nnE = pick.size
+                if np.sum(eSpick_bg) > 0:
                     nsp = np.histogram(tsp[eSpick_bg], bins = edges)[0]/(nnE*tbinSize/1000)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'r', ls = ':', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), 'vr', ms = 0.5, alpha = 0.5, label = 'exc R BG')
                     ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), ':r', lw = 0.5, alpha = 0.5)
         
-                nnI = np.sum(iSpick)
-                if nnI > 0:
+                pick = iORpick[LR[iORpick] > 0]
+                nnI = pick.size
+                if np.sum(iSpick) > 0:
                     nsp = np.histogram(tsp[iSpick], bins = edges)[0]/(nnI*tbinSize/1000)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'b', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>b', ms = 0.5, alpha = 0.5, label = 'inh R OP')
                     ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'b', lw = 0.5, alpha = 0.5)
 
-                nnI = np.sum(iSpick_bg)
-                if nnI > 0:
+                pick = ipick[np.logical_and(dOP[ipick] > dOri, LR[ipick] > 0)]
+                nnI = pick.size
+                if np.sum(iSpick_bg) > 0:
                     nsp = np.histogram(tsp[iSpick_bg], bins = edges)[0]/(nnI*tbinSize/1000)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'b', ls = ':', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), 'vb', ms = 0.5, alpha = 0.5, label = 'inh R BG')
@@ -2598,36 +2606,41 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                     ax.plot(tsp[iSpick_bg], isp_OP, ',g')
                 ax.plot([step0*dt, (step0+nt_)*dt], [npLR, npLR], '-k', lw = 0.05)
         
+                pick = eORpick[LR[eORpick] < 0]
                 nnE = np.sum(eSpick)
-                if nnE > 0:
+                if np.sum(eSpick) > 0:
                     nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(nnE*tbinSize/1000)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'm', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>m', ms = 0.5, alpha = 0.5, label = 'exc L OP')
                     ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'm', lw = 0.5, alpha = 0.5)
                     
-                nnE = np.sum(eSpick_bg)
-                if nnE > 0:
+                pick = epick[np.logical_and(dOP[epick] > dOri, LR[epick] < 0)]
+                nnE = pick.size
+                if np.sum(eSpick_bg) > 0:
                     nsp = np.histogram(tsp[eSpick_bg], bins = edges)[0]/(nnE*tbinSize/1000)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'm', ls = ':', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), 'vm', ms = 0.5, alpha = 0.5, label = 'exc L OP')
                     ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), ':m', lw = 0.5, alpha = 0.5)
                     
 
-                nnI = np.sum(iSpick)
-                if nnI > 0:
+                pick = iORpick[LR[iORpick] < 0]
+                nnI = pick.size
+                if np.sum(iSpick) > 0:
                     nsp = np.histogram(tsp[iSpick], bins = edges)[0]/(nnI*tbinSize/1000)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'g', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>g', ms = 0.5, alpha = 0.5, label = 'inh L OP')
                     ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'g', lw = 0.5, alpha = 0.5)
 
-                nnI = np.sum(iSpick_bg)
-                if nnI > 0:
+                pick = ipick[np.logical_and(dOP[ipick] > dOri, LR[ipick] < 0)]
+                nnI = pick.size
+                if np.sum(iSpick_bg) > 0:
                     nsp = np.histogram(tsp[iSpick_bg], bins = edges)[0]/(nnI*tbinSize/1000)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'g', ls = ':', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), 'vg', ms = 0.5, alpha = 0.5, label = 'inh L BG')
                     ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'g', lw = 0.5, alpha = 0.5)
         
-            pick = eORpick[nLGN_V1[eORpick]<=SCsplit]
+            # pSC
+            pick = eORpick[nLGN_V1[eORpick] <= SCsplit]
             nnE = pick.size
             if nnE > 0:
                 color = np.tile(np.array([0,0,1], dtype = float), (nnE,1))
@@ -2644,7 +2657,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 color[color[:,0] > 1,0] = 1
                 ax12.scatter(pos[0,pick], pos[1,pick], s = ms2*sizeRatio, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
 
-            pick = iORpick[nLGN_V1[iORpick]<=SCsplit]
+            pick = iORpick[nLGN_V1[iORpick] <= SCsplit]
             nnI = pick.size
             if nnI > 0:
                 color = np.tile(np.array([0,0,1], dtype = float), (nnI,1))
@@ -2723,29 +2736,33 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                     ax.plot(tsp[iSpick_bg], isp_OP, ',g')
                 ax.plot([step0*dt, (step0+nt_)*dt], [npSC, npSC], '-k', lw = 0.05)
    
-                nnE = np.sum(eSpick)
-                if nnE > 0:
+                pick = eORpick[nLGN_V1[eORpick] <= SCsplit]
+                nnE = pick.size
+                if np.sum(eSpick) > 0:
                     nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(nnE*tbinSize/1000)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'm', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>m', ms = 0.5, alpha = 0.5, label = 'exc C OP')
                     ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'm', lw = 0.5, alpha = 0.5)
         
-                nnE = np.sum(eSpick_bg)
-                if nnE > 0:
+                pick = epick[np.logical_and(dOP[epick] > dOri, nLGN_V1[epick] <= SCsplit)]
+                nnE = pick.size
+                if np.sum(eSpick_bg) > 0:
                     nsp = np.histogram(tsp[eSpick_bg], bins = edges)[0]/(nnE*tbinSize/1000)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'm', ls = ':', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), 'vm', ms = 0.5, alpha = 0.5, label = 'exc C BG')
                     ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), ':m', lw = 0.5, alpha = 0.5)
 
-                nnI = np.sum(iSpick)
-                if nnI > 0:
+                pick = iORpick[nLGN_V1[iORpick] <= SCsplit]
+                nnI = pick.size
+                if np.sum(iSpick) > 0:
                     nsp = np.histogram(tsp[iSpick], bins = edges)[0]/(nnI*tbinSize/1000)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'g', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>g', ms = 0.5, alpha = 0.5, label = 'inh C OP')
                     ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'g', lw = 0.5, alpha = 0.5)
 
-                nnI = np.sum(iSpick_bg)
-                if nnI > 0:
+                pick = ipick[np.logical_and(dOP[ipick] > dOri, nLGN_V1[ipick] <= SCsplit)]
+                nnI = pick.size
+                if np.sum(iSpick_bg) > 0:
                     nsp = np.histogram(tsp[iSpick_bg], bins = edges)[0]/(nnI*tbinSize/1000)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'g', ls = ':', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), 'vg', ms = 0.5, alpha = 0.5, label = 'inh C BG')
@@ -2843,29 +2860,33 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                     npSC = npSC + nOP
                     ax.plot(tsp[iSpick_bg], isp_OP, ',b')
 
-                nnE = np.sum(eSpick)
-                if nnE > 0:
+                pick = eORpick[nLGN_V1[eORpick] > SCsplit]
+                nnE = pick.size
+                if np.sum(eSpick) > 0:
                     nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(nnE*tbinSize/1000)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'r', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>r', ms = 0.5, alpha = 0.5, label = 'exc S OP')
                     ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'r', lw = 0.5, alpha = 0.5)
 
-                nnE = np.sum(eSpick_bg)
-                if nnE > 0:
+                pick = epick[np.logical_and(dOP[epick] > dOri, nLGN_V1[epick] > SCsplit)]
+                nnE = pick.size
+                if np.sum(eSpick_bg) > 0:
                     nsp = np.histogram(tsp[eSpick_bg], bins = edges)[0]/(nnE*tbinSize/1000)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'r', ls = ':', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), 'vr', ms = 0.5, alpha = 0.5, label = 'exc S BG')
                     ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), ':r', lw = 0.5, alpha = 0.5)
 
-                nnI = np.sum(iSpick)
-                if nnI > 0:
+                pick = iORpick[nLGN_V1[iORpick] > SCsplit]
+                nnI = pick.size
+                if np.sum(iSpick) > 0:
                     nsp = np.histogram(tsp[iSpick], bins = edges)[0]/(nnI*tbinSize/1000)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'b', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>b', ms = 0.5, alpha = 0.5, label = 'inh S OP')
                     ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'b', lw = 0.5, alpha = 0.5)
                     
-                nnI = np.sum(iSpick_bg)
-                if nnI > 0:
+                pick = ipick[np.logical_and(dOP[ipick] > dOri, nLGN_V1[ipick] > SCsplit)]
+                nnI = pick.size
+                if np.sum(iSpick_bg) > 0:
                     nsp = np.histogram(tsp[iSpick_bg], bins = edges)[0]/(nnI*tbinSize/1000)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'b', ls = ':', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), 'vb', ms = 0.5, alpha = 0.5, label = 'inh S BG')
@@ -2932,29 +2953,30 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                     n_pSC_pLR = n_pSC_pLR + nOP
                     ax.plot(tsp[iSpick_bg], isp_OP, ',b')
 
-                nnE = np.sum(eSpick)
-                if nnE > 0:
+                nnE = eORpick.size
+                if np.sum(eSpick) > 0:
                     nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(nnE*tbinSize/1000)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'r', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>r', ms = 0.5, alpha = 0.5, label = 'exc OP')
                     ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'r', lw = 0.5, alpha = 0.5)
 
-                nnE = np.sum(eSpick_bg)
-                if nnE > 0:
+                pick = epick[dOP[epick] > dOri]
+                nnE = pick.size
+                if np.sum(eSpick_bg) > 0:
                     nsp = np.histogram(tsp[eSpick_bg], bins = edges)[0]/(nnE*tbinSize/1000)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'r', ls = ':', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), 'vr', ms = 0.5, alpha = 0.5, label = 'exc BG')
                     ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), ':r', lw = 0.5, alpha = 0.5)
                 
-                nnI = np.sum(iSpick)
-                if nnI > 0:
+                nnI = iORpick.size
+                if np.sum(iSpick) > 0:
                     nsp = np.histogram(tsp[iSpick], bins = edges)[0]/(nnI*tbinSize/1000)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'b', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>b', ms = 0.5, alpha = 0.5, label = 'inh OP')
                     ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'b', lw = 0.5, alpha = 0.5)
 
-                nnI = np.sum(iSpick_bg)
-                if nnI > 0:
+                pick = ipick[dOP[ipick] > dOri]
+                if np.sum(iSpick_bg) > 0:
                     nsp = np.histogram(tsp[iSpick_bg], bins = edges)[0]/(nnI*tbinSize/1000)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'b', ls = ':', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), 'vb', ms = 0.5, alpha = 0.5, label = 'inh BG')
@@ -2966,6 +2988,8 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
             ax12.set_title('OP-SC')
             ax12.set_aspect('equal')
             ax3.legend(loc = 'upper right', fontsize = 'x-small', frameon = False)
+            ax3.set_xlabel('time (ms)')
+            ax3.set_ylabel('Avg. FR. (Hz)')
 
             fign = 'V1-scatterFF_OP'
             if usePrefData:

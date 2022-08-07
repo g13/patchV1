@@ -15,14 +15,14 @@ TF=8 # input frequency if applicable
 SF=40
 #singleOri=False
 singleOri=True
-one_ori=1
+one_ori=2
 
 trial_suffix=4th
 res_suffix=square-single_layer
 patch=patch_fast
 
-generate_V1_connection=True
-generate_LGN_V1_connection=True
+generate_V1_connection=False
+generate_LGN_V1_connection=False
 
 patch_cfg=ori.cfg
 
@@ -46,7 +46,8 @@ then
 	plotTConly=False
 fi
 
-if [ "$plotTConly" = True ]; then
+if [ "$plotTConly" = True ];
+then
 	fitDataReady=$2
 	if [ -z "$fitDataReady" ]; 
 	then
@@ -57,8 +58,21 @@ else
 	if [ -z "$plotOnly" ]; 
 	then
 		plotOnly=False
+        if [ "$generate_LGN_V1_connection" = True ];
+        then
+            cd $setup_fdr 
+            retino -c ${cfg_fdr}/${retino_cfg}
+            cd ${cfg_fdr}
+        fi
+        if [ "$generate_V1_connection " = True ];
+        then
+            cd $setup_fdr 
+            genCon -c ${cfg_fdr}/${genCon_cfg}
+            cd ${cfg_fdr}
+        fi
 	fi
-	if [ "$plotOnly" = True ]; then
+	if [ "$plotOnly" = True ]; 
+    then
 		readNewSpike=$3
 		if [ -z "${readNewSpike}" ]; 
 		then
@@ -100,6 +114,8 @@ cp ${repo}/src/plotV1_response.py ${fig_fdr}/plotV1_response_${trial_suffix}.py
 cp ${repo}/src/plotLGN_response.py ${fig_fdr}/plotLGN_response_${trial_suffix}.py
 if [ "$singleOri" = False ]; then
 	cp ${repo}/src/getTuningCurve.py ${fig_fdr}/getTuningCurve_${trial_suffix}.py
+else
+    echo one_ori=$one_ori
 fi
 echo plotting files copied
 

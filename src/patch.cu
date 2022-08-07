@@ -4169,7 +4169,7 @@ int main(int argc, char** argv) {
 
 	Size max_LGNperV1;
 	Float* LGN_V1_s;
-	read_LGN(LGN_V1_s_filename + conLGN_suffix, LGN_V1_s, max_LGNperV1, &(sRatioLGN[0]), &(typeAccCount[0]), nType, learnData_FF>0, store_dsLGN, print_log); // assign LGN_V1_s and max_LGNperV1
+	read_LGN(LGN_V1_s_filename + conLGN_suffix, LGN_V1_s, max_LGNperV1, &(sRatioLGN[0]), &(typeAccCount[0]), nType, learnData_FF > 0, print_log); // assign LGN_V1_s and max_LGNperV1
 	Float* sLGN;
 	size_t sLGN_size = static_cast<size_t>(max_LGNperV1)*nV1*sizeof(Float);
 
@@ -4675,8 +4675,9 @@ int main(int argc, char** argv) {
 		    		f_sLGN.write((char*) &dt, sizeof(Float));
 		    		f_sLGN.write((char*) &nV1, sizeof(Size));
 		    		f_sLGN.write((char*) &max_LGNperV1, sizeof(Size));
-		    		f_sLGN.write((char*) &sRatioLGN[0], sizeof(Float));
-		    		f_sLGN.write((char*) &nLearnTypeFF, sizeof(Size));
+		    		f_sLGN.write((char*) &sRatioLGN[0], 2*sizeof(Float));
+		    		f_sLGN.write((char*) &nLearnTypeFF_E, sizeof(Size));
+		    		f_sLGN.write((char*) &nLearnTypeFF_I, sizeof(Size));
 		    		f_sLGN.write((char*) &(gmaxLGN[0]), nLearnTypeFF*sizeof(Float));
 		    		f_sLGN.write((char*) &FF_InfRatio, sizeof(Float));
 				}
@@ -4701,15 +4702,18 @@ int main(int argc, char** argv) {
 		        		f_dsLGN.write((char*) &sampleInterval_LGN_V1, sizeof(Size));
 		        		f_dsLGN.write((char*) &dt, sizeof(Float));
 		        		f_dsLGN.write((char*) &nV1, sizeof(Size));
-		        		f_dsLGN.write((char*) &sRatioLGN[0], sizeof(Float));
+		    		    f_dsLGN.write((char*) &max_LGNperV1, sizeof(Size));
+		        		f_dsLGN.write((char*) &(sRatioLGN[0]), 2*sizeof(Float));
 		        		f_dsLGN.write((char*) &nLearnTypeFF_E, sizeof(Size));
 		        		f_dsLGN.write((char*) &nLearnTypeFF_I, sizeof(Size));
-		        		f_dsLGN.write((char*) &(gmaxLGN[0]), nLearnTypeFF*sizeof(Float));
+		        		f_dsLGN.write((char*) &(A_LGN[0]), nLearnTypeFF*sizeof(Float));
                         for (PosInt i=0; i<nLearnTypeFF_E; i++) {
-		        		    f_dsLGN.write((char*) &(lFF_E_post.A_ratio[i]), sizeof(Float));
+                            Float LTD_ratio = lFF_E_post.A_ratio[i] * lFF_E_pre.tauLTP[i];
+		        		    f_dsLGN.write((char*) &LTD_ratio, sizeof(Float));
                         }
                         for (PosInt i=0; i<nLearnTypeFF_I; i++) {
-		        		    f_dsLGN.write((char*) &(lFF_I_post.A_ratio[i]), sizeof(Float));
+                            Float LTD_ratio = lFF_I_post.A_ratio[i] * lFF_I_pre.tauLTP[i];
+		        		    f_dsLGN.write((char*) &LTD_ratio, sizeof(Float));
                         }
 		        		f_dsLGN.write((char*) &(targetFR[0]), 2*sizeof(Float));
 		        		f_dsLGN.write((char*) &learnData_FF, sizeof(int));
@@ -6745,10 +6749,10 @@ int main(int argc, char** argv) {
             f_sLGN.write((char*) LGN_V1_s, sLGN_size);
             if (store_dsLGN && learnData_FF < 2) {
                 if (targetFR[0] > 0) {
-                    f_dsLGN.write((char*) (lVarFFpost+learnVarFFsize0), nE*nblock*2*sizeof(Float));
+                    f_dsLGN.write((char*) (lVarFFpost + learnVarFFsize0), nE*nblock*2*sizeof(Float));
                 }
                 if (targetFR[1] > 0) {
-                    f_dsLGN.write((char*) (lVarFFpost+learnVarFFsize0+nE*nblock*2), nI*nblock*sizeof(Float));
+                    f_dsLGN.write((char*) (lVarFFpost + learnVarFFsize0 + nE*nblock*2), nI*nblock*sizeof(Float));
                 }
             }
         }

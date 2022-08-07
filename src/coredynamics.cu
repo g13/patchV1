@@ -865,7 +865,7 @@ void compute_V_collect_spike_learnFF(
             }
         }
         if (nsp > 0) {
-            if (learning !=3) { // E and Q are active, read cortical lVar and AvgE if previouly not read
+            if (learning !=3) { // only E and Q are active, read cortical lVar and AvgE if previouly not read
                 if (threadIdx.x < nE) {
                     // E
                     #pragma unroll max_nLearnTypeE
@@ -1009,7 +1009,7 @@ void compute_V_collect_spike_learnFF(
                 PosInt lid = i*nV1 + tid; //transposed
                 Float f = sLGN[lid];
                 // pruning process not revertible
-                if (f == 0 && rebound) {
+                if (f == 0 && !rebound) {
                     continue;
                 }
 				switch (applyHomeo) {
