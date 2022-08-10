@@ -18,7 +18,8 @@ np.seterr(invalid = 'raise')
 
 #@profile
 def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
-    #sample = np.array([91,72,78,54,84,91,8,6,8,52])*1024 + np.array([649,650,508,196,385,873,190,673,350,806])
+    sample = np.array([86,36,37,27,53,49])*1024 + np.array([48,664,666,564,1001,973])
+    sampleName = ['s_op_med', 's_bg_med', 'c_op_med', 'c_bg_med', 'i_op_med', 'i_bg_med']
     #sample = np.array([33])*1024 + np.array([678])
     singleOri = False
     SCsplit = 1
@@ -26,9 +27,9 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     ns = 10
     seed = 657890
     np.random.seed(seed)
-    nt_ = 8000
-    nstep = 1000
-    t0 = 500
+    nstep = 8000
+    t0 = 0
+    t1 = 1000
     if nOri > 0:
         stiOri = np.pi*np.mod(iOri/nOri, 1.0)
     else:
@@ -37,11 +38,12 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     heatBins = 25
     TFbins = 25
     FRbins = 25 # per period
-    tbinSize = 1
+    tbinSize = 1 # ms
     nsmooth = 0
     lw = 0.1
     SF = 40
-    nsmoothFr = int(1000/TF)
+    #nsmoothFr = int(1000/TF/tbinSize)
+    nsmoothFr = int(5/tbinSize)
     nsmoothFreq = nsmooth 
     
     plotRpStat = True 
@@ -167,7 +169,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     print(f'blockSize = {blockSize}')
 
     with open(pTuningFn, 'wb') as f:
-        pTuning = np.hstack((sRatioV1.astype('f8'), sRatioLGN.astype('f8'), noisyDep.astype('f8'), tonicDep.astype('f8')))
+        pTuning = np.hstack((sRatioV1.astype('f4'), sRatioLGN.astype('f4'), noisyDep.astype('f4'), tonicDep.astype('f4')))
         pTuning.tofile(f)
     
     if output_suffix:
@@ -233,9 +235,10 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         if step0 >= nt:
             step0 = 0
             print('t0 is too large, set back to 0.')
+        nt_ = int(t1/dt)
         if nt_ == 0 or step0 + nt_ >= nt:
             nt_ = nt - step0
-        if nstep > nt_:
+        if nstep > nt_ or nstep == 0:
             nstep = nt_
         tstep = (nt_ + nstep - 1)//nstep
         tstep = min(round(10/dt),tstep)
@@ -393,65 +396,78 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                     print(sample)
 
                 if True:
-                    sample = np.zeros(12, dtype = int)
+                    sample = np.zeros(18, dtype = int)
 
-                    pick = epick[nLGN_V1[epick] > np.mean(nLGN_V1[epick])]
+                    sampleName = ['s_op_min', 's_op_max', 's_op_med',\
+                                  's_bg_min', 's_bg_max', 's_bg_med',\
+                                  'c_op_min', 'c_op_max', 'c_op_med',\
+                                  'c_bg_min', 'c_bg_max', 'c_bg_med',\
+                                  'i_op_min', 'i_op_max', 'i_op_med',\
+                                  'i_bg_min', 'i_bg_max', 'i_bg_med',\
+                                  ]
+                    pick = epick[nLGN_V1[epick] > 0]
                     opick = pick[dOP[pick] <= dOri]
-                    if np.sum(opick) > 0:
+                    if opick.size > 0:
                         sample[0] = opick[np.argmin(fr[opick])]
                         sample[1] = opick[np.argmax(fr[opick])]
+                        sample[2] = opick[np.argpartition(fr[opick], opick.size//2)[opick.size//2]]
                     else:
                         sample[0] = np.random.randint(nV1)
                         sample[1] = np.random.randint(nV1)
+                        sample[2] = np.random.randint(nV1)
 
                     opick = pick[dOP[pick] >= (nOri/2-1)*dOri]
-                    if np.sum(opick) > 0:
-                        sample[2] = opick[np.argmin(fr[opick])]
-                        sample[3] = opick[np.argmax(fr[opick])]
+                    if opick.size > 0:
+                        sample[3] = opick[np.argmin(fr[opick])]
+                        sample[4] = opick[np.argmax(fr[opick])]
+                        sample[5] = opick[np.argpartition(fr[opick], opick.size//2)[opick.size//2]]
                     else:
-                        sample[2] = np.random.randint(nV1)
                         sample[3] = np.random.randint(nV1)
-
-                    pick = epick[nLGN_V1[epick] == 0]
-                    opick = pick[dOP[pick] <= dOri]
-                    if np.sum(opick) > 0:
-                        sample[4] = opick[np.argmin(fr[opick])]
-                        sample[5] = opick[np.argmax(fr[opick])]
-                    else:
                         sample[4] = np.random.randint(nV1)
                         sample[5] = np.random.randint(nV1)
 
-                    opick = pick[dOP[pick] >= (nOri/2-1)*dOri]
-                    if np.sum(opick) > 0:
+                    pick = epick[nLGN_V1[epick] == 0]
+                    opick = pick[dOP[pick] <= dOri]
+                    if opick.size > 0:
                         sample[6] = opick[np.argmin(fr[opick])]
                         sample[7] = opick[np.argmax(fr[opick])]
+                        sample[8] = opick[np.argpartition(fr[opick], opick.size//2)[opick.size//2]]
                     else:
                         sample[6] = np.random.randint(nV1)
                         sample[7] = np.random.randint(nV1)
-
-                    pick = ipick[nLGN_V1[ipick] > np.mean(nLGN_V1[ipick])]
-                    opick = pick[dOP[pick] <= dOri]
-                    if np.sum(opick) > 0:
-                        sample[8] = opick[np.argmin(fr[opick])]
-                        sample[9] = opick[np.argmax(fr[opick])]
-                    else:
                         sample[8] = np.random.randint(nV1)
-                        sample[9] = np.random.randint(nV1)
 
                     opick = pick[dOP[pick] >= (nOri/2-1)*dOri]
-                    if np.sum(opick) > 0:
-                        sample[10] = opick[np.argmin(fr[opick])]
-                        sample[11] = opick[np.argmax(fr[opick])]
+                    if opick.size > 0:
+                        sample[9] = opick[np.argmin(fr[opick])]
+                        sample[10] = opick[np.argmax(fr[opick])]
+                        sample[11] = opick[np.argpartition(fr[opick], opick.size//2)[opick.size//2]]
                     else:
+                        sample[9] = np.random.randint(nV1)
                         sample[10] = np.random.randint(nV1)
                         sample[11] = np.random.randint(nV1)
 
-                    #sample = np.zeros(4, dtype = int)
-                    sample[0] = 8372
-                    #sample[1] = 1
-                    #sample[2] = 1000
-                    #sample[3] = 1001
-        
+                    pick = ipick[nLGN_V1[ipick] > np.mean(nLGN_V1[ipick])]
+                    opick = pick[dOP[pick] <= dOri]
+                    if opick.size > 0:
+                        sample[12] = opick[np.argmin(fr[opick])]
+                        sample[13] = opick[np.argmax(fr[opick])]
+                        sample[14] = opick[np.argpartition(fr[opick], opick.size//2)[opick.size//2]]
+                    else:
+                        sample[12] = np.random.randint(nV1)
+                        sample[13] = np.random.randint(nV1)
+                        sample[14] = np.random.randint(nV1)
+
+                    opick = pick[dOP[pick] >= (nOri/2-1)*dOri]
+                    if opick.size > 0:
+                        sample[15] = opick[np.argmin(fr[opick])]
+                        sample[16] = opick[np.argmax(fr[opick])]
+                        sample[17] = opick[np.argpartition(fr[opick], opick.size//2)[opick.size//2]]
+                    else:
+                        sample[15] = np.random.randint(nV1)
+                        sample[16] = np.random.randint(nV1)
+                        sample[17] = np.random.randint(nV1)
+
                 if False:
                     pick = epick[nLGN_V1[epick] == 0]
                     sample[0] = pick[np.argmin(fr[pick])]
@@ -470,6 +486,8 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                     sample[7] = pick[np.argmax(fr[pick])]
         ns = sample.size
         print(f'sampling {[(s//blockSize, np.mod(s,blockSize)) for s in sample]}') 
+        if 'sampleName' not in locals():
+            sampleName = ['']*ns
     
     # read voltage and conductances
     print('reading rawData..')
@@ -981,25 +999,66 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         gE_F1F0.tofile(f)
         gI_F1F0.tofile(f)
 
-    with open(pTuningFn, 'ab') as f:
+    #with open(pTuningFn, 'ab') as f:
+    #    nbins = 20
+    #    np.array([nbins], dtype = 'u4').tofile(f)
+    #    def describe_data_tofile(data, nbins):
+    #        stats = np.array([np.mean(data), np.std(data), np.min(data), np.median(data), np.max(data)])
+    #        np.array([data.size], dtype = 'u4').tofile(f)
+    #        stats.tofile(f)
+    #        binned, edge = np.histogram(data, bins = nbins)
+    #        binned.tofile(f)
+    #        edge.tofile(f)
+    #        return
 
-        def describe_data_tofile(data):
-            stats = np.array([np.mean(data), np.std(data), np.min(data), np.median(data), np.max(data)])
-            stats.tofile(f)
-            binned, edge = np.histogram(data, 20)
-            binned.tofile(f)
-            edge.tofile(f)
-            return
+    #    eSpick_op = epick[np.logical_and(nLGN_V1[epick] > SCsplit, dOP[epick] <= dOri)]
+    #    eSpick_bg = epick[np.logical_and(nLGN_V1[epick] > SCsplit, dOP[epick] > dOri)]
+    #    eCpick_op = epick[np.logical_and(nLGN_V1[epick] <= SCsplit, dOP[epick] <= dOri)]
+    #    eCpick_bg = epick[np.logical_and(nLGN_V1[epick] <= SCsplit, dOP[epick] > dOri)]
+    #    ipick_op = ipick[dOP[ipick] <= dOri]
+    #    ipick_bg = ipick[dOP[ipick] > dOri]
 
-        describe_data_tofile(fr[epick])
-        eSpick = epick[np.logical_and(nLGN_V1[epick] > SCsplit, F0[epick] > 0)]
-        eCpick = epick[np.logical_and(nLGN_V1[epick] <= SCsplit, F0[epick] > 0)]
-        describe_data_tofile(F1F0[eSpick])
-        describe_data_tofile(F1F0[eCpick])
+    #    describe_data_tofile(fr[eSpick_op], nbins)
+    #    describe_data_tofile(fr[eSpick_bg], nbins)
+    #    describe_data_tofile(fr[eCpick_op], nbins)
+    #    describe_data_tofile(fr[eCpick_bg], nbins)
+    #    describe_data_tofile(fr[ipick_op], nbins)
+    #    describe_data_tofile(fr[ipick_bg], nbins)
 
-        describe_data_tofile(fr[ipick])
-        describe_data_tofile(F1F0[ipick])
+    #    eSpick_op = epick[np.logical_and(np.logical_and(nLGN_V1[epick] > SCsplit,  dOP[epick] <= dOri), F0[epick] > 0)]
+    #    eSpick_bg = epick[np.logical_and(np.logical_and(nLGN_V1[epick] > SCsplit,   dOP[epick] > dOri), F0[epick] > 0)]
+    #    eCpick_op = epick[np.logical_and(np.logical_and(nLGN_V1[epick] <= SCsplit, dOP[epick] <= dOri), F0[epick] > 0)]
+    #    eCpick_bg = epick[np.logical_and(np.logical_and(nLGN_V1[epick] <= SCsplit,  dOP[epick] > dOri), F0[epick] > 0)]
+    #    ipick_op = ipick[np.logical_and(F0[ipick] > 0, dOP[ipick] <= dOri)]
+    #    ipick_bg = ipick[np.logical_and(F0[ipick] > 0, dOP[ipick] > dOri)]
 
+    #    describe_data_tofile(F1F0[eSpick_op], nbins)
+    #    describe_data_tofile(F1F0[eSpick_bg], nbins)
+    #    describe_data_tofile(F1F0[eCpick_op], nbins)
+    #    describe_data_tofile(F1F0[eCpick_bg], nbins)
+    #    describe_data_tofile(F1F0[ipick_op], nbins)
+    #    describe_data_tofile(F1F0[ipick_bg], nbins)
+
+    #    block_corr = np.zeros((nblock, 6, 6)) # eS_op, eC_op, eS_bg, eC_bg, i_op, i_bg
+    #    block_lag = np.zeros((nblock, 6, 6))
+    #    for i in range(nblock):
+    #        epick_block = i*blockSize + np.arange(typeAcc[0])
+    #        ipick_block = i*blockSize + np.arange(typeAcc[0], typeAcc[1])
+
+    #        eSpick_op = epick_block[np.logical_and(nLGN_V1[epick_block] > SCsplit,  dOP[epick_block] <= dOri)]
+    #        eSpick_bg = epick_block[np.logical_and(nLGN_V1[epick_block] > SCsplit,  dOP[epick_block] > dOri)]
+    #        eCpick_op = epick_block[np.logical_and(nLGN_V1[epick_block] <= SCsplit, dOP[epick_block] <= dOri)]
+    #        eCpick_bg = epick_block[np.logical_and(nLGN_V1[epick_block] <= SCsplit, dOP[epick_block] > dOri)]
+    #        ipick_op = ipick_block[dOP[ipick_block] <= dOri]
+    #        ipick_bg = ipick_block[dOP[ipick_block] > dOri]
+
+    #        pick = np.array([eSpick_op, eCpick_op, eSpick_bg, eCpick_bg, ipick_op, ipick_bg], dtype = object)
+    #        
+    #        np.arange(t0, nt_, 10)
+    #        insta_fr = np.histogram(spScatter[i], bins = edges)[0]
+    #        #for j in range(6):
+    #        #    for k in range(6):
+    #        #        corr = np.correlate(insta_fr[pick[j], :], insta_fr[pick[k], :])
 
     if collectMeanDataOnly:
         return None
@@ -1277,7 +1336,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 for ig in range(ngI):
                     ax2.plot(t, _gI[1,ig,i,:], ':b', lw = (ig+1)/ngI * lw)
     
-            ax.set_title(f'ID: {(iblock, ithread)}:({LR[iV1]:.0f},{OP[iV1]*180/np.pi:.0f})- LGN:{nLGN_V1[iV1]}({np.sum(LGN_V1_s[iV1]):.1f}), E{preN[0,iV1]}({preNS[0,iV1]:.1f}), I{preN[1,iV1]}({preNS[1,iV1]:.1f})', fontsize = 'small')
+            ax.set_title(f'ID: {(iblock, ithread)}:({LR[iV1]:.0f},{OP[iV1]*180/np.pi:.0f})- LGN:{nLGN_V1[iV1]}({np.sum(LGN_V1_s[iV1]):.1f}), E{preN[0,iV1]}({preNS[0,iV1]*sRatioV1[itype*nType]:.1f}), I{preN[1,iV1]}({preNS[1,iV1]*sRatioV1[itype*nType+1]:.1f})', fontsize = 'small')
             _vBot = min(vR[itype], np.min(_v[i,:]))
             ax.set_ylim(bottom = _vBot)
             ax.set_ylim(top = _vBot + (_vThres - _vBot) * 1.1)
@@ -1297,7 +1356,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
             current = np.zeros(_v[i,:].shape)
             cL = -_gL[iV1]*(_v[i,:]-vL)
             ax.plot(t, cL, '-c', lw = lw)
-            ax.plot(t[-1]*0.95, np.mean(cL), 'oc', ms = lw)
+            ax.plot(t1*0.5, np.mean(cL), 'oc', ms = lw)
             current = current + cL
             cFF_total = 0
             for ig in range(ngFF):
@@ -1305,46 +1364,42 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 ax.plot(t, _cFF, '-g', lw = (ig+1)/ngFF * lw)
                 current = current + _cFF
                 cFF_total += np.mean(_cFF)
-            ax.plot(t[-1]*0.95, cFF_total, 'og', ms = 2 * lw)
+            ax.plot(t1*0.5, cFF_total, 'og', ms = 2 * lw)
             cE_total = 0
             for ig in range(ngE):
                 _cE = -_gE[0,ig,i,:]*(_v[i,:]-vE)
                 ax.plot(t, _cE, '-r', lw = (ig+1)/ngE * lw)
                 current = current + _cE
                 cE_total += np.mean(_cE)
-            ax.plot(t[-1]*0.95, cE_total, 'or', ms = 2 * lw)
+            ax.plot(t1*0.5, cE_total, 'or', ms = 2*lw)
             cI_total = 0
             for ig in range(ngI):
                 _cI = -_gI[0,ig,i,:]*(_v[i,:]-vI)
                 ax.plot(t, _cI, '-b', lw = (ig+1)/ngI * lw)
                 current = current + _cI
                 cI_total += np.mean(_cI)
-            ax.plot(t[-1]*0.95, cI_total, 'ob', ms = 2 * lw)
+            ax.plot(t1*0.5, cI_total, 'ob', ms = 2*lw)
             if pGap and itype >= nTypeE:
                 cGap = -_cGap[i_gap,:]
                 ax.plot(t, cGap, ':k', lw = lw)
-                ax.plot(t[-1]*0.95, np.mean(cGap), 'sk', ms = lw*2)
+                ax.plot(t1*0.5, np.mean(cGap), 'sk', ms = 2*lw)
                 current = current + cGap
                 i_gap = i_gap+1
     
             ax.plot(t, _depC[i,:], '-y', lw = lw)
-            ax.plot(t[-1]*0.95, np.mean(_depC[i,:]), 'oy', ms = lw*2)
+            ax.plot(t1*0.5, np.mean(_depC[i,:]), 'oy', ms = 2*lw)
             current = current + _depC[i,:]
     
             if iModel == 1:
                 if pW:
                     ax.plot(t, -_w[i,:], '-m', lw = lw)
-                    ax.plot(t[-1]*0.95, -np.mean(_w[i,:]), '*m', ms = lw)
+                    ax.plot(t1*0.5, -np.mean(_w[i,:]), '*m', ms = 2*lw)
                     current = current - _w[i,:]
     
             ax.plot(t, current, '-k', lw = lw)
             ax.plot(t, np.zeros(t.shape), ':k', lw = lw/2)
-            mean_current = np.mean(current)
-            ax.plot(t[-1], mean_current, '*k', ms = lw)
-            if nLGN_V1[iV1] > 0:
-                title = f'FR:{fr[iV1]:.3f}, F1F0:{F1F0[iV1]:.3f}, {gFF_F1F0[iV1]:.3f}(gFF)'
-            else:
-                title = f'FR:{fr[iV1]:.3f}, F1F0:{F1F0[iV1]:.3f}'
+            ax.plot(t1*0.55, np.mean(current), '*k', ms = 2*lw)
+            title = f'FR:{fr[iV1]:.3f}, F1F0:{F1F0[iV1]:.3f}, {sampleName[i]}'
             _, top = ax.get_ylim()
             ax.set_ylim(top = top*1.2)
             ax.text(0.5, 0.85, title, transform=ax.transAxes, fontsize = 'small', horizontalalignment = 'center')
@@ -1507,13 +1562,13 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 sf_y[1] = cy[iV1] - np.sin(op)*wl
                 ax.plot(sf_x, sf_y, '-'+c, lw = 0.15, label='half period.')
                 op += np.pi/2
-                for i in range(2): # ending dash
+                for ii in range(2): # ending dash
                     qx = np.empty(2)
                     qy = np.empty(2)
-                    qx[0] = sf_x[i] + np.cos(op)*wl*dashRatio
-                    qy[0] = sf_y[i] + np.sin(op)*wl*dashRatio
-                    qx[1] = sf_x[i] - np.cos(op)*wl*dashRatio
-                    qy[1] = sf_y[i] - np.sin(op)*wl*dashRatio
+                    qx[0] = sf_x[ii] + np.cos(op)*wl*dashRatio
+                    qy[0] = sf_y[ii] + np.sin(op)*wl*dashRatio
+                    qx[1] = sf_x[ii] - np.cos(op)*wl*dashRatio
+                    qy[1] = sf_y[ii] - np.sin(op)*wl*dashRatio
                     ax.plot(qx, qy, '-'+c, lw = 0.2)
 
                 if usePrefData:
@@ -1582,14 +1637,14 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
 
             if usePrefData:
                 if i < _ns:
-                    fig.savefig(fig_fdr+output_suffix + f'V1-sample-{iblock}-{ithread}#{nLGN_V1[iV1]}' + '-pref.png')
+                    fig.savefig(fig_fdr+output_suffix + f'V1-sample-{iblock}-{ithread}#{nLGN_V1[iV1]}{sampleName[i]}' + '-pref.png')
                 else:
                     if i < _ns+sn_max:
-                        fig.savefig(fig_fdr+output_suffix + f'V1-sample-{iblock}-{ithread}#{nLGN_V1[iV1]}' + '-MaxDiff.png')
+                        fig.savefig(fig_fdr+output_suffix + f'V1-sample-{iblock}-{ithread}#{nLGN_V1[iV1]}{sampleName[i]}' + '-MaxDiff.png')
                     else:
-                        fig.savefig(fig_fdr+output_suffix + f'V1-sample-{iblock}-{ithread}#{nLGN_V1[iV1]}' + '-MinDiff.png')
+                        fig.savefig(fig_fdr+output_suffix + f'V1-sample-{iblock}-{ithread}#{nLGN_V1[iV1]}{sampleName[i]}' + '-MinDiff.png')
             else:
-                fig.savefig(fig_fdr+output_suffix + f'V1-sample-{iblock}-{ithread}#{nLGN_V1[iV1]}' + '.png')
+                fig.savefig(fig_fdr+output_suffix + f'V1-sample-{iblock}-{ithread}#{nLGN_V1[iV1]}{sampleName[i]}' + '.png')
             plt.close(fig)
     
     # plot depC distribution over orientation
@@ -3115,21 +3170,24 @@ def movingAvg(data, n, m, axis = -1):
         avg_data = np.empty(data.shape)
         if np.mod(m,2) == 0:
             m = m + 1
-        s = min((m-1)//2, n)
+        s = (m-1)//2
+        if n <= s + 1:
+            avg_data = np.tile(np.mean(data, axis = -1).reshape(data.shape[0],1), (1,data.shape[1]))
+            return avg_data
+
         if len(data.shape) == 1:
-            _seq = [np.mean(data[:i+s]) for i in range(1,s+1)]
-            avg_data[:s] = _seq
-            avg_data[-s:] = [np.mean(data[-2*s+i:]) for i in range(s)]
+            avg_data[:s] = np.array([np.mean(data[:min(i+s,n)]) for i in range(1,s+1)])
+            avg_data[-s:] = np.array([np.mean(data[max(-2*s+i,-n):]) for i in range(s)])
             if n >= m:
                 avg_data[s:-s] = [np.mean(data[i-s:i+s+1]) for i in range(s,n-s)]
+            return avg_data
 
         if len(data.shape) == 2:
-            avg_data[:,:s] = np.stack([np.mean(data[:,:i+s], axis = -1) for i in range(1,s+1)], axis = 1)
-            avg_data[:,-s:] = np.stack([np.mean(data[:,-2*s+i:], axis = -1) for i in range(s)], axis = 1)
+            avg_data[:,:s] = np.stack([np.mean(data[:,:min(i+s,n)], axis = -1) for i in range(1,s+1)], axis = 1)
+            avg_data[:,-s:] = np.stack([np.mean(data[:,max(-2*s+i,-n):], axis = -1) for i in range(s)], axis = 1)
             if n >= m:
                 avg_data[:,s:-s] = np.stack([np.mean(data[:,i-s:i+s+1], axis = -1) for i in range(s,n-s)], axis = 1)
-
-        return avg_data
+            return avg_data
 
 def ellipse(cx, cy, a, baRatio, orient, n = 50):
     b = a*baRatio

@@ -43,7 +43,6 @@ struct AdEx { //Adaptive Exponential IF
 		Float targetV = vR + (vT-vR)*dep;
 		if (targetV > vT) {
 			depC = (gL+a)*(targetV - vL) - gL*deltaT;
-			
 		} else {
 			depC = (gL+a)*(targetV - vL) - gL*deltaT*exponential((targetV - vT)/deltaT);
 		}
@@ -54,33 +53,37 @@ struct AdEx { //Adaptive Exponential IF
 		Float A = a*(v0 - vL);
 		w0 = (w0 - A) * exponential(-dt/tau_w) + A;
 	}
+
+    __device__ 
+	__forceinline__
+	void reset(bool tRef_less_dt) {
+        if (tRef_less_dt) {
+		    v0 = vR;
+        } else {
+		    v = vR;
+        }
+	}
+
     __device__ 
 	__forceinline__
 	void rk2_vFixedAfter(Float dt) {
+		v = vR;
 		Float A = a*(v - vL);
 		w = (w0 - A) * exponential(-dt/tau_w) + A;
 	}
 
 	__device__ 
 	__forceinline__
-	void rk2(Float dt, Float noise) {
+	void rk2(Float dt, Float noise0, Float noise1) {
 		Float dTgL = deltaT*gL;
-		Float fk1 = -a0*v0 + b0 + dTgL*exponential((v0-vT)/deltaT) - w0;
-		fk1 *= dt;
-		fk1 += noise;
-		fk1 /= C;
-		Float v1 = v0 + fk1;
-		v = v0 + fk1/2;
-
-		Float gk1 = a*(v0 - vL) - w0;
-		gk1 *= dt/tau_w;
-		Float w1 = w0 + gk1; // split add fk1, fk2 to optimize register usage
-		w = w0 + gk1/2;
-
-		Float fk2 = -a1*v1 + b1 + dTgL*exponential((v1-vT)/deltaT) - w1;
-		Float gk2 = (a*(v1 - vL) - w1)*dt/tau_w;
-		w += (gk2*dt/tau_w)/2;
-		v += (fk2*dt/C + noise)/2;
+		Float fk1 = (-a0*v0 + b0 + dTgL*exponential((v0-vT)/deltaT) - w0)/C + noise0;
+		Float gk1 = (a*(v0 - vL) - w0)/tau_w;
+		Float v1 = v0 + dt*fk1;
+		Float w1 = w0 + dt*gk1;
+		Float fk2 = (-a1*v1 + b1 + dTgL*exponential((v1-vT)/deltaT) - w1)/C + noise1;
+		Float gk2 = (a*(v1 - vL) - w1)/tau_w;
+		w = w0 + dt*(gk1 + gk2)/2;
+		v = v0 + dt*(fk1 + fk2)/2;
 	}
 
 	__device__
@@ -93,7 +96,10 @@ struct AdEx { //Adaptive Exponential IF
 		//Float eT = exponential(-(vThres - v0));
 		//Float eV = exponential(-(v - v0));
 		//tsp = t0 + (1-eT)/(1-eV)*dt;
-		tsp = t0 + (vThres-v0)/(v-v0)*dt;
+        Float ratio = (vThres-v0)/(v-v0);
+		tsp = t0 + ratio*dt;
+        //est. w
+        w0 += ratio*(w-w0) + b; // always followed by rk2_vFixedAfter to update w
 	}
 
 	__device__ 
@@ -109,21 +115,6 @@ struct AdEx { //Adaptive Exponential IF
 	    a1 = get_a(gE, gI, gL) + gapS;
 	    b1 = get_b(gE, gI, gL) + depC + gap;
 	}
-    __device__ 
-	__forceinline__
-	void reset0() {
-		w0 += b;
-		v0 = vR;
-	};
-    __device__
-	__forceinline__
-	void reset1() {
-		w0 += b;
-		v = vR;
-	}
-    __device__ void update(Float var[], PosInt tid) {
-		var[tid] = w;
-	};
 };
 
 template <typename T>
