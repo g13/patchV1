@@ -4469,32 +4469,6 @@ int main(int argc, char** argv) {
         cout << "rand_spInit<<<" << nblock << ", " << neuronPerBlock << ">>>" << "\n";
     	rand_spInit<<<nblock, neuronPerBlock>>>(tBack, d_spikeTrain, d_ipre, d_npre, d_og, d_oh, d_v, d_w, d_nLGNperV1, d_sp0, typeAcc, d_vR, d_tRef, d_tau_w, d_a, d_b, rGenCond, rNoisy, seed, nV1, nType, SCsplit, trainDepth, dt, condE, condI, ngTypeE, ngTypeI, nE, nI, noDelay, iModel);
     	checkCudaErrors(cudaDeviceSynchronize());
-
-		/*debug
-    		checkCudaErrors(cudaMemcpy(spikeTrain, d_spikeTrain, trainSize*sizeof(Float), cudaMemcpyDeviceToHost));
-			for (PosInt i = 0; i<trainDepth; i++) {
-				for (PosInt j=0; j<nV1; j++) {
-					assert(!std::isnan(spikeTrain[i*nV1 + j]));
-					if (spikeTrain[i*nV1 + j] < 1) {
-						assert(spikeTrain[i*nV1 + j] == 0);
-					}
-				}
-			}
-			if (iModel == 0) {
-				for (PosInt j=0; j<(ffSize + ghSize + vSize)/sizeof(Float); j++) {
-					assert(!std::isnan(v[j]));
-				}
-			}
-			if (iModel == 1) {
-				for (PosInt j=0; j<(ffSize + ghSize + vSize + wSize)/sizeof(Float); j++) {
-					assert(!std::isnan(w[j]));
-				}
-			}
-		*/
-    	cout << "spiking... V1 initialized\n"; 
-    	#ifdef CHECK
-    	    getLastCudaError("spiking initialized");
-    	#endif
     	seed++;
     	//checkCudaErrors(cudaMemset(d_spikeTrain, 0, nV1*trainDepth*sizeof(Float)));
     	delete []sp0;
@@ -4509,15 +4483,21 @@ int main(int argc, char** argv) {
 			for (PosInt i = 0; i<trainDepth; i++) {
 				for (PosInt j=0; j<nV1; j++) {
 					if (spikeTrain[i*nV1 + j] < 1) {
-						assert(spikeTrain[i*nV1 + j] >= 1 || spikeTrain[i*nV1 + j] < *max_element(vThres.begin(), vThres.end()));
+                        if (spikeTrain[i*nV1 + j] >= *max_element(vThres.begin(), vThres.end())) {
+						    printf("spikeTrain[%u*nV1 + %u]  =  %.2f\n", i, j, spikeTrain[i*nV1+j]);
+						    assert(spikeTrain[i*nV1 + j] < *max_element(vThres.begin(), vThres.end()));
+                        }
 					}
 				}
 			}
 		//
+    	cout << "spiking... V1 initialized\n"; 
+    	#ifdef CHECK
+    	    getLastCudaError("spiking initialized");
+    	#endif
 	} else {
 		cout << "initialization is ignored\n";
 	}
-
 
 	/* read V1_RF
 	   fV1_RF.open(V1_RF_filename, fstream::in | fstream::binary);

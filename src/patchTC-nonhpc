@@ -13,11 +13,11 @@ fitTC=False
 nOri=6 # total # orientaton if applicable
 TF=8 # input frequency if applicable
 SF=40
+trial_suffix=4th
 #singleOri=False
 singleOri=True
-one_ori=1
+one_ori=5
 
-trial_suffix=0th
 res_suffix=square-single_layer
 patch=patch_fast
 

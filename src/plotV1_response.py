@@ -18,9 +18,10 @@ np.seterr(invalid = 'raise')
 
 #@profile
 def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
-    sample = np.array([86,36,37,27,53,49])*1024 + np.array([48,664,666,564,1001,973])
-    sampleName = ['s_op_med', 's_bg_med', 'c_op_med', 'c_bg_med', 'i_op_med', 'i_bg_med']
+    #sample = np.array([86,36,37,27,53,49])*1024 + np.array([48,664,666,564,1001,973])
+    #sampleName = ['s_op_med', 's_bg_med', 'c_op_med', 'c_bg_med', 'i_op_med', 'i_bg_med']
     #sample = np.array([33])*1024 + np.array([678])
+    pickSample = 2
     singleOri = False
     SCsplit = 1
     nLGNorF1F0 = True
@@ -29,7 +30,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     np.random.seed(seed)
     nstep = 8000
     t0 = 0
-    t1 = 1000
+    t1 = 0
     if nOri > 0:
         stiOri = np.pi*np.mod(iOri/nOri, 1.0)
     else:
@@ -235,6 +236,8 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         if step0 >= nt:
             step0 = 0
             print('t0 is too large, set back to 0.')
+        if t1 == 0 or t1 > dt*nt:
+            t1 = dt*nt
         nt_ = int(t1/dt)
         if nt_ == 0 or step0 + nt_ >= nt:
             nt_ = nt - step0
@@ -467,6 +470,10 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                         sample[15] = np.random.randint(nV1)
                         sample[16] = np.random.randint(nV1)
                         sample[17] = np.random.randint(nV1)
+
+                    if pickSample >= 0 and pickSample < 3:
+                        sample = sample[pickSample:18:pickSample+1]
+                        sampleName = sampleName[pickSample:18:pickSample+1]
 
                 if False:
                     pick = epick[nLGN_V1[epick] == 0]
@@ -1398,7 +1405,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     
             ax.plot(t, current, '-k', lw = lw)
             ax.plot(t, np.zeros(t.shape), ':k', lw = lw/2)
-            ax.plot(t1*0.55, np.mean(current), '*k', ms = 2*lw)
+            ax.plot(t1*0.52, np.mean(current), 'ok', ms = 2*lw)
             title = f'FR:{fr[iV1]:.3f}, F1F0:{F1F0[iV1]:.3f}, {sampleName[i]}'
             _, top = ax.get_ylim()
             ax.set_ylim(top = top*1.2)

@@ -2,6 +2,7 @@
 //TODO: gap junction and learning in cortex, synaptic depression
 //TODO: synaptic failure, noise
 
+__launch_bounds__(1024,1)
 __global__ 
 void rand_spInit(Float* __restrict__ tBack,
                  Float* __restrict__ spikeTrain,
@@ -39,8 +40,10 @@ void rand_spInit(Float* __restrict__ tBack,
             break;
         }
     }
-    curand_init(seed + id, 0, 0, &localState);
-    curand_init(seed + networkSize + id, 0, 0, &state);
+    //curand_init(seed + id, 0, 0, &localState);
+    //curand_init(seed + networkSize + id, 0, 0, &state);
+    curand_init(seed, id, 0, &localState);
+    curand_init(seed, networkSize + id, 0, &state);
     Float rand = uniform(&localState);
     Float chance;
     Float ref = 0.0;
@@ -2286,6 +2289,7 @@ void recal_G_mat(
 }
 
 //template<int ntimesE, int ntimesI>
+__launch_bounds__(1024)
 __global__
 void sum_G(
         Size* __restrict__ nVec, // block_offset accounted for
@@ -2324,6 +2328,7 @@ void sum_G(
     }
 }
 
+__launch_bounds__(1024)
 __global__
 void sum_Gap(
         Size* __restrict__ nGapVec, // block_offset accounted for
