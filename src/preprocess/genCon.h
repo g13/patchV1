@@ -5,6 +5,7 @@
 #include <cassert>
 #include <ctime>
 #include <cmath>
+#include <random>
 #include <fenv.h>
 #include <boost/program_options.hpp>
 
@@ -15,7 +16,7 @@
 
 #define nFunc 2
 
-__device__ __host__
+__host__ __device__
 Float ODpref(Float post, Float pre, Float r) { // ocular dominance
     Float p;
     if (post*pre < 0) {
@@ -27,7 +28,7 @@ Float ODpref(Float post, Float pre, Float r) { // ocular dominance
 }
 __device__ pFeature p_OD = ODpref;
 
-__device__
+__host__ __device__
 Float OPpref(Float post, Float pre, Float r) { // orientation preference
 	Float p;
 	if (r > 0) {
@@ -45,7 +46,7 @@ Float OPpref(Float post, Float pre, Float r) { // orientation preference
 }
 __device__ pFeature p_OP = OPpref;
 
-__device__
+__host__ __device__
 Float pass(Float post, Float pre, Float r) {
     return 1.0;
 }

@@ -2,7 +2,7 @@
 //TODO: gap junction and learning in cortex, synaptic depression
 //TODO: synaptic failure, noise
 
-__launch_bounds__(1024,2)
+__launch_bounds__(1024,1)
 __global__ 
 void rand_spInit(Float* __restrict__ tBack,
                  Float* __restrict__ spikeTrain,
@@ -40,9 +40,10 @@ void rand_spInit(Float* __restrict__ tBack,
             break;
         }
     }
-
-    curand_init(seed + id, 0, 0, &localState);
-    curand_init(seed + networkSize + id, 0, 0, &state);
+    //curand_init(seed + id, 0, 0, &localState);
+    //curand_init(seed + networkSize + id, 0, 0, &state);
+    curand_init(seed, id, 0, &localState);
+    curand_init(seed, networkSize + id, 0, &state);
     Float rand = uniform(&localState);
     Float chance;
     Float ref = 0.0;
@@ -61,9 +62,9 @@ void rand_spInit(Float* __restrict__ tBack,
             Float tsp = uniform(&localState);
             sInfo = 1.0 + tsp;
 			Float tb = tRef - (1-tsp)*dt;
-			if (tb > 0) {
-            	tBack[id] = tb;
-			}
+            if (tb > 0) {
+                tBack[id] = tb;
+            }
 			Float v0 = vR[type];
             v[id] = v0;
 			if (iModel == 1) {
@@ -522,10 +523,10 @@ void compute_V_collect_spike_learnFF(
 	Float local_gapS = (threadIdx.x >= nE && InhGap) ? gapS[gap_tid]: 0;
     AdEx model(w[tid], tau_w[itype], a[itype], b[itype], v[tid], tBack[tid], vR[itype], vThres[itype], gL[itype], C[itype], tRef[itype], vT[itype], deltaT[itype], local_gapS, tonicDep[tid]);
 
-	Float noise;
+    Float noise0;
 	if (tau_noise > 0) {
-		noise = last_noise[tid];
-	}
+		noise0 = last_noise[tid];
+    }
     /* set a0 b0 and a1 b1 */
     // cond FF
     //#pragma unroll (MAX_NGTYPE_FF)
@@ -601,16 +602,24 @@ void compute_V_collect_spike_learnFF(
 		__syncthreads();
 	*/
 
+
+    Float noise1 = square_root(2*noisyDep[itype]*(vT[itype] - vR[itype])*dt);
+
 	Float p = synFailFF[itype];
 	Float nSyn = synPerConFF[itype];
 
-	if (tau_noise == 0) {
-		noise = square_root(2*noisyDep[itype]*abs(model.depC)*dt);
-		if (noise > 0) noise *= normal(&state);
-	} else {
-		Float exp_noise = exponential(-dt/tau_noise);
-		noise = noise*(exp_noise-1) + square_root(noisyDep[itype]*abs(model.depC)/tau_noise*(1-exp_noise*exp_noise)) * normal(&state);
-	}
+    if (noise1 > 0) {
+        noise1 *= normal(&state);
+	    if (tau_noise > 0) {
+            noise1 /= tau_noise;
+            Float hk1 = -noise0/tau_noise;
+            Float hk2 = -(noise0 + dt*hk1 + noise1)/tau_noise;
+            noise1 += noise0 + dt*(hk1 + hk2)/2;
+            last_noise[tid] = noise1;
+            //Float exp_noise = exponential(-dt/tau_noise);
+	    	//noise = noise*(exp_noise-1) + square_root(noisyDep[itype]*abs(model.depC)/tau_noise*(1-exp_noise*exp_noise)) * normal(&state);
+        }
+    }
 
 	bool backingUpFromRef = model.tBack < dt && model.tBack > 0;
 	Float new_t0 = 0;
@@ -618,8 +627,8 @@ void compute_V_collect_spike_learnFF(
 	Float *f = new Float[m];
 	Size count = 0;
 
-	dep[tid] = model.depC + noise;
-	last_noise[tid] = noise;
+	dep[tid] = model.depC + noise1;
+
 
 	//if (tid == 960) {
 	//	Float local_gap = threadIdx.x >= nE ? gap[iChunk][gap_id]: 0;
@@ -742,8 +751,12 @@ void compute_V_collect_spike_learnFF(
 			if (backingUpFromRef) { //	stepping other variable before tBack
 				model.rk2_vFixedBefore(dtBack);
 			} 
-			model.rk2(new_dt, noise);
-
+            if (tau_noise > 0) {
+			    model.rk2(new_dt, noise0, noise1);
+            } else {
+                noise1 /= dt;
+			    model.rk2(new_dt, noise1, noise1);
+            }
 
 			// check spiking
     	    if (model.v > model.vThres) { // forbids firing exactly at the end of the timestep, 
@@ -768,9 +781,7 @@ void compute_V_collect_spike_learnFF(
 				//	printf("tBack = %f = %f + %f\n", tBack, model.tsp, model.tRef);
 				//}
 				backingUpFromRef = model.tBack < dt;
-				if (backingUpFromRef) {
-					model.reset0();
-				}
+				model.reset(backingUpFromRef);
 				//if (tid == 1928) {
 				//	printf("v[%u] = %f, tBack = %f, vT = %f, deltaT = %f, b0 = %f, b1 = %f, w=%f, w0=%f, depC = %f, dep = %f\n", tid, model.v, model.tBack, model.vT, model.deltaT, model.b0, model.b1, model.w, model.w0, model.depC, dep[tid]);
 				//}
@@ -780,7 +791,6 @@ void compute_V_collect_spike_learnFF(
 			}
 		} 
 		if (model.tBack >= dt) { // tRef till end
-			model.reset1();
 			model.rk2_vFixedAfter(dt-model.tsp);
 			model.tBack -= dt;
 		}
@@ -865,7 +875,7 @@ void compute_V_collect_spike_learnFF(
             }
         }
         if (nsp > 0) {
-            if (learning !=3) { // E and Q are active, read cortical lVar and AvgE if previouly not read
+            if (learning !=3) { // only E and Q are active, read cortical lVar and AvgE if previouly not read
                 if (threadIdx.x < nE) {
                     // E
                     #pragma unroll max_nLearnTypeE
@@ -1009,7 +1019,7 @@ void compute_V_collect_spike_learnFF(
                 PosInt lid = i*nV1 + tid; //transposed
                 Float f = sLGN[lid];
                 // pruning process not revertible
-                if (f == 0 && rebound) {
+                if (f == 0 && !rebound) {
                     continue;
                 }
 				switch (applyHomeo) {
@@ -1332,10 +1342,10 @@ void compute_V_collect_spike_learnFF_fast(
 	Float local_gapS = threadIdx.x >= nE? gapS[gap_tid]: 0;
     AdEx model(w[tid], tau_w[itype], a[itype], b[itype], v[tid], tBack[tid], vR[itype], vThres[itype], gL[itype], C[itype], tRef[itype], vT[itype], deltaT[itype], local_gapS, tonicDep[tid]);
 
-	Float noise;
+	Float noise0;
 	if (tau_noise > 0) {
-		noise = last_noise[tid];
-	}
+	    noise0 = last_noise[tid];
+    }
     /* set a0 b0 and a1 b1 */
     // cond FF
     //#pragma unroll (MAX_NGTYPE_FF)
@@ -1411,20 +1421,24 @@ void compute_V_collect_spike_learnFF_fast(
 
 	Float p = synFailFF[itype];
 	Float nSyn = synPerConFF[itype];
-	Float _noisyDep = noisyDep[itype]*(vT[itype] - vR[itype]);
 
-	if (tau_noise == 0) {
-		noise = square_root(2*_noisyDep*dt);
-		if (noise > 0) noise *= normal(&state);
-	} else {
-		Float exp_noise = exponential(-dt/tau_noise);
-		noise = noise*(exp_noise-1) + square_root(_noisyDep/tau_noise*(1-exp_noise*exp_noise)) * normal(&state);
-	}
+    Float noise1 = square_root(2*noisyDep[itype]*(vT[itype] - vR[itype])*dt);
+    if (noise1 > 0) {
+        noise1 *= normal(&state);
+	    if (tau_noise > 0) {
+            noise1 /= tau_noise;
+            Float hk1 = -noise0/tau_noise;
+            Float hk2 = -(noise0 + dt*hk1 + noise1)/tau_noise;
+            noise1 += noise0 + dt*(hk1 + hk2)/2;
+            last_noise[tid] = noise1;
+            //Float exp_noise = exponential(-dt/tau_noise);
+	    	//noise = noise*(exp_noise-1) + square_root(noisyDep[itype]*abs(model.depC)/tau_noise*(1-exp_noise*exp_noise)) * normal(&state);
+        }
+    }
 
 	bool backingUpFromRef = model.tBack < dt && model.tBack > 0;
 
-	dep[tid] = model.depC + noise;
-	last_noise[tid] = noise;
+	dep[tid] = model.depC + noise1;
 
 	/*
 	if (tid == 960) {
@@ -1529,8 +1543,12 @@ void compute_V_collect_spike_learnFF_fast(
 		if (backingUpFromRef) { //	stepping other variable before tBack
 			model.rk2_vFixedBefore(model.tBack);
 		} 
-		model.rk2(new_dt, noise);
-
+        if (tau_noise > 0) {
+		    model.rk2(new_dt, noise0, noise1);
+        } else {
+            noise1 /= dt;
+		    model.rk2(new_dt, noise1, noise1);
+        }
 
 		// check spiking
         if (model.v > model.vThres) { // forbids firing exactly at the end of the timestep, 
@@ -1549,6 +1567,7 @@ void compute_V_collect_spike_learnFF_fast(
 			//
             model.spikeCount = 1;
             model.tBack = model.tsp + model.tRef;
+			model.reset(false);
 			//if (tid == 1928) {
 			//	printf("tBack = %f = %f + %f\n", tBack, model.tsp, model.tRef);
 			//}
@@ -1561,7 +1580,6 @@ void compute_V_collect_spike_learnFF_fast(
 		}
 	} 
 	if (model.tBack >= dt) { // tRef till end
-		model.reset1();
 		model.rk2_vFixedAfter(dt-model.tsp);
 		model.tBack -= dt;
 	}
@@ -2271,7 +2289,7 @@ void recal_G_mat(
 }
 
 //template<int ntimesE, int ntimesI>
-__launch_bounds__(1024, 2)
+__launch_bounds__(1024)
 __global__
 void sum_G(
         Size* __restrict__ nVec, // block_offset accounted for
@@ -2310,7 +2328,7 @@ void sum_G(
     }
 }
 
-__launch_bounds__(1024, 2)
+__launch_bounds__(1024)
 __global__
 void sum_Gap(
         Size* __restrict__ nGapVec, // block_offset accounted for

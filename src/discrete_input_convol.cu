@@ -149,7 +149,7 @@ Float get_virtual_convol(float x, float y, cudaTextureObject_t linearFrame, PosI
 	return p;
 }
 
-__launch_bounds__(1024, 2)
+__launch_bounds__(1024,1)
 __global__
 void virtual_LGN_convol(
         Float* __restrict__ lum,
@@ -409,8 +409,7 @@ void store_spatialWeight(
     }*/
 }
 
-//__launch_bounds__(MAX_THREADS_PER_BLOCK, MIN_BLOCKS_PER_MP)
-__launch_bounds__(1024, 2)
+__launch_bounds__(1024,1)
 __global__
 void store_PM(
         Temporal_component &temporal,
@@ -716,7 +715,8 @@ void store_PM(
     }
 }
 
-__launch_bounds__(1024, 2) // must be launched by 1024
+// must be launched by 1024
+__launch_bounds__(1024,1)
 __global__
 void parvo_maxConvol(Spatial_component &spatial,
                    Float* __restrict__ TW_storage,
@@ -851,7 +851,7 @@ void parvo_maxConvol(Spatial_component &spatial,
 
 // grid: [nLGN, 2, 1]
 // block: [nSpatialSample1D, nSpatialSample1D, 1]
-__launch_bounds__(1024, 2)
+__launch_bounds__(1024,1)
 __global__ 
 void LGN_convol_parvo(
         Float* __restrict__ luminance,
@@ -1307,7 +1307,7 @@ void LGN_convol_parvo(
     }
 }
 
-__launch_bounds__(1024, 2)
+__launch_bounds__(1024,1)
 __global__ 
 void LGN_convol_magno(
         Float* __restrict__ luminance,
@@ -1603,7 +1603,7 @@ Float get_spike(Size &nsp,
 }
 
 //template<int ntimes>
-__launch_bounds__(1024, 2)
+__launch_bounds__(1024,1)
 __global__ 
 void LGN_nonlinear(
         Size nLGN,

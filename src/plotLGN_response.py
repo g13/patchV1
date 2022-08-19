@@ -47,7 +47,7 @@ parameterFn = data_fdr + "patchV1_cfg" +output_suffix + ".bin"
 
 LGN_spFn = data_fdr + "LGN_sp" + output_suffix + ".bin"
 
-prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN = read_cfg(parameterFn)
+prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN, _, _ = read_cfg(parameterFn)
 print(f'frRatioLGN = {frRatioLGN}, convolRatio = {convolRatio}')
 
 output = data_fdr + "LGN_gallery" + output_suffix + ".bin"

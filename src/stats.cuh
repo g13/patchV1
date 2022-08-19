@@ -29,8 +29,8 @@ std::vector<std::vector<PosInt>> getUnderlyingID(T x[], T y[], Int* pick, Size n
     *maxPerPixel = 1;
     for (PosInt i=0; i<n-n0; i++) {
         if (pick[i] > 0) {
-            PosInt idx = static_cast<PosInt>(((x[i]-x0)/xspan)*width);
-            PosInt idy = static_cast<PosInt>(((y[i]-y0)/yspan)*height);
+            PosInt idx = static_cast<PosInt>((x[i]-x0)/xspan*width);
+            PosInt idy = static_cast<PosInt>((y[i]-y0)/yspan*height);
             if (idx == width) idx--;
             if (idy == height) idy--;
             PosInt id = idx+idy*width;

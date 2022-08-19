@@ -45,7 +45,6 @@ int main(int argc, char** argv) {
     checkCudaErrors(cudaDeviceGetLimit(&size_stack, cudaLimitStackSize));
     printf("Heap size found to be %f; Stack size found to be %f\n",(float)(size_heap)/1024.0/1024.0,(float)(size_stack)/1024.0/1024.0);
     
-	bool storeSpatial = true;
 	Float dt; // in ms, better in fractions of binary 
 	Float dot;
 	bool print_log;
@@ -69,6 +68,7 @@ int main(int argc, char** argv) {
 	bool virtual_LGN;
     bool symmetricHomeo;
 	bool CmoreDep;
+    bool store_dsLGN;
 	int rebound;
 	int learning;
 	int iModel;
@@ -300,9 +300,10 @@ int main(int argc, char** argv) {
 		("delPrevSnapshot", po::value<bool>(&delPrevSnapshot)->default_value(true), "delete old snapshot")
 		("asInit", po::value<bool>(&asInit)->default_value(true), "use snapshot for initialization not to resume previous simulation")
 		("use_v0", po::value<bool>(&use_v0)->default_value(false), "use v0 to initialize membrane potential, otherwise is set according to depC")
+		("store_dsLGN", po::value<bool>(&store_dsLGN)->default_value(false), "store LGN_V1 LTP and LTD to dsLGN_filename")
 		("useNewLGN", po::value<bool>(&useNewLGN)->default_value(true), "regenerate the a new ensemble of LGN parameters according to their distribution");
 
-	string inputFolder, outputFolder;
+	string inputFolder, outputFolder, resourceFolder;
 	// files
 	string connectome_cfg_filename, patchV1_cfg_filename, restore;
 	string output_suffix, output_suffix0; // suffix to be added to all output filename
@@ -318,10 +319,11 @@ int main(int argc, char** argv) {
 	string LGN_surfaceID_filename;
 	string LGN_filename, LGN_vpos_filename, LGN_V1_s_filename, LGN_V1_ID_filename; // inputs
 	string LGN_fr_filename, outputFrame_filename; // outputs
-	string LGN_convol_filename, LGN_gallery_filename, outputB4V1_filename, rawData_filename, learnData_FF_filename, learnData_V1_filename, sLGN_filename, LGN_sp_filename;
+	string LGN_convol_filename, LGN_gallery_filename, outputB4V1_filename, rawData_filename, learnData_FF_filename, learnData_V1_filename, sLGN_filename, dsLGN_filename, LGN_sp_filename;
 	top_opt.add_options()
 		//inputs:
-		("inputFolder", po::value<string>(&inputFolder)->default_value(""), "where the input data files at, must end with /")
+		("inputFolder", po::value<string>(&inputFolder)->default_value(""), "where the input data files at (unless starts with !), must end with /")
+		("resourceFolder", po::value<string>(&resourceFolder)->default_value(""), "where the resource files at (unless starts with !), must end with /")
 		("res_suffix", po::value<string>(&res_suffix)->default_value(""), "suffix for resource files")
 		("conV1_suffix", po::value<string>(&conV1_suffix)->default_value(""), "suffix for V1 connectome files")
 		("conLGN_suffix", po::value<string>(&conLGN_suffix)->default_value(""), "suffix for LGN to V1 connectome files")
@@ -351,8 +353,9 @@ int main(int argc, char** argv) {
 		("fLGN", po::value<string>(&LGN_filename)->default_value("LGN"), "file that stores all the information of LGN neurons")
 		("fLGN_fr", po::value<string>(&LGN_fr_filename)->default_value("LGN_fr"), "file stores LGN firing rates")
 		("fRawData", po::value<string>(&rawData_filename)->default_value("rawData"), "file that stores V1 response (spike, v, g) over time")
-		("fLearnData_FF", po::value<string>(&learnData_FF_filename)->default_value("learnData_FF"), "file that stores LGN->V1 connection strength and the related variables over time, make sure learnData_FF=2")
-		("f_sLGN", po::value<string>(&sLGN_filename)->default_value("sLGN"), "file that stores the LGN->V1 connection strength over time, make sure learnData_FF>0")
+		("fLearnData_FF", po::value<string>(&learnData_FF_filename)->default_value("learnData_FF"), "file that stores LGN->V1 connection strength and the related variables over time, make sure learnData_FF = 2")
+		("f_sLGN", po::value<string>(&sLGN_filename)->default_value("sLGN"), "file that stores the LGN->V1 connection strength over time, make sure learnData_FF > 0")
+		("f_dsLGN", po::value<string>(&dsLGN_filename)->default_value("dsLGN"), "file that stores the LGN->V1 LTP, LTD  over time, make sure learnData_FF > 0")
 		("sampleInterval_LGN_V1", po::value<Size>(&sampleInterval_LGN_V1)->default_value(100), "sample interval of LGN_V1 connection strength")
 		("fLGN_sp", po::value<string>(&LGN_sp_filename)->default_value("LGN_sp"), "write LGN spikes to file")
 		("fOutputFrame", po::value<string>(&outputFrame_filename)->default_value("outputFrame"), "file that stores firing rate from LGN and/or V1 (in physical location or visual field) spatially to be ready for frame production") // TEST 
@@ -390,66 +393,96 @@ int main(int argc, char** argv) {
 		po::notify(vm);
 	}
 
-	if (!vm["inputFolder"].defaulted()) {
-		cout << "unspecified input files will be read from " << inputFolder << "\n";
-		if (vm["fConnectome_cfg"].defaulted()){
-			connectome_cfg_filename = inputFolder + connectome_cfg_filename;
-		}
-		if (!vm["fSnapshot"].defaulted()){ // if defaulted, no restore, otherwise put restore file in the inputFolder
-			restore = inputFolder + restore;
-		}
-		if (vm["fLGN_switch"].defaulted()){
-			LGN_switch_filename = inputFolder + LGN_switch_filename;
-		}
-		if (vm["fStimulus"].defaulted()){
-			stimulus_filename = inputFolder + stimulus_filename;
-		}
-		if (vm["fLGN_vpos"].defaulted()){
-			LGN_vpos_filename = inputFolder + LGN_vpos_filename;
-		}
-		if (vm["fLGN_V1_ID"].defaulted()){
-			LGN_V1_ID_filename = inputFolder + LGN_V1_ID_filename;
-		}
-		if (vm["fLGN_V1_s"].defaulted()){
-			LGN_V1_s_filename = inputFolder + LGN_V1_s_filename;
-		}
-		if (vm["fLGN_surfaceID"].defaulted()){
-			LGN_surfaceID_filename = inputFolder + LGN_surfaceID_filename;
-		}
-		if (vm["fV1_allpos"].defaulted()){
-			V1_allpos_filename = inputFolder + V1_allpos_filename;
-		}
-		if (vm["fV1_feature"].defaulted()){
-			V1_feature_filename = inputFolder + V1_feature_filename;
-		}
-		if (vm["fV1_conMat"].defaulted()){
-			V1_conMat_filename = inputFolder + V1_conMat_filename;
-		}
-		if (vm["fV1_delayMat"].defaulted()){
-			V1_delayMat_filename = inputFolder + V1_delayMat_filename;
-		}
-		if (vm["fV1_gapMat"].defaulted()){
-			V1_gapMat_filename = inputFolder + V1_gapMat_filename;
-		}
-		if (vm["fConStats"].defaulted()){
-			conStats_filename = inputFolder + conStats_filename;
-		}
-		if (vm["fV1_vec"].defaulted()){
-			V1_vec_filename = inputFolder + V1_vec_filename;
-		}
-		if (vm["fV1_gapVec"].defaulted()){
-			V1_gapVec_filename = inputFolder + V1_gapVec_filename;
-		}
-		if (vm["fNeighborBlock"].defaulted()){
-			neighborBlock_filename = inputFolder + neighborBlock_filename;
-		}
-		// not in use
-		//if (!vm["fV1_RF"].defaulted(){
-		//	V1_RF_filename = inputFolder + V1_RF_filename;
-		//}
+	if (stimulus_filename.at(0) != '!'){
+		stimulus_filename = resourceFolder + stimulus_filename;
 	} else {
-		cout << "inputFolder defaulted to current folder\n";
+        stimulus_filename.erase(0,1);
+    }
+	if (LGN_surfaceID_filename.at(0) != '!'){
+		LGN_surfaceID_filename = resourceFolder + LGN_surfaceID_filename;
+	} else {
+        LGN_surfaceID_filename.erase(0,1);
+    }
+	if (V1_allpos_filename.at(0) != '!'){
+		V1_allpos_filename = resourceFolder + V1_allpos_filename;
+	} else {
+        V1_allpos_filename.erase(0,1);
+    }
+	if (V1_feature_filename.at(0) != '!'){
+		V1_feature_filename = resourceFolder + V1_feature_filename;
+	} else {
+        V1_feature_filename.erase(0,1);
+    }
+	if (LGN_vpos_filename.at(0) != '!'){
+		LGN_vpos_filename = resourceFolder + LGN_vpos_filename;
+	} else {
+        LGN_vpos_filename.erase(0,1);
+    }
+
+	if (connectome_cfg_filename.at(0) != '!'){
+		connectome_cfg_filename = inputFolder + connectome_cfg_filename;
+	} else {
+        connectome_cfg_filename.erase(0,1);
+    }
+
+    // if defaulted, no restore, otherwise put restore file in the inputFolder
+	if (!vm["fSnapshot"].defaulted()){ 
+        if (restore.at(0) != '!') {
+		    restore = inputFolder + restore;
+        } else {
+		    restore.erase(0,1);
+        }
 	}
+	if (LGN_switch_filename.at(0) != '!'){
+		LGN_switch_filename = inputFolder + LGN_switch_filename;
+	} else {
+        LGN_switch_filename.erase(0,1);
+    }
+	if (LGN_V1_ID_filename.at(0) != '!'){
+		LGN_V1_ID_filename = inputFolder + LGN_V1_ID_filename;
+	} else {
+        LGN_V1_ID_filename.erase(0,1);
+    }
+	if (LGN_V1_s_filename.at(0) != '!'){
+		LGN_V1_s_filename = inputFolder + LGN_V1_s_filename;
+	} else {
+        LGN_V1_s_filename.erase(0,1);
+    }
+	if (V1_conMat_filename.at(0) != '!'){
+		V1_conMat_filename = inputFolder + V1_conMat_filename;
+	} else {
+        V1_conMat_filename.erase(0,1);
+    }
+	if (V1_delayMat_filename.at(0) != '!'){
+		V1_delayMat_filename = inputFolder + V1_delayMat_filename;
+	} else {
+        V1_delayMat_filename.erase(0,1);
+    }
+	if (V1_gapMat_filename.at(0) != '!'){
+		V1_gapMat_filename = inputFolder + V1_gapMat_filename;
+	} else {
+        V1_gapMat_filename.erase(0,1);
+    }
+	if (conStats_filename.at(0) != '!'){
+		conStats_filename = inputFolder + conStats_filename;
+	} else {
+        conStats_filename.erase(0,1);
+    }
+	if (V1_vec_filename.at(0) != '!'){
+		V1_vec_filename = inputFolder + V1_vec_filename;
+	} else {
+        V1_vec_filename.erase(0,1);
+    }
+	if (V1_gapVec_filename.at(0) != '!'){
+		V1_gapVec_filename = inputFolder + V1_gapVec_filename;
+	} else {
+        V1_gapVec_filename.erase(0,1);
+    }
+	if (neighborBlock_filename.at(0) != '!'){
+		neighborBlock_filename = inputFolder + neighborBlock_filename;
+	} else {
+        neighborBlock_filename.erase(0,1);
+    }
 
 	if (!vm["outputFolder"].defaulted()) {
 		bf::path outputPath(outputFolder);
@@ -457,37 +490,63 @@ int main(int argc, char** argv) {
 			cout << "creating output folder: " << outputFolder << "\n";
 			bf::create_directory(outputPath);
 		}
-		if (vm["fPatchV1_cfg"].defaulted()){
-			patchV1_cfg_filename = outputFolder + patchV1_cfg_filename;
-		}
-		if (vm["fLGN"].defaulted()){
-			LGN_filename = outputFolder + LGN_filename;
-		}
-		if (vm["fLGN_fr"].defaulted()){
-			LGN_fr_filename = outputFolder + LGN_fr_filename;
-		}
-		if (vm["fRawData"].defaulted()){
-			rawData_filename = outputFolder + rawData_filename;
-		}
-		if (vm["fLearnData_FF"].defaulted()){
-			learnData_FF_filename = outputFolder + learnData_FF_filename;
-		}
-		if (vm["f_sLGN"].defaulted()){
-			sLGN_filename = outputFolder + sLGN_filename;
-		}
-		if (vm["fLGN_sp"].defaulted()){
-			LGN_sp_filename = outputFolder + LGN_sp_filename;
-		}
-		if (vm["fOutputFrame"].defaulted()){
-			outputFrame_filename = outputFolder + outputFrame_filename;
-		}
-		if (vm["fOutputB4V1"].defaulted()){
-			outputB4V1_filename = outputFolder + outputB4V1_filename;
-		}
-		if (vm["fLGN_gallery"].defaulted()){
-			LGN_gallery_filename = outputFolder + LGN_gallery_filename;
-		}
-	}
+    }
+
+	if (patchV1_cfg_filename.at(0) != '!'){
+		patchV1_cfg_filename = outputFolder + patchV1_cfg_filename;
+	} else {
+        patchV1_cfg_filename.erase(0,1);
+    }
+	if (LGN_filename.at(0) != '!'){
+		LGN_filename = outputFolder + LGN_filename;
+	} else {
+        LGN_filename.erase(0,1);
+    }
+	if (LGN_fr_filename.at(0) != '!'){
+		LGN_fr_filename = outputFolder + LGN_fr_filename;
+	} else {
+        LGN_fr_filename.erase(0,1);
+    }
+	if (rawData_filename.at(0) != '!'){
+		rawData_filename = outputFolder + rawData_filename;
+	} else {
+        rawData_filename.erase(0,1);
+    }
+	if (learnData_FF_filename.at(0) != '!'){
+		learnData_FF_filename = outputFolder + learnData_FF_filename;
+	} else {
+        learnData_FF_filename.erase(0,1);
+    }
+	if (sLGN_filename.at(0) != '!'){
+		sLGN_filename = outputFolder + sLGN_filename;
+	} else {
+        sLGN_filename.erase(0,1);
+    }
+	if (dsLGN_filename.at(0) != '!'){
+		dsLGN_filename = outputFolder + dsLGN_filename;
+	} else {
+        dsLGN_filename.erase(0,1);
+    }
+	if (LGN_sp_filename.at(0) != '!'){
+		LGN_sp_filename = outputFolder + LGN_sp_filename;
+	} else {
+        LGN_sp_filename.erase(0,1);
+    }
+	if (outputFrame_filename.at(0) != '!'){
+		outputFrame_filename = outputFolder + outputFrame_filename;
+	} else {
+        outputFrame_filename.erase(0,1);
+    }
+	if (outputB4V1_filename.at(0) != '!'){
+		outputB4V1_filename = outputFolder + outputB4V1_filename;
+	} else {
+        outputB4V1_filename.erase(0,1);
+    }
+	if (LGN_gallery_filename.at(0) != '!'){
+		LGN_gallery_filename = outputFolder + LGN_gallery_filename;
+	} else {
+        LGN_gallery_filename.erase(0,1);
+    }
     
 	if (ignoreRetinogeniculateDelay) {
 		cout << "ignoreRetinogeniculateDelay = " << ignoreRetinogeniculateDelay << "\n";
@@ -1298,7 +1357,7 @@ int main(int argc, char** argv) {
 	ofstream fLGN_fr; // outputs
 	ofstream fLGN_sp;
 	ofstream fLGN_gallery, fOutputB4V1;
-	ofstream fRawData, fOutputFrame, fLearnData_FF, f_sLGN;
+	ofstream fRawData, fOutputFrame, fLearnData_FF, f_sLGN, f_dsLGN;
 
 	float init_L, init_M, init_S;
 	Size width;
@@ -2697,7 +2756,7 @@ int main(int argc, char** argv) {
 		}
 		V1_x = cpu_chunk_V1pos;
 		V1_y = V1_x + nV1;
-        flattenBlock<double>(nblock, neuronPerBlock, cpu_chunk_V1pos);
+        // flattenBlock<double>(nblock, neuronPerBlock, cpu_chunk_V1pos); # deprecated
 		Float xMax, xMin;
 		Float yMax, yMin;
 		for (PosInt i = 0; i < nV1; i++) {
@@ -2718,6 +2777,8 @@ int main(int argc, char** argv) {
         assert(xMax <= V1_x0+V1_xspan);
         assert(yMin >= V1_y0);
         assert(yMax <= V1_y0+V1_yspan);
+        printf("V1_x range (%.5lf, %.5lf), V1_xspan(%.5lf, %.5lf)\n", xMin, xMax, V1_x0, V1_x0 + V1_xspan);
+        printf("V1_y range (%.5lf, %.5lf), V1_yspan(%.5lf, %.5lf)\n", yMin, yMax, V1_y0, V1_y0 + V1_yspan);
 		if (frameVisV1output) {
 			V1_vx = V1_y + nV1;
 			V1_vy = V1_vx + nV1;
@@ -2876,16 +2937,42 @@ int main(int argc, char** argv) {
 		vector<Int> pick(nV1,1); // dummy variable, picks for all neuron
 		vector<vector<PosInt>> V1_phyFramePosId_v = getUnderlyingID<double>(&(V1_x[0]), &(V1_y[0]), &(pick[0]), 0, nV1, phyWidth, phyHeight, V1_x0, V1_xspan, V1_y0, V1_yspan, &maxV1perPixel, nV1); // height defined by yspan/xspan * width
 
-        //DEBUG
+        /*DEBUG
+            cout << "pixelized phyV1 : max(" << maxV1perPixel << ")\n";
+            cout << phyHeight << "x" << phyWidth << "\n";
+            for (PosInt i=0; i<phyHeight; i++) {
+                for (PosInt j=0; j<phyWidth; j++) {
+                    cout << V1_phyFramePosId_v[i*phyWidth + j].size();
+                    if (j == phyWidth - 1) {
+                        cout << "\n";
+                    } else {
+                        cout << ", ";
+                    }
+                }
+            }
             PosInt id_max = 0;
+            Size checkN = 0;
+            vector<Size> count_pixel(nblock, 0);
             for (PosInt i=0; i<nPixel_phyV1; i++) {
                 if (V1_phyFramePosId_v[i].size() > 0) {
                     PosInt id = *max_element(V1_phyFramePosId_v[i].begin(), V1_phyFramePosId_v[i].end());
                     if (id > id_max) id_max = id;
                 }
+                //cout << "pixel " << i << "(" << V1_phyFramePosId_v[i].size() << "):";
+                for (PosInt j=0; j<V1_phyFramePosId_v[i].size(); j++) {
+                    count_pixel[V1_phyFramePosId_v[i][j] / blockSize] ++;
+                }
+                checkN += V1_phyFramePosId_v[i].size();
             }
+            assert(checkN == nV1); 
             assert(id_max < nV1);
-        //
+            cout << "block dist.:\n";
+            for (PosInt i=0; i<nblock; i++) {
+                printf("%d", count_pixel[i]);
+                if (i == nblock-1) printf("\n");
+                else printf(", ");
+            }
+        */
 		// determine size
 		size_t V1_phyFrameSize = static_cast<size_t>(maxV1perPixel)*phyWidth*phyHeight * sizeof(PosInt);
 		V1_phyFrameSize += nPixel_phyV1 * sizeof(Size);
@@ -2898,10 +2985,10 @@ int main(int argc, char** argv) {
 			nV1perPhyPixel[i] = V1_phyFramePosId_v[i].size();
 			if (nV1perPhyPixel[i] > 0) {
                 memcpy(V1_phyFramePosId + i*maxV1perPixel, &(V1_phyFramePosId_v[i][0]), sizeof(PosInt)*nV1perPhyPixel[i]);
-                //DEBUG
+                /*DEBUG
                     PosInt id = *max_element(V1_phyFramePosId + i*maxV1perPixel, V1_phyFramePosId + i*maxV1perPixel + nV1perPhyPixel[i]);
                     assert(id < nV1);
-                //
+                */
             }
 
 		}
@@ -2930,8 +3017,20 @@ int main(int argc, char** argv) {
 		vector<Int> pick(nTmp, true); // LGN index are well separated
         cout << "visWidth x visHeight " << visWidth << "x" << visHeight << "\n";
 		vector<vector<PosInt>> LGN_visFramePosId_vI = getUnderlyingID<Float>(&(LGN_x[0]), &(LGN_y[0]), &(pick[0]), 0, nLGN_I, visWidth, visHeight, LGN_x0, LGN_xspan, LGN_y0, LGN_yspan, &maxLGNperPixel_I, nLGN_I);
-        //DEBUG
+        /*DEBUG
             if (nLGN_I > 0) {
+                cout << "pixelized visLGN_I : max(" << maxLGNperPixel_I << ")\n";
+                cout << visHeight << "x" << visWidth << "\n";
+                for (PosInt i=0; i<visHeight; i++) {
+                    for (PosInt j=0; j<visWidth; j++) {
+                        cout << LGN_visFramePosId_vI[i*visWidth + j].size();
+                        if (j == visWidth - 1) {
+                            cout << "\n";
+                        } else {
+                            cout << ", ";
+                        }
+                    }
+                }
                 PosInt id_maxI = 0;
                 for (PosInt i=0; i<nPixel_visLGN/2; i++) {
                     if (LGN_visFramePosId_vI[i].size() > 0) {
@@ -2941,12 +3040,24 @@ int main(int argc, char** argv) {
                 }
                 assert(id_maxI < nLGN_I);
             }
-        //
+        */
 
 		vector<vector<PosInt>> LGN_visFramePosId_vC = getUnderlyingID<Float>(&(LGN_x[nLGN_I]), &(LGN_y[nLGN_I]), &(pick[0]), nLGN_I, nLGN, visWidth, visHeight, LGN_x0, LGN_xspan, LGN_y0, LGN_yspan, &maxLGNperPixel_C, nLGN_C);
 
-        //DEBUG
+        /*DEBUG
             if (nLGN_C > 0) {
+                cout << "pixelized visLGN_C : max(" << maxLGNperPixel_C << ")\n";
+                cout << visHeight << "x" << visWidth << "\n";
+                for (PosInt i=0; i<visHeight; i++) {
+                    for (PosInt j=0; j<visWidth; j++) {
+                        cout << LGN_visFramePosId_vC[i*visWidth + j].size();
+                        if (j == visWidth - 1) {
+                            cout << "\n";
+                        } else {
+                            cout << ", ";
+                        }
+                    }
+                }
                 PosInt id_maxC = nLGN_I;
                 for (PosInt i=0; i<nPixel_visLGN/2; i++) {
                     if (LGN_visFramePosId_vC[i].size() > 0) {
@@ -2957,7 +3068,7 @@ int main(int argc, char** argv) {
                 }
                 assert(id_maxC < nLGN);
             }
-        //
+        */
 
 		// determine size
 		size_t LGN_visFrameSize = static_cast<size_t>(maxLGNperPixel_I + maxLGNperPixel_C)*visWidth*visHeight * sizeof(PosInt);
@@ -2973,20 +3084,20 @@ int main(int argc, char** argv) {
 			nLGNperPixel[i] = LGN_visFramePosId_vI[i].size();
 			if (nLGNperPixel[i] > 0) {
                 memcpy(LGN_visFramePosId + i*maxLGNperPixel_I, &(LGN_visFramePosId_vI[i][0]), sizeof(PosInt)*nLGNperPixel[i]);
-                // DEBUG
+                /* DEBUG
                     PosInt id = *max_element(LGN_visFramePosId + i*maxLGNperPixel_I, LGN_visFramePosId + i*maxLGNperPixel_I + nLGNperPixel[i]);
                     assert(id < nLGN_I);
-                //
+                */
             }
 			// Contra
 			nLGNperPixel[i+offset] = LGN_visFramePosId_vC[i].size();
 			if (nLGNperPixel[i+offset] > 0) { 
                 memcpy(LGN_visFramePosId + offset*maxLGNperPixel_I + i*maxLGNperPixel_C, &(LGN_visFramePosId_vC[i][0]), sizeof(PosInt)*nLGNperPixel[i+offset]);
-                // DEBUG
+                /* DEBUG
                     PosInt id = *max_element(LGN_visFramePosId + offset*maxLGNperPixel_I + i*maxLGNperPixel_C, LGN_visFramePosId + offset*maxLGNperPixel_I + i*maxLGNperPixel_C + nLGNperPixel[i+offset]);
                     assert(id >= nLGN_I);
                     assert(id < nLGN);
-                //
+                */
             }
 		}
 		// gpu allocate 
@@ -3034,7 +3145,19 @@ int main(int argc, char** argv) {
 			pick[i] = -pick[i];
 		}
 
-        //DEBUG
+        /*DEBUG
+            cout << "pixelized visV1_I : max(" << maxV1perPixel_I << ")\n";
+            cout << visHeight << "x" << visWidth << "\n";
+            for (PosInt i=0; i<visHeight; i++) {
+                for (PosInt j=0; j<visWidth; j++) {
+                    cout << V1_visFramePosId_vI[i*visWidth + j].size();
+                    if (j == visWidth - 1) {
+                        cout << "\n";
+                    } else {
+                        cout << ", ";
+                    }
+                }
+            }
             PosInt id_max;
             if (nV1_I > 0) {
                 id_max = 0;
@@ -3046,13 +3169,25 @@ int main(int argc, char** argv) {
                 }
                 assert(id_max < nV1);
             }
-        //
+        */
 
 		vector<vector<PosInt>> V1_visFramePosId_vC = getUnderlyingID<double>(&(V1_vx[0]), &(V1_vy[0]), pick, 0, nV1, visWidth, visHeight, V1_vx0, V1_vxspan, V1_vy0, V1_vyspan, &maxV1perPixel_C, nV1_C);
 		delete []pick;
 
-        //DEBUG
+        /*DEBUG
             if (nV1_C > 0) {
+                cout << "pixelized visV1_C : max(" << maxV1perPixel_C << ")\n";
+                cout << visHeight << "x" << visWidth << "\n";
+                for (PosInt i=0; i<visHeight; i++) {
+                    for (PosInt j=0; j<visWidth; j++) {
+                        cout << V1_visFramePosId_vC[i*visWidth + j].size();
+                        if (j == visWidth - 1) {
+                            cout << "\n";
+                        } else {
+                            cout << ", ";
+                        }
+                    }
+                }
                 id_max = 0;
                 for (PosInt i=0; i<nPixel_visV1/2; i++) {
                     if (V1_visFramePosId_vC[i].size() > 0) {
@@ -3062,7 +3197,7 @@ int main(int argc, char** argv) {
                 }
                 assert(id_max < nV1);
             }
-        //
+        */
 
 		// detemine size
 		size_t V1_visFrameSize = static_cast<size_t>(maxV1perPixel_I + maxV1perPixel_C)*visWidth*visHeight*sizeof(PosInt);
@@ -3078,19 +3213,19 @@ int main(int argc, char** argv) {
 			nV1perVisPixel[i] = V1_visFramePosId_vI[i].size();
 			if (nV1perVisPixel[i] > 0) {
                 memcpy(V1_visFramePosId + i * maxV1perPixel_I, &(V1_visFramePosId_vI[i][0]), sizeof(PosInt)*nV1perVisPixel[i]);
-                //DEBUG
+                /*DEBUG
                     PosInt id = *max_element(V1_visFramePosId + i*maxV1perPixel_I, V1_visFramePosId + i*maxV1perPixel_I + nV1perVisPixel[i]);
                     assert(id < nV1);
-                //
+                */
             }
 			// Contra
 			nV1perVisPixel[i+offset] = V1_visFramePosId_vC[i].size();
 			if (nV1perVisPixel[i+offset] > 0) {
                 memcpy(V1_visFramePosId + offset*maxV1perPixel_I + i*maxV1perPixel_C, &(V1_visFramePosId_vC[i][0]), sizeof(PosInt)*nV1perVisPixel[i+offset]);
-                //DEBUG
+                /*DEBUG
                     PosInt id = *max_element(V1_visFramePosId + offset*maxV1perPixel_I + i*maxV1perPixel_C, V1_visFramePosId + offset*maxV1perPixel_I + i*maxV1perPixel_C + nV1perVisPixel[i+offset]);
                     assert(id < nV1);
-                //
+                */
             }
 		}
 		// gpu allocate
@@ -3151,7 +3286,13 @@ int main(int argc, char** argv) {
 		cout << "Cannot open or find " << V1_vec_filename + conV1_suffix <<" to read V1 connection to farther neighbor.\n";
 		return EXIT_FAILURE;
 	} else {
+        int connectLongRange;
+		fV1_vec.read(reinterpret_cast<char*>(&connectLongRange), sizeof(int));
 		fV1_vec.read(reinterpret_cast<char*>(&nVec[0]), nV1*sizeof(Size));
+        if (connectLongRange == 1) {
+            cout << "read long-range connections to vec\n";
+		    fV1_vec.seekg(nV1*sizeof(Size), fV1_vec.cur);
+        }
 		for (PosInt i=0; i<nV1; i++) {
 			if (nVec[i] > 0) {
 				vector<PosInt> tmp(nVec[i]);
@@ -3179,6 +3320,7 @@ int main(int argc, char** argv) {
                 nFar += nVec[i];
 			}
 		}
+        cout << "max non-block connection: " << *max_element(nVec.begin(), nVec.end()) << "\n";
 	}
 	fV1_vec.close();
 
@@ -4103,9 +4245,10 @@ int main(int argc, char** argv) {
 
 	Size max_LGNperV1;
 	Float* LGN_V1_s;
-	read_LGN(LGN_V1_s_filename + conLGN_suffix, LGN_V1_s, max_LGNperV1, &(sRatioLGN[0]), &(typeAccCount[0]), nType, learnData_FF>0, print_log); // assign LGN_V1_s and max_LGNperV1
+	read_LGN(LGN_V1_s_filename + conLGN_suffix, LGN_V1_s, max_LGNperV1, &(sRatioLGN[0]), &(typeAccCount[0]), nType, learnData_FF > 0, print_log); // assign LGN_V1_s and max_LGNperV1
 	Float* sLGN;
 	size_t sLGN_size = static_cast<size_t>(max_LGNperV1)*nV1*sizeof(Float);
+
 	checkCudaErrors(cudaMalloc((void**)&sLGN, sLGN_size));
 	usingGMem += sLGN_size;
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
@@ -4402,32 +4545,6 @@ int main(int argc, char** argv) {
         cout << "rand_spInit<<<" << nblock << ", " << neuronPerBlock << ">>>" << "\n";
     	rand_spInit<<<nblock, neuronPerBlock>>>(tBack, d_spikeTrain, d_ipre, d_npre, d_og, d_oh, d_v, d_w, d_nLGNperV1, d_sp0, typeAcc, d_vR, d_tRef, d_tau_w, d_a, d_b, rGenCond, rNoisy, seed, nV1, nType, SCsplit, trainDepth, dt, condE, condI, ngTypeE, ngTypeI, nE, nI, noDelay, iModel);
     	checkCudaErrors(cudaDeviceSynchronize());
-
-		/*debug
-    		checkCudaErrors(cudaMemcpy(spikeTrain, d_spikeTrain, trainSize*sizeof(Float), cudaMemcpyDeviceToHost));
-			for (PosInt i = 0; i<trainDepth; i++) {
-				for (PosInt j=0; j<nV1; j++) {
-					assert(!std::isnan(spikeTrain[i*nV1 + j]));
-					if (spikeTrain[i*nV1 + j] < 1) {
-						assert(spikeTrain[i*nV1 + j] == 0);
-					}
-				}
-			}
-			if (iModel == 0) {
-				for (PosInt j=0; j<(ffSize + ghSize + vSize)/sizeof(Float); j++) {
-					assert(!std::isnan(v[j]));
-				}
-			}
-			if (iModel == 1) {
-				for (PosInt j=0; j<(ffSize + ghSize + vSize + wSize)/sizeof(Float); j++) {
-					assert(!std::isnan(w[j]));
-				}
-			}
-		*/
-    	cout << "spiking... V1 initialized\n"; 
-    	#ifdef CHECK
-    	    getLastCudaError("spiking initialized");
-    	#endif
     	seed++;
     	//checkCudaErrors(cudaMemset(d_spikeTrain, 0, nV1*trainDepth*sizeof(Float)));
     	delete []sp0;
@@ -4442,15 +4559,21 @@ int main(int argc, char** argv) {
 			for (PosInt i = 0; i<trainDepth; i++) {
 				for (PosInt j=0; j<nV1; j++) {
 					if (spikeTrain[i*nV1 + j] < 1) {
-						assert(spikeTrain[i*nV1 + j] >= 1 || spikeTrain[i*nV1 + j] < *max_element(vThres.begin(), vThres.end()));
+                        if (spikeTrain[i*nV1 + j] >= *max_element(vThres.begin(), vThres.end())) {
+						    printf("spikeTrain[%u*nV1 + %u]  =  %.2f\n", i, j, spikeTrain[i*nV1+j]);
+						    assert(spikeTrain[i*nV1 + j] < *max_element(vThres.begin(), vThres.end()));
+                        }
 					}
 				}
 			}
 		//
+    	cout << "spiking... V1 initialized\n"; 
+    	#ifdef CHECK
+    	    getLastCudaError("spiking initialized");
+    	#endif
 	} else {
 		cout << "initialization is ignored\n";
 	}
-
 
 	/* read V1_RF
 	   fV1_RF.open(V1_RF_filename, fstream::in | fstream::binary);
@@ -4608,11 +4731,50 @@ int main(int argc, char** argv) {
 		    		f_sLGN.write((char*) &dt, sizeof(Float));
 		    		f_sLGN.write((char*) &nV1, sizeof(Size));
 		    		f_sLGN.write((char*) &max_LGNperV1, sizeof(Size));
-		    		f_sLGN.write((char*) &sRatioLGN[0], sizeof(Float));
-		    		f_sLGN.write((char*) &nLearnTypeFF, sizeof(Size));
+		    		f_sLGN.write((char*) &sRatioLGN[0], 2*sizeof(Float));
+		    		f_sLGN.write((char*) &nLearnTypeFF_E, sizeof(Size));
+		    		f_sLGN.write((char*) &nLearnTypeFF_I, sizeof(Size));
 		    		f_sLGN.write((char*) &(gmaxLGN[0]), nLearnTypeFF*sizeof(Float));
 		    		f_sLGN.write((char*) &FF_InfRatio, sizeof(Float));
 				}
+            }
+            if (store_dsLGN) {
+			    if (!restore.empty() && !asInit) {
+            	    f_dsLGN.open(dsLGN_filename + output_suffix, fstream::out | fstream::in | fstream::binary | fstream::ate);
+                } else {
+            	    f_dsLGN.open(dsLGN_filename + output_suffix, fstream::out | fstream::binary);
+                }
+                if (!f_dsLGN) {
+		        	cout << "Cannot open or find " << sLGN_filename + output_suffix <<" to store the LGN->V1 connection strength over time.\n";
+		        	return EXIT_FAILURE;
+                } else {
+                    if (!restore.empty() && !asInit) {
+			    		streampos eof = f_dsLGN.tellp();
+			    		f_dsLGN.seekp(0);
+			    		f_dsLGN.write((char*)&nt0, sizeof(Size));
+			    		f_dsLGN.seekp(eof);
+                    } else {
+                        f_dsLGN.write((char*) &nt, sizeof(Size));
+		        		f_dsLGN.write((char*) &sampleInterval_LGN_V1, sizeof(Size));
+		        		f_dsLGN.write((char*) &dt, sizeof(Float));
+		        		f_dsLGN.write((char*) &nV1, sizeof(Size));
+		    		    f_dsLGN.write((char*) &max_LGNperV1, sizeof(Size));
+		        		f_dsLGN.write((char*) &(sRatioLGN[0]), 2*sizeof(Float));
+		        		f_dsLGN.write((char*) &nLearnTypeFF_E, sizeof(Size));
+		        		f_dsLGN.write((char*) &nLearnTypeFF_I, sizeof(Size));
+		        		f_dsLGN.write((char*) &(A_LGN[0]), nLearnTypeFF*sizeof(Float));
+                        for (PosInt i=0; i<nLearnTypeFF_E; i++) {
+                            Float LTD_ratio = lFF_E_post.A_ratio[i] * lFF_E_pre.tauLTP[i];
+		        		    f_dsLGN.write((char*) &LTD_ratio, sizeof(Float));
+                        }
+                        for (PosInt i=0; i<nLearnTypeFF_I; i++) {
+                            Float LTD_ratio = lFF_I_post.A_ratio[i] * lFF_I_pre.tauLTP[i];
+		        		    f_dsLGN.write((char*) &LTD_ratio, sizeof(Float));
+                        }
+		        		f_dsLGN.write((char*) &(targetFR[0]), 2*sizeof(Float));
+		        		f_dsLGN.write((char*) &learnData_FF, sizeof(int));
+                    }
+                }
             }
         }
         
@@ -5266,7 +5428,7 @@ int main(int argc, char** argv) {
 			if (learning) {
 				if (learnData_FF == 0) {
 					LGN_V1_s = (Float*) (r_randState + nLGN); 
-					lVarFFpost = LGN_V1_s + sLGN_size/sizeof(Float);
+					lVarFFpost = LGN_V1_s + max_LGNperV1*nV1;
 					r_lVarFFpre = lVarFFpost + learnVarFFsize;
 				} else {
 					r_lVarFFpre = (Float*) (r_randState + nLGN);
@@ -5895,6 +6057,14 @@ int main(int argc, char** argv) {
                 }
                 if (it%sampleInterval_LGN_V1 == 0) {
                     f_sLGN.write((char*) LGN_V1_s, sLGN_size);
+                    if (store_dsLGN && learnData_FF < 2) {
+                        if (targetFR[0] > 0) {
+                            f_dsLGN.write((char*) (lVarFFpost+learnVarFFsize0), nE*nblock*2*sizeof(Float));
+                        }
+                        if (targetFR[1] > 0) {
+                            f_dsLGN.write((char*) (lVarFFpost+learnVarFFsize0+nE*nblock*2), nI*nblock*sizeof(Float));
+                        }
+                    }
                 }
             }
 			currentTimeSlot++;
@@ -6384,7 +6554,19 @@ int main(int argc, char** argv) {
 		        cudaMemcpyAsync(lVarFFpost+learnVarFFsize0, learnVar+learnVarFFsize0, learnVarFFsize1*sizeof(Float), cudaMemcpyDeviceToHost, mainStream);
             #endif
 		    cudaEventRecord(learnFF_event, mainStream);
+        } else {
+            if (store_dsLGN && (it+1)%sampleInterval_LGN_V1 == 0) {
+                #ifdef CHECK
+		            checkCudaErrors(cudaMemcpyAsync(lVarFFpost+learnVarFFsize0, learnVar+learnVarFFsize0, (nV1+nE*nblock)*sizeof(Float), cudaMemcpyDeviceToHost, mainStream));
+                #else
+		            cudaMemcpyAsync(lVarFFpost+learnVarFFsize0, learnVar+learnVarFFsize0, (nV1+nE*nblock)*sizeof(Float), cudaMemcpyDeviceToHost, mainStream);
+                #endif
+                #ifdef SYNC
+                    checkCudaErrors(cudaDeviceSynchronize());
+                #endif
+            }
         }
+
         #ifdef SYNC
             checkCudaErrors(cudaDeviceSynchronize());
         #endif
@@ -6509,9 +6691,9 @@ int main(int argc, char** argv) {
 				if (learning) {
 					if (!learnData_FF) { 
 						LGN_V1_s = (Float*) (r_randState + nLGN); 
-						lVarFFpost = LGN_V1_s + sLGN_size/sizeof(Float);
+						lVarFFpost = LGN_V1_s + max_LGNperV1*nV1;
 						r_lVarFFpre = lVarFFpost + learnVarFFsize; 
-					} else { // TODO: read from leanData_FF
+					} else { // TODO: read from learnData_FF
 						r_lVarFFpre = (Float*) (r_randState + nLGN);
 					}
 
@@ -6621,6 +6803,14 @@ int main(int argc, char** argv) {
 		fLearnData_FF.write((char*) lVarFFpost, learnVarFFsize*sizeof(Float));
         if (nt%sampleInterval_LGN_V1 == 0) {
             f_sLGN.write((char*) LGN_V1_s, sLGN_size);
+            if (store_dsLGN && learnData_FF < 2) {
+                if (targetFR[0] > 0) {
+                    f_dsLGN.write((char*) (lVarFFpost + learnVarFFsize0), nE*nblock*2*sizeof(Float));
+                }
+                if (targetFR[1] > 0) {
+                    f_dsLGN.write((char*) (lVarFFpost + learnVarFFsize0 + nE*nblock*2), nI*nblock*sizeof(Float));
+                }
+            }
         }
     }
 	cout << "simulation for " << output_suffix0 << " done.\n";
@@ -6667,9 +6857,12 @@ int main(int argc, char** argv) {
 		fPatchV1_cfg.write((char*) &L_y0, sizeof(Float));
 		fPatchV1_cfg.write((char*) &R_x0, sizeof(Float));
 		fPatchV1_cfg.write((char*) &R_y0, sizeof(Float));
+		fPatchV1_cfg.write((char*) &(tonicDep[0]), nType*sizeof(Float));	
+		fPatchV1_cfg.write((char*) &(noisyDep[0]), nType*sizeof(Float));	
+        int iVirtual_LGN = virtual_LGN;
+		fPatchV1_cfg.write((char*) &iVirtual_LGN, sizeof(int));	
 
 		fPatchV1_cfg.write((char*) &seed, sizeof(PosIntL));	
-		fPatchV1_cfg.write((char*) &nType, sizeof(Size));	
 		fPatchV1_cfg.write((char*) &iModel, sizeof(int));	
 		fPatchV1_cfg.write((char*) &learning, sizeof(int));	
 		fPatchV1_cfg.write((char*) &ngTypeFF, sizeof(Size));	
@@ -6703,12 +6896,16 @@ int main(int argc, char** argv) {
 
 	{ // clean-up
 		fStimulus.close();
+        fOutputFrame.close();
         if (rawData) fRawData.close();
 		if (saveLGN_fr) fLGN_fr.close();
 		if (saveOutputB4V1) fOutputB4V1.close();
         if (learnData_FF) {
             fLearnData_FF.close();
             f_sLGN.close();
+        }
+        if (store_dsLGN) {
+            f_dsLGN.close();
         }
         if (getLGN_sp) {
             fLGN_sp.close();
@@ -6776,7 +6973,7 @@ int main(int argc, char** argv) {
         if (getLGN_sp) {
 		    checkCudaErrors(cudaFreeHost(LGN_sInfo));
         }
-        if (learnData_FF>1 || getLGN_sp) {
+        if (learnData_FF > 1 || getLGN_sp) {
 		    checkCudaErrors(cudaFree(d_LGN_sInfo));
         }
 		checkCudaErrors(cudaFreeHost(pinnedMem));

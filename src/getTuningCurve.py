@@ -21,10 +21,11 @@ from plotV1_response import ellipse
 #import multiprocessing as mp
 np.seterr(invalid = 'raise')
 
-def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, nOri, fitTC, fitDataReady):
+def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, nOri, fitTC, fitDataReady):
     
     res_fdr = res_fdr+"/"
     data_fdr = data_fdr+"/"
+    setup_fdr = setup_fdr+"/"
     fig_fdr = fig_fdr+"/"
 
     if output_suffix:
@@ -67,11 +68,12 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
     else:
         add_dprefToSample = True
 
-    LGN_V1_ID_file = res_fdr + 'LGN_V1_idList'+conLGN_suffix+'.bin'
-    LGN_V1_s_file = res_fdr + 'LGN_V1_sList'+conLGN_suffix+'.bin'
+    LGN_V1_ID_file = setup_fdr + 'LGN_V1_idList'+conLGN_suffix+'.bin'
+    LGN_V1_s_file = setup_fdr + 'LGN_V1_sList'+conLGN_suffix+'.bin'
+    V1_RFpropFn = setup_fdr + "V1_RFprop" + conLGN_suffix + ".bin"
+
     LGN_frFn = data_fdr + "LGN_fr" + output_suffix 
     LGN_propFn = data_fdr + "LGN" + output_suffix + "1.bin"
-    V1_RFpropFn = res_fdr + "V1_RFprop" + conLGN_suffix + ".bin"
 
     pref_file = data_fdr+'cort_pref' + output_suffix[:-1] + '.bin'
     fit_file = data_fdr+'fit_data' + output_suffix[:-1] + '.bin'
@@ -1795,4 +1797,4 @@ if __name__ == "__main__":
         else:
             fitDataReady = False
 
-    gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr,fig_fdr, nOri, fitTC, fitDataReady)
+    gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, setup_fdr, data_fdr,fig_fdr, nOri, fitTC, fitDataReady)

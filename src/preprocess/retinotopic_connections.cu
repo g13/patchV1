@@ -166,24 +166,22 @@ vector<vector<Float>> retinotopic_connection(
 					switch (LGNtype[LGN_id]) {
 						case InputType::LonMoff: case InputType::MoffLon: case InputType::OnOff: 
 							count_On += strengthList[j];
+                            //count_On += ;
 							break;
 						case InputType::MonLoff: case InputType::LoffMon: case InputType::OffOn: 
 							count_Off += strengthList[j];
+							//count_Off += 1;
 							break;
 						default:
 							cout << "unknown input type.\n";
 					}
 				}
 				tie(cx[i], cy[i]) = average2D<Float>(x, y);
-				if (count_On > count_Off) {
-					subregion_ratio[i] = count_On / (count_On + count_Off);
-				} else {
-					subregion_ratio[i] = -count_Off / (count_On + count_Off);
-				}
+				subregion_ratio[i] = count_On / (count_On + count_Off);
 			} else {
 				cx[i] = cart.first[i];
 				cy[i] = cart.second[i];
-				subregion_ratio[i] = 0;
+				subregion_ratio[i] = -1;
 			}
             phase[i] = RF->phase;
 			// reset reusable variables
@@ -193,7 +191,7 @@ vector<vector<Float>> retinotopic_connection(
 			cx[i] = cart.first[i];
 			cy[i] = cart.second[i];
             phase[i] = 0;
-			subregion_ratio[i] = 0;
+			subregion_ratio[i] = -1;
 			// empty list of connection strength, idList is already empty
 			srList.push_back(vector<Float>());
 		}
@@ -242,16 +240,6 @@ vector<Size> draw_from_radius(
 	}
 	*/
     return index;
-}
-
-__host__
-__device__
-__forceinline__
-bool inside_ellipse(Float x, Float y, Float theta, Float a, Float b, Float &value) {
-    Float tx = cosine(theta) * x + sine(theta) * y;
-	Float ty = -sine(theta) * x + cosine(theta) * y;
-	value = (tx*tx/(a*a) + ty*ty/(b*b));
-	return value <= 1.0-1e-7;
 }
 
 __launch_bounds__(1024,2)
@@ -515,11 +503,11 @@ vector<vector<PosInt>> retinotopic_vf_pool(
  
 int main(int argc, char *argv[]) {
 	namespace po = boost::program_options;
-    bool readFromFile, useCuda;
+    	bool readFromFile, useCuda;
 	Float p_n_LGNeff;
 	Size max_LGNeff;
 	Size maxLGNperV1pool;
-    Int SimpleComplex;
+    	Int SimpleComplex;
 	Float conThres;
 	Float ori_tol;
 	Float disLGN;
@@ -533,6 +521,7 @@ int main(int argc, char *argv[]) {
     BigSize seed;
     vector<Size> nRefTypeV1_RF, V1_RefTypeID;
     vector<Float> V1_RFtypeAccDist, V1_RefTypeDist;
+	string resourceFolder;
 	string LGN_vpos_filename, V1_vpos_filename, V1_RFpreset_filename, V1_feature_filename, suffix;
 	po::options_description generic("generic options");
 	generic.add_options()
@@ -562,12 +551,13 @@ int main(int argc, char *argv[]) {
 		("nRefTypeV1_RF", po::value<vector<Size>>(&nRefTypeV1_RF), "determine the number of cone/ON-OFF combinations for each V1 RF type")
 		("V1_RefTypeID", po::value<vector<Size>>(&V1_RefTypeID), "determine the ID of the available cone/ON-OFF combinations in each V1 RF type")
 		("V1_RefTypeDist", po::value<vector<Float>>(&V1_RefTypeDist), "determine the relative portion of the available cone/ON-OFF combinations in each V1 RF type")
+		("resourceFolder", po::value<string>(&resourceFolder)->default_value(""), "where the resource files at(unless starts with !), must end with /")
 		("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file that stores V1 neurons' parameters")
 		("fV1_RFpreset", po::value<string>(&V1_RFpreset_filename)->default_value("V1_RFpreset.bin"), "file that stores V1 neurons' parameters")
 		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"), "file that stores LGN position in visual field (and on-cell off-cell label)")
 		("fV1_vpos", po::value<string>(&V1_vpos_filename)->default_value("V1_vpos.bin"), "file that stores V1 position in visual field)");
 
-    string V1_RFprop_filename, idList_filename, sList_filename, output_cfg_filename;
+    	string V1_RFprop_filename, idList_filename, sList_filename, output_cfg_filename;
 	po::options_description output_opt("output options");
 	output_opt.add_options()
 		("suffix", po::value<string>(&suffix)->default_value(""), "suffix for output file")
@@ -597,6 +587,22 @@ int main(int argc, char *argv[]) {
 		cout << "No configuration file is given, default values are used for non-specified parameters\n";
 	}
 	po::notify(vm);
+
+	if (V1_feature_filename.at(0) != '!'){
+		V1_feature_filename = resourceFolder + V1_feature_filename;
+	} else {
+		V1_feature_filename.erase(0,1);
+    }
+	if (LGN_vpos_filename.at(0) != '!'){
+		LGN_vpos_filename = resourceFolder + LGN_vpos_filename;
+    } else {
+		LGN_vpos_filename.erase(0,1);
+    }
+	if (V1_vpos_filename.at(0) != '!'){
+		V1_vpos_filename = resourceFolder + V1_vpos_filename;
+    } else {
+		V1_vpos_filename.erase(0,1);
+	}
     
     if (!suffix.empty()) {
         suffix = '_' + suffix;
@@ -798,7 +804,6 @@ int main(int argc, char *argv[]) {
 			PosInt lgn_id = poolList[i][j];
 			Float value;
 			if (!inside_ellipse(dx, dy, theta[i], a[i], a[i]*baRatio[i], value)) {
-			//if (iLR == 30550) {
     			Float tx = cosine(theta[i]) * dx + sine(theta[i]) * dy;
 				Float ty = -sine(theta[i]) * dx + cosine(theta[i]) * dy;
 				cout << "#" << iLR << "-" << j << "(" << poolList[i][j]<< "): x = " << dx << ", y = " << dy << ", theta = " << theta[i]*180/M_PI << ", a = " << a[i] << ", b = " << a[i]*baRatio[i] << "\n";
@@ -1137,42 +1142,37 @@ int main(int argc, char *argv[]) {
     cout << "# totalStrength: [" << minSum << ", " << meanSum << ", " << maxSum << "]\n";
     cout << "# totalStrengthStd: " << square_root(sum2 - meanSum*meanSum) << "\n";
 
-    cout << "balance between (L)on (L)off subregions: " <<  accumulate(subregion_ratio.begin(), subregion_ratio.end(), 0.0)/n << "\n";
-	
-	Float minOn = 1;
-	Float sumOn = 0;
-	Float maxOn = 0;
-	Float minOff = 1;
-	Float sumOff = 0;
-	Float maxOff = 0;
-	Float sum2On = 0;
-	Float sum2Off = 0;
-	Size nonzero_On = 0;
-	Size nonzero_Off = 0;
-    for (PosInt i=0; i<n; i++) {
-		if (poolList[i].size() > 0) {
-			Float subr = subregion_ratio[i];
-			if (subr < 0) {
-				nonzero_Off++;
-				subr = -subr;
-				if (subr < minOff) minOff = subr;
-				if (subr > maxOff) maxOff = subr;
-				sumOff += subr;
-				sum2Off += subr*subr;
-			} else {
-				nonzero_On++;
-				if (subr < minOn) minOn = subr;
-				if (subr > maxOn) maxOn = subr;
-				sumOn += subr;
-				sum2On += subr*subr;
-			}
-		}
-	}
-	Float meanOn = sumOn/nonzero_On;
-	Float meanOff = sumOff/nonzero_Off;
-    cout << "subregion balance within one V1 neuron: \n";
-	cout << "	Lon, Moff or On subregion: " << minOn << ", " << meanOn << "(" << square_root(sum2On/nonzero_On - meanOn*meanOn) << "), " << maxOn << "\n";
-	cout << "	Loff, Mon or Off subregion: " << minOff << ", " << meanOff << "(" << square_root(sum2Off/nonzero_Off - meanOff*meanOff) << "), " << maxOff << "\n";
+    Size nbins = 21;
+    Size nOne = 0;
+    vector<Float> balanceDist(nbins);
+    for (PosInt i = 0; i<n; i++) {
+        if (subregion_ratio[i] >= 0 && poolList[i].size() > 1) {
+            for (PosInt ibin = 0; ibin < nbins; ibin++) {
+                Float ratio = 0.5/(nbins-1) + ibin * 1.0/(nbins-1);
+                if (subregion_ratio[i] <= ratio) {
+                    balanceDist[ibin] += 1;
+                    break;
+                }
+            }
+        } else {
+            if (poolList[i].size() == 1) {
+                nOne ++;
+            }
+        }
+    }
+    
+    Float max_bin = *max_element(balanceDist.begin(), balanceDist.end());
+    cout << "balance ratio On/(On+Off) for On(Lon, Moff) Off(Loff, Mon) subregions for nLGN > 1: \n";
+    for (PosInt ibin = 0; ibin < nbins; ibin++) {
+        printf("%.2f:", ibin * 1.0 / (nbins-1));
+        Size bin_size = rounding(balanceDist[ibin]/max_bin * nbins*2);
+        for (PosInt i = 0; i < bin_size; i++) {
+            printf("*");
+        }
+        printf("%.0f\n", balanceDist[ibin]);
+    }
+    printf("# nLGN == 1: %d\n", nOne);
+    printf("check total = %.0f\n", accumulate(balanceDist.begin(), balanceDist.end(), 0.0) + nOne + zeroPool);
 
 	/*
 	cout << ic_max << "has max connections:\n";

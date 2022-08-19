@@ -96,8 +96,7 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
 	}
 }
 
-__device__ 
-__forceinline__
+__host__ __device__
 Float tri_cos(Float a, Float b, Float c) {
     return (a*a + b*b - c*c)/(2*a*b);
 }
@@ -112,8 +111,7 @@ Float tri_cos(Float a, Float b, Float c) {
 //    return square_root(r2- cos2*r2) * radius*cosine;
 //}
 
-__device__ 
-__forceinline__
+__host__ __device__
 Float area(Float raxn, Float rden, Float d) {
     Float cos_theta_axn = tri_cos(raxn, d, rden);
 	Float cos_theta_den = tri_cos(rden, d, raxn);
@@ -128,9 +126,8 @@ Float area(Float raxn, Float rden, Float d) {
          + (theta_den-sin_theta_den*cos_theta_den)*rden*rden;
 }
 
-// co-occupied area of the presynaptic axons / dendritic area
-__device__ 
-__forceinline__
+
+__host__ __device__  
 Float connect(Float distance, Float raxn, Float rden, Float disGauss) {
 	Float weight;
 	if (disGauss > 0) {
@@ -338,9 +335,9 @@ void generate_connections(double* __restrict__ pos,
                           PosInt* __restrict__ _vecID,
                           Float* __restrict__ disNeighborP,
                           Float* __restrict__ gap_disNeighborP,
-                          Size* __restrict__ vecID,
+                          PosInt* __restrict__ vecID,
                           Size* __restrict__ nVec,
-                          Size* __restrict__ gapVecID,
+                          PosInt* __restrict__ gapVecID,
                           Size* __restrict__ nGapVec,
                           Size* __restrict__ preTypeConnected,
                           Size* __restrict__ preTypeAvail,
