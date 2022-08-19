@@ -1354,7 +1354,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
             assign_component(xon, yon, ion, envelope_value, onComponent, onPick, phaseOn, eccOn, eccRange, phaseOnRange, j_on, min_tan, max_env, disLGN, disLGN*dmax, false);
 
             phase = -phaseOn;
-            max_env = 0.5;
+            max_env = 0.25;
             j_off = -1;
             std::vector<Float> modulated(ioff.size(), 0);
             for (PosInt i = 0; i < ioff.size(); i++) {
@@ -1382,7 +1382,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
             assign_component(xoff, yoff, ioff, envelope_value, offComponent, offPick, phaseOff, eccOff, eccRange, phaseOffRange, j_off, min_tan, max_env, disLGN, disLGN*dmax, false);
 
             phase = -phaseOff;
-            max_env = 0.5;
+            max_env = 0.25;
             j_on = -1;
             std::vector<Float> modulated(ion.size(), 0);
             for (PosInt i = 0; i < ion.size(); i++) {

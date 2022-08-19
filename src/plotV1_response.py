@@ -19,9 +19,12 @@ np.seterr(invalid = 'raise')
 #@profile
 def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
     #sample = np.array([86,36,37,27,53,49])*1024 + np.array([48,664,666,564,1001,973])
+    sample = np.array([86546, 64477, 33573, 31727, 56827, 30755, 30738, 56359, 30881, 31439])
     #sampleName = ['s_op_med', 's_bg_med', 'c_op_med', 'c_bg_med', 'i_op_med', 'i_bg_med']
     #sample = np.array([33])*1024 + np.array([678])
-    pickSample = 2
+    plotSampleOnly = True
+    sampling = 'frTypeStat'
+    pickSample = -1
     singleOri = False
     SCsplit = 1
     nLGNorF1F0 = True
@@ -52,7 +55,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     plotScatterFF = True
     plotSample = True
     #plotDepC = True # plot depC distribution over orientation
-    #plotLGNsCorr = True
+    plotLGNsCorr = True
     #plotTempMod = True 
     plotExc_sLGN = True
     #plotLR_rp = True
@@ -62,10 +65,22 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     #plotScatterFF = False
     #plotSample = False
     plotDepC = False
-    plotLGNsCorr = False 
+    #plotLGNsCorr = False 
     plotTempMod = False 
     #plotExc_sLGN = False
     plotLR_rp = False 
+
+    if plotSampleOnly:
+        plotSample = True
+        plotRpStat = False
+        plotRpCorr = False 
+        plotScatterFF = False 
+        plotDepC = False
+        plotLGNsCorr = False
+        plotTempMod = False 
+        plotExc_sLGN = False 
+        plotLR_rp = False 
+
     
     pSample = True
     pVoltage = True
@@ -393,104 +408,107 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                     usePrefData = False
 
             if 'sample' not in locals():
-                sample = np.random.randint(nV1, size = ns)
-                if False:
-                    sample = np.argsort(sfreq)[-ns:]
-                    print(sample)
+                match sampling:
+                    case 'random':
+                        sample = np.random.randint(nV1, size = ns)
+                    case 'topSpatialFreq':
+                        raise Exception('not implemented')
+                        #sample = np.argsort(sfreq)[-ns:]
+                    case 'frTypeStat':
+                        sample = np.zeros(18, dtype = int)
 
-                if True:
-                    sample = np.zeros(18, dtype = int)
+                        sampleName = ['s_pref_min', 's_pref_max', 's_pref_med',\
+                                      's_orth_min', 's_orth_max', 's_orth_med',\
+                                      'c_pref_min', 'c_pref_max', 'c_pref_med',\
+                                      'c_orth_min', 'c_orth_max', 'c_orth_med',\
+                                      'i_pref_min', 'i_pref_max', 'i_pref_med',\
+                                      'i_orth_min', 'i_orth_max', 'i_orth_med',\
+                                      ]
+                        pick = epick[nLGN_V1[epick] > 0]
+                        opick = pick[dOP[pick] <= dOri]
+                        if opick.size > 0:
+                            sample[0] = opick[np.argmin(fr[opick])]
+                            sample[1] = opick[np.argmax(fr[opick])]
+                            sample[2] = opick[np.argpartition(fr[opick], opick.size//2)[opick.size//2]]
+                        else:
+                            sample[0] = np.random.randint(nV1)
+                            sample[1] = np.random.randint(nV1)
+                            sample[2] = np.random.randint(nV1)
+                            sampleName[0] = 'random'
+                            sampleName[1] = 'random'
+                            sampleName[2] = 'random'
 
-                    sampleName = ['s_op_min', 's_op_max', 's_op_med',\
-                                  's_bg_min', 's_bg_max', 's_bg_med',\
-                                  'c_op_min', 'c_op_max', 'c_op_med',\
-                                  'c_bg_min', 'c_bg_max', 'c_bg_med',\
-                                  'i_op_min', 'i_op_max', 'i_op_med',\
-                                  'i_bg_min', 'i_bg_max', 'i_bg_med',\
-                                  ]
-                    pick = epick[nLGN_V1[epick] > 0]
-                    opick = pick[dOP[pick] <= dOri]
-                    if opick.size > 0:
-                        sample[0] = opick[np.argmin(fr[opick])]
-                        sample[1] = opick[np.argmax(fr[opick])]
-                        sample[2] = opick[np.argpartition(fr[opick], opick.size//2)[opick.size//2]]
-                    else:
-                        sample[0] = np.random.randint(nV1)
-                        sample[1] = np.random.randint(nV1)
-                        sample[2] = np.random.randint(nV1)
+                        opick = pick[dOP[pick] >= (nOri/2-1)*dOri]
+                        if opick.size > 0:
+                            sample[3] = opick[np.argmin(fr[opick])]
+                            sample[4] = opick[np.argmax(fr[opick])]
+                            sample[5] = opick[np.argpartition(fr[opick], opick.size//2)[opick.size//2]]
+                        else:
+                            sample[3] = np.random.randint(nV1)
+                            sample[4] = np.random.randint(nV1)
+                            sample[5] = np.random.randint(nV1)
+                            sampleName[3] = 'random'
+                            sampleName[4] = 'random'
+                            sampleName[5] = 'random'
 
-                    opick = pick[dOP[pick] >= (nOri/2-1)*dOri]
-                    if opick.size > 0:
-                        sample[3] = opick[np.argmin(fr[opick])]
-                        sample[4] = opick[np.argmax(fr[opick])]
-                        sample[5] = opick[np.argpartition(fr[opick], opick.size//2)[opick.size//2]]
-                    else:
-                        sample[3] = np.random.randint(nV1)
-                        sample[4] = np.random.randint(nV1)
-                        sample[5] = np.random.randint(nV1)
+                        pick = epick[nLGN_V1[epick] == 0]
+                        opick = pick[dOP[pick] <= dOri]
+                        if opick.size > 0:
+                            sample[6] = opick[np.argmin(fr[opick])]
+                            sample[7] = opick[np.argmax(fr[opick])]
+                            sample[8] = opick[np.argpartition(fr[opick], opick.size//2)[opick.size//2]]
+                        else:
+                            sample[6] = np.random.randint(nV1)
+                            sample[7] = np.random.randint(nV1)
+                            sample[8] = np.random.randint(nV1)
+                            sampleName[6] = 'random'
+                            sampleName[7] = 'random'
+                            sampleName[8] = 'random'
 
-                    pick = epick[nLGN_V1[epick] == 0]
-                    opick = pick[dOP[pick] <= dOri]
-                    if opick.size > 0:
-                        sample[6] = opick[np.argmin(fr[opick])]
-                        sample[7] = opick[np.argmax(fr[opick])]
-                        sample[8] = opick[np.argpartition(fr[opick], opick.size//2)[opick.size//2]]
-                    else:
-                        sample[6] = np.random.randint(nV1)
-                        sample[7] = np.random.randint(nV1)
-                        sample[8] = np.random.randint(nV1)
+                        opick = pick[dOP[pick] >= (nOri/2-1)*dOri]
+                        if opick.size > 0:
+                            sample[9] = opick[np.argmin(fr[opick])]
+                            sample[10] = opick[np.argmax(fr[opick])]
+                            sample[11] = opick[np.argpartition(fr[opick], opick.size//2)[opick.size//2]]
+                        else:
+                            sample[9] = np.random.randint(nV1)
+                            sample[10] = np.random.randint(nV1)
+                            sample[11] = np.random.randint(nV1)
+                            sampleName[9] = 'random'
+                            sampleName[10] = 'random'
+                            sampleName[11] = 'random'
 
-                    opick = pick[dOP[pick] >= (nOri/2-1)*dOri]
-                    if opick.size > 0:
-                        sample[9] = opick[np.argmin(fr[opick])]
-                        sample[10] = opick[np.argmax(fr[opick])]
-                        sample[11] = opick[np.argpartition(fr[opick], opick.size//2)[opick.size//2]]
-                    else:
-                        sample[9] = np.random.randint(nV1)
-                        sample[10] = np.random.randint(nV1)
-                        sample[11] = np.random.randint(nV1)
+                        pick = ipick[nLGN_V1[ipick] > np.mean(nLGN_V1[ipick])]
+                        opick = pick[dOP[pick] <= dOri]
+                        if opick.size > 0:
+                            sample[12] = opick[np.argmin(fr[opick])]
+                            sample[13] = opick[np.argmax(fr[opick])]
+                            sample[14] = opick[np.argpartition(fr[opick], opick.size//2)[opick.size//2]]
+                        else:
+                            sample[12] = np.random.randint(nV1)
+                            sample[13] = np.random.randint(nV1)
+                            sample[14] = np.random.randint(nV1)
+                            sampleName[12] = 'random'
+                            sampleName[13] = 'random'
+                            sampleName[14] = 'random'
 
-                    pick = ipick[nLGN_V1[ipick] > np.mean(nLGN_V1[ipick])]
-                    opick = pick[dOP[pick] <= dOri]
-                    if opick.size > 0:
-                        sample[12] = opick[np.argmin(fr[opick])]
-                        sample[13] = opick[np.argmax(fr[opick])]
-                        sample[14] = opick[np.argpartition(fr[opick], opick.size//2)[opick.size//2]]
-                    else:
-                        sample[12] = np.random.randint(nV1)
-                        sample[13] = np.random.randint(nV1)
-                        sample[14] = np.random.randint(nV1)
+                        opick = pick[dOP[pick] >= (nOri/2-1)*dOri]
+                        if opick.size > 0:
+                            sample[15] = opick[np.argmin(fr[opick])]
+                            sample[16] = opick[np.argmax(fr[opick])]
+                            sample[17] = opick[np.argpartition(fr[opick], opick.size//2)[opick.size//2]]
+                        else:
+                            sample[15] = np.random.randint(nV1)
+                            sample[16] = np.random.randint(nV1)
+                            sample[17] = np.random.randint(nV1)
+                            sampleName[15] = 'random'
+                            sampleName[16] = 'random'
+                            sampleName[17] = 'random'
 
-                    opick = pick[dOP[pick] >= (nOri/2-1)*dOri]
-                    if opick.size > 0:
-                        sample[15] = opick[np.argmin(fr[opick])]
-                        sample[16] = opick[np.argmax(fr[opick])]
-                        sample[17] = opick[np.argpartition(fr[opick], opick.size//2)[opick.size//2]]
-                    else:
-                        sample[15] = np.random.randint(nV1)
-                        sample[16] = np.random.randint(nV1)
-                        sample[17] = np.random.randint(nV1)
-
-                    if pickSample >= 0 and pickSample < 3:
-                        sample = sample[pickSample:18:pickSample+1]
-                        sampleName = sampleName[pickSample:18:pickSample+1]
-
-                if False:
-                    pick = epick[nLGN_V1[epick] == 0]
-                    sample[0] = pick[np.argmin(fr[pick])]
-                    sample[1] = pick[np.argmax(fr[pick])]
-        
-                    pick = epick[nLGN_V1[epick] > np.mean(nLGN_V1[epick])]
-                    sample[2] = pick[np.argmin(fr[pick])]
-                    sample[3] = pick[np.argmax(fr[pick])]
-        
-                    pick = ipick[nLGN_V1[ipick] == 0]
-                    sample[4] = pick[np.argmin(fr[pick])]
-                    sample[5] = pick[np.argmax(fr[pick])]
-        
-                    pick = ipick[nLGN_V1[ipick] > np.mean(nLGN_V1[ipick])]
-                    sample[6] = pick[np.argmin(fr[pick])]
-                    sample[7] = pick[np.argmax(fr[pick])]
+                        if pickSample >= 0 and pickSample < 3:
+                            sample = sample[pickSample:18:pickSample+1]
+                            sampleName = sampleName[pickSample:18:pickSample+1]
+                
         ns = sample.size
         print(f'sampling {[(s//blockSize, np.mod(s,blockSize)) for s in sample]}') 
         if 'sampleName' not in locals():
@@ -1006,6 +1024,13 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         gE_F1F0.tofile(f)
         gI_F1F0.tofile(f)
 
+    
+    orth_pick = np.arange(nV1)[np.logical_and(dOP >= (nOri/2-1)*dOri, nLGN_V1 > 1)]
+    _idx = np.argpartition(gFF_F1F0[orth_pick], orth_pick.size-10)[-10:]
+    _idx = orth_pick[_idx]
+    _idx = _idx[np.argsort(-gFF_F1F0[_idx])]
+    print(f'top 10 F1F0 at orthogonal with more than one LGN: {_idx}, {gFF_F1F0[_idx]}')
+
     #with open(pTuningFn, 'ab') as f:
     #    nbins = 20
     #    np.array([nbins], dtype = 'u4').tofile(f)
@@ -1358,6 +1383,11 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 ax.yaxis.set_major_locator(MultipleLocator(5))
                 ax.yaxis.set_minor_locator(MultipleLocator(1.0))
             ax.set_xlim(t[0],t[-1])
+
+            for axis in ['bottom','left','right']:
+                ax.spines[axis].set_linewidth(0.5)
+                ax2.spines[axis].set_linewidth(0.5)
+
     
             ax = fig.add_subplot(grid[1,:])
             current = np.zeros(_v[i,:].shape)
@@ -1841,8 +1871,8 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
             plt.close(fig)
     
     if plotRpCorr and (OPstatus != 2 or usePrefData):
-        fig = plt.figure(f'rpCorr', figsize = (18,12), dpi = 600)
-        grid = gs.GridSpec(4, 6, figure = fig, hspace = 0.3, wspace = 0.3)
+        fig = plt.figure(f'rpCorr', figsize = (20,18), dpi = 600)
+        grid = gs.GridSpec(5, 6, figure = fig, hspace = 0.3, wspace = 0.3)
         target = np.sum(gE_gTot_ratio[:,:,0], axis = 0)
     
         ax = fig.add_subplot(grid[0,0])
@@ -2039,6 +2069,44 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         ax.set_xlabel('OP')
         ax.set_ylabel('C. Inh gE')
         
+        target = cFF[:,:,0].sum(axis = 0)
+        ytarget = cE[:,:,0].sum(axis = 0)
+        ax = fig.add_subplot(grid[4,0])
+        pick = epick[nLGN_V1[epick] > 0]
+        image = HeatMap(target[pick], ytarget[pick], heatBins, heatBins, ax, 'Reds', log_scale = pLog, intPick = False, tickPick1 = 5)
+        ax.set_xlabel('Exc. cFF')
+        ax.set_ylabel('Exc. cE')
+
+        ax = fig.add_subplot(grid[4,1])
+        pick = ipick[nLGN_V1[ipick] > 0]
+        image = HeatMap(target[pick], ytarget[pick], heatBins, heatBins, ax, 'Blues', log_scale = pLog, intPick = False, tickPick1 = 5)
+        ax.set_xlabel('Inh. cFF')
+        ax.set_ylabel('Inh. cE')
+
+        target = cE[:,:,0].sum(axis = 0)
+        ytarget = cI[:,:,0].sum(axis = 0)
+        ax = fig.add_subplot(grid[4,2])
+        image = HeatMap(target[epick], ytarget[epick], heatBins, heatBins, ax, 'Reds', log_scale = pLog, intPick = False, tickPick1 = 5)
+        ax.set_xlabel('Exc. cE')
+        ax.set_ylabel('Exc. cI')
+
+        ax = fig.add_subplot(grid[4,3])
+        image = HeatMap(target[ipick], ytarget[ipick], heatBins, heatBins, ax, 'Blues', log_scale = pLog, intPick = False, tickPick1 = 5)
+        ax.set_xlabel('Inh. cE')
+        ax.set_ylabel('Inh. cI')
+
+        target = cTotal[:,0]
+        ytarget = cTotal[:,1]
+        ax = fig.add_subplot(grid[4,4])
+        image = HeatMap(target[epick], ytarget[epick], heatBins, heatBins, ax, 'Reds', log_scale = pLog, intPick = False, tickPick1 = 5)
+        ax.set_xlabel('Exc. avg. cTotal')
+        ax.set_ylabel('Exc. std. cTotal')
+
+        ax = fig.add_subplot(grid[4,5])
+        image = HeatMap(target[ipick], ytarget[ipick], heatBins, heatBins, ax, 'Blues', log_scale = pLog, intPick = False, tickPick1 = 5)
+        ax.set_xlabel('Inh. avg. cTotal')
+        ax.set_ylabel('Inh. std. cTotal')
+
         fign = 'V1-rpCorr'
         if usePrefData:
             fign = fign + '_pref'
@@ -2273,7 +2341,6 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         
                 if np.sum(eSpick) > 0:
                     nsp = np.histogram(tsp[eSpick], bins = edges)[0]/(np.sum(LR[epick]<0)*tbinSize/1000)
-                    data = np.fft.rfft(nsp)
                     psd, _ = ax2.psd(movingAvg(nsp, nsp.size, nsmoothFreq), NFFT = NFFT, pad_to = pad_to, Fs = Fs, noverlap = noverlap, detrend = detrend, color = 'm', lw = 0.5, alpha = 0.5)
                     ax2.plot(TF, 10*np.log10(psd[ipre] + (psd[ipost]-psd[ipre])*(TF-ff[ipre])/(ff[ipost]-ff[ipre])), '>m', ms = 0.5, alpha = 0.5, label = 'exc L')
                     ax3.plot(t_tf, movingAvg(nsp, nbins, nsmoothFr), 'm', lw = 0.5, alpha = 0.5)
@@ -3171,7 +3238,7 @@ def DFFT_pow2(N):
     return n
 
 def movingAvg(data, n, m, axis = -1):
-    if m <= 1:
+    if m <= 1 or data.shape[0] == 0:
         return data
     else:
         avg_data = np.empty(data.shape)

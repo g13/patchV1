@@ -42,7 +42,7 @@ python ${fig_fdr}/outputLearnFF_${op}.py ${seed} ${res} ${lgn} ${op} ${res_fdr} 
 #echo matlab -nodisplay -nosplash -r "testLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${setup_fdr}', '${data_fdr}', '${fig_fdr}', 233, 5000);exit;" &
 #matlab -nodisplay -nosplash -r "testLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${setup_fdr}', '${data_fdr}', '${fig_fdr}', 233, 5000);exit;" &
 
-#python patchOutput.py ${op} ${data_fdr} &
+#python frameOutput.py ${op} ${data_fdr} &
 
 #### not yet available for virtual_LGN
 #isuffix=0

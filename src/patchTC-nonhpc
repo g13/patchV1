@@ -16,7 +16,7 @@ SF=40
 trial_suffix=4th
 #singleOri=False
 singleOri=True
-one_ori=5
+one_ori=1
 
 res_suffix=square-single_layer
 patch=patch_fast
@@ -64,7 +64,7 @@ else
             retino -c ${cfg_fdr}/${retino_cfg}
             cd ${cfg_fdr}
         fi
-        if [ "$generate_V1_connection " = True ];
+        if [ "$generate_V1_connection" = True ];
         then
             cd $setup_fdr 
             genCon -c ${cfg_fdr}/${genCon_cfg}
@@ -112,6 +112,7 @@ echo configuration files copied
 
 cp ${repo}/src/plotV1_response.py ${fig_fdr}/plotV1_response_${trial_suffix}.py
 cp ${repo}/src/plotLGN_response.py ${fig_fdr}/plotLGN_response_${trial_suffix}.py
+cp ${repo}/src/plotFrameOutput.py ${fig_fdr}/plotFrameOutput_${trial_suffix}.py
 if [ "$singleOri" = False ]; then
 	cp ${repo}/src/getTuningCurve.py ${fig_fdr}/getTuningCurve_${trial_suffix}.py
 else

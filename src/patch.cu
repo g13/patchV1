@@ -2756,7 +2756,7 @@ int main(int argc, char** argv) {
 		}
 		V1_x = cpu_chunk_V1pos;
 		V1_y = V1_x + nV1;
-        flattenBlock<double>(nblock, neuronPerBlock, cpu_chunk_V1pos);
+        // flattenBlock<double>(nblock, neuronPerBlock, cpu_chunk_V1pos); # deprecated
 		Float xMax, xMin;
 		Float yMax, yMin;
 		for (PosInt i = 0; i < nV1; i++) {
@@ -2777,6 +2777,8 @@ int main(int argc, char** argv) {
         assert(xMax <= V1_x0+V1_xspan);
         assert(yMin >= V1_y0);
         assert(yMax <= V1_y0+V1_yspan);
+        printf("V1_x range (%.5lf, %.5lf), V1_xspan(%.5lf, %.5lf)\n", xMin, xMax, V1_x0, V1_x0 + V1_xspan);
+        printf("V1_y range (%.5lf, %.5lf), V1_yspan(%.5lf, %.5lf)\n", yMin, yMax, V1_y0, V1_y0 + V1_yspan);
 		if (frameVisV1output) {
 			V1_vx = V1_y + nV1;
 			V1_vy = V1_vx + nV1;
@@ -2935,16 +2937,42 @@ int main(int argc, char** argv) {
 		vector<Int> pick(nV1,1); // dummy variable, picks for all neuron
 		vector<vector<PosInt>> V1_phyFramePosId_v = getUnderlyingID<double>(&(V1_x[0]), &(V1_y[0]), &(pick[0]), 0, nV1, phyWidth, phyHeight, V1_x0, V1_xspan, V1_y0, V1_yspan, &maxV1perPixel, nV1); // height defined by yspan/xspan * width
 
-        //DEBUG
+        /*DEBUG
+            cout << "pixelized phyV1 : max(" << maxV1perPixel << ")\n";
+            cout << phyHeight << "x" << phyWidth << "\n";
+            for (PosInt i=0; i<phyHeight; i++) {
+                for (PosInt j=0; j<phyWidth; j++) {
+                    cout << V1_phyFramePosId_v[i*phyWidth + j].size();
+                    if (j == phyWidth - 1) {
+                        cout << "\n";
+                    } else {
+                        cout << ", ";
+                    }
+                }
+            }
             PosInt id_max = 0;
+            Size checkN = 0;
+            vector<Size> count_pixel(nblock, 0);
             for (PosInt i=0; i<nPixel_phyV1; i++) {
                 if (V1_phyFramePosId_v[i].size() > 0) {
                     PosInt id = *max_element(V1_phyFramePosId_v[i].begin(), V1_phyFramePosId_v[i].end());
                     if (id > id_max) id_max = id;
                 }
+                //cout << "pixel " << i << "(" << V1_phyFramePosId_v[i].size() << "):";
+                for (PosInt j=0; j<V1_phyFramePosId_v[i].size(); j++) {
+                    count_pixel[V1_phyFramePosId_v[i][j] / blockSize] ++;
+                }
+                checkN += V1_phyFramePosId_v[i].size();
             }
+            assert(checkN == nV1); 
             assert(id_max < nV1);
-        //
+            cout << "block dist.:\n";
+            for (PosInt i=0; i<nblock; i++) {
+                printf("%d", count_pixel[i]);
+                if (i == nblock-1) printf("\n");
+                else printf(", ");
+            }
+        */
 		// determine size
 		size_t V1_phyFrameSize = static_cast<size_t>(maxV1perPixel)*phyWidth*phyHeight * sizeof(PosInt);
 		V1_phyFrameSize += nPixel_phyV1 * sizeof(Size);
@@ -2957,10 +2985,10 @@ int main(int argc, char** argv) {
 			nV1perPhyPixel[i] = V1_phyFramePosId_v[i].size();
 			if (nV1perPhyPixel[i] > 0) {
                 memcpy(V1_phyFramePosId + i*maxV1perPixel, &(V1_phyFramePosId_v[i][0]), sizeof(PosInt)*nV1perPhyPixel[i]);
-                //DEBUG
+                /*DEBUG
                     PosInt id = *max_element(V1_phyFramePosId + i*maxV1perPixel, V1_phyFramePosId + i*maxV1perPixel + nV1perPhyPixel[i]);
                     assert(id < nV1);
-                //
+                */
             }
 
 		}
@@ -2989,8 +3017,20 @@ int main(int argc, char** argv) {
 		vector<Int> pick(nTmp, true); // LGN index are well separated
         cout << "visWidth x visHeight " << visWidth << "x" << visHeight << "\n";
 		vector<vector<PosInt>> LGN_visFramePosId_vI = getUnderlyingID<Float>(&(LGN_x[0]), &(LGN_y[0]), &(pick[0]), 0, nLGN_I, visWidth, visHeight, LGN_x0, LGN_xspan, LGN_y0, LGN_yspan, &maxLGNperPixel_I, nLGN_I);
-        //DEBUG
+        /*DEBUG
             if (nLGN_I > 0) {
+                cout << "pixelized visLGN_I : max(" << maxLGNperPixel_I << ")\n";
+                cout << visHeight << "x" << visWidth << "\n";
+                for (PosInt i=0; i<visHeight; i++) {
+                    for (PosInt j=0; j<visWidth; j++) {
+                        cout << LGN_visFramePosId_vI[i*visWidth + j].size();
+                        if (j == visWidth - 1) {
+                            cout << "\n";
+                        } else {
+                            cout << ", ";
+                        }
+                    }
+                }
                 PosInt id_maxI = 0;
                 for (PosInt i=0; i<nPixel_visLGN/2; i++) {
                     if (LGN_visFramePosId_vI[i].size() > 0) {
@@ -3000,12 +3040,24 @@ int main(int argc, char** argv) {
                 }
                 assert(id_maxI < nLGN_I);
             }
-        //
+        */
 
 		vector<vector<PosInt>> LGN_visFramePosId_vC = getUnderlyingID<Float>(&(LGN_x[nLGN_I]), &(LGN_y[nLGN_I]), &(pick[0]), nLGN_I, nLGN, visWidth, visHeight, LGN_x0, LGN_xspan, LGN_y0, LGN_yspan, &maxLGNperPixel_C, nLGN_C);
 
-        //DEBUG
+        /*DEBUG
             if (nLGN_C > 0) {
+                cout << "pixelized visLGN_C : max(" << maxLGNperPixel_C << ")\n";
+                cout << visHeight << "x" << visWidth << "\n";
+                for (PosInt i=0; i<visHeight; i++) {
+                    for (PosInt j=0; j<visWidth; j++) {
+                        cout << LGN_visFramePosId_vC[i*visWidth + j].size();
+                        if (j == visWidth - 1) {
+                            cout << "\n";
+                        } else {
+                            cout << ", ";
+                        }
+                    }
+                }
                 PosInt id_maxC = nLGN_I;
                 for (PosInt i=0; i<nPixel_visLGN/2; i++) {
                     if (LGN_visFramePosId_vC[i].size() > 0) {
@@ -3016,7 +3068,7 @@ int main(int argc, char** argv) {
                 }
                 assert(id_maxC < nLGN);
             }
-        //
+        */
 
 		// determine size
 		size_t LGN_visFrameSize = static_cast<size_t>(maxLGNperPixel_I + maxLGNperPixel_C)*visWidth*visHeight * sizeof(PosInt);
@@ -3032,20 +3084,20 @@ int main(int argc, char** argv) {
 			nLGNperPixel[i] = LGN_visFramePosId_vI[i].size();
 			if (nLGNperPixel[i] > 0) {
                 memcpy(LGN_visFramePosId + i*maxLGNperPixel_I, &(LGN_visFramePosId_vI[i][0]), sizeof(PosInt)*nLGNperPixel[i]);
-                // DEBUG
+                /* DEBUG
                     PosInt id = *max_element(LGN_visFramePosId + i*maxLGNperPixel_I, LGN_visFramePosId + i*maxLGNperPixel_I + nLGNperPixel[i]);
                     assert(id < nLGN_I);
-                //
+                */
             }
 			// Contra
 			nLGNperPixel[i+offset] = LGN_visFramePosId_vC[i].size();
 			if (nLGNperPixel[i+offset] > 0) { 
                 memcpy(LGN_visFramePosId + offset*maxLGNperPixel_I + i*maxLGNperPixel_C, &(LGN_visFramePosId_vC[i][0]), sizeof(PosInt)*nLGNperPixel[i+offset]);
-                // DEBUG
+                /* DEBUG
                     PosInt id = *max_element(LGN_visFramePosId + offset*maxLGNperPixel_I + i*maxLGNperPixel_C, LGN_visFramePosId + offset*maxLGNperPixel_I + i*maxLGNperPixel_C + nLGNperPixel[i+offset]);
                     assert(id >= nLGN_I);
                     assert(id < nLGN);
-                //
+                */
             }
 		}
 		// gpu allocate 
@@ -3093,7 +3145,19 @@ int main(int argc, char** argv) {
 			pick[i] = -pick[i];
 		}
 
-        //DEBUG
+        /*DEBUG
+            cout << "pixelized visV1_I : max(" << maxV1perPixel_I << ")\n";
+            cout << visHeight << "x" << visWidth << "\n";
+            for (PosInt i=0; i<visHeight; i++) {
+                for (PosInt j=0; j<visWidth; j++) {
+                    cout << V1_visFramePosId_vI[i*visWidth + j].size();
+                    if (j == visWidth - 1) {
+                        cout << "\n";
+                    } else {
+                        cout << ", ";
+                    }
+                }
+            }
             PosInt id_max;
             if (nV1_I > 0) {
                 id_max = 0;
@@ -3105,13 +3169,25 @@ int main(int argc, char** argv) {
                 }
                 assert(id_max < nV1);
             }
-        //
+        */
 
 		vector<vector<PosInt>> V1_visFramePosId_vC = getUnderlyingID<double>(&(V1_vx[0]), &(V1_vy[0]), pick, 0, nV1, visWidth, visHeight, V1_vx0, V1_vxspan, V1_vy0, V1_vyspan, &maxV1perPixel_C, nV1_C);
 		delete []pick;
 
-        //DEBUG
+        /*DEBUG
             if (nV1_C > 0) {
+                cout << "pixelized visV1_C : max(" << maxV1perPixel_C << ")\n";
+                cout << visHeight << "x" << visWidth << "\n";
+                for (PosInt i=0; i<visHeight; i++) {
+                    for (PosInt j=0; j<visWidth; j++) {
+                        cout << V1_visFramePosId_vC[i*visWidth + j].size();
+                        if (j == visWidth - 1) {
+                            cout << "\n";
+                        } else {
+                            cout << ", ";
+                        }
+                    }
+                }
                 id_max = 0;
                 for (PosInt i=0; i<nPixel_visV1/2; i++) {
                     if (V1_visFramePosId_vC[i].size() > 0) {
@@ -3121,7 +3197,7 @@ int main(int argc, char** argv) {
                 }
                 assert(id_max < nV1);
             }
-        //
+        */
 
 		// detemine size
 		size_t V1_visFrameSize = static_cast<size_t>(maxV1perPixel_I + maxV1perPixel_C)*visWidth*visHeight*sizeof(PosInt);
@@ -3137,19 +3213,19 @@ int main(int argc, char** argv) {
 			nV1perVisPixel[i] = V1_visFramePosId_vI[i].size();
 			if (nV1perVisPixel[i] > 0) {
                 memcpy(V1_visFramePosId + i * maxV1perPixel_I, &(V1_visFramePosId_vI[i][0]), sizeof(PosInt)*nV1perVisPixel[i]);
-                //DEBUG
+                /*DEBUG
                     PosInt id = *max_element(V1_visFramePosId + i*maxV1perPixel_I, V1_visFramePosId + i*maxV1perPixel_I + nV1perVisPixel[i]);
                     assert(id < nV1);
-                //
+                */
             }
 			// Contra
 			nV1perVisPixel[i+offset] = V1_visFramePosId_vC[i].size();
 			if (nV1perVisPixel[i+offset] > 0) {
                 memcpy(V1_visFramePosId + offset*maxV1perPixel_I + i*maxV1perPixel_C, &(V1_visFramePosId_vC[i][0]), sizeof(PosInt)*nV1perVisPixel[i+offset]);
-                //DEBUG
+                /*DEBUG
                     PosInt id = *max_element(V1_visFramePosId + offset*maxV1perPixel_I + i*maxV1perPixel_C, V1_visFramePosId + offset*maxV1perPixel_I + i*maxV1perPixel_C + nV1perVisPixel[i+offset]);
                     assert(id < nV1);
-                //
+                */
             }
 		}
 		// gpu allocate
@@ -6820,6 +6896,7 @@ int main(int argc, char** argv) {
 
 	{ // clean-up
 		fStimulus.close();
+        fOutputFrame.close();
         if (rawData) fRawData.close();
 		if (saveLGN_fr) fLGN_fr.close();
 		if (saveOutputB4V1) fOutputB4V1.close();
