@@ -40,8 +40,8 @@ seed = 1653783
 #iLGN = np.array([12198, 24358, 1833,2575])
 #iLGN = np.array([0,1,nLGN_1D*nLGN_1D+nLGN_1D-1,nLGN_1D*nLGN_1D+nLGN_1D])
 ns = 10
-FRbins = 25 # per sec
-nsmooth = 10 
+FRbins = 50 # per sec
+nsmooth = 5
 
 parameterFn = data_fdr + "patchV1_cfg" +output_suffix + ".bin"
 
@@ -180,8 +180,9 @@ if plotResponseSample:
         nbins = int(FRbins*t_in_sec)
         sp_range = np.linspace(0, nt_, nbins+1)*dt
         counts, _ = np.histogram(sp, bins = sp_range)
-        fr = movingAvg(counts/(1/FRbins), counts.size, nsmooth)
-        ax2.plot((sp_range[:-1] + sp_range[1:])/2, fr, 'b', lw=0.1)
+        #fr = movingAvg(counts/(1/FRbins), counts.size, nsmooth)
+        #ax2.plot((sp_range[:-1] + sp_range[1:])/2, fr, 'b', lw=0.1)
+        ax2.plot((sp_range[:-1] + sp_range[1:])/2, realLGN_fr[:,j], 'b', lw=0.1)
     
         if i == 0:
             ax.legend()

@@ -40,7 +40,7 @@ struct AdEx { //Adaptive Exponential IF
 	__forceinline__
 	AdEx(Float _w0, Float _tau_w, Float _a, Float _b, Float _v0, Float _tBack, Float _vR, Float _vThres, Float _gL, Float _C, Float _tRef, Float _vT, Float _deltaT, Float _gapS, Float dep): v0(_v0), tBack(_tBack), vR(_vR), vThres(_vThres), gL(_gL), C(_C), tRef(_tRef), w0(_w0), tau_w(_tau_w), a(_a), b(_b), vT(_vT), deltaT(_deltaT), gapS(_gapS) {
 		spikeCount = 0;
-		Float targetV = vR + (vT-vR)*dep;
+		Float targetV = vL + (vT-vL)*dep;
 		if (targetV > vT) {
 			depC = (gL+a)*(targetV - vL) - gL*deltaT;
 		} else {
@@ -218,7 +218,7 @@ void compute_V_collect_spike_learnFF(
 		cudaSurfaceObject_t LGNspikeSurface,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
-        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo, bool symmetricHomeo, bool InhGap, bool rebound
+        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo, bool symmetricHomeo, bool InhGap, bool rebound, bool noiseOnTonic
 );
 
 __global__ 
@@ -280,7 +280,7 @@ void compute_V_collect_spike_learnFF_fast(
 		cudaSurfaceObject_t LGNspikeSurface,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
-        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo, bool symmetricHomeo, bool InhGap, bool rebound
+        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo, bool symmetricHomeo, bool InhGap, bool rebound, bool noiseOnTonic
 );
 
 //template<int ntimesE, int ntimesI> extern

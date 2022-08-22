@@ -481,7 +481,7 @@ void compute_V_collect_spike_learnFF(
 		cudaSurfaceObject_t LGNspikeSurface,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
-        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo, bool symmetricHomeo, bool InhGap, bool rebound)
+        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo, bool symmetricHomeo, bool InhGap, bool rebound, bool noiseOnTonic)
 {
     // get different ids in chunks
     PosInt tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -509,6 +509,7 @@ void compute_V_collect_spike_learnFF(
 		}
     }
 
+    Float _tonicDep = tonicDep[tid];
     // if #E neurons comes in warps (size of 32) then there is no branch divergence.
     // TODO: load individual gl, tref
     PosInt itype;
@@ -521,7 +522,7 @@ void compute_V_collect_spike_learnFF(
     }
 
 	Float local_gapS = (threadIdx.x >= nE && InhGap) ? gapS[gap_tid]: 0;
-    AdEx model(w[tid], tau_w[itype], a[itype], b[itype], v[tid], tBack[tid], vR[itype], vThres[itype], gL[itype], C[itype], tRef[itype], vT[itype], deltaT[itype], local_gapS, tonicDep[tid]);
+    AdEx model(w[tid], tau_w[itype], a[itype], b[itype], v[tid], tBack[tid], vR[itype], vThres[itype], gL[itype], C[itype], tRef[itype], vT[itype], deltaT[itype], local_gapS, _tonicDep);
 
     Float noise0;
 	if (tau_noise > 0) {
@@ -603,7 +604,8 @@ void compute_V_collect_spike_learnFF(
 	*/
 
 
-    Float noise1 = square_root(2*noisyDep[itype]*(vT[itype] - vR[itype])*dt);
+    Float noiseRatio = noiseOnTonic ? _tonicDep : 1;
+    Float noise1 = square_root(2*noisyDep[itype]*(vT[itype] - vR[itype])*noiseRatio*dt);
 
 	Float p = synFailFF[itype];
 	Float nSyn = synPerConFF[itype];
@@ -1290,7 +1292,7 @@ void compute_V_collect_spike_learnFF_fast(
 		cudaSurfaceObject_t LGNspikeSurface,
         LearnVarShapeFF_E_pre  learnE_pre,  LearnVarShapeFF_I_pre  learnI_pre, 
         LearnVarShapeFF_E_post learnE_post, LearnVarShapeFF_I_post learnI_post, 
-        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo, bool symmetricHomeo, bool InhGap, bool rebound)
+        LearnVarShapeE learnE, LearnVarShapeQ learnQ, Float exp_homeo, int iModel, int noDelay, int applyHomeo, bool symmetricHomeo, bool InhGap, bool rebound, bool noiseOnTonic)
 {
     __shared__ PosInt counter[2];
     if (threadIdx.x < 2) {
@@ -1322,7 +1324,7 @@ void compute_V_collect_spike_learnFF_fast(
 			gap_id = gap_tid - iChunk*maxChunkSize*nI;
 		}
     }
-
+    Float _tonicDep = tonicDep[tid];
 	bool pInfo = false;
 	//if (blockIdx.x == 33 && threadIdx.x == 678) {
 	if (false) {
@@ -1340,7 +1342,7 @@ void compute_V_collect_spike_learnFF_fast(
     }
 
 	Float local_gapS = threadIdx.x >= nE? gapS[gap_tid]: 0;
-    AdEx model(w[tid], tau_w[itype], a[itype], b[itype], v[tid], tBack[tid], vR[itype], vThres[itype], gL[itype], C[itype], tRef[itype], vT[itype], deltaT[itype], local_gapS, tonicDep[tid]);
+    AdEx model(w[tid], tau_w[itype], a[itype], b[itype], v[tid], tBack[tid], vR[itype], vThres[itype], gL[itype], C[itype], tRef[itype], vT[itype], deltaT[itype], local_gapS, _tonicDep);
 
 	Float noise0;
 	if (tau_noise > 0) {
@@ -1419,10 +1421,12 @@ void compute_V_collect_spike_learnFF_fast(
 		__syncthreads();
 	*/
 
+    Float noiseRatio = noiseOnTonic ? _tonicDep : 1;
+    Float noise1 = square_root(2*noisyDep[itype]*(vT[itype] - vR[itype])*noiseRatio*dt);
+
 	Float p = synFailFF[itype];
 	Float nSyn = synPerConFF[itype];
 
-    Float noise1 = square_root(2*noisyDep[itype]*(vT[itype] - vR[itype])*dt);
     if (noise1 > 0) {
         noise1 *= normal(&state);
 	    if (tau_noise > 0) {

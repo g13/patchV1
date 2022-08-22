@@ -68,6 +68,7 @@ int main(int argc, char** argv) {
 	bool virtual_LGN;
     bool symmetricHomeo;
 	bool CmoreDep;
+	bool noiseOnTonic;
     bool store_dsLGN;
 	int rebound;
 	int learning;
@@ -268,6 +269,7 @@ int main(int argc, char** argv) {
 		("noisyDep", po::value<vector<Float>>(&noisyDep), "noisy depolarization borrow from NMC model")
 		("tonicDep", po::value<vector<Float>>(&tonicDep), "tonic depolarization borrow from NMC model")
 		("CmoreDep", po::value<bool>(&CmoreDep)->default_value(true), "allow more depolarization for complex cells")
+		("noiseOnTonic", po::value<bool>(&noiseOnTonic)->default_value(true), "noisyDep as a percentage of tonicDep")
 		("tau_noise", po::value<Float>(&tau_noise)->default_value(0), "auto-correlation decay time scale of the correlated gaussian noise")
 		("minTonicRatio", po::value<vector<Float>>(&minTonicRatio), "minimum tonic depolarization ratio of size [nType]")
 		("synFailFF", po::value<vector<Float>>(&synFailFF), "FF synpase failure rate of size nType")
@@ -6161,7 +6163,7 @@ int main(int argc, char** argv) {
 		    		tau_noise, currentTimeSlot, trainDepth, max_LGNperV1,
 		    		ngTypeFF, ngTypeE, ngTypeI, condFF, condE, condI,
 		    		dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, nE, nI, nV1, learning, varSlot, nType, LGNspikeSurface,
-                    lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ, exp_homeo, iModel, noDelay, applyHomeo, symmetricHomeo, InhGap, rebound); // learning const structs 
+                    lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ, exp_homeo, iModel, noDelay, applyHomeo, symmetricHomeo, InhGap, rebound, noiseOnTonic); // learning const structs 
             
         } else {
 		    compute_V_collect_spike_learnFF_fast<<<nblock, neuronPerBlock, 0, mainStream>>> (
@@ -6177,7 +6179,7 @@ int main(int argc, char** argv) {
 		    		tau_noise, currentTimeSlot, trainDepth, max_LGNperV1,
 		    		ngTypeFF, ngTypeE, ngTypeI, condFF, condE, condI,
 		    		dt, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, nE, nI, nV1, learning, varSlot, nType, LGNspikeSurface,
-                    lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ, exp_homeo, iModel, noDelay, applyHomeo, symmetricHomeo, InhGap, rebound); // learning const structs 
+                    lFF_E_pre, lFF_I_pre, lFF_E_post, lFF_I_post, lE, lQ, exp_homeo, iModel, noDelay, applyHomeo, symmetricHomeo, InhGap, rebound, noiseOnTonic); // learning const structs 
         }
 
         #ifdef CHECK
