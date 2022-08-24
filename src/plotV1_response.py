@@ -32,7 +32,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     seed = 657890
     np.random.seed(seed)
     pdt = 1 # plot interval (ms)
-    t0 = 0 # plot start time (ms)
+    t0 = 400 # plot start time (ms)
     t1 = 0 # plot end time (ms)
     if nOri > 0:
         stiOri = np.pi*np.mod(iOri/nOri, 1.0)
@@ -1312,7 +1312,57 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         
                 fig.savefig(fig_fdr+output_suffix + 'OPgFF-TFstat' + '.png')
                 plt.close(fig)
-    
+
+    def get_LGN_SF(n, sub_pos, sub_type):
+        iSubR = 0
+        iSubG = 0
+        iSubOn = 0
+        iSubOff = 0
+        for j in range(n):
+            jtype = sub_type[j]
+            if jtype == 0 or jtype == 3:
+                if iSubR == 0:
+                    subRed = sub_pos[:,j].copy()
+                else:
+                    subRed += sub_pos[:,j]
+                iSubR += 1 
+            if jtype == 1 or jtype == 2:
+                if iSubG == 0:
+                    subGreen = sub_pos[:,j].copy()
+                else:
+                    subGreen += sub_pos[:,j]
+                iSubG += 1 
+            if jtype == 4:
+                if iSubOn == 0:
+                    subOn = sub_pos[:,j].copy()
+                else:
+                    subOn += sub_pos[:,j]
+                iSubOn += 1 
+            if jtype == 5:
+                if iSubOff == 0:
+                    subOff = sub_pos[:,j].copy()
+                else:
+                    subOff += sub_pos[:,j]
+                iSubOff += 1 
+            
+        if iSubR > 0 and iSubG > 0:
+            subRed /= iSubR
+            subGreen /= iSubG
+            jSF = 1/(2*np.linalg.norm(subRed-subGreen))
+        elif iSubOn > 0 and iSubOff > 0:
+            subOn /= iSubOn
+            subOff /= iSubOff
+            jSF = 1/(2*np.linalg.norm(subOn-subOff))
+        else:
+            jSF = 0
+        return jSF
+
+    LGN_SF = np.zeros(nV1)
+    for i in range(nV1):
+        iLGN_vpos = LGN_vpos[:, LGN_V1_ID[i]]
+        iLGN_type = LGN_type[LGN_V1_ID[i]]
+        LGN_SF[i] = get_LGN_SF(nLGN_V1[i], iLGN_vpos, iLGN_type)
+
     if plotSample:
         i_gap = 0
         for i in range(ns):
@@ -2220,6 +2270,54 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         BGpick = ipick[dOP[ipick] > dOri*nOri/2]
         plot_F1F0_corr(fign, OPpick, BGpick)
 
+        def plot_LGN_SF_corr(fign, OPpick, BGpick):
+            # LGN_SF vs nLGN, LGN_SF vs F1F0, LGN_SF vs gFF_F1F0, FR vs LGN_SF
+            fig = plt.figure(fign, figsize = (20, 8), dpi = 600)
+            grid = gs.GridSpec(2, 4, figure = fig, hspace = 0.3, wspace = 0.3)
+
+            ax = fig.add_subplot(grid[0,0])
+            image = HeatMap(nLGN_V1[OPpick], LGN_SF[OPpick], heatBins, heatBins, ax, 'Reds', log_scale = pLog, intPick = False, tickPick1 = 5)
+            ax.set_ylabel('OP: LGN_SF (cycle/deg)')
+            ax.set_xlabel('nLGN')
+            ax = fig.add_subplot(grid[1,0])
+            image = HeatMap(nLGN_V1[BGpick], LGN_SF[BGpick], heatBins, heatBins, ax, 'Greys', log_scale = pLog, intPick = False, tickPick1 = 5)
+            ax.set_ylabel('BG: LGN_SF (cycle/deg)')
+            ax.set_xlabel('nLGN')
+
+            ax = fig.add_subplot(grid[0,1])
+            image = HeatMap(F1F0[OPpick], LGN_SF[OPpick], F1F0range, heatBins, ax, 'Reds', log_scale = pLog, intPick = False, tickPick1 = 5)
+            ax.set_xlabel('F1F0')
+            ax = fig.add_subplot(grid[1,1])
+            image = HeatMap(F1F0[BGpick], LGN_SF[BGpick], F1F0range, heatBins, ax, 'Greys', log_scale = pLog, intPick = False, tickPick1 = 5)
+            ax.set_xlabel('F1F0')
+
+            ax = fig.add_subplot(grid[0,2])
+            image = HeatMap(gFF_F1F0[OPpick], LGN_SF[OPpick], F1F0range, heatBins, ax, 'Reds', log_scale = pLog, intPick = False, tickPick1 = 5)
+            ax.set_xlabel('gFF-F1F0')
+            ax = fig.add_subplot(grid[1,2])
+            image = HeatMap(gFF_F1F0[BGpick], LGN_SF[BGpick], F1F0range, heatBins, ax, 'Greys', log_scale = pLog, intPick = False, tickPick1 = 5)
+            ax.set_xlabel('gFF-F1F0')
+
+            ax = fig.add_subplot(grid[0,3])
+            image = HeatMap(LGN_SF[OPpick], fr[OPpick], heatBins, heatBins, ax, 'Reds', log_scale = pLog, intPick = False, tickPick1 = 5)
+            ax.set_ylabel('OP: fr (Hz)')
+            ax.set_xlabel('LGN_SF (cycles/deg)')
+            ax = fig.add_subplot(grid[1,3])
+            image = HeatMap(LGN_SF[BGpick], fr[BGpick], heatBins, heatBins, ax, 'Greys', log_scale = pLog, intPick = False, tickPick1 = 5)
+            ax.set_ylabel('BG: fr (Hz)')
+            ax.set_xlabel('LGN_SF (cycles/deg)')
+
+            fig.savefig(fig_fdr + output_suffix + fign + '.png')
+            plt.close(fig)
+
+        fign = 'exc_LGN-SF-corr'
+        OPpick = epick[dOP[epick] <= dOri*nOri/2]
+        BGpick = epick[dOP[epick] > dOri*nOri/2]
+        plot_LGN_SF_corr(fign, OPpick, BGpick)
+        fign = 'inh_LGN-SF-corr'
+        OPpick = ipick[dOP[ipick] <= dOri*nOri/2]
+        BGpick = ipick[dOP[ipick] > dOri*nOri/2]
+        plot_LGN_SF_corr(fign, OPpick, BGpick)
         
     if plotLR_rp and OPstatus != 2:
         fig = plt.figure(f'LRrpStat', dpi = 600)
