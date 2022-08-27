@@ -1275,6 +1275,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
             pInfo = true;
         }
         
+        // assign to on-off subreigons 
 		for (PosInt i = 0; i < n; i++) {
             if (biPick[i] > 0) {
                 ion.push_back(i);
@@ -1354,7 +1355,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
             assign_component(xon, yon, ion, envelope_value, onComponent, onPick, phaseOn, eccOn, eccRange, phaseOnRange, j_on, min_tan, max_env, disLGN, disLGN*dmax, false);
 
             phase = -phaseOn;
-            max_env = 0.25;
+            max_env = 0.5;
             j_off = -1;
             std::vector<Float> modulated(ioff.size(), 0);
             for (PosInt i = 0; i < ioff.size(); i++) {
@@ -1382,7 +1383,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
             assign_component(xoff, yoff, ioff, envelope_value, offComponent, offPick, phaseOff, eccOff, eccRange, phaseOffRange, j_off, min_tan, max_env, disLGN, disLGN*dmax, false);
 
             phase = -phaseOff;
-            max_env = 0.25;
+            max_env = 0.5;
             j_on = -1;
             std::vector<Float> modulated(ion.size(), 0);
             for (PosInt i = 0; i < ion.size(); i++) {
@@ -1411,6 +1412,14 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         std::vector<PosInt> added;
         std::vector<PosInt> newList;
         PosInt m;
+        bool balance = true; // TODO: as input variable
+        if (!singleComp && balance && onComponent.size() != offComponent.size()) {
+            if (onComponent.size() > offComponent.size()) {
+                onComponent.resize(offComponent.size());
+            } else {
+                offComponent.resize(onComponent.size()); 
+            }
+        }
         if (!singleComp || iOnOff > 0) {
             m = onComponent.size();
             for (PosInt i = 0; i<m; i++) {

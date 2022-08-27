@@ -12,13 +12,13 @@ data_fdr=$fdr0/data # outputFolder in cfg
 fitTC=False
 nOri=6 # total # orientaton if applicable
 TF=8 # input frequency if applicable
-SF=40
-trial_suffix=4th
-#singleOri=False
-singleOri=True
-one_ori=1
+SF=20
+trial_suffix=minimal_test
+singleOri=False
+#singleOri=True
+one_ori=6
 
-res_suffix=square-single_layer
+res_suffix=minimal-patch
 patch=patch_fast
 
 generate_V1_connection=False
@@ -26,8 +26,8 @@ generate_LGN_V1_connection=False
 
 patch_cfg=ori.cfg
 
-LGN_V1_suffix=opt_new
-V1_connectome_suffix=long_range
+LGN_V1_suffix=test_lgn
+V1_connectome_suffix=test_v1
 
 retino_cfg=LGN_V1.cfg
 genCon_cfg=connectome.cfg

@@ -81,26 +81,24 @@ vector<Float> generate_baRatio(Size n, RandomEngine &rGen) {
 }
 
 // map ecc to radius
-Float mapping_rule(Float ecc, Float normalRand, RandomEngine &rGen, Float LGN_V1_RFratio) {
+//Float mapping_rule(Float ecc, Float normalRand, RandomEngine &rGen, Float LGN_V1_RFratio) {
+Float mapping_rule(Float ecc, Float LGN_V1_RFratio) {
 	// *** set LGN contribution of the total RF size
-	const Float ratio = sqrt(LGN_V1_RFratio / M_PI);
-	// Dow et al., 1981 Fig. 7 TODO: consider generalized extreme value distribution
-	//const Float a = 13.32f; 
-	const Float a = 6.66f;
+	// Dow et al., 1981 Fig. 7
+	const Float a = 13.32; // average over all laminar depths
 	const Float b = 0.037f;
 	const Float mean = a + b * ecc;
-	const Float std = 0.01;//3.0; // it is NOT the scatter in the paper, which means the VF center's scatter around an electrode
-	const Float lower_bound = 3.0; // TODO: look for the min(LGN RF size, V1 neuron RF size)
-	Float R = std  * normalRand + mean;
-	
-	if (R < lower_bound) {
-		// rarely rethrow
-		normal_distribution<Float> dist(mean, std);
-		do {
-			R = dist(rGen);
-		} while (R < lower_bound);
-	}
+	//const Float std = 0.01;//3.0; // it is NOT the scatter in the paper, which means the VF center's scatter around an electrode
+	//const Float lower_bound = 3.0; // TODO: look for the min(LGN RF size, V1 neuron RF size)
+	//Float R = std  * normalRand + mean;
+	//
+	//if (R < lower_bound) {
+	//	// rarely rethrow
+	//	normal_distribution<Float> dist(mean, std);
+	//	do {
+	//		R = dist(rGen);
+	//	} while (R < lower_bound);
+	//}
 	//return ratio*R;
-	return ratio*mean;
+	return LGN_V1_RFratio*mean;
 }
-

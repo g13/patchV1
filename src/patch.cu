@@ -70,6 +70,7 @@ int main(int argc, char** argv) {
 	bool CmoreDep;
 	bool noiseOnTonic;
     bool store_dsLGN;
+    bool minimal;
 	int rebound;
 	int learning;
 	int iModel;
@@ -78,12 +79,14 @@ int main(int argc, char** argv) {
 	int switchType;
 	int applyHomeo;
 	int learnData_FF;
+    Size sampleSize;
 	Size snapshotInterval;
 	Size sampleInterval_LGN_V1;
 	Size nChunk;
 	Size nOther;
 	Size nOri;
 	Size matConcurrency;
+    Float sample_t0;
 	Float phyWidth_scale;
 	Float visWidth_scale;
 	Size nLearnTypeFF_E, nLearnTypeFF_I, nLearnTypeE;
@@ -301,6 +304,9 @@ int main(int argc, char** argv) {
 		("getLGN_sp", po::value<bool>(&getLGN_sp)->default_value(false), "if write LGN spikes to file")
 		("delPrevSnapshot", po::value<bool>(&delPrevSnapshot)->default_value(true), "delete old snapshot")
 		("asInit", po::value<bool>(&asInit)->default_value(true), "use snapshot for initialization not to resume previous simulation")
+		("minimal", po::value<bool>(&minimal)->default_value(false), "only output sampled neurons")
+		("sampleSize", po::value<Size>(&sampleSize)->default_value(1000), "number of sample without replacement")
+		("sample_t0", po::value<Float>(&sample_t0)->default_value(0), "time to start sampling")
 		("use_v0", po::value<bool>(&use_v0)->default_value(false), "use v0 to initialize membrane potential, otherwise is set according to depC")
 		("store_dsLGN", po::value<bool>(&store_dsLGN)->default_value(false), "store LGN_V1 LTP and LTD to dsLGN_filename")
 		("useNewLGN", po::value<bool>(&useNewLGN)->default_value(true), "regenerate the a new ensemble of LGN parameters according to their distribution");
@@ -322,6 +328,7 @@ int main(int argc, char** argv) {
 	string LGN_filename, LGN_vpos_filename, LGN_V1_s_filename, LGN_V1_ID_filename; // inputs
 	string LGN_fr_filename, outputFrame_filename; // outputs
 	string LGN_convol_filename, LGN_gallery_filename, outputB4V1_filename, rawData_filename, learnData_FF_filename, learnData_V1_filename, sLGN_filename, dsLGN_filename, LGN_sp_filename;
+    string sample_filename;
 	top_opt.add_options()
 		//inputs:
 		("inputFolder", po::value<string>(&inputFolder)->default_value(""), "where the input data files at (unless starts with !), must end with /")
@@ -361,8 +368,9 @@ int main(int argc, char** argv) {
 		("sampleInterval_LGN_V1", po::value<Size>(&sampleInterval_LGN_V1)->default_value(100), "sample interval of LGN_V1 connection strength")
 		("fLGN_sp", po::value<string>(&LGN_sp_filename)->default_value("LGN_sp"), "write LGN spikes to file")
 		("fOutputFrame", po::value<string>(&outputFrame_filename)->default_value("outputFrame"), "file that stores firing rate from LGN and/or V1 (in physical location or visual field) spatially to be ready for frame production") // TEST 
-		("fOutputB4V1", po::value<string>(&outputB4V1_filename)->default_value("outputB4V1"), "file that stores luminance values, contrasts, LGN convolution and their firing rates") // TEST 
-		("fLGN_gallery", po::value<string>(&LGN_gallery_filename)->default_value("LGN_gallery"), "file that stores spatial and temporal convolution parameters"); // TEST 
+		("fOutputB4V1", po::value<string>(&outputB4V1_filename)->default_value("outputB4V1"), "file that stores luminance values, contrasts, LGN convolution and their firing rates")
+		("fLGN_gallery", po::value<string>(&LGN_gallery_filename)->default_value("LGN_gallery"), "file that stores spatial and temporal convolution parameters")
+		("fSample", po::value<string>(&sample_filename)->default_value("sample_spikeCount"), "minimal output file that stores spike counts for a sample of neuron"); 
 
 	po::options_description cmdline_options;
 	cmdline_options.add(generic_opt).add(top_opt);
@@ -494,60 +502,68 @@ int main(int argc, char** argv) {
 		}
     }
 
-	if (patchV1_cfg_filename.at(0) != '!'){
-		patchV1_cfg_filename = outputFolder + patchV1_cfg_filename;
-	} else {
-        patchV1_cfg_filename.erase(0,1);
-    }
-	if (LGN_filename.at(0) != '!'){
-		LGN_filename = outputFolder + LGN_filename;
-	} else {
-        LGN_filename.erase(0,1);
-    }
-	if (LGN_fr_filename.at(0) != '!'){
-		LGN_fr_filename = outputFolder + LGN_fr_filename;
-	} else {
-        LGN_fr_filename.erase(0,1);
-    }
-	if (rawData_filename.at(0) != '!'){
-		rawData_filename = outputFolder + rawData_filename;
-	} else {
-        rawData_filename.erase(0,1);
-    }
-	if (learnData_FF_filename.at(0) != '!'){
-		learnData_FF_filename = outputFolder + learnData_FF_filename;
-	} else {
-        learnData_FF_filename.erase(0,1);
-    }
-	if (sLGN_filename.at(0) != '!'){
-		sLGN_filename = outputFolder + sLGN_filename;
-	} else {
-        sLGN_filename.erase(0,1);
-    }
-	if (dsLGN_filename.at(0) != '!'){
-		dsLGN_filename = outputFolder + dsLGN_filename;
-	} else {
-        dsLGN_filename.erase(0,1);
-    }
-	if (LGN_sp_filename.at(0) != '!'){
-		LGN_sp_filename = outputFolder + LGN_sp_filename;
-	} else {
-        LGN_sp_filename.erase(0,1);
-    }
-	if (outputFrame_filename.at(0) != '!'){
-		outputFrame_filename = outputFolder + outputFrame_filename;
-	} else {
-        outputFrame_filename.erase(0,1);
-    }
-	if (outputB4V1_filename.at(0) != '!'){
-		outputB4V1_filename = outputFolder + outputB4V1_filename;
-	} else {
-        outputB4V1_filename.erase(0,1);
-    }
-	if (LGN_gallery_filename.at(0) != '!'){
-		LGN_gallery_filename = outputFolder + LGN_gallery_filename;
-	} else {
-        LGN_gallery_filename.erase(0,1);
+    if (!minimal) {
+	    if (patchV1_cfg_filename.at(0) != '!'){
+	    	patchV1_cfg_filename = outputFolder + patchV1_cfg_filename;
+	    } else {
+            patchV1_cfg_filename.erase(0,1);
+        }
+	    if (LGN_filename.at(0) != '!'){
+	    	LGN_filename = outputFolder + LGN_filename;
+	    } else {
+            LGN_filename.erase(0,1);
+        }
+	    if (LGN_fr_filename.at(0) != '!'){
+	    	LGN_fr_filename = outputFolder + LGN_fr_filename;
+	    } else {
+            LGN_fr_filename.erase(0,1);
+        }
+	    if (rawData_filename.at(0) != '!'){
+	    	rawData_filename = outputFolder + rawData_filename;
+	    } else {
+            rawData_filename.erase(0,1);
+        }
+	    if (learnData_FF_filename.at(0) != '!'){
+	    	learnData_FF_filename = outputFolder + learnData_FF_filename;
+	    } else {
+            learnData_FF_filename.erase(0,1);
+        }
+	    if (sLGN_filename.at(0) != '!'){
+	    	sLGN_filename = outputFolder + sLGN_filename;
+	    } else {
+            sLGN_filename.erase(0,1);
+        }
+	    if (dsLGN_filename.at(0) != '!'){
+	    	dsLGN_filename = outputFolder + dsLGN_filename;
+	    } else {
+            dsLGN_filename.erase(0,1);
+        }
+	    if (LGN_sp_filename.at(0) != '!'){
+	    	LGN_sp_filename = outputFolder + LGN_sp_filename;
+	    } else {
+            LGN_sp_filename.erase(0,1);
+        }
+	    if (outputFrame_filename.at(0) != '!'){
+	    	outputFrame_filename = outputFolder + outputFrame_filename;
+	    } else {
+            outputFrame_filename.erase(0,1);
+        }
+	    if (outputB4V1_filename.at(0) != '!'){
+	    	outputB4V1_filename = outputFolder + outputB4V1_filename;
+	    } else {
+            outputB4V1_filename.erase(0,1);
+        }
+	    if (LGN_gallery_filename.at(0) != '!'){
+	    	LGN_gallery_filename = outputFolder + LGN_gallery_filename;
+	    } else {
+            LGN_gallery_filename.erase(0,1);
+        }
+    } else {
+	    if (sample_filename.at(0) != '!'){
+	    	sample_filename = outputFolder + sample_filename;
+	    } else {
+            sample_filename.erase(0,1);
+        }
     }
     
 	if (ignoreRetinogeniculateDelay) {
@@ -935,7 +951,8 @@ int main(int argc, char** argv) {
             vT.push_back(vThres[i]);
         }
     }
-
+    
+    Float max_vThres = *max_element(vThres.begin(), vThres.end());
     if (C.size() == 1) {
         for (PosInt i=1; i<nType; i++) {
             C.push_back(C[0]);
@@ -1360,6 +1377,7 @@ int main(int argc, char** argv) {
 	ofstream fLGN_sp;
 	ofstream fLGN_gallery, fOutputB4V1;
 	ofstream fRawData, fOutputFrame, fLearnData_FF, f_sLGN, f_dsLGN;
+    ofstream fSample;
 
 	float init_L, init_M, init_S;
 	Size width;
@@ -1960,8 +1978,8 @@ int main(int argc, char** argv) {
 				Float acuityC[2] = {};
 				Float acuityS[2] = {};
 				getAcuityAtEcc(LGN_ecc[i], acuityC);
-				acuityS[0] = acuityC[0] * 6;
-				acuityS[1] = acuityC[1] * 6;
+				acuityS[0] = acuityC[0] * 2;
+				acuityS[1] = acuityC[1] * 2;
 				if (acuityC[0] > max_acuity) max_acuity = acuityC[0];
 				if (acuityC[0] < min_acuity) min_acuity = acuityC[0];
 				mean_acuity += acuityC[0];
@@ -2017,8 +2035,8 @@ int main(int argc, char** argv) {
 				Float acuityC[2] = {};
 				Float acuityS[2] = {};
 				getAcuityAtEcc(LGN_ecc[i], acuityC);
-				acuityS[0] = acuityC[0] * 6;
-				acuityS[1] = acuityC[1] * 6;
+				acuityS[0] = acuityC[0] * 2;
+				acuityS[1] = acuityC[1] * 2;
 
                 switch (LGNtype[i]) {
                     case InputType::MonLoff: case InputType::MoffLon: case InputType::LonMoff: case InputType::LoffMon:
@@ -2448,37 +2466,39 @@ int main(int argc, char** argv) {
             cout << "the first " << minDelay << "ms delay from retina to LGN is ignored\n";
         }
 		
-		fLGN.open(LGN_filename + output_suffix, fstream::out | fstream::binary);
-		// append to LGN_polar and LGN_ecc positions
-		// surround origin is changed
-		if (!fLGN) {
-			cout << "Cannot open or find " << LGN_filename <<" for LGN receptive field properties\n";
-			return EXIT_FAILURE;
-		}
-		fLGN.write((char*)&nLGN, sizeof(Size));
-		fLGN.write((char*)&LGNtype[0], nLGN*sizeof(InputType_t));
-		fLGN.write((char*)&LGN_polar[0], 2*nLGN*sizeof(Float)); // in rad now
-		fLGN.write((char*)&LGN_ecc[0], 2*nLGN*sizeof(Float));
-		// new props
-		fLGN.write((char*)&LGN_rw[0], 2*nLGN*sizeof(Float));
-		fLGN.write((char*)&LGN_rh[0], 2*nLGN*sizeof(Float));
-		fLGN.write((char*)&LGN_orient[0], 2*nLGN*sizeof(Float));
+        if (!minimal) {
+		    fLGN.open(LGN_filename + output_suffix, fstream::out | fstream::binary);
+		    // append to LGN_polar and LGN_ecc positions
+		    // surround origin is changed
+		    if (!fLGN) {
+		    	cout << "Cannot open or find " << LGN_filename <<" for LGN receptive field properties\n";
+		    	return EXIT_FAILURE;
+		    }
+		    fLGN.write((char*)&nLGN, sizeof(Size));
+		    fLGN.write((char*)&LGNtype[0], nLGN*sizeof(InputType_t));
+		    fLGN.write((char*)&LGN_polar[0], 2*nLGN*sizeof(Float)); // in rad now
+		    fLGN.write((char*)&LGN_ecc[0], 2*nLGN*sizeof(Float));
+		    // new props
+		    fLGN.write((char*)&LGN_rw[0], 2*nLGN*sizeof(Float));
+		    fLGN.write((char*)&LGN_rh[0], 2*nLGN*sizeof(Float));
+		    fLGN.write((char*)&LGN_orient[0], 2*nLGN*sizeof(Float));
 
-		fLGN.write((char*)&LGN_k[0], 2*nLGN*sizeof(Float));
-		fLGN.write((char*)&ratio[0], 2*nLGN*sizeof(Float));
-		fLGN.write((char*)&tauR[0], 2*nLGN*sizeof(Float));
-		fLGN.write((char*)&tauD[0], 2*nLGN*sizeof(Float));
-		fLGN.write((char*)&nR[0], 2*nLGN*sizeof(Float));
-		fLGN.write((char*)&nD[0], 2*nLGN*sizeof(Float));
-		fLGN.write((char*)&delay[0], 2*nLGN*sizeof(Float));
+		    fLGN.write((char*)&LGN_k[0], 2*nLGN*sizeof(Float));
+		    fLGN.write((char*)&ratio[0], 2*nLGN*sizeof(Float));
+		    fLGN.write((char*)&tauR[0], 2*nLGN*sizeof(Float));
+		    fLGN.write((char*)&tauD[0], 2*nLGN*sizeof(Float));
+		    fLGN.write((char*)&nR[0], 2*nLGN*sizeof(Float));
+		    fLGN.write((char*)&nD[0], 2*nLGN*sizeof(Float));
+		    fLGN.write((char*)&delay[0], 2*nLGN*sizeof(Float));
 
-		fLGN.write((char*)&spont[0], nLGN*sizeof(Float));
-		fLGN.write((char*)&c50[0], nLGN*sizeof(Float));
-		fLGN.write((char*)&sharpness[0], nLGN*sizeof(Float));
+		    fLGN.write((char*)&spont[0], nLGN*sizeof(Float));
+		    fLGN.write((char*)&c50[0], nLGN*sizeof(Float));
+		    fLGN.write((char*)&sharpness[0], nLGN*sizeof(Float));
 
-		fLGN.write((char*)&coneType[0], 2*nLGN*sizeof(PosInt));
-		fLGN.write((char*)&covariant[0], nLGN*sizeof(Float));
-		fLGN.close();
+		    fLGN.write((char*)&coneType[0], 2*nLGN*sizeof(PosInt));
+		    fLGN.write((char*)&covariant[0], nLGN*sizeof(Float));
+		    fLGN.close();
+        }
 	} else { // Use old setup
 		fLGN.open(LGN_filename, fstream::in | fstream::binary);
 		if (!fLGN) {
@@ -2804,6 +2824,8 @@ int main(int argc, char** argv) {
             assert(vxMax <= V1_vx0+V1_vxspan);
             assert(vyMin >= V1_vy0);
             assert(vyMax <= V1_vy0+V1_vyspan);
+            printf("V1_vx range (%.5lf, %.5lf), V1_vxspan(%.5lf, %.5lf)\n", vxMin, vxMax, V1_vx0, V1_vx0 + V1_vxspan);
+            printf("V1_vy range (%.5lf, %.5lf), V1_vyspan(%.5lf, %.5lf)\n", vyMin, vyMax, V1_vy0, V1_vy0 + V1_vyspan);
 		}
 	}
 	fV1_allpos.close();
@@ -3172,7 +3194,6 @@ int main(int argc, char** argv) {
                 assert(id_max < nV1);
             }
         */
-
 		vector<vector<PosInt>> V1_visFramePosId_vC = getUnderlyingID<double>(&(V1_vx[0]), &(V1_vy[0]), pick, 0, nV1, visWidth, visHeight, V1_vx0, V1_vxspan, V1_vy0, V1_vyspan, &maxV1perPixel_C, nV1_C);
 		delete []pick;
 
@@ -4615,7 +4636,9 @@ int main(int argc, char** argv) {
 
 	fstream fSnapshot;
 	PosInt it0 = 0;
-	{ // output file tests
+    vector<Size> sample_spikeCount;
+    vector<PosInt> sampleID;
+    if (!minimal) { // output file tests
 		if (!restore.empty() && !asInit) {
 			fSnapshot.open(restore, fstream::in | fstream::binary);
 			if (!fSnapshot) {
@@ -4874,7 +4897,35 @@ int main(int argc, char** argv) {
 				}
 			}
 		}
-	}
+	} else {
+    	fSample.open(sample_filename + output_suffix, fstream::out | fstream::binary);
+		if (!fSample) {
+			cout << "Cannot open or find " << sample_filename + output_suffix <<" for minimal output.\n";
+			return EXIT_FAILURE;
+		} else {
+            vector<PosInt> exc_ID;
+            for (PosInt i=0; i<nblock; i++) {
+                for (PosInt j=0; j<nE; j++) {
+                    exc_ID.push_back(i*blockSize + j);
+                }
+            }
+            if (sampleSize > nblock * nE) {
+                cout << "sampleSize " << sampleSize << " exceeds available exc neurons";
+                sampleSize = nblock * nE;
+                cout << " changed to " << nblock * nE << " now sampling all exc neurons.\n";
+                sampleID.assign(exc_ID.begin(), exc_ID.end());
+            } else {
+                default_random_engine rGen_sample(seed);
+                sample(exc_ID.begin(), exc_ID.end(), std::back_inserter(sampleID), sampleSize, rGen_sample);
+            }
+			fSample.write((char*)&sampleSize, sizeof(Size));
+			fSample.write((char*)&sample_t0, sizeof(Float));
+            Float t1 = nt*dt;
+			fSample.write((char*)&t1, sizeof(Float));
+			fSample.write((char*)&(sampleID[0]), sampleSize * sizeof(PosInt));
+            sample_spikeCount.assign(sampleSize, 0);
+        }
+    }
 	cout << "output file check, done\n";
 
 	Size iKernelSampleT0;
@@ -5250,8 +5301,10 @@ int main(int argc, char** argv) {
 		//Float meanMaxConvol = accumulate(r_maxConvol, r_maxConvol + nLGN, 0.0)/nLGN;
 		//Float minMaxConvol = *min_element(r_maxConvol, r_maxConvol + nLGN);
 		//cout << "maxConvol = [" << minMaxConvol << ", " << meanMaxConvol << ", " << maxMaxConvol << "]\n";
-		fLGN_gallery.write((char*)galleryOutput, gallerySize);
-		fLGN_gallery.close();
+        if (!minimal) {
+		    fLGN_gallery.write((char*)galleryOutput, gallerySize);
+		    fLGN_gallery.close();
+        }
 		delete []galleryOutput;
 	}
     if (virtual_LGN) {
@@ -6001,13 +6054,24 @@ int main(int argc, char** argv) {
 		}
 
 		if (it > 0) { // seeking for overlap of data output with LGN input
+            if (minimal && it*dt >= sample_t0) {
+				for (PosInt j = 0.; j < sampleID.size(); j++) {
+                    Float sInfo = spikeTrain[currentTimeSlot*nV1 + sampleID[j]];
+				    if (sInfo >= 1) {
+                        sample_spikeCount[j] += flooring(sInfo);
+                    }
+                }
+            }
             if (rawData) {
-			    fRawData.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
+                if (!minimal) {
+			        fRawData.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
+                } 
 				// debug
 					for (PosInt i=0; i<trainDepth; i++) {
 						for (PosInt j=0; j<nV1; j++) {
-							if (spikeTrain[i*nV1 + j] < 1 && spikeTrain[i*nV1 + j] > *max_element(vThres.begin(), vThres.end())) {
-								assert(spikeTrain[i*nV1 + j] >= 1 || spikeTrain[i*nV1 + j] < *max_element(vThres.begin(), vThres.end()));
+                            Float sInfo = spikeTrain[i*nV1 + j];
+							if (sInfo < 1 && sInfo > max_vThres) {
+								assert(sInfo >= 1 || sInfo < max_vThres);
 							}
 						}
 						//if (i==0) {
@@ -6020,20 +6084,26 @@ int main(int argc, char** argv) {
 				if (it%snapshotInterval != 0) { // else already synchronized
 			    	cudaEventSynchronize(v_gFF_Ready);
 				}
-				if (iModel == 0) {
-			    	fRawData.write((char*) depC, nV1*sizeof(Float)*(2+ngTypeFF*(1+hWrite)));
-				}
-				if (iModel == 1) {
-			    	fRawData.write((char*) depC, nV1*sizeof(Float)*(3+ngTypeFF*(1+hWrite)));
-				}
+                if (!minimal) {
+				    if (iModel == 0) {
+			        	fRawData.write((char*) depC, nV1*sizeof(Float)*(2+ngTypeFF*(1+hWrite)));
+				    }
+				    if (iModel == 1) {
+			        	fRawData.write((char*) depC, nV1*sizeof(Float)*(3+ngTypeFF*(1+hWrite)));
+				    }
+                }
             }
             if (learnData_FF > 0) {
                 if (!rawData && learnData_FF > 1) {
-			        fLearnData_FF.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
+                    if (!minimal) {
+			            fLearnData_FF.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
+                    }
 					if (it%snapshotInterval != 0) { // else already synchronized
 			        	cudaEventSynchronize(v_gFF_Ready);
 					}
-			        fLearnData_FF.write((char*) gFF, nV1*sizeof(Float));
+                    if (!minimal) {
+			            fLearnData_FF.write((char*) gFF, nV1*sizeof(Float));
+                    }
                 }
 				if (it%snapshotInterval != 0) { // else already synchronized
 		        	cudaEventSynchronize(learnFF_event);
@@ -6053,11 +6123,13 @@ int main(int argc, char** argv) {
                         assert(sInfo == 0 || (sInfo >= 1 && sInfo < 2));
                     }
                 }*/
-                if (learnData_FF > 1) {
-			        fLearnData_FF.write((char*) LGN_V1_s, sLGN_size);
-			        fLearnData_FF.write((char*) lVarFFpost, learnVarFFsize*sizeof(Float));
+                if (!minimal) {
+                    if (learnData_FF > 1) {
+			            fLearnData_FF.write((char*) LGN_V1_s, sLGN_size);
+			            fLearnData_FF.write((char*) lVarFFpost, learnVarFFsize*sizeof(Float));
+                    }
                 }
-                if (it%sampleInterval_LGN_V1 == 0) {
+                if (it%sampleInterval_LGN_V1 == 0 && !minimal) {
                     f_sLGN.write((char*) LGN_V1_s, sLGN_size);
                     if (store_dsLGN && learnData_FF < 2) {
                         if (targetFR[0] > 0) {
@@ -6106,11 +6178,13 @@ int main(int argc, char** argv) {
 	        	    cudaEventSynchronize(gReady[0]);
             	}
 			}
-            if (rawData) {
-		    	// write g and gap to fRawData
-		    	reshape_chunk_and_write(gE[0], fRawData, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, ngTypeE, ngTypeI, nV1, neuronPerBlock, mI, hWrite);
-				//cout << it << " reshape_chunk_and_write gE\n";
-		    }
+            if (!minimal) {
+                if (rawData) {
+		        	// write g and gap to fRawData
+		        	reshape_chunk_and_write(gE[0], fRawData, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, ngTypeE, ngTypeI, nV1, neuronPerBlock, mI, hWrite);
+			    	//cout << it << " reshape_chunk_and_write gE\n";
+		        }
+            }
 			farSpiked = false;
         }
 		if (saveLGN_fr || learnData_FF) {
@@ -6192,10 +6266,12 @@ int main(int argc, char** argv) {
         varSlot = (varSlot+1)%2;
         if (saveLGN_fr) {
             cudaEventSynchronize(LGN_ready);
-            if (saveOutputB4V1) {
-			    fOutputB4V1.write((char*)outputB4V1, outputB4V1Size); // d_LGN_fr, currentConvol, luminance, contrast
+            if (!minimal) {
+                if (saveOutputB4V1) {
+			        fOutputB4V1.write((char*)outputB4V1, outputB4V1Size); // d_LGN_fr, currentConvol, luminance, contrast
+                }
+			    fLGN_fr.write((char*)outputB4V1, nLGN*sizeof(Float)); 
             }
-			fLGN_fr.write((char*)outputB4V1, nLGN*sizeof(Float)); 
         }
         if (learnData_FF || getLGN_sp) { // LGN_sInfo
 			Float* targetAddress;
@@ -6259,14 +6335,18 @@ int main(int argc, char** argv) {
             #endif
         }
 
-        if (learnData_FF > 1){
-			if (getLGN_sp) memcpy((void*)(outputB4V1), (void*) LGN_sInfo, nLGN*sizeof(Float));
+        if (!minimal) {
+            if (learnData_FF > 1){
+		    	if (getLGN_sp) memcpy((void*)(outputB4V1), (void*) LGN_sInfo, nLGN*sizeof(Float));
+                cudaEventSynchronize(LGN_ready);
+		    	fLearnData_FF.write((char*) outputB4V1, preFFsize); // d_LGN_sInfo and lVarFFpre
+            }
+            if (getLGN_sp) {
+                if (learnData_FF <=1) cudaEventSynchronize(LGN_ready); // else synchronized already
+                fLGN_sp.write((char*) LGN_sInfo, nLGN*sizeof(Float));
+            }
+        } else {
             cudaEventSynchronize(LGN_ready);
-			fLearnData_FF.write((char*) outputB4V1, preFFsize); // d_LGN_sInfo and lVarFFpre
-        }
-        if (getLGN_sp) {
-            if (learnData_FF <=1) cudaEventSynchronize(LGN_ready); // else synchronized already
-            fLGN_sp.write((char*) LGN_sInfo, nLGN*sizeof(Float));
         }
 
         if (matConcurrency < nChunk) { // initially, staging all the chunks of the first matConcurrency
@@ -6622,7 +6702,7 @@ int main(int argc, char** argv) {
                 #endif
 		    }
 
-		    if ((it+1)%ot == 0) { // finished sum and output
+		    if ((it+1)%ot == 0 && !minimal) { // finished sum and output
                 #ifdef CHECK
 		    	    checkCudaErrors(cudaMemcpy(outputFrame, d_outputFrame, framesSize, cudaMemcpyDeviceToHost));
                 #else
@@ -6637,7 +6717,7 @@ int main(int argc, char** argv) {
         if (!print_log) {
 			printf("\r%.1f%%", 100*static_cast<float>(it+1)/nt);
         }
-		if ((it+1)%snapshotInterval == 0 || it == nt-1) {
+		if (((it+1)%snapshotInterval == 0 || it == nt-1) && !minimal) {
 			timeStamp = time(NULL);
 			snapShot_fn = "snapShot_"+ to_string(timeStamp) + output_suffix;
 			fSnapshot.open(snapShot_fn, fstream::out | fstream::binary);
@@ -6774,143 +6854,150 @@ int main(int argc, char** argv) {
 			}
 		}
 	}
-    if (rawData) {
-	    fRawData.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
-	    //cudaEventSynchronize(v_gFF_Ready); already by snapshot
-		if (iModel == 0) {
-	    	fRawData.write((char*) depC, nV1*sizeof(Float)*(2+ngTypeFF*(1+hWrite)));
-		}
-		if (iModel == 1) {
-	    	fRawData.write((char*) depC, nV1*sizeof(Float)*(3+ngTypeFF*(1+hWrite)));
-		}
-	    // write g to fRawData
-		/* already by snapshot
-        if (nFar) { 
-            for (PosInt i=0; i<nChunk; i++) {
-	            cudaEventSynchronize(gReady[i]);
-            }
-        } else {
-	        cudaEventSynchronize(gReady[0]);
-        }*/
-	    reshape_chunk_and_write(gE[0], fRawData, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, ngTypeE, ngTypeI, nV1, neuronPerBlock, mI, hWrite);
-    }
-    if (learnData_FF > 0) {
-        if (!rawData && learnData_FF > 1) {
-		    fLearnData_FF.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
-			//cudaEventSynchronize(v_gFF_Ready); already by snapshot
-		    fLearnData_FF.write((char*) gFF, nV1*sizeof(Float));
-        }
-		//cudaEventSynchronize(learnFF_event); already by snapshot
-		fLearnData_FF.write((char*) LGN_V1_s, sLGN_size);
-		fLearnData_FF.write((char*) lVarFFpost, learnVarFFsize*sizeof(Float));
-        if (nt%sampleInterval_LGN_V1 == 0) {
-            f_sLGN.write((char*) LGN_V1_s, sLGN_size);
-            if (store_dsLGN && learnData_FF < 2) {
-                if (targetFR[0] > 0) {
-                    f_dsLGN.write((char*) (lVarFFpost + learnVarFFsize0), nE*nblock*2*sizeof(Float));
+    if (!minimal) {
+        if (rawData) {
+	        fRawData.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
+	        //cudaEventSynchronize(v_gFF_Ready); already by snapshot
+	    	if (iModel == 0) {
+	        	fRawData.write((char*) depC, nV1*sizeof(Float)*(2+ngTypeFF*(1+hWrite)));
+	    	}
+	    	if (iModel == 1) {
+	        	fRawData.write((char*) depC, nV1*sizeof(Float)*(3+ngTypeFF*(1+hWrite)));
+	    	}
+	        // write g to fRawData
+	    	/* already by snapshot
+            if (nFar) { 
+                for (PosInt i=0; i<nChunk; i++) {
+	                cudaEventSynchronize(gReady[i]);
                 }
-                if (targetFR[1] > 0) {
-                    f_dsLGN.write((char*) (lVarFFpost + learnVarFFsize0 + nE*nblock*2), nI*nblock*sizeof(Float));
+            } else {
+	            cudaEventSynchronize(gReady[0]);
+            }*/
+	        reshape_chunk_and_write(gE[0], fRawData, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, ngTypeE, ngTypeI, nV1, neuronPerBlock, mI, hWrite);
+        }
+        if (learnData_FF > 0) {
+            if (!rawData && learnData_FF > 1) {
+	    	    fLearnData_FF.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
+	    		//cudaEventSynchronize(v_gFF_Ready); already by snapshot
+	    	    fLearnData_FF.write((char*) gFF, nV1*sizeof(Float));
+            }
+	    	//cudaEventSynchronize(learnFF_event); already by snapshot
+	    	fLearnData_FF.write((char*) LGN_V1_s, sLGN_size);
+	    	fLearnData_FF.write((char*) lVarFFpost, learnVarFFsize*sizeof(Float));
+            if (nt%sampleInterval_LGN_V1 == 0) {
+                f_sLGN.write((char*) LGN_V1_s, sLGN_size);
+                if (store_dsLGN && learnData_FF < 2) {
+                    if (targetFR[0] > 0) {
+                        f_dsLGN.write((char*) (lVarFFpost + learnVarFFsize0), nE*nblock*2*sizeof(Float));
+                    }
+                    if (targetFR[1] > 0) {
+                        f_dsLGN.write((char*) (lVarFFpost + learnVarFFsize0 + nE*nblock*2), nI*nblock*sizeof(Float));
+                    }
                 }
             }
         }
     }
 	cout << "simulation for " << output_suffix0 << " done.\n";
 
-	ofstream fPatchV1_cfg;
-	fPatchV1_cfg.open(patchV1_cfg_filename + output_suffix, fstream::out | fstream::binary);
-	if (!fPatchV1_cfg) {
-		cout << "Cannot open or find " << patchV1_cfg_filename + output_suffix <<"\n";
-		return EXIT_FAILURE;
-	} else {
+    if (!minimal) {
+	    ofstream fPatchV1_cfg;
+	    fPatchV1_cfg.open(patchV1_cfg_filename + output_suffix, fstream::out | fstream::binary);
+	    if (!fPatchV1_cfg) {
+	    	cout << "Cannot open or find " << patchV1_cfg_filename + output_suffix <<"\n";
+	    	return EXIT_FAILURE;
+	    } else {
+	    	unsigned int precision = sizeof(Float);
+	    	fPatchV1_cfg.write((char*)&precision, sizeof(unsigned int));
+	    	Float _vL = vL;	
+	    	Float _vE = vE;	
+	    	Float _vI = vI;	
+	    	fPatchV1_cfg.write((char*) &_vL, sizeof(Float));
+	    	fPatchV1_cfg.write((char*) &_vE, sizeof(Float));
+	    	fPatchV1_cfg.write((char*) &_vI, sizeof(Float));
+	    	fPatchV1_cfg.write((char*) &nType, sizeof(Size));
+	    	fPatchV1_cfg.write((char*) &nTypeE, sizeof(Size));
+	    	fPatchV1_cfg.write((char*) &nTypeI, sizeof(Size));
+	    	fPatchV1_cfg.write((char*) &(vR[0]), nType*sizeof(Float));
+	    	fPatchV1_cfg.write((char*) &(vThres[0]), nType*sizeof(Float));
+	    	fPatchV1_cfg.write((char*) &(gL[0]), nType*sizeof(Float));
+	    	fPatchV1_cfg.write((char*) &(vT[0]), nType*sizeof(Float));
+	    	fPatchV1_cfg.write((char*) &(nTypeHierarchy[0]), 2*sizeof(Size));
+	    	fPatchV1_cfg.write((char*) &(typeAccCount[0]), nType*sizeof(Size));
+	    	fPatchV1_cfg.write((char*) &(sRatioLGN[0]), nType*sizeof(Float));
+	    	fPatchV1_cfg.write((char*) &(sRatioV1[0]), nType*nType*sizeof(Float));
+	    	fPatchV1_cfg.write((char*) &frRatioLGN, sizeof(Float));
+	    	fPatchV1_cfg.write((char*) &convolRatio, sizeof(Float));
+	    	fPatchV1_cfg.write((char*) &frameRate, sizeof(PosInt));
+            Size fn_size=stimulus_filename.size();
+	    	cout<<"string length = "<< fn_size << ", " << stimulus_filename << ", " << stimulus_filename[9] << "\n";
+            fPatchV1_cfg.write((char*) &fn_size, sizeof(Size));
+            fPatchV1_cfg.write((char*) stimulus_filename.c_str(), fn_size);
+	    	fPatchV1_cfg.write((char*) &nLGN, sizeof(Size));	
+	    	fPatchV1_cfg.write((char*) &nV1, sizeof(Size));	
+	    	fPatchV1_cfg.write((char*) &nt, sizeof(Size));	
+	    	fPatchV1_cfg.write((char*) &dt, sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &normViewDistance, sizeof(Float));
+	    	fPatchV1_cfg.write((char*) &L_x0, sizeof(Float));
+	    	fPatchV1_cfg.write((char*) &L_y0, sizeof(Float));
+	    	fPatchV1_cfg.write((char*) &R_x0, sizeof(Float));
+	    	fPatchV1_cfg.write((char*) &R_y0, sizeof(Float));
+	    	fPatchV1_cfg.write((char*) &(tonicDep[0]), nType*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(noisyDep[0]), nType*sizeof(Float));	
+            int iVirtual_LGN = virtual_LGN;
+	    	fPatchV1_cfg.write((char*) &iVirtual_LGN, sizeof(int));	
 
-		unsigned int precision = sizeof(Float);
-		fPatchV1_cfg.write((char*)&precision, sizeof(unsigned int));
-		Float _vL = vL;	
-		Float _vE = vE;	
-		Float _vI = vI;	
-		fPatchV1_cfg.write((char*) &_vL, sizeof(Float));
-		fPatchV1_cfg.write((char*) &_vE, sizeof(Float));
-		fPatchV1_cfg.write((char*) &_vI, sizeof(Float));
-		fPatchV1_cfg.write((char*) &nType, sizeof(Size));
-		fPatchV1_cfg.write((char*) &nTypeE, sizeof(Size));
-		fPatchV1_cfg.write((char*) &nTypeI, sizeof(Size));
-		fPatchV1_cfg.write((char*) &(vR[0]), nType*sizeof(Float));
-		fPatchV1_cfg.write((char*) &(vThres[0]), nType*sizeof(Float));
-		fPatchV1_cfg.write((char*) &(gL[0]), nType*sizeof(Float));
-		fPatchV1_cfg.write((char*) &(vT[0]), nType*sizeof(Float));
-		fPatchV1_cfg.write((char*) &(nTypeHierarchy[0]), 2*sizeof(Size));
-		fPatchV1_cfg.write((char*) &(typeAccCount[0]), nType*sizeof(Size));
-		fPatchV1_cfg.write((char*) &(sRatioLGN[0]), nType*sizeof(Float));
-		fPatchV1_cfg.write((char*) &(sRatioV1[0]), nType*nType*sizeof(Float));
-		fPatchV1_cfg.write((char*) &frRatioLGN, sizeof(Float));
-		fPatchV1_cfg.write((char*) &convolRatio, sizeof(Float));
-		fPatchV1_cfg.write((char*) &frameRate, sizeof(PosInt));
-        Size fn_size=stimulus_filename.size();
-		cout<<"string length = "<< fn_size << ", " << stimulus_filename << ", " << stimulus_filename[9] << "\n";
-        fPatchV1_cfg.write((char*) &fn_size, sizeof(Size));
-        fPatchV1_cfg.write((char*) stimulus_filename.c_str(), fn_size);
-		fPatchV1_cfg.write((char*) &nLGN, sizeof(Size));	
-		fPatchV1_cfg.write((char*) &nV1, sizeof(Size));	
-		fPatchV1_cfg.write((char*) &nt, sizeof(Size));	
-		fPatchV1_cfg.write((char*) &dt, sizeof(Float));	
-		fPatchV1_cfg.write((char*) &normViewDistance, sizeof(Float));
-		fPatchV1_cfg.write((char*) &L_x0, sizeof(Float));
-		fPatchV1_cfg.write((char*) &L_y0, sizeof(Float));
-		fPatchV1_cfg.write((char*) &R_x0, sizeof(Float));
-		fPatchV1_cfg.write((char*) &R_y0, sizeof(Float));
-		fPatchV1_cfg.write((char*) &(tonicDep[0]), nType*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(noisyDep[0]), nType*sizeof(Float));	
-        int iVirtual_LGN = virtual_LGN;
-		fPatchV1_cfg.write((char*) &iVirtual_LGN, sizeof(int));	
-
-		fPatchV1_cfg.write((char*) &seed, sizeof(PosIntL));	
-		fPatchV1_cfg.write((char*) &iModel, sizeof(int));	
-		fPatchV1_cfg.write((char*) &learning, sizeof(int));	
-		fPatchV1_cfg.write((char*) &ngTypeFF, sizeof(Size));	
-		fPatchV1_cfg.write((char*) &ngTypeE, sizeof(Size));	
-		fPatchV1_cfg.write((char*) &ngTypeI, sizeof(Size));	
-		fPatchV1_cfg.write((char*) &(grFF[0]), ngTypeFF*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(gdFF[0]), ngTypeFF*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(grE[0]), ngTypeE*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(gdE[0]), ngTypeE*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(grI[0]), ngTypeI*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(gdI[0]), ngTypeI*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(pFF[0]), ngTypeFF*nType*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(pE[0]), ngTypeE*nType*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(pI[0]), ngTypeI*nType*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(C[0]), nType*sizeof(Float));
-		fPatchV1_cfg.write((char*) &(tRef[0]), nType*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(a[0]), nType*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(b[0]), nType*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(tau_w[0]), nType*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(deltaT[0]), nType*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(spE0[0]), nTypeHierarchy[0]*2*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(spI0[0]), nTypeHierarchy[1]*2*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(v0[0]), nType*2*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(w0[0]), nType*2*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(gFF0[0]), nType*2*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(gE0[0]), nType*2*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(gI0[0]), nType*2*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(synFail[0]), nType*nType*sizeof(Float));	
-		fPatchV1_cfg.write((char*) &(synFailFF[0]), nType*sizeof(Float));	
-	}
-
+	    	fPatchV1_cfg.write((char*) &seed, sizeof(PosIntL));	
+	    	fPatchV1_cfg.write((char*) &iModel, sizeof(int));	
+	    	fPatchV1_cfg.write((char*) &learning, sizeof(int));	
+	    	fPatchV1_cfg.write((char*) &ngTypeFF, sizeof(Size));	
+	    	fPatchV1_cfg.write((char*) &ngTypeE, sizeof(Size));	
+	    	fPatchV1_cfg.write((char*) &ngTypeI, sizeof(Size));	
+	    	fPatchV1_cfg.write((char*) &(grFF[0]), ngTypeFF*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(gdFF[0]), ngTypeFF*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(grE[0]), ngTypeE*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(gdE[0]), ngTypeE*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(grI[0]), ngTypeI*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(gdI[0]), ngTypeI*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(pFF[0]), ngTypeFF*nType*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(pE[0]), ngTypeE*nType*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(pI[0]), ngTypeI*nType*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(C[0]), nType*sizeof(Float));
+	    	fPatchV1_cfg.write((char*) &(tRef[0]), nType*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(a[0]), nType*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(b[0]), nType*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(tau_w[0]), nType*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(deltaT[0]), nType*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(spE0[0]), nTypeHierarchy[0]*2*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(spI0[0]), nTypeHierarchy[1]*2*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(v0[0]), nType*2*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(w0[0]), nType*2*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(gFF0[0]), nType*2*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(gE0[0]), nType*2*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(gI0[0]), nType*2*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(synFail[0]), nType*nType*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &(synFailFF[0]), nType*sizeof(Float));	
+	    }
+    } else {
+		fSample.write((char*)&(sample_spikeCount[0]), sampleSize*sizeof(Size));
+        fSample.close();
+    }
 	{ // clean-up
 		fStimulus.close();
-        fOutputFrame.close();
-        if (rawData) fRawData.close();
-		if (saveLGN_fr) fLGN_fr.close();
-		if (saveOutputB4V1) fOutputB4V1.close();
-        if (learnData_FF) {
-            fLearnData_FF.close();
-            f_sLGN.close();
-        }
-        if (store_dsLGN) {
-            f_dsLGN.close();
-        }
-        if (getLGN_sp) {
-            fLGN_sp.close();
+        if (!minimal) {
+            fOutputFrame.close();
+            if (rawData) fRawData.close();
+		    if (saveLGN_fr) fLGN_fr.close();
+		    if (saveOutputB4V1) fOutputB4V1.close();
+            if (learnData_FF) {
+                fLearnData_FF.close();
+                f_sLGN.close();
+            }
+            if (store_dsLGN) {
+                f_dsLGN.close();
+            }
+            if (getLGN_sp) {
+                fLGN_sp.close();
+            }
         }
 		delete []d_gE;
 		delete []d_gI;

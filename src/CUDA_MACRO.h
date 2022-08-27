@@ -6,7 +6,7 @@
 
 #define FULL_MASK 0xffffffff
 #define warpSize 32
-#define blockSize 1024
+#define blockSize 1024 // TODO: read as variable
 
 //#define TEST_WITH_MANUAL_FFINPUT
 #define CUDA_ERROR_CHECK

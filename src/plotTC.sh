@@ -32,7 +32,6 @@ if [ "${usePrefData}" = True ]; then
 		python ${fig_fdr}/plotV1_response_${trial_suffix}.py ${trial_suffix} ${res_suffix} ${LGN_V1_suffix} ${V1_connectome_suffix} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} False ${usePrefData} False ${OPstatus} &
 		pid+="${!} "
 	done
-	wait $pid
 fi
 date
 conda activate base

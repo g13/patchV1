@@ -86,7 +86,7 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
     featureFn = res_fdr + 'V1_feature' + res_suffix + ".bin"
     V1_allposFn = res_fdr + 'V1_allpos' + res_suffix + ".bin"
 
-    prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN = read_cfg(parameterFn)
+    prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN, tonicDep, noisyDep = read_cfg(parameterFn)
 
     LGN_V1_s = readLGN_V1_s0(LGN_V1_s_file)
     LGN_V1_ID, nLGN_V1 = readLGN_V1_ID(LGN_V1_ID_file)
@@ -1766,9 +1766,9 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
             
 if __name__ == "__main__":
     print(sys.argv)
-    if len(sys.argv) < 11:
+    if len(sys.argv) < 12:
         print(sys.argv)
-        raise Exception('not enough argument for getTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, nOri, fitTC, fitDataReady)')
+        raise Exception('not enough argument for getTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, nOri, fitTC, fitDataReady)')
     else:
         output_suffix = sys.argv[1]
         print(output_suffix)
@@ -1780,19 +1780,21 @@ if __name__ == "__main__":
         print(conV1_suffix)
         res_fdr = sys.argv[5]
         print(res_fdr)
-        data_fdr = sys.argv[6]
+        setup_fdr = sys.argv[6]
+        print(setup_fdr)
+        data_fdr = sys.argv[7]
         print(data_fdr)
-        fig_fdr = sys.argv[7]
+        fig_fdr = sys.argv[8]
         print(fig_fdr)
-        nOri = int(sys.argv[8])
+        nOri = int(sys.argv[9])
         print(nOri)
-        if sys.argv[9] == 'True':
+        if sys.argv[10] == 'True':
             fitTC = True
             print('use TC fitted with von Mises function')
         else:
             fitTC = False
             print('won\'t use fitted TC')
-        if sys.argv[10] == 'True':
+        if sys.argv[11] == 'True':
             fitDataReady = True
         else:
             fitDataReady = False

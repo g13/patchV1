@@ -14,14 +14,19 @@ def square_pos(per_dis, n, center, rng = None):
         pos[1,:] = (rands[:,1]-1/2)*per_dis + center[1]
     else:
         m = int(np.sqrt(n))
-        assert(m*m == n)
-        x, y = np.meshgrid(np.arange(m) + 0.5,np.arange(m) + 0.5)
-        x = x.flatten()/m
-        y = y.flatten()/m
-        assert(x.size == y.size)
-        assert(x.size == n)
-        pos[0,:] = center[0] - per_dis/2 + per_dis*x
-        pos[1,:] = center[1] - per_dis/2 + per_dis*y
+        if m*m == n:
+            x, y = np.meshgrid(np.arange(m) + 0.5,np.arange(m) + 0.5)
+            x = x.flatten()/m
+            y = y.flatten()/m
+            assert(x.size == y.size)
+            assert(x.size == n)
+            pos[0,:] = center[0] - per_dis/2 + per_dis*x
+            pos[1,:] = center[1] - per_dis/2 + per_dis*y
+            
+        else:
+            sampler = qmc.Sobol(d = 2)
+            sample = sampler.random(n = n)
+            pos = qmc.scale(sample, [center[0] - per_dis/2, center[1] - per_dis/2], [center[0] + per_dis/2, center[1] + per_dis/2]).T
         # permutes of exc and inh
         idx = rng.permutation(np.arange(n))
         pos[0,:] = pos[0,idx]

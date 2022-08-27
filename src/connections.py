@@ -18,6 +18,7 @@ res_fdr = sys.argv[5]
 setup_fdr = sys.argv[6]
 data_fdr = sys.argv[7]
 fig_fdr = sys.argv[8]
+print(f'output figures to {fig_fdr}')
 
 if res_suffix:
     res_suffix = "_" + res_suffix 
@@ -55,7 +56,7 @@ plotStats = True
 #plotLGN_V1_sample = True
 #plot_nLGN_OS = True
 plotConFeature_stats = True 
-#plotConFeature_preSynTC = True
+plotConFeature_preSynTC = True
 plotConFeature_sample = True
 plotCon_sample = True
 #plotLGN_V1_ratio = True
@@ -68,7 +69,7 @@ plotPos = False
 plotLGN_V1_sample = False 
 plot_nLGN_OS = False
 #plotConFeature_stats = False
-plotConFeature_preSynTC = False
+#plotConFeature_preSynTC = False
 #plotConFeature_sample = False 
 #plotCon_sample = False
 plotLGN_V1_ratio = False
@@ -154,6 +155,7 @@ with open(vec_file, 'rb') as f:
         longRange_nVec = nTotalVec - nVec
         print(f'number of long-range connections outside block: {np.min(longRange_nVec[longRange_nVec>0])}, {np.mean(longRange_nVec)}, {np.max(longRange_nVec)}')
     else:
+        nVec = nTotalVec
         longRange_nVec = np.zeros(networkSize, dtype = int)
         print(f'no long-range connections made')
     print(f'number of near-range connections outside block: {np.min(nVec)}, {np.mean(nVec)}, {np.max(nVec)}')
@@ -281,7 +283,7 @@ if 'sample' not in locals():
     #    for iType in range(nType): 
     #        sample[i] = iblock*blockSize + np.random.randint(typeAcc[iType],typeAcc[iType+1])
     #        i = i + 1
-    mid_blocks = np.tile(np.array([4,5,6]),3)*10 + np.repeat(np.array([4,5,6]),3)
+    mid_blocks = np.arange(nblock)
     mid_idx = np.empty(nType, dtype = object)
     for j in range(nType):
         mid_idx[j] = np.hstack([np.arange(i*blockSize + typeAcc[j], i*blockSize + typeAcc[j+1]) for i in mid_blocks])
@@ -802,8 +804,9 @@ if plotCon_sample:
 
         ax.plot(pos[bid,0,tid], pos[bid,1,tid],'*k', mfc = None, mew = 0.05, ms = 1, alpha = alpha)
         
-        bx, by = ellipse(pos[bid,0,tid], pos[bid,1,tid], longRangeSOI, longRangeLOI/longRangeSOI, iPref[i]*np.pi/180)
-        ax.plot(bx, by, '--k', lw = 0.05)
+        if connectLongRange:
+            bx, by = ellipse(pos[bid,0,tid], pos[bid,1,tid], longRangeSOI, longRangeLOI/longRangeSOI, iPref[i]*np.pi/180)
+            ax.plot(bx, by, '--k', lw = 0.05)
 
         ax.set_aspect('equal')
         ax.set_title(f'neuron {bid}-{tid} preset to {iPref[i]:.0f} deg')

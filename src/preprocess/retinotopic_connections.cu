@@ -242,7 +242,7 @@ vector<Size> draw_from_radius(
     return index;
 }
 
-__launch_bounds__(1024,2)
+__launch_bounds__(1024,1)
 __global__
 void vf_pool_CUDA( // for each eye
 	Float* __restrict__ x,
@@ -275,12 +275,12 @@ void vf_pool_CUDA( // for each eye
         Float baR = baRatio[V1_id];
         V1_x = x[V1_id];
         V1_y = y[V1_id];
-		curand_init(seed + V1_id, 0, 0, &rGen);
+        baR = square_root(baR);
+        curand_init(seed + V1_id, 0, 0, &rGen);
         Float R = mapping_rule_CUDA(ecc*60.0, rGen, LGN_V1_RFratio)/60.0;
+        //Float R = mapping_rule_CUDA(ecc*60.0, LGN_V1_RFratio)/60.0;
         // R = sqrt(area)
-        Float sqr = square_root(M_PI*baR);
-		Float local_a = R/sqr;
-        a[V1_id] = local_a;
+        a[V1_id] = R/(2*baR);
     }
     // scan and pooling LGN
     Size iPool = 0;
@@ -449,36 +449,34 @@ vector<vector<PosInt>> retinotopic_vf_pool(
 		LR2original(aLR, a, LR, nL);
         checkCudaErrors(cudaFree(d_memblock));
     } else {
-        vector<Float> normRand;
-        vector<Float> rMap;
-        normRand.reserve(n);
-        rMap.reserve(n);
+        //vector<Float> normRand;
+        //normRand.reserve(n);
         a.reserve(n);
         normal_distribution<Float> dist(0, 1);
 
-        // generate random number for RF size distribution
+        /* generate random number for RF size distribution
         for (Size i=0; i<n; i++) {
             normRand.push_back(dist(rGen));
         }
+        */
         // find radius from mapping rule at (e,p)
-        for (Size i=0; i<n; i++) {
-			// convert input eccentricity to mins and convert output back to degrees.
-            Float R = mapping_rule(VFposEcc[i]*60, normRand[i], rGen, LGN_V1_RFratio)/60.0;
-            a.push_back(R/sqrt(M_PI*baRatio[i]));
-            Float b = R*R/M_PI/a[i];
-            if (a[i] > b) {
-                rMap.push_back(a[i]);
-            } else {
-                rMap.push_back(b);
-            }
-        }
-        // next nearest neuron j to (e,p) in sheet 1
         Size maxLGNperV1pool = 0;
         for (Size i=0; i<n; i++) {
-            if (LR[i] > 0) {
-                poolList.push_back(draw_from_radius(cart.first[i], cart.second[i], cart0, mL, m, rMap[i]));
+			// convert input eccentricity to mins and convert output back to degrees.
+            //Float R = mapping_rule(VFposEcc[i]*60, normRand[i], rGen, LGN_V1_RFratio)/60.0;
+            Float R = mapping_rule(VFposEcc[i]*60, LGN_V1_RFratio)/60.0;
+            Float _a = R/(2*square_root(baRatio[i]));
+            a.push_back(_a);
+            Float maj_radius;
+            if (baRatio[i] > 1) {
+                maj_radius = _a*baRatio[i];
             } else {
-                poolList.push_back(draw_from_radius(cart.first[i], cart.second[i], cart0, 0, mL, rMap[i]));
+                maj_radius = _a;
+            }
+            if (LR[i] > 0) {
+                poolList.push_back(draw_from_radius(cart.first[i], cart.second[i], cart0, mL, m, maj_radius));
+            } else {
+                poolList.push_back(draw_from_radius(cart.first[i], cart.second[i], cart0, 0, mL, maj_radius));
             }
             if (poolList[i].size() > maxLGNperV1pool) maxLGNperV1pool = poolList[i].size();
         }
@@ -1206,6 +1204,5 @@ int main(int argc, char *argv[]) {
 		fLGN_V1_cfg.write((char*) &meanSum, sizeof(Float));
 		fLGN_V1_cfg.close();
 	}
-
     return 0;
 }

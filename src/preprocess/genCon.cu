@@ -2016,144 +2016,145 @@ int main(int argc, char *argv[])
 	delete [] preAvail;
 
 //=============================================
-    preConn = new Size[nType*nType];
-    preAvail = new Size[nType*nType];
-    preStr = new Float[nType*nType];
-    nnType = new Size[nType];
-    cout << "long-range connection stats in  mean: \n";
-    for (PosInt i=0; i<nType; i++) {
-        for (PosInt j=0; j<nType; j++) {
-            preConn[i*nType + j] = 0;
-            preAvail[i*nType + j] = 0;
-            preStr[i*nType + j] = 0.0;
+    if (connectLongRange) {
+        preConn = new Size[nType*nType];
+        preAvail = new Size[nType*nType];
+        preStr = new Float[nType*nType];
+        nnType = new Size[nType];
+        cout << "long-range connection stats in  mean: \n";
+        for (PosInt i=0; i<nType; i++) {
+            for (PosInt j=0; j<nType; j++) {
+                preConn[i*nType + j] = 0;
+                preAvail[i*nType + j] = 0;
+                preStr[i*nType + j] = 0.0;
+            }
+            nnType[i] = 0; 
         }
-        nnType[i] = 0; 
-    }
-    for (PosInt i=0; i<nType; i++) {
-        for (PosInt j=0; j<networkSize; j++) {
-            for (PosInt k=0; k<nType; k++) {
-                if (j%blockSize < typeAccCount[k])  {
-                    preConn[i*nType + k] += longRange_preTypeConnected[i*networkSize + j];
-                    preAvail[i*nType + k] += longRange_preTypeAvail[i*networkSize + j];
-                    preStr[i*nType + k] += longRange_preTypeStrSum[i*networkSize + j];
-                    if (i == 0) {
-                        nnType[k]++;
+        for (PosInt i=0; i<nType; i++) {
+            for (PosInt j=0; j<networkSize; j++) {
+                for (PosInt k=0; k<nType; k++) {
+                    if (j%blockSize < typeAccCount[k])  {
+                        preConn[i*nType + k] += longRange_preTypeConnected[i*networkSize + j];
+                        preAvail[i*nType + k] += longRange_preTypeAvail[i*networkSize + j];
+                        preStr[i*nType + k] += longRange_preTypeStrSum[i*networkSize + j];
+                        if (i == 0) {
+                            nnType[k]++;
+                        }
+                        break;
                     }
-                    break;
                 }
             }
         }
-    }
 
-    for (PosInt i=0; i<nType; i++) {
-        for (PosInt j=0; j<nType; j++) {
-            preConn[i*nType + j] /= nnType[j];
-            preAvail[i*nType + j] /= nnType[j];
-            preStr[i*nType + j] /= nnType[j];
-        }
-        cout << "type " << i << " has " << nnType[i] << " neurons\n";
-    }
-    delete [] nnType;
-
-    cout << "mean Type:    ";
-    for (PosInt i = 0; i < nType; i++) {
-        cout << i << ",    ";
-    }
-    cout << "\n";
-    for (PosInt i=0; i<nType; i++) {
-        for (PosInt j=0; j<nType; j++) {
-            if (j==0) {
-                cout << i << ": ";
+        for (PosInt i=0; i<nType; i++) {
+            for (PosInt j=0; j<nType; j++) {
+                preConn[i*nType + j] /= nnType[j];
+                preAvail[i*nType + j] /= nnType[j];
+                preStr[i*nType + j] /= nnType[j];
             }
-            cout << "[" << preConn[i*nType +j] << "/" << preAvail[i*nType +j] << ", " << preStr[i*nType + j] << "]";
-            if (j==nType-1) {
-                cout << "\n";
-            }
+            cout << "type " << i << " has " << nnType[i] << " neurons\n";
         }
-    }
+        delete [] nnType;
 
-	// in max
-    for (PosInt i=0; i<nType; i++) {
-        for (PosInt j=0; j<nType; j++) {
-            preConn[i*nType + j] = 0;
-            preAvail[i*nType + j] = 0;
-            preStr[i*nType + j] = 0;
+        cout << "mean Type:    ";
+        for (PosInt i = 0; i < nType; i++) {
+            cout << i << ",    ";
         }
-    }
-    for (PosInt i=0; i<nType; i++) {
-        for (PosInt j=0; j<networkSize; j++) {
-            for (PosInt k=0; k<nType; k++) {
-                if (j%blockSize < typeAccCount[k])  {
-					if (preConn[i*nType + k] < longRange_preTypeConnected[i*networkSize + j]) {
-						preConn[i*nType + k] = longRange_preTypeConnected[i*networkSize + j];
-					}
-					if (preAvail[i*nType + k] < longRange_preTypeAvail[i*networkSize + j]) {
-                    	preAvail[i*nType + k] = longRange_preTypeAvail[i*networkSize + j];
-					}
-					if (preStr[i*nType + k] < longRange_preTypeStrSum[i*networkSize + j]) {
-                    	preStr[i*nType + k] = longRange_preTypeStrSum[i*networkSize + j];
-					}
-                    break;
+        cout << "\n";
+        for (PosInt i=0; i<nType; i++) {
+            for (PosInt j=0; j<nType; j++) {
+                if (j==0) {
+                    cout << i << ": ";
+                }
+                cout << "[" << preConn[i*nType +j] << "/" << preAvail[i*nType +j] << ", " << preStr[i*nType + j] << "]";
+                if (j==nType-1) {
+                    cout << "\n";
                 }
             }
         }
-    }
-	cout << "max Type:    ";
-    for (PosInt i = 0; i < nType; i++) {
-        cout << i << ",    ";
-    }
-    cout << "\n";
-    for (PosInt i=0; i<nType; i++) {
-        for (PosInt j=0; j<nType; j++) {
-            if (j==0) {
-                cout << i << ": ";
-            }
-            cout << "[" << preConn[i*nType +j] << "/" << preAvail[i*nType +j] << ", " << preStr[i*nType + j] << "]";
-            if (j==nType-1) {
-                cout << "\n";
+
+	    // in max
+        for (PosInt i=0; i<nType; i++) {
+            for (PosInt j=0; j<nType; j++) {
+                preConn[i*nType + j] = 0;
+                preAvail[i*nType + j] = 0;
+                preStr[i*nType + j] = 0;
             }
         }
-    }
-
-	// in min
-    for (PosInt i=0; i<nType; i++) {
-        for (PosInt j=0; j<networkSize; j++) {
-            for (PosInt k=0; k<nType; k++) {
-                if (j%blockSize < typeAccCount[k])  {
-					if (preConn[i*nType + k] > longRange_preTypeConnected[i*networkSize + j]) {
-						preConn[i*nType + k] = longRange_preTypeConnected[i*networkSize + j];
-					}
-					if (preAvail[i*nType + k] > longRange_preTypeAvail[i*networkSize + j]) {
-                    	preAvail[i*nType + k] = longRange_preTypeAvail[i*networkSize + j];
-					}
-					if (preStr[i*nType + k] > longRange_preTypeStrSum[i*networkSize + j]) {
-                    	preStr[i*nType + k] = longRange_preTypeStrSum[i*networkSize + j];
-					}
-                    break;
+        for (PosInt i=0; i<nType; i++) {
+            for (PosInt j=0; j<networkSize; j++) {
+                for (PosInt k=0; k<nType; k++) {
+                    if (j%blockSize < typeAccCount[k])  {
+	    				if (preConn[i*nType + k] < longRange_preTypeConnected[i*networkSize + j]) {
+	    					preConn[i*nType + k] = longRange_preTypeConnected[i*networkSize + j];
+	    				}
+	    				if (preAvail[i*nType + k] < longRange_preTypeAvail[i*networkSize + j]) {
+                        	preAvail[i*nType + k] = longRange_preTypeAvail[i*networkSize + j];
+	    				}
+	    				if (preStr[i*nType + k] < longRange_preTypeStrSum[i*networkSize + j]) {
+                        	preStr[i*nType + k] = longRange_preTypeStrSum[i*networkSize + j];
+	    				}
+                        break;
+                    }
                 }
             }
         }
-    }
-	cout << "min Type:    ";
-    for (PosInt i = 0; i < nType; i++) {
-        cout << i << ",    ";
-    }
-    cout << "\n";
-    for (PosInt i=0; i<nType; i++) {
-        for (PosInt j=0; j<nType; j++) {
-            if (j==0) {
-                cout << i << ": ";
-            }
-            cout << "[" << preConn[i*nType +j] << "/" << preAvail[i*nType +j] << ", " << preStr[i*nType + j] << "]";
-            if (j==nType-1) {
-                cout << "\n";
+	    cout << "max Type:    ";
+        for (PosInt i = 0; i < nType; i++) {
+            cout << i << ",    ";
+        }
+        cout << "\n";
+        for (PosInt i=0; i<nType; i++) {
+            for (PosInt j=0; j<nType; j++) {
+                if (j==0) {
+                    cout << i << ": ";
+                }
+                cout << "[" << preConn[i*nType +j] << "/" << preAvail[i*nType +j] << ", " << preStr[i*nType + j] << "]";
+                if (j==nType-1) {
+                    cout << "\n";
+                }
             }
         }
-    }
-    delete [] preConn;
-    delete [] preStr;
-	delete [] preAvail;
 
+	    // in min
+        for (PosInt i=0; i<nType; i++) {
+            for (PosInt j=0; j<networkSize; j++) {
+                for (PosInt k=0; k<nType; k++) {
+                    if (j%blockSize < typeAccCount[k])  {
+	    				if (preConn[i*nType + k] > longRange_preTypeConnected[i*networkSize + j]) {
+	    					preConn[i*nType + k] = longRange_preTypeConnected[i*networkSize + j];
+	    				}
+	    				if (preAvail[i*nType + k] > longRange_preTypeAvail[i*networkSize + j]) {
+                        	preAvail[i*nType + k] = longRange_preTypeAvail[i*networkSize + j];
+	    				}
+	    				if (preStr[i*nType + k] > longRange_preTypeStrSum[i*networkSize + j]) {
+                        	preStr[i*nType + k] = longRange_preTypeStrSum[i*networkSize + j];
+	    				}
+                        break;
+                    }
+                }
+            }
+        }
+	    cout << "min Type:    ";
+        for (PosInt i = 0; i < nType; i++) {
+            cout << i << ",    ";
+        }
+        cout << "\n";
+        for (PosInt i=0; i<nType; i++) {
+            for (PosInt j=0; j<nType; j++) {
+                if (j==0) {
+                    cout << i << ": ";
+                }
+                cout << "[" << preConn[i*nType +j] << "/" << preAvail[i*nType +j] << ", " << preStr[i*nType + j] << "]";
+                if (j==nType-1) {
+                    cout << "\n";
+                }
+            }
+        }
+        delete [] preConn;
+        delete [] preStr;
+	    delete [] preAvail;
+    }
 //=============================================
 
 	cout << "gap stats in  mean: \n";

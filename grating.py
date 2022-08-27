@@ -2,6 +2,7 @@ import numpy as np
 import cv2 as cv
 import functools
 from ext_signal import *
+import matplotlib.pyplot as plt
 #TODO: heterogeneous buffers, to save texture memory
 def generate_random(amp, radius, npixel, c, fname, time, frameRate = 120, ecc = 2.5, buffer_ecc = 0.25, neye = 2, gtype = 'randomPhase', seed = 567421, shift = None, inputLMS = True):
     """
@@ -352,6 +353,15 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
                 LMS_seq = np.matmul(sRGB2LMS, inverse_sRGB_gamma(data[:,:,::-1].reshape((npixel*npixel,3)).T)).reshape((3,npixel,npixel))
 
             if genMovie:
+                if it == 0:
+                    fig = plt.figure()
+                    ax = fig.add_subplot(131)
+                    ax.imshow(data[:,:,0], cmap = 'Greys')
+                    ax = fig.add_subplot(132)
+                    ax.imshow(data[:,:,1], cmap = 'Greys')
+                    ax = fig.add_subplot(133)
+                    ax.imshow(data[:,:,2], cmap = 'Greys')
+                    fig.savefig(fname + '.png')
                 output.write(pixelData)
             #pixelData = np.reshape(np.round(data*255), (b,a,3))
             #cv.imshow('linear', pixelData)
@@ -362,7 +372,6 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
             LMS_seq.astype('f4').tofile(f)
 
     f.close()
-
     if genMovie:
         output.release()
         cv.destroyAllWindows()
