@@ -858,7 +858,7 @@ function stats = myV1driver(exchange_nm,seed,ENproc,ENfilename0,ENfilename,non_c
                     'N D L M G bc p s T T_vec Pi S DD knot A LL Kin Kend iters Ksched '...
                     'alpha beta annrate max_it max_cyc min_K tol method '...
                     'W normcte betanorm']);
-                unix(['rm ' ENfilename0 '-' ENfilename '????.mat']);
+				delete([ENfilename0, '-', ENfilename, '????.mat']);
             otherwise
                 % Do nothing.
         end
