@@ -4,7 +4,7 @@ cd preprocess
 rm -f retino.o
 rm -f dow.o
 
-sm=sm_70
+sm=sm_86
 
 nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c retinotopic_connections.cu -o retino.o
 nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c Dow_et_al_1981.cu -o dow.o

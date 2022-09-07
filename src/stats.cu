@@ -5,7 +5,8 @@ __global__
 void pixelizeOutput(
         Float* __restrict__ fr,
         Float* __restrict__ output,
-        PosInt* __restrict__ pid, Size* __restrict__ m, // within one pixel
+        PosInt* __restrict__ pid, 
+        Size* __restrict__ m, // within one pixel
 		Size nPerPixel_I, Size nPerPixel_C, Size nPixel_I, Size nPixel, Size n, Float odt, bool is_spike)
 {
 	PosInt tid = blockDim.x*blockIdx.x + threadIdx.x;
@@ -13,10 +14,12 @@ void pixelizeOutput(
 		Size m_local = m[tid];
 		Float value = 0;
 		if (m_local > 0) {
-			Size nPerPixel = tid < nPixel_I? nPerPixel_I: nPerPixel_C;
-			PosInt offset = tid < nPixel_I? 0: (nPixel_I*nPerPixel_I);
-			PosInt ICid = tid - (tid >= nPixel_I)*nPixel_I;
-            offset += ICid*nPerPixel;
+            PosInt offset;
+            if (tid < nPixel_I) {
+			    offset = tid * nPerPixel_I;
+            } else {
+			    offset = nPixel_I * nPerPixel_I + (tid - nPixel_I)*nPerPixel_C ;
+            }
 
 			for (PosInt i=0; i<m_local; i++) {
 				PosInt id = pid[offset + i];

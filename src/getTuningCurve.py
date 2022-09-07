@@ -21,10 +21,11 @@ from plotV1_response import ellipse
 #import multiprocessing as mp
 np.seterr(invalid = 'raise')
 
-def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, nOri, fitTC, fitDataReady):
+def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, nOri, fitTC, fitDataReady):
     
     res_fdr = res_fdr+"/"
     data_fdr = data_fdr+"/"
+    setup_fdr = setup_fdr+"/"
     fig_fdr = fig_fdr+"/"
 
     if output_suffix:
@@ -67,11 +68,12 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
     else:
         add_dprefToSample = True
 
-    LGN_V1_ID_file = res_fdr + 'LGN_V1_idList'+conLGN_suffix+'.bin'
-    LGN_V1_s_file = res_fdr + 'LGN_V1_sList'+conLGN_suffix+'.bin'
+    LGN_V1_ID_file = setup_fdr + 'LGN_V1_idList'+conLGN_suffix+'.bin'
+    LGN_V1_s_file = setup_fdr + 'LGN_V1_sList'+conLGN_suffix+'.bin'
+    V1_RFpropFn = setup_fdr + "V1_RFprop" + conLGN_suffix + ".bin"
+
     LGN_frFn = data_fdr + "LGN_fr" + output_suffix 
     LGN_propFn = data_fdr + "LGN" + output_suffix + "1.bin"
-    V1_RFpropFn = res_fdr + "V1_RFprop" + conLGN_suffix + ".bin"
 
     pref_file = data_fdr+'cort_pref' + output_suffix[:-1] + '.bin'
     fit_file = data_fdr+'fit_data' + output_suffix[:-1] + '.bin'
@@ -84,7 +86,7 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
     featureFn = res_fdr + 'V1_feature' + res_suffix + ".bin"
     V1_allposFn = res_fdr + 'V1_allpos' + res_suffix + ".bin"
 
-    prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN = read_cfg(parameterFn)
+    prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN, tonicDep, noisyDep = read_cfg(parameterFn)
 
     LGN_V1_s = readLGN_V1_s0(LGN_V1_s_file)
     LGN_V1_ID, nLGN_V1 = readLGN_V1_ID(LGN_V1_ID_file)
@@ -1055,6 +1057,7 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
             raise Exception(f'the {i}th dprefMin ({iV1}) has no LGN input!')
 
         if i == dprefMin_pick.size-1:
+            legend_elements = []
             for m, l in zip(markers, type_labels):
                 legend_elements.append(Line2D([0], [0], marker=m[0], color=m[1], label = l))
             marker_legend = plt.legend(handles=legend_elements, bbox_to_anchor = (1,0), loc='lower left', fontsize='xx-small')
@@ -1763,9 +1766,9 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
             
 if __name__ == "__main__":
     print(sys.argv)
-    if len(sys.argv) < 11:
+    if len(sys.argv) < 12:
         print(sys.argv)
-        raise Exception('not enough argument for getTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr, fig_fdr, nOri, fitTC, fitDataReady)')
+        raise Exception('not enough argument for getTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, nOri, fitTC, fitDataReady)')
     else:
         output_suffix = sys.argv[1]
         print(output_suffix)
@@ -1777,21 +1780,23 @@ if __name__ == "__main__":
         print(conV1_suffix)
         res_fdr = sys.argv[5]
         print(res_fdr)
-        data_fdr = sys.argv[6]
+        setup_fdr = sys.argv[6]
+        print(setup_fdr)
+        data_fdr = sys.argv[7]
         print(data_fdr)
-        fig_fdr = sys.argv[7]
+        fig_fdr = sys.argv[8]
         print(fig_fdr)
-        nOri = int(sys.argv[8])
+        nOri = int(sys.argv[9])
         print(nOri)
-        if sys.argv[9] == 'True':
+        if sys.argv[10] == 'True':
             fitTC = True
             print('use TC fitted with von Mises function')
         else:
             fitTC = False
             print('won\'t use fitted TC')
-        if sys.argv[10] == 'True':
+        if sys.argv[11] == 'True':
             fitDataReady = True
         else:
             fitDataReady = False
 
-    gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, data_fdr,fig_fdr, nOri, fitTC, fitDataReady)
+    gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, setup_fdr, data_fdr,fig_fdr, nOri, fitTC, fitDataReady)

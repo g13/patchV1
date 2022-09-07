@@ -1,0 +1,179 @@
+#!/bin/bash
+# $1: plotOnly $2: readNewSpike
+
+fdr0=/root/autodl-tmp
+res_fdr=${fdr0}/public/resource # resourceFolder in cfg stimulus, V1-static, LGN-static
+fdr0=${fdr0}/wd
+setup_fdr=${fdr0}/setup # inputFolder in cfg LGN-V1 and V1 connectome files
+data_fdr=${fdr0}/data # outputFolder in cfg
+
+patch=patch_fast
+waveStage=3 # set stage number
+
+if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
+	#inputFn=32-sequential_10-30_stage_II 
+	#inputFn=32-random3917563_10-30_stage_II 
+	inputFn=32-opponent_10-10_stage_II
+	fdr=wave_concat/wave_II # folder will be made to store figures and configuratoin files
+	op=w2_iwi1 # theme string to be added to filenames of data and figures
+	op_cfg=wave_II.cfg # the simulation config file to be used
+	new_setup=True
+	suffix=iwi1
+	lgn=lFF_II_${suffix} # the theme string to be used for LGN_V1 connections
+	res=lFF_II_${suffix} # the theme string to be used for V1, LGN positions etc.
+	squareOrCircle=true # initial LGN-recruitment shape 
+fi
+
+relay=false
+if [[ "${waveStage}" = "3" ]] ;then
+	#inputFn=32x3-random3917563_5-15_stage_III_sym
+	inputFn=32x3-opponent_5-5_stage_III_sym
+	#inputFn=32x3-sequential_5-15_stage_III_sym
+	#inputFn=32x3-135_5-5_stage_III_sym
+	fdr=wave_concat/wave_III
+	op=w3_opp_iwi1
+	#op=single_test-135
+	op_cfg=wave_III.cfg
+	new_setup=True
+	if [[ "${relay}" = false ]]; then
+		suffix=g6
+		lgn=lFF_III_${suffix}
+		res=lFF_III_${suffix}
+		fAsInput=''
+	else
+		fAsInput=${data_fdr}/sLGN_32_ii.bin
+		if [ -z "${fAsInput}" ]; 
+		then
+			lgn=lFF_concat0
+		else
+			lgn=lFF_relay_concat
+		fi
+		res=lFF0
+	fi
+	squareOrCircle=false # initial LGN-recruitment shape 
+fi
+
+if [[ "${waveStage}" = "5" ]] ;then
+	fdr=wave_concat
+	op=II_l
+	op_cfg=wave_concat.cfg
+	new_setup=False
+	lgn=lFF_l
+	res=lFF_l # starts out from stage II
+	squareOrCircle=true # initial LGN-recruitment shape 
+fi
+
+binary_thres=0.0
+#binary_thres=0.5
+#std_ecc=0
+#std_ecc=16
+std_ecc=12
+#std_ecc=8
+#std_ecc=6
+#std_ecc=5
+#std_ecc=4
+#std_ecc=3
+#std_ecc=2.66667
+seed=1924784 # RANDOM SEED for post-analysis sampling and input randomization 
+# for outputLearnFF.m
+st=2 # figures' output: 0 for temporal, 1 for spatial, 2 for both, otherwise none
+examSingle=true # output the spatiotemporal figure, tLGN_V1_single if true
+use_local_max=0 # output the spatiotemporal figure, sLGN_V1 with strength normalized for each frame instead over all frames if set 1
+collectMeanDataOnly=False # not ploting samples of V1 response variable traces
+
+# NOT RELATED, leave alone
+usePrefData=False
+OPstatus=1 
+LGN_switch=false
+TF=8
+ori=0
+nOri=0
+
+v1=${lgn} # cortical V1 connections used the same theme as LGN to V1 connections
+
+echo ${op} # echo/print out the variable "op" in the job's output file
+echo ${suffix}
+
+fig_fdr=${fdr0}/${fdr}
+
+if [ -d "${fig_fdr}" ]
+then
+	echo overwrite contents in ${fig_fdr}
+else
+	mkdir -p ${fig_fdr}
+fi
+
+echo using ${op_cfg}
+echo outputs to ${fig_fdr}
+cp lFF.slurm ${fig_fdr}/lFF_${op}.slurm
+
+readNewSpike=$2
+if [ -z "${readNewSpike}" ]; 
+then
+	readNewSpike=True
+fi
+echo readNewSpike=${readNewSpike}
+
+plotOnly=$1
+if [ -z "${plotOnly}" ]; 
+then
+	plotOnly=False
+fi
+echo plotOnly=${plotOnly}
+
+#cp outputLearnFF.m ${fig_fdr}/outputLearnFF_${op}.m
+cp outputLearnFF.py ${fig_fdr}/outputLearnFF_${op}.py
+cp plotV1_response_lFF.py ${fig_fdr}/plotV1_response_lFF_${op}.py
+cp plotLGN_response.py ${fig_fdr}/plotLGN_response_${op}.py
+cp plotV1_fr.py ${fig_fdr}/plotV1_fr_${op}.py
+cp getReceptiveField_lFF.py ${fig_fdr}/getReceptiveField_lFF_${op}.py
+if [ "${plotOnly}" = False ]
+then
+	gpu=1
+	cp ${op_cfg} ${fig_fdr}/${op}.cfg
+	#cp inputLearnFF.m ${fig_fdr}/inputLearnFF_${op}.m
+	cp inputLearnFF.py ${fig_fdr}/inputLearnFF_${op}.py
+else
+	gpu=0
+fi
+
+if ! [ -d "log" ]
+then
+	mkdir log
+fi
+
+export res
+export lgn
+export v1
+export op
+export res_fdr 
+export setup_fdr
+export data_fdr
+export fig_fdr 
+export LGN_switch 
+export st 
+export binary_thres 
+export seed
+export std_ecc
+export waveStage
+export squareOrCircle
+export fAsInput
+export relay
+export plotOnly 
+export new_setup 
+export patch 
+export examSingle
+export use_local_max 
+export readNewSpike
+export usePrefData 
+export collectMeanDataOnly 
+export inputFn
+export OPstatus 
+export TF 
+export ori
+export nOri
+
+date=$(eval date +"%Y_%m_%d_%H-%M-%S")
+
+./lFF.sh > log/pLearn_${date}_${op}_${plotOnly}.out 2>&1 &
+job=$!

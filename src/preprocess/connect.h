@@ -178,9 +178,9 @@ void generate_connections(double* __restrict__ pos,
                           PosInt* __restrict__ _vecID,
                           Float* __restrict__ disNeighborP,
                           Float* __restrict__ gap_disNeighborP,
-                          Size* __restrict__ vecID,
+                          PosInt* __restrict__ vecID,
                           Size* __restrict__ nVec,
-                          Size* __restrict__ gapVecID,
+                          PosInt* __restrict__ gapVecID,
                           Size* __restrict__ nGapVec,
                           Size* __restrict__ preTypeConnected,
                           Size* __restrict__ preTypeAvail,
@@ -209,5 +209,15 @@ void generate_symmetry(PosInt* __restrict__ clusterID,
 					   PosInt* __restrict__ i_outstanding,
 					   Float* __restrict__ v_outstanding,
 					   PosInt iblock, Size nblock, Size nearNeighborBlock, Size maxNeighborBlock, Size mI, Size nE, Size nI, Size nTypeE, Size nTypeI);
+
+// co-occupied area of the presynaptic axons / dendritic area
+__host__ __device__
+Float tri_cos(Float a, Float b, Float c);
+
+__host__ __device__
+Float area(Float raxn, Float rden, Float d);
+
+__host__ __device__  
+Float connect(Float distance, Float raxn, Float rden, Float disGauss);
 
 #endif
