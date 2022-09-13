@@ -1,4 +1,4 @@
-% [mu,stats] = ENtr_ann2(exchange_nm,T,S[,Pi,mu,Kin,alpha,beta,annrate,
+% [mu,stats] = ENtr_ann2(exchange_nm,T,S[,Pi,mu,Kin,alpha,beta,ibeta,annrate,
 %           max_it,max_cyc,min_K,tol,method,noise])
 %
 % --------------------------------------------------------------------------
@@ -189,19 +189,19 @@
 
 % Copyright (c) 2002 by Miguel A. Carreira-Perpinan
 
-function [mu,stats] = ENtr_ann2(exchange_nm,T,S,Pi,mu,Kin,alpha,beta,annrate,...
+function [mu,stats] = ENtr_ann2(exchange_nm,T,S,Pi,mu,Kin,alpha,beta,ibeta,annrate,...
 max_it,max_cyc,min_K,tol,method,noise,stream)
 if nargin < 15
-		stream = RandStream.getGlobalStream;
-	end
+	stream = RandStream.getGlobalStream;
+end
 
-	[N,D] = size(T);
-	M = size(S,1);
+[N,D] = size(T);
+M = size(S,1);
 
-	% Argument defaults
-	if ~exist('Pi','var') || isempty(Pi)
-		Pi = ones(1,M)/M;
-		zPi = [];
+% Argument defaults
+if ~exist('Pi','var') || isempty(Pi)
+	Pi = ones(1,M)/M;
+	zPi = [];
 else
 	Pi = Pi/sum(Pi);    % Make sure the mixing proportions are normalised
 	zPi = find(Pi==0);
@@ -212,42 +212,42 @@ if ~exist('mu','var') || isempty(mu)
 	% in the range of the training set.
 	minT = min(T,[],1); maxT = max(T,[],1); rangeT = maxT - minT;
 	mu = rangeT(ones(M,1),:) .* rand(stream,M,D) - minT(ones(M,1),:);
-end;
+end
 if ~exist('Kin','var') || isempty(Kin)
 	Kin = 0.5;
-end;
+end
 if ~exist('alpha','var') || isempty(alpha)
 	alpha = ones(N,1);
-end;
+end
 if all(size(alpha) == 1)
 	alpha = repmat(alpha,N,1);
-end;
+end
 if ~exist('beta','var') || isempty(beta)
 	beta = 10; 
-end;
+end
 if ~exist('annrate','var') || isempty(annrate)
 	annrate = 0.8;
-end;
+end
 if ~exist('max_it','var') || isempty(max_it)
 	max_it = 20;
-end;
+end
 if ~exist('max_cyc','var') || isempty(max_cyc)
 	max_cyc = 20;
-end;
+end
 if ~exist('min_K','var') || isempty(min_K)
 	min_K = 0.000001;
-end;
+end
 % Don't use "tol" with annealing
 % $$$ if ~exist('tol','var') | isempty(tol) tol = 0.0001; end;
 if ~exist('tol','var') || isempty(tol)
 	tol = -1;
-end;
+end
 if ~exist('method','var') || isempty(method)
 	method = 'Cholesky';
-end;
+end
 if ~exist('noise','var') || isempty(noise)
 	noise = 0;
-end;
+end
 % Set the seed of the random number generator externally
 % $$$ if ~exist('seed','var') | isempty(seed) seed = sum(100*clock); end;
 % $$$ rand('state',seed);
@@ -268,8 +268,17 @@ if K >= min_K
 	SS = (S+S')/2;
 	% We need these matrices for the Jacobi learning rule:
 	if strcmp(method,'Jacobi')
-		JacobiD = beta * diag(SS);
-		JacobiLU = -beta * (triu(SS,1)+tril(SS,-1));
+        if length(ibeta) == 0
+		    JacobiD = beta * diag(SS);
+		else
+            JacobiLU = -beta * (triu(SS,1)+tril(SS,-1));
+            JacobiD = zeros(M,D);
+            JacobiLU = zeros(M,M,D);
+            for i=1:D
+		        JacobiD(:,i) = beta * ibeta(i) * diag(SS);
+		        JacobiLU(:,:,i) = -beta * ibeta(i) * (triu(SS,1)+tril(SS,-1));
+            end
+        end
 		Jacobi_it = 5;              % Number of Jacobi iterations
 	end
 end
@@ -295,15 +304,16 @@ while code<0
 		timenow2 = cputime;
 		if ~isempty(zPi)
 			mu(zPi,:) = NaN;
-		end;
+        end
 		W = ENsqdist(T,mu);
+        disp(['K < min_K', num2str(min_K)]);
 		if N > M            % More cities than reference vectors
 			[temp_N_1b, temp_N_1a] = min(W,[],2);
 			W2 = sparse((1:N)',temp_N_1a,ones(N,1),N,M);
 			temp_N_1b = sum(W2,1);
 			if ~isempty(zPi)
 				temp_N_1b(zPi) = 1;
-			end;
+            end
 			W2 = W2 ./ temp_N_1b(ones(1,N),:);  % Normalise
 		else            % More reference vectors than cities
 			[temp_M_1b, temp_M_1a] = min(W,[],1);
@@ -316,8 +326,13 @@ while code<0
 		% New value of the objective function:
 		% - Tension term
 		timenow3 = cputime;
-        Etension_vec = [Etension_vec; beta/2*sum(mu.*(S'*mu))];
-        Etension = beta/2 * sum(sum(mu.*(S'*mu)));
+        if length(ibeta) == 0
+            itension_vec = sum(mu.*(S'*mu));
+        else
+            itension_vec = ibeta .* sum(mu.*(S'*mu));
+        end
+        Etension_vec = [Etension_vec; itension_vec];
+        Etension = beta/2 * sum(itension_vec);
 		timenow3 = cputime-timenow3;
 		% - Fitness term
 		if max(min(W,[],2)) > eps
@@ -384,7 +399,15 @@ while code<0
 					% The following performs a single gradient step (times K) down
 					% the objective function, as in the original Durbin and Willshaw
 					% algorithm.
-					tenterm = (beta * K) * (SS * mu);
+                    if length(ibeta) == 0
+                        itenterm = SS * mu;
+                    else
+                        itenterm = zeros(size(mu));
+                        for i=1:D
+                            itenterm(:,i) = ibeta(i)* (SS * mu(:,i));
+                        end
+                    end
+					tenterm = (beta * K) * itenterm;
 					delta_mu = ...
 					WT - G*mu - ...                 % Fitness term
 					tenterm;                % Tension term
@@ -397,11 +420,27 @@ while code<0
 						% Trick for numerical instability (see 'Cholesky').
 						G(sub2ind(size(G),zPi,zPi)) = 1;
 					end
-					tmp = diag(sparse(1./(diag(G)/K + JacobiD)));
-					Jacobi1 = tmp * JacobiLU; Jacobi2 = (tmp/K) * WT;
-					for i = 1:Jacobi_it
-						mu = Jacobi1 * mu + Jacobi2;
-					end
+                    if length(ibeta) == 0
+					    tmp = diag(sparse(1./(diag(G)/K + JacobiD)));
+					    Jacobi1 = tmp * JacobiLU; 
+                        Jacobi2 = (tmp/K) * WT;
+					    for j = 1:Jacobi_it
+					    	mu = Jacobi1 * mu + Jacobi2;
+					    end
+                    else
+					    Jacobi1 = zeros(M,M,D);
+                        Jacobi2 = zeros(M,D);
+                        for i=1:D
+					        tmp = diag(sparse(1./(diag(G)/K + JacobiD(:,i))));
+					        Jacobi1(:,:,i) = tmp * JacobiLU(:,:,i); 
+                            Jacobi2(:,i) = (tmp/K) * WT(:,i);
+                        end
+					    for j = 1:Jacobi_it
+                            for i=1:D
+					    	    mu(:,i) = Jacobi1(:,i) * mu(:,i) + Jacobi2(:,i);
+                            end
+					    end
+                    end
 				case 'Cholesky'
 					if ~isempty(zPi)
 						% If Pi(m) = 0 (centroid m is disabled) then G(m,m) = 0, which
@@ -418,7 +457,22 @@ while code<0
 					% 2. Cholesky factorisation of A as R'*R with R upper triangular.
 					% 3. Lower triangular solve and then upper triangular solve by
 					%    Gaussian elimination.
-					mu = (G + (K*beta)*SS) \ WT;
+                    if length(ibeta) == 0
+					    %mu = (G + (K*beta)*SS) \ WT;
+                        for i=1:D
+					        mu(:,i) = (G + (K*beta)*SS) \ WT(:,i);
+                        end
+                        % accuarcy difference
+					    %mu0 = (G + (K*beta)*SS) \ WT;
+                        %disp('mean difference') 
+                        %mean((mu - mu0), 1)
+                        %disp('std difference') 
+                        %std((mu - mu0), 0, 1)
+                    else
+                        for i=1:D
+					        mu(:,i) = (G + (K*beta)*ibeta(i)*SS) \ WT(:,i);
+                        end
+                    end
 			end
 			assert(~any(any(isnan(mu(Pi>0,:)))));
 			% We set all disabled centroids to the centre-of-mass of the training
@@ -443,8 +497,13 @@ while code<0
 		%     beta/2 * norm(DD*mu)
 		Efitness = - K * fit_err;                   % Fitness term
 		timenow3a = cputime;
-        Etension_vec = [Etension_vec; beta/2*sum(mu.*(S'*mu))];
-        Etension = beta/2 * sum(sum(mu.*(S'*mu)));			% Tension term
+        if length(ibeta) == 0
+            itension_vec = sum(mu.*(S'*mu));
+        else
+            itension_vec = ibeta .* sum(mu.*(S'*mu));
+        end
+        Etension_vec = [Etension_vec; itension_vec];
+        Etension = beta/2 * sum(itension_vec);			% Tension term
 		timenow3 = timenow3 + (cputime-timenow3a);
 		E = [E;Efitness+Etension Efitness Etension];
 		Kout = [Kout; K];

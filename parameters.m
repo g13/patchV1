@@ -17,7 +17,7 @@ new = false;
 ENproc = 'save';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
 name = 'recap';
-var = 'beta'
+var = 'nG-slow'
 equi = 'VF';
 cortical_VF = 'cortex';
 old = false;
@@ -35,29 +35,35 @@ end
 ecc = 2.0;
 %VFpath = '';
 %nvfx = 2.6880
-nvfy = 1.0
-nvfx = 1.0
+NOR = 6
+NOD = 1
+Nx = 14
+Ny = 14
+nvfy = 1.0;
+nvfx = 1.0;
 
 G0 = [224, 224];
 rotate = [0,0,0,0];
-nvfRange = [1.0, 1.0, 1.0, 1.0]*0.1;
-xRange = [1.0, 1.0, 1.0, 1.0]*0.5;
-yRange = [1.0, 1.0, 1.0, 1.0]*0.5;
-rRange = [0.1, 0.16, 0.2, 0.24]*1;
-lRange = [0.1, 0.12, 0.15, 0.18]*1;
+nvfRange = [1.0, 1.0, 1.0, 1.0]*1.4;
+xRange = [1.0, 1.0, 1.0, 1.0]*1.0;
+yRange = [1.0, 1.0, 1.0, 1.0]*1.0;
+rRange = [0.1, 0.1, 0.1, 0.1]*1.15;
+lRange = [0.1, 0.1, 0.1, 0.1]*1;
+rRange = rRange/(2*pi/NOR);
 
-nGrange = [1.0, 1.0, 1.0, 1.0];
-betaRange = [10, 10, 10, 10]*40;
+nGrange = [0.5, 1.0, 2, 3]*1;
+betaRange = [2.5, 2.5, 2.5, 2.5]*1;
+ibeta = [1, 1, 1, 1, 1];
 aRrange = [1.0, 1.0, 1.0, 1.0;
 		   1.0, 1.0, 1.0, 1.0];
 
-Kin = 0.15;			% Initial K ***
+Kin = 0.15;		% Initial K ***
 Kend = 0.02;        % Final K ***    
 if testRun
 	iters = 1; %21;			% No. of annealing rates (saved)
 	max_it = 2;		        % No. of iterations per annealing rate (not saved) ***
 else
-	iters = 10; %21;			% No. of annealing rates (saved)
+	iters = 21; %21;			% No. of annealing rates (saved)
 	max_it = 10;		        % No. of iterations per annealing rate (not saved) ***
 end
 %max_it = round(20 *range(i)/range(end)); 
@@ -138,27 +144,24 @@ parfor (i = 1:length(range), nworker)
 	%beta = 100;
     % Training parameters
     % - VFx: Nx points in [0,1], with interpoint separation dx.
-	Nx = 14;
 	%Nx = range(i)
     rx = [0 1]*nvfx*xRange(i)*nvfRange(i);			% Range of VFx
     % - VFy: ditto for Ny, dy.
 	%
 	% even
-	Ny = 14;
     ry = [0 1]*nvfy*yRange(i)*nvfRange(i);			% Range of VFy
     % - OD: NOD values in range rOD, with interpoint separation dOD.
 	l = lRange(i);
 	%l = lRange(i);
 	%l = l0;
-    NOD = 2;			% Number of points along OD
     rOD = [-l l];			% Range of OD
     %  coded as NOR Cartesian-coordinate pairs (ORx,ORy). -- later by pol2cart
     %  r = 6*l/pi
 	%r = range(i)*l;			% OR modulus -- the radius of pinwheel
 	%r = r0;
-    NOR = 6;	 %8;		% Number of points along OR
 	%r = r0*NOR/2*l/pi;
 	r = rRange(i);
+    disp(['dOD = ', num2str(2*l/NOD), ', dOR = ', num2str(2*r*pi/NOR), ', dx = ', num2str((rx(2)-rx(1))/Nx), ', dy = ', num2str((ry(2)-ry(1))/Ny)]);
     % for myCortex patch
     ODnoise = l*0.0;
     ODabsol = 1.0;
@@ -174,7 +177,7 @@ parfor (i = 1:length(range), nworker)
     a = 0.635; b = 96.7; k = sqrt(140)*0.873145;
     fign = 106;
     ENfilename = [var,'-',num2str(range(i))];
-    stats(i) = myV1driver(exchange_nm,seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,aspectRatio,nT,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,weightType,VFpath,old,randSeed,figlist,rotate);
+    stats(i) = myV1driver(exchange_nm,seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,ibeta,iters,max_it,Kin,Kend,Nx,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,aspectRatio,nT,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,weightType,VFpath,old,randSeed,figlist,rotate);
 end
 if sum(rRange) > 0 && sum(lRange) > 0
 	nnpinw = [stats.npinw];

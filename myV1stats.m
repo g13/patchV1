@@ -487,7 +487,6 @@ for ENcounter = whichones
 		colormap(viridis);
 		colorbar;
     	print(fign+600,'-loose','-r900',['-d' EXT], [prefix,figName{600},'-',frame,'.',EXT]);
-		close(fign+600);
 	end
 
 	test_grad = false;
@@ -540,7 +539,7 @@ for ENcounter = whichones
         Figs = [1:16]; % Energy and cpu time get printed at end only
         for i=find(plotfig(Figs))
 			if i == 1 || i == 2 || i == 13 || i == 14 || i == 15 || i == 16
-				set (0,'currentfigure',fign+i);
+				set (0,'CurrentFigure',fign+i);
 				hold on
 				plot(xx, yy, '*r', 'MarkerSize', 1.0);
 				axis on
