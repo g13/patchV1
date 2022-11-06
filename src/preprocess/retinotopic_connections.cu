@@ -261,13 +261,13 @@ void vf_pool_CUDA( // for each eye
     Float LGN_V1_RFratio,
     Size maxLGNperV1pool // total LGN size to the eye
 ) {
-    __shared__ Float sx[blockSize]; 
-    __shared__ Float sy[blockSize]; 
+    extern __shared__ Float sx[];
+    Float *sy = sx + blockDim.x; 
     Size V1_id = i0 + blockDim.x*blockIdx.x + threadIdx.x;
-    Size nPatch = (m + blockSize - 1)/blockDim.x;
+    Size nPatch = (m + blockDim.x - 1)/blockDim.x;
     Size nRemain = m%blockDim.x;
 	if (nRemain == 0) nRemain = blockDim.x;
-    assert((nPatch-1)*blockSize + nRemain == m);
+    assert((nPatch-1)*blockDim.x + nRemain == m);
     curandStateMRG32k3a rGen;
     Float V1_x, V1_y;
     if (V1_id < i0+n) { // get radius
@@ -414,15 +414,15 @@ vector<vector<PosInt>> retinotopic_vf_pool(
         checkCudaErrors(cudaMemcpy(d_VFposEcc, &(VFposEccLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpy(d_theta, &(thetaLR[0]), n*sizeof(Float), cudaMemcpyHostToDevice));
         // TODO: stream kernels in chunks for large network
-        Size nblock = (nL + blockSize-1)/blockSize;
-        cout <<  "<<<" << nblock << ", " << blockSize << ">>>\n";
-        vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_theta, d_poolList, d_nPool, 0, nL, 0, mL, seed, LGN_V1_RFratio, maxLGNperV1pool);
+        Size _nblock = (nL + MAX_BLOCKSIZE-1)/MAX_BLOCKSIZE;
+        cout <<  "vf_pool_CUDA<<<" << _nblock << ", " << MAX_BLOCKSIZE << ">>> (Ipsi)\n";
+        vf_pool_CUDA<<<_nblock, MAX_BLOCKSIZE, 2*MAX_BLOCKSIZE*sizeof(Float)>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_theta, d_poolList, d_nPool, 0, nL, 0, mL, seed, LGN_V1_RFratio, maxLGNperV1pool);
         getLastCudaError("vf_pool for the left eye failed");
         cudaDeviceSynchronize();
-		nblock = (n-nL + blockSize-1) / blockSize;
-        cout <<  "<<<" << nblock << ", " << blockSize << ">>>\n";
-		if (nblock > 0) {
-			vf_pool_CUDA<<<nblock, blockSize>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_theta, d_poolList, d_nPool, nL, n-nL, mL, m-mL, seed, LGN_V1_RFratio, maxLGNperV1pool);
+		_nblock = (n-nL + MAX_BLOCKSIZE-1) / MAX_BLOCKSIZE;
+        cout <<  "vf_pool_CUDA<<<" << _nblock << ", " << MAX_BLOCKSIZE << ">>> (Contra)\n";
+		if (_nblock > 0) {
+			vf_pool_CUDA<<<_nblock, MAX_BLOCKSIZE, 2*MAX_BLOCKSIZE*sizeof(Float)>>>(d_x, d_y, d_x0, d_y0, d_VFposEcc, d_baRatio, d_a, d_theta, d_poolList, d_nPool, nL, n-nL, mL, m-mL, seed, LGN_V1_RFratio, maxLGNperV1pool);
         	getLastCudaError("vf_pool for the right eye failed");
 		}
 		vector<vector<PosInt>> poolListLR;
@@ -513,7 +513,7 @@ int main(int argc, char *argv[]) {
 	bool strictStrength;
 	bool top_pick;
     vector<Float> pureComplexRatio;
-	vector<Size> typeAccCount;
+	vector<Size> typeAcc;
     Float LGN_V1_RFratio;
     Float envelopeSig;
     BigSize seed;
@@ -544,7 +544,7 @@ int main(int argc, char *argv[]) {
 		("dmax", po::value<Float>(&dmax)->default_value(1.5), "subregion LGN oriented distance max in units of disLGN")
 		("strictStrength", po::value<bool>(&strictStrength)->default_value(true), "make nLGN*sLGN strictly as preset")
 		("pureComplexRatio", po::value<vector<Float>>(&pureComplexRatio), "determine the proportion of simple and complex in V1 of size nType")
-		("typeAccCount",po::value<vector<Size>>(&typeAccCount), "neuronal types' discrete accumulative distribution size of nType")
+		("typeAccCount",po::value<vector<Size>>(&typeAcc), "neuronal types' discrete accumulative distribution size of nType")
 		("V1_RFtypeAccDist", po::value<vector<Float>>(&V1_RFtypeAccDist), "determine the relative portion of each V1 RF type")
 		("nRefTypeV1_RF", po::value<vector<Size>>(&nRefTypeV1_RF), "determine the number of cone/ON-OFF combinations for each V1 RF type")
 		("V1_RefTypeID", po::value<vector<Size>>(&V1_RefTypeID), "determine the ID of the available cone/ON-OFF combinations in each V1 RF type")
@@ -633,9 +633,11 @@ int main(int argc, char *argv[]) {
 		return EXIT_FAILURE;
 	}
 	Size n;
-	Size* size_pointer = &n;
-	fV1_vpos.read(reinterpret_cast<char*>(size_pointer), sizeof(Size));
-    cout << n << " post-synaptic neurons\n";
+	Size nblock, blockSize;
+	fV1_vpos.read(reinterpret_cast<char*>(&nblock), sizeof(Size));
+	fV1_vpos.read(reinterpret_cast<char*>(&blockSize), sizeof(Size));
+	n = nblock * blockSize;
+    cout << nblock << " x " << blockSize << " = " << n << " post-synaptic neurons\n";
 	//temporary vectors to get coordinate pairs
 	vector<double> decc(n);
 	vector<double> dpolar(n);
@@ -679,7 +681,7 @@ int main(int argc, char *argv[]) {
 	Size mR;
     Size m;
 	Float max_ecc;
-	size_pointer = &mL;
+	Size* size_pointer = &mL;
 	fLGN_vpos.read(reinterpret_cast<char*>(size_pointer), sizeof(Size));
 	size_pointer = &mR;
 	fLGN_vpos.read(reinterpret_cast<char*>(size_pointer), sizeof(Size));
@@ -853,7 +855,7 @@ int main(int argc, char *argv[]) {
 	vector<Float> phase(n); // [0, 2*pi], control the phase
     // theta is read from fV1_feature
 	vector<Float> modAmp_nCon(n); // [0,1] controls simple complex ratio, through subregion overlap ratio, or number of LGN connected.
-	Size nType = typeAccCount.size();
+	Size nType = typeAcc.size();
 	if (nType > max_nType) {
 		cout << "the accumulative distribution of neuronal type <typeAccCount> has size of " << nType << " > " << max_nType << "\n";
 		return EXIT_FAILURE;
@@ -862,16 +864,11 @@ int main(int argc, char *argv[]) {
 	vector<Size> typeAcc0;
 	typeAcc0.push_back(0);
 	for (PosInt i=0; i<nType; i++) {
-		typeAcc0.push_back(typeAccCount[i]);
+		typeAcc0.push_back(typeAcc[i]);
 	}
 
-	Size nblock = n/blockSize;
-	if (typeAccCount.back() != blockSize) {
-		cout << "neuron per block != " << blockSize << "\n";
-		return EXIT_FAILURE;
-	}
-	if (nblock * blockSize != n) {
-		cout << "number of V1 neuron cannot be divided by " << blockSize << "\n";
+	if (typeAcc.back() != blockSize) {
+		cout << "neuron per block set in typeAccCount != " << blockSize << "\n";
 		return EXIT_FAILURE;
 	}
 
@@ -882,7 +879,7 @@ int main(int argc, char *argv[]) {
 	    	return EXIT_FAILURE;
 	    }
 	    fV1_RFpreset.read(reinterpret_cast<char*>(&nType), sizeof(Size));
-	    fV1_RFpreset.read(reinterpret_cast<char*>(&typeAccCount[0]), nType*sizeof(Size));
+	    fV1_RFpreset.read(reinterpret_cast<char*>(&typeAcc[0]), nType*sizeof(Size));
 	    fV1_RFpreset.read(reinterpret_cast<char*>(&V1Type[0]), n * sizeof(RFtype_t));
 	    fV1_RFpreset.read(reinterpret_cast<char*>(&RefType[0]), n * sizeof(OutputType_t));
 	    fV1_RFpreset.read(reinterpret_cast<char*>(&phase[0]), n * sizeof(Float));
@@ -1028,7 +1025,7 @@ int main(int argc, char *argv[]) {
 	    }
 
 		fV1_RFpreset.write((char*)&nType, sizeof(Size));
-		fV1_RFpreset.write((char*)&typeAccCount[0], nType*sizeof(Size));
+		fV1_RFpreset.write((char*)&typeAcc[0], nType*sizeof(Size));
 	    fV1_RFpreset.write((char*)&V1Type[0], n * sizeof(RFtype_t));
 	    fV1_RFpreset.write((char*)&RefType[0], n * sizeof(OutputType_t));
 	    fV1_RFpreset.write((char*)&phase[0], n * sizeof(Float));
@@ -1117,7 +1114,6 @@ int main(int argc, char *argv[]) {
 		pool2 += iSize * iSize;
     }
 	if (SimpleComplex == 1) {
-		Size nblock = n/blockSize;
 		Float nonzeroN = 0;
 		for (PosInt i=0; i<nType; i++) {
 			nonzeroN += nblock*(typeAcc0[i+1]-typeAcc0[i])*(1-pureComplexRatio[i]);
@@ -1199,7 +1195,7 @@ int main(int argc, char *argv[]) {
 		fLGN_V1_cfg.write((char*) &p_n_LGNeff, sizeof(Float));
 		fLGN_V1_cfg.write((char*) &max_LGNeff, sizeof(Size));
 		fLGN_V1_cfg.write((char*) &nType, sizeof(Size));
-		fLGN_V1_cfg.write((char*) &typeAccCount[0], nType*sizeof(Size));
+		fLGN_V1_cfg.write((char*) &typeAcc[0], nType*sizeof(Size));
 		fLGN_V1_cfg.write((char*) &meanPool, sizeof(Float));
 		fLGN_V1_cfg.write((char*) &meanSum, sizeof(Float));
 		fLGN_V1_cfg.close();

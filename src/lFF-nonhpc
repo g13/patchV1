@@ -8,17 +8,17 @@ setup_fdr=${fdr0}/setup # inputFolder in cfg LGN-V1 and V1 connectome files
 data_fdr=${fdr0}/data # outputFolder in cfg
 
 patch=patch_fast
-waveStage=3 # set stage number
+waveStage=2 # set stage number
 
 if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 	#inputFn=32-sequential_10-30_stage_II 
 	#inputFn=32-random3917563_10-30_stage_II 
-	inputFn=32-opponent_10-10_stage_II
-	fdr=wave_concat/wave_II # folder will be made to store figures and configuratoin files
-	op=w2_iwi1 # theme string to be added to filenames of data and figures
+	fdr=wave_concat/wave_II/rLTD # folder will be made to store figures and configuratoin files
 	op_cfg=wave_II.cfg # the simulation config file to be used
-	new_setup=True
-	suffix=iwi1
+	new_setup=False
+	inputFn=64-opponent_10-10_stage_II
+	op=64iwi10-10_sv_rLTD105 # theme string to be added to filenames of data and figures
+    suffix=64iwi10-10_sv
 	lgn=lFF_II_${suffix} # the theme string to be used for LGN_V1 connections
 	res=lFF_II_${suffix} # the theme string to be used for V1, LGN positions etc.
 	squareOrCircle=true # initial LGN-recruitment shape 
@@ -65,9 +65,9 @@ fi
 
 binary_thres=0.0
 #binary_thres=0.5
-#std_ecc=0
+std_ecc=0
 #std_ecc=16
-std_ecc=12
+#std_ecc=12
 #std_ecc=8
 #std_ecc=6
 #std_ecc=5

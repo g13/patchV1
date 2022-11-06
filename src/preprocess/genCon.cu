@@ -186,7 +186,8 @@ int main(int argc, char *argv[])
 		else cout << "\n";
 		typeAcc0.push_back(typeAccCount[i]);
 	}
-	assert(typeAccCount.back() == blockSize);
+	Size blockSize = typeAccCount.back();
+	assert(blockSize <= MAX_BLOCKSIZE);
 	Size nTypeE = nTypeHierarchy[0];
 	Size nTypeI = nTypeHierarchy[1];
 	Size nE = typeAccCount[nTypeE-1];
@@ -374,10 +375,10 @@ int main(int argc, char *argv[])
 	
     fV1_allpos.read(reinterpret_cast<char*>(&nblock), sizeof(Size));
     fV1_allpos.read(reinterpret_cast<char*>(&neuronPerBlock), sizeof(Size));
-    if (neuronPerBlock > blockSize) {
-        cout << "neuron per block (" << neuronPerBlock << ") cannot be larger than cuda block size: " << blockSize << "\n";
+    if (neuronPerBlock != blockSize) {
+        cout << "neuron per block (" << neuronPerBlock << ") not consistent with <typeAccCount> from " << LGN_V1_cfg_filename + conLGN_suffix << "\n";
     }
-    Size networkSize = nblock*neuronPerBlock;
+    Size networkSize = nblock*blockSize;
 	Size mI = nblock*nI;
 
 	cout << "networkSize = " << networkSize << "\n";
@@ -460,12 +461,6 @@ int main(int argc, char *argv[])
 	initialize_package init_pack(nArchtype, nType, nFeature, hInit_pack);
 
     //Float speedOfThought = 1.0f; specify instead in patch.cu through patchV1.cfg
-
-    // TODO: types that shares a smaller portion than 1/neuronPerBlock
-    if (typeAccCount.back() != neuronPerBlock) {
-		cout << "type acc. dist. end with " << typeAccCount.back() << " should be " << neuronPerBlock << "\n";
-        return EXIT_FAILURE;
-    }
 
     if (!suffix.empty()) {
 		cout << " suffix = " << suffix << "\n";
@@ -629,15 +624,15 @@ int main(int argc, char *argv[])
             Size half1 = maxChunkSize - half0;
             maxChunkSize = (half0 > half1)? half0: half1;
         }
-        matSize = static_cast<size_t>(2*nearNeighborBlock*neuronPerBlock)*neuronPerBlock*maxChunkSize*sizeof(Float); // con and delayMat
+        matSize = static_cast<size_t>(2*nearNeighborBlock*blockSize)*blockSize*maxChunkSize*sizeof(Float); // con and delayMat
 
         cout << matSize/1024/1024 << "Mb mat size\n";
         memorySize = matSize + vecSize + gap_vecSize + statSize + gap_statSize + neighborSize;
 
-        disNeighborSize = sizeof(Float)*static_cast<size_t>((maxNeighborBlock-nearNeighborBlock)*neuronPerBlock)*maxChunkSize*neuronPerBlock; 
+        disNeighborSize = sizeof(Float)*static_cast<size_t>((maxNeighborBlock-nearNeighborBlock)*blockSize)*maxChunkSize*blockSize; 
         gap_disNeighborSize = sizeof(Float)*static_cast<size_t>((maxNeighborBlock-nearNeighborBlock)*nI)*maxChunkSize*nI; 
 
-	    tmpVecSize = static_cast<size_t>(maxChunkSize*neuronPerBlock)*sizeof(Size); // tmp_vecID
+	    tmpVecSize = static_cast<size_t>(maxChunkSize*blockSize)*sizeof(Size); // tmp_vecID
 		if (sum_max_N > gap_sum_max_N) {
 			tmpVecSize *= sum_max_N;
 		} else {
@@ -650,7 +645,7 @@ int main(int argc, char *argv[])
 		// share: qid, ratio, typeConnected, synapticLoc, fV
 		// nType: sumP, availType, sumType, sumStrType, pN, pS, pF, __vecID, nid
 		// nTypeI: ...
-        localHeapSize = ((4*sizeof(Size) + 3*sizeof(Float) + sizeof(PosInt*) + nFeature*sizeof(Float))*(nType + nTypeI) + (sizeof(PosInt) + 2*sizeof(Float) + sizeof(bool))*nType + nFeature*sizeof(Float))*static_cast<size_t>(maxChunkSize*neuronPerBlock*deviceProps.multiProcessorCount);
+        localHeapSize = ((4*sizeof(Size) + 3*sizeof(Float) + sizeof(PosInt*) + nFeature*sizeof(Float))*(nType + nTypeI) + (sizeof(PosInt) + 2*sizeof(Float) + sizeof(bool))*nType + nFeature*sizeof(Float))*static_cast<size_t>(maxChunkSize*blockSize*deviceProps.multiProcessorCount);
 		localHeapSize *= 1.1; // leave some extra room
         checkCudaErrors(cudaDeviceSetLimit(cudaLimitMallocHeapSize, localHeapSize));
         d_memorySize = memorySize + deviceOnlyMemSize + disNeighborSize + gap_disNeighborSize + tmpVecSize  +
@@ -703,9 +698,9 @@ int main(int argc, char *argv[])
 
     // connectome
     Float* conMat = (Float*) (nNeighborBlock + nblock);
-    Float* delayMat = conMat + static_cast<size_t>(nearNeighborBlock*neuronPerBlock)*neuronPerBlock*maxChunkSize;
+    Float* delayMat = conMat + static_cast<size_t>(nearNeighborBlock*blockSize)*blockSize*maxChunkSize;
 
-    Float* conVec = delayMat + static_cast<size_t>(nearNeighborBlock*neuronPerBlock)*neuronPerBlock*maxChunkSize;
+    Float* conVec = delayMat + static_cast<size_t>(nearNeighborBlock*blockSize)*blockSize*maxChunkSize;
     Float* delayVec = conVec + maxDistantNeighbor*networkSize;
     PosInt* vecID = (PosInt*) (delayVec + maxDistantNeighbor*networkSize);
     Size* nVec = vecID + maxDistantNeighbor*networkSize;
@@ -754,9 +749,9 @@ int main(int argc, char *argv[])
     Size*  __restrict__ d_nNeighborBlock = d_neighborBlockId + maxNeighborBlock*nblock;
 
     Float* __restrict__ d_conMat = (Float*) (d_nNeighborBlock + nblock);
-    Float* __restrict__ d_delayMat = d_conMat + static_cast<size_t>(nearNeighborBlock*neuronPerBlock)*neuronPerBlock*maxChunkSize;
+    Float* __restrict__ d_delayMat = d_conMat + static_cast<size_t>(nearNeighborBlock*blockSize)*blockSize*maxChunkSize;
 
-    Float* __restrict__ d_conVec = d_delayMat + static_cast<size_t>(nearNeighborBlock*neuronPerBlock)*neuronPerBlock*maxChunkSize;
+    Float* __restrict__ d_conVec = d_delayMat + static_cast<size_t>(nearNeighborBlock*blockSize)*blockSize*maxChunkSize;
     Float* __restrict__ d_delayVec = d_conVec + networkSize*maxDistantNeighbor;
     PosInt*  __restrict__ d_vecID = (PosInt*) (d_delayVec + networkSize*maxDistantNeighbor);
     Size*  __restrict__ d_nVec = d_vecID + networkSize*maxDistantNeighbor;
@@ -785,7 +780,7 @@ int main(int argc, char *argv[])
 	Float* d_ffRatio;
     checkCudaErrors(cudaMalloc((void**)&d_ffRatio, networkSize*sizeof(Float)));
 
-    initialize<<<nblock, neuronPerBlock>>>(
+    initialize<<<nblock, blockSize>>>(
         state,
 	    d_preType,
 		rden, raxn, dden, daxn,
@@ -797,7 +792,7 @@ int main(int argc, char *argv[])
     checkCudaErrors(cudaMemcpy(ffRatio, d_ffRatio, networkSize*sizeof(Float), cudaMemcpyDeviceToHost));
 
     //Size shared_mem;
-    cal_blockPos<<<nblock, neuronPerBlock>>>(
+    cal_blockPos<<<nblock, blockSize>>>(
         d_pos, 
 		d_block_x, d_block_y, 
 		networkSize);
@@ -808,7 +803,11 @@ int main(int argc, char *argv[])
 	Size* d_nNearNeighborBlock;
     checkCudaErrors(cudaMalloc((void**)&d_nNearNeighborBlock, nblock*sizeof(Size)));
 
-    get_neighbor_blockId<<<nblock, neuronPerBlock, maxNeighborBlock*(sizeof(PosInt)+sizeof(Float))>>>(
+	if (maxNeighborBlock > MAX_BLOCKSIZE) {
+		printf("maxNeighborBlock(%d) cannot exceed CUDA blockSize(%d), serialize get_neighbor_blockId algorithm.\n", maxNeighborBlock, MAX_BLOCKSIZE); // TODO implement the serialization
+		return EXIT_FAILURE;
+	}
+    get_neighbor_blockId<<<nblock, maxNeighborBlock, maxNeighborBlock*(sizeof(PosInt)+sizeof(Float)) + blockSize*(sizeof(Float) + sizeof(Int))>>>(
         d_block_x, d_block_y, 
 		d_neighborBlockId, d_nNeighborBlock, d_nNearNeighborBlock, 
 		nblock, blockROI, blockROI_max, maxNeighborBlock);
@@ -834,7 +833,7 @@ int main(int argc, char *argv[])
 		}
 	}
     //TODO: generate conMat concurrently
-    //shared_mem = neuronPerBlock*sizeof(Float) + neuronPerBlock*sizeof(Float) + neuronPerBlock*sizeof(Size);
+    //shared_mem = blockSize*sizeof(Float) + blockSize*sizeof(Float) + blockSize*sizeof(Size);
     Size current_nblock;
     PosInt offset = 0; // memory offset
 
@@ -842,12 +841,12 @@ int main(int argc, char *argv[])
         if (iChunk < nChunk) current_nblock = maxChunkSize;
         else current_nblock = remainChunkSize;
         cout << iChunk << ": current_nblock = " << current_nblock << "\n";
-        size_t current_matSize = static_cast<size_t>(current_nblock*nearNeighborBlock*neuronPerBlock)*neuronPerBlock*sizeof(Float);
+        size_t current_matSize = static_cast<size_t>(current_nblock*nearNeighborBlock*blockSize)*blockSize*sizeof(Float);
 	    checkCudaErrors(cudaMemset(d_conMat, 0, current_matSize)); // initialize for each chunk
 		size_t gap_matSize = nearNeighborBlock*nI*nI;
 	    checkCudaErrors(cudaMemset(d_gapMat, 0, gap_matSize*current_nblock*sizeof(Float))); // initialize for each chunk
-		cout << "generate_connections<<<" << current_nblock << ", " << neuronPerBlock << ">>>\n";
-        generate_connections<<<current_nblock, neuronPerBlock>>>(
+		cout << "generate_connections<<<" << current_nblock << ", " << blockSize << ">>>\n";
+        generate_connections<<<current_nblock, blockSize, 2*blockSize*sizeof(double)>>>(
             d_pos,
 	    	preF_type, gap_preF_type,
 			preS_type, gap_preS_type,
@@ -870,7 +869,7 @@ int main(int argc, char *argv[])
 	    	sum_max_N, gap_sum_max_N, offset, networkSize, mI, maxDistantNeighbor, gap_maxDistantNeighbor, nearNeighborBlock, maxNeighborBlock, nType, nTypeE, nTypeI, nE, nI, nFeature, disGauss, strictStrength, nConTol);
 	    checkCudaErrors(cudaDeviceSynchronize());
 	    getLastCudaError("generate_connections failed");
-        //offset += current_nblock*neuronPerBlock;
+        //offset += current_nblock*blockSize;
 
 	    checkCudaErrors(cudaMemcpy(conMat, d_conMat, 2*current_matSize, cudaMemcpyDeviceToHost)); // con and delay both copied
 	    checkCudaErrors(cudaMemcpy(gapMat + offset*gap_matSize, d_gapMat, gap_matSize*current_nblock*sizeof(Float), cudaMemcpyDeviceToHost)); // con and delay both copied
@@ -1152,7 +1151,7 @@ int main(int argc, char *argv[])
 					d_clusterGapMat,
 					d_preTypeGapped, d_preTypeStrGapped, d_preType, state,
 					i_outstanding, v_outstanding,
-					i, nblock, nearNeighborBlock, maxNeighborBlock, mI, nE, nI, nTypeE, nTypeI);
+					i, nblock, blockSize, nearNeighborBlock, maxNeighborBlock, mI, nE, nI, nTypeE, nTypeI);
 			// unwind the cluster back to cpu
 			checkCudaErrors(cudaDeviceSynchronize());
 			//cout << "downloading " << i << "\n";
@@ -1565,7 +1564,7 @@ int main(int argc, char *argv[])
     if (connectLongRange) {
         cout << "generating long-range connections ...\n";
         checkCudaErrors(cudaMemcpy(d_pos, &vpos[0], 2*networkSize*sizeof(double), cudaMemcpyHostToDevice));
-        cal_blockPos<<<nblock, neuronPerBlock>>>(
+        cal_blockPos<<<nblock, blockSize>>>(
             d_pos, 
 	    	d_block_x, d_block_y,
 	    	networkSize);

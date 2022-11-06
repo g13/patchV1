@@ -120,6 +120,7 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
         framesPerStatus = np.fromfile(f, 'u4', nStage)
         framesToFinish = np.fromfile(f, 'u4', nStage)
         max_ecc = np.fromfile(f, 'f8', 1)[0]
+    print(f'nStage = {nStage}, nOri = {nOri}, nRep = {nRep}, frameRate = {frameRate}, framesPerStatus: {framesPerStatus}, framesToFinish: {framesToFinish}, max_ecc = {max_ecc}')
 
     if stage == 2 or stage == 3:
         ##### HERE ########

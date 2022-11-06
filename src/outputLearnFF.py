@@ -344,8 +344,9 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             normed_counts = counts/np.max(counts)
         else:
             normed_counts = np.zeros((nit, max_LGNperV1 // 2))
-        ax.imshow(normed_counts.T, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('Reds'))
-        ax.set_ylabel(f'# > {top_thres * 100:.0f}% max')
+        cmap = 'gray'
+        ax.imshow(normed_counts.T, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap(cmap))
+        ax.set_ylabel(f'# > {top_thres * 100:.0f}% upper bound')
         ax.set_title(f'on ({avg_on_max:.2f}/{capacity[0]:.2f})')
 
         ax = fig.add_subplot(2,2,2)
@@ -354,7 +355,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             normed_counts = counts/np.max(counts)
         else:
             normed_counts = np.zeros((nit, max_LGNperV1 // 2))
-        ax.imshow(normed_counts.T, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('Blues'))
+        ax.imshow(normed_counts.T, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap(cmap))
         ax.set_title(f'on ({avg_off_max:.2f}/{capacity[0]:.2f})')
 
         ax = fig.add_subplot(2,2,3)
@@ -363,7 +364,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             normed_counts = counts/np.max(counts)
         else:
             normed_counts = np.zeros((nit, max_LGNperV1 // 2))
-        ax.imshow(normed_counts.T, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('Reds'))
+        ax.imshow(normed_counts.T, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap(cmap))
 
         ax.set_ylabel('# == 0')
         ax.set_title(f'on: {avg_on_min:.2f}')
@@ -374,7 +375,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             normed_counts = counts/np.max(counts)
         else:
             normed_counts = np.zeros((nit, max_LGNperV1 // 2))
-        ax.imshow(normed_counts.T, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('Blues'))
+        ax.imshow(normed_counts.T, aspect = 'auto', origin = 'lower', cmap = plt.get_cmap(cmap))
         ax.set_title(f'off: {avg_off_min:.2f}')
         fig.savefig(f'{fig_fdr}max_min_tDist{osuffix}{rtime}.png')
         plt.close(fig)
@@ -651,30 +652,64 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             if nLearnFF_I > 0:
                 LTD[:,ipick] = np.power(lAvg[:,ipick],2)*rLTD_I[0]
 
-            fig = plt.figure('t_LTD')
-            if nLearnFF_E > 0:
-                ax = fig.add_subplot(121)
-                ax.imshow(LTD[:,epick].T/np.max(LTD[:,epick]), aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('Reds'))
-                ax.set_xlabel('time')
-                ax.set_ylabel('neuron ID')
+            fig = plt.figure('t_LTD', figsize = (10,4*(1+nLearnFF_I)), dpi = 300)
+            ax = fig.add_subplot(1, 2*(1+nLearnFF_I), 1)
+            ax.imshow(LTD[:,epick].T/np.max(LTD[:,epick]), aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('Reds'))
+            ax.set_xlabel('time step')
+            ax.set_ylabel('neuron ID')
+            ax = fig.add_subplot(1, 2*(1+nLearnFF_I), 2)
+            ax.plot(it * dt/1000, LTD[:,epick].T.mean(axis = 0), '-r', lw = 0.1, alpha = 0.7)
+            ax.plot(it * dt/1000, LTD[:,epick].T.std(axis = 0), '-m', alpha = 0.7, lw = 0.1)
+            ax.axhline(A_LTP, ls = ':', color = 'r', alpha = 0.7, lw = 0.1)
+            ax.set_xlabel('time')
+            ax.set_ylabel('LTD')
             if nLearnFF_I > 0:
-                ax = fig.add_subplot(122)
+                ax = fig.add_subplot(1, 2*(1+nLearnFF_I), 3)
                 ax.imshow(LTD[:,ipick].T/np.max(LTD[:,ipick]), aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('Blues'))
                 ax.set_ylabel('neuron ID')
+                ax.set_xlabel('time step')
+                ax = fig.add_subplot(1, 2*(1+nLearnFF_I), 4)
+                ax.plot(it * dt/1000, LTD[:,ipick].T.mean(axis = 0), '-b', lw = 0.1, alpha = 0.7)
+                ax.plot(it * dt/1000, LTD[:,ipick].T.std(axis = 0), '-c', alpha = 0.7, lw = 0.1)
+                ax.axhline(A_LTP, ls = ':', color = 'b', alpha = 0.7, lw = 0.1)
                 ax.set_xlabel('time')
-            fig.savefig(f'{fig_fdr}t_LTD.png')
+                ax.set_ylabel('LTD')
+            fig.savefig(f'{fig_fdr}t_LTD{osuffix}.png')
 
         qtt = np.floor(np.linspace(0, nstep-1, nit)).astype('i4')
         tLGN_all = np.zeros((ns, nstep, max_LGNperV1))
+        radius_t = np.zeros((nV1, 2, nstep))
         with open(f_sLGN, 'rb') as f:
             f.seek(nskip * 4, 1)
             f.seek(max_LGNperV1 * nV1 * step0 * 4, 1)
             data = np.fromfile(f, 'f4', nV1*max_LGNperV1).reshape(max_LGNperV1, nV1).T
             tLGN_all[:,0,:] = data[V1_pick, :]
+            radius_t[:,:,0] = get_radius(nV1, data, nLGN_V1, LGN_vpos, LGN_type, LGN_V1_ID)
             for j in range(1,nstep):
                 f.seek(max_LGNperV1 * nV1 * (tstep - 1) * 4, 1)
                 data = np.fromfile(f, 'f4', nV1*max_LGNperV1).reshape(max_LGNperV1, nV1).T
                 tLGN_all[:,j,:] = data[V1_pick, :]
+                radius_t[:,:,j] = get_radius(nV1, data, nLGN_V1, LGN_vpos, LGN_type, LGN_V1_ID)
+
+            fig = plt.figure('t_radius', figsize = (4,2*(1+nLearnFF_I)), dpi = 300)
+            ax = fig.add_subplot(1, (1+nLearnFF_I), 1)
+            ax.plot(it * dt/1000, radius_t[epick,:,:].mean(axis = 0)[0,:], '-r', label = 'on dis.')
+            ax.plot(it * dt/1000, radius_t[epick,:,:].std(axis = 0)[0,:], ':m', label = 'on std.')
+            ax.plot(it * dt/1000, radius_t[epick,:,:].mean(axis = 0)[1,:], '-b', label = 'off dis.')
+            ax.plot(it * dt/1000, radius_t[epick,:,:].std(axis = 0)[1,:], ':c', label = 'off std.')
+            ax.legend()
+            ax.set_xlabel('time')
+            ax.set_ylabel('avg. dis to center')
+            ax.set_xlabel('time')
+            if nLearnFF_I > 0:
+                ax = fig.add_subplot(1, 2*(1+nLearnFF_I), 3)
+                ax.plot(it * dt/1000, radius_t[ipick,:,:].mean(axis = 0)[0,:], '-r')
+                ax.plot(it * dt/1000, radius_t[ipick,:,:].std(axis = 0)[0,:], ':m')
+                ax.plot(it * dt/1000, radius_t[ipick,:,:].mean(axis = 0)[1,:], '-b')
+                ax.plot(it * dt/1000, radius_t[ipick,:,:].std(axis = 0)[1,:], ':c')
+                ax.set_xlabel('time')
+                ax.set_ylabel('avg. dis to center')
+            fig.savefig(f'{fig_fdr}t_radius{osuffix}.png')
 
         for iq in range(ns):
             iV1 = V1_pick[iq]
@@ -838,6 +873,28 @@ def determine_os_str(pos, ids, types, s, n, m, min_dis, os_out, nLGN_1D):
     
     return onS, offS, os, overlap, orient
     
+
+def get_radius(n, s, m, pos, types ,ids):
+    radius = np.zeros((n,2)) - 1
+    for i in range(n):
+        if m[i] > 0:
+            all_id = ids[i, :m[i]]
+            all_type = types[all_id]
+            all_s = s[i,:m[i]]
+            on_s = all_s[all_type == 4]
+            off_s = all_s[all_type == 5]
+
+            if (on_s > 0).any():
+                on_id = all_id[all_type == 4]
+                on_pos = np.average(pos[:,on_id], axis = 1, weights = on_s)
+                radius[i, 0] = np.average(np.linalg.norm(pos[:,on_id].T - on_pos, axis = 1), weights = on_s)
+
+            if (off_s > 0).any():
+                off_id = all_id[all_type == 5]
+                off_pos = np.average(pos[:,off_id], axis = 1, weights = off_s)
+                radius[i, 1] = np.average(np.linalg.norm(pos[:,off_id].T - off_pos, axis = 1), weights = off_s)
+        
+    return radius
 
 if __name__ == '__main__':
     if len(sys.argv) < 13:

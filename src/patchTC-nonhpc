@@ -22,7 +22,7 @@ res_suffix=square_single-layer
 patch=patch_fast
 
 generate_V1_connection=True
-generate_LGN_V1_connection=True
+generate_LGN_V1_connection=False
 
 patch_cfg=ori.cfg
 

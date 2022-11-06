@@ -10,13 +10,13 @@ setup_fdr=$fdr0/setup # inputFolder in cfg
 data_fdr=$fdr0/data # outputFolder in cfg
 
 fitTC=False
-nOri=6 # total # orientaton if applicable
+nOri=100 # total # orientaton if applicable
 TF=8 # input frequency if applicable
 SF=20
-trial_suffix=minimal_test
+trial_suffix=minimal_test2
 singleOri=False
 #singleOri=True
-one_ori=6
+one_ori=1
 
 res_suffix=minimal-patch
 patch=patch_fast
@@ -24,7 +24,7 @@ patch=patch_fast
 generate_V1_connection=False
 generate_LGN_V1_connection=False
 
-patch_cfg=ori.cfg
+patch_cfg=minimal.cfg
 
 LGN_V1_suffix=test_lgn
 V1_connectome_suffix=test_v1
@@ -158,10 +158,10 @@ if [ "$plotTConly" = False ]; then
 			export ori
 			./ori.sh > log/pOri_${date}_${trial_suffix}_${ori}_${plotOnly}.out 2>&1 &
 			jobID+="${!} "
-            sleep 1
+            sleep 5
 			if [ "$plotOnly" = False ]; then
 				if [ "${ori}" -lt "${nOri}" ]; then
-					vim -s ${cfg_fdr}/nextOri_cfg.keys ${fig_fdr}/${trial_suffix}-ori_$((ori+1)).cfg
+					vim -s ${cfg_fdr}/minimal.keys ${fig_fdr}/${trial_suffix}-ori_$((ori+1)).cfg
 					if [ "$((ori+1))" -lt "${nOri}" ]; then
 						cp ${fig_fdr}/${trial_suffix}-ori_$((ori+1)).cfg ${fig_fdr}/${trial_suffix}-ori_$((ori+2)).cfg
 					fi
@@ -169,8 +169,8 @@ if [ "$plotTConly" = False ]; then
 			fi
 		done
 		wait $jobID
-		./plotTC.sh > log/pTC_${date}_${trial_suffix}.out &
-		job=$!
+		#./plotTC.sh > log/pTC_${date}_${trial_suffix}.out &
+		#job=$!
 	else
 		ori=$one_ori
 		if [ "$plotOnly" = False ]; then

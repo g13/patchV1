@@ -434,7 +434,7 @@ void store_PM(
         bool uniform_retina,
         bool virtual_LGN
 ) {
-    __shared__ Float reduced[warpSize];
+    __shared__ Float reduced[WARP_SIZE];
     __shared__ Float shared_spat[10]; // centerPolar, centerEcc, coso, sino, wSpan, hSpan, dw, dh, wSigSqrt2, hSigSqrt2; TODO: use reduced is enough
     // nBefore: parvo:0,        magno: nParvo_L
     // nL:      parvo:nParvo_L, magno: nMagno_L
@@ -727,7 +727,7 @@ void parvo_maxConvol(Spatial_component &spatial,
     extern __shared__ Float swC[];
     Size nSample = nSample1D * nSample1D;
     Float* swS = swC + nSample;
-    __shared__ Float reduced[warpSize];
+    __shared__ Float reduced[WARP_SIZE];
     PosInt id = blockIdx.x;
     if (id >= nParvo_L) {
         id += nMagno_L;
@@ -879,8 +879,8 @@ void LGN_convol_parvo(
         Size denorm,
         bool saveOutputB4V1
 ) {
-    __shared__ Float reducedC[warpSize];
-    __shared__ Float reducedS[warpSize];
+    __shared__ Float reducedC[WARP_SIZE];
+    __shared__ Float reducedS[WARP_SIZE];
     extern __shared__ Float nSampleShared[];
 
     // weights are stored in shapes of (nLGN, nType, weight)
@@ -1335,7 +1335,7 @@ void LGN_convol_magno(
         Size denorm,
         bool saveOutputB4V1
 ) {
-    __shared__ Float reduced[warpSize];
+    __shared__ Float reduced[WARP_SIZE];
     extern __shared__ Float nSampleShared[];
 
     // weights are stored in shapes of (nLGN, nType, weight)
