@@ -4638,6 +4638,7 @@ int main(int argc, char** argv) {
 	PosInt it0 = 0;
     vector<Size> sample_spikeCount;
     vector<PosInt> sampleID;
+	vector<Size> LGN_spike_time;
     if (!minimal) { // output file tests
 		if (!restore.empty() && !asInit) {
 			fSnapshot.open(restore, fstream::in | fstream::binary);
@@ -4922,8 +4923,10 @@ int main(int argc, char** argv) {
 			fSample.write((char*)&sample_t0, sizeof(Float));
             Float t1 = nt*dt;
 			fSample.write((char*)&t1, sizeof(Float));
-			fSample.write((char*)&(sampleID[0]), sampleSize * sizeof(PosInt));
+			fSample.write((char*)&nt, sizeof(Size));
+			fSample.write((char*)&nLGN, sizeof(Size));
             sample_spikeCount.assign(sampleSize, 0);
+			LGN_spike_time.assign(nLGN, 0);
         }
     }
 	cout << "output file check, done\n";
@@ -6062,6 +6065,13 @@ int main(int argc, char** argv) {
                     }
                 }
             }
+			if (minimal && it*dt >= sample_t0) {
+				for (PosInt j = 0.; j < nLGN; j++) {
+                    Float sInfo = LGN_sInfo[j];
+					LGN_spike_time[j] = flooring(sInfo);
+				}
+				fSample.write((char*)&(LGN_spike_time[0]), nLGN*sizeof(Size));
+			}
             if (rawData) {
                 if (!minimal) {
 			        fRawData.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
@@ -6978,6 +6988,19 @@ int main(int argc, char** argv) {
 	    	fPatchV1_cfg.write((char*) &(synFailFF[0]), nType*sizeof(Float));	
 	    }
     } else {
+		for (PosInt j = 0.; j < sampleID.size(); j++) {
+			Float sInfo = spikeTrain[currentTimeSlot*nV1 + sampleID[j]];
+			if (sInfo >= 1) {
+				// cout << "sInfo\n" << flooring(sInfo);
+				sample_spikeCount[j] += flooring(sInfo);
+			}
+		}
+		for (PosInt j = 0.; j < nLGN; j++) {
+			Float sInfo = LGN_sInfo[j];
+			LGN_spike_time[j] = flooring(sInfo);	
+		}
+		fSample.write((char*)&(LGN_spike_time[0]), nLGN*sizeof(Size));
+		fSample.write((char*)&(sampleID[0]), sampleSize * sizeof(PosInt));
 		fSample.write((char*)&(sample_spikeCount[0]), sampleSize*sizeof(Size));
         fSample.close();
     }

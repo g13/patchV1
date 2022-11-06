@@ -172,10 +172,10 @@ inline void assign_component(std::vector<Float> &x, std::vector<Float> &y, std::
     component.push_back(idx[j]);
     phaseRange[0] = x[j];
     phaseRange[1] = x[j];
-    if (!restricted) { 
+    if (!restricted) {  // new comp
         eccRange[0] = y[j];
         eccRange[1] = y[j];
-    } else {
+    } else { // already have one comp; current comp's eccRange restricted by previous one
         if (eccRange[1] - eccRange[0] < 2*dmin) {
             Float midEcc = (eccRange[1] + eccRange[0])/2;
             eccRange[0] = midEcc - dmin;
@@ -1412,7 +1412,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         std::vector<PosInt> added;
         std::vector<PosInt> newList;
         PosInt m;
-        bool balance = true; // TODO: as input variable
+        bool balance = false; // TODO: as input variable
         if (!singleComp && balance && onComponent.size() != offComponent.size()) {
             if (onComponent.size() > offComponent.size()) {
                 onComponent.resize(offComponent.size());
