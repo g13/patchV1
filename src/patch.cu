@@ -157,7 +157,7 @@ int main(int argc, char** argv) {
 	vector<Size> nFBperColumn;
     vector<Float> synPerCon;
     vector<Float> synPerConFF;
-	Float nsig; // extent of spatial RF sampling in units of std
+	Float nsig, wv; // extent of spatial RF sampling in units of std
 	Float tau, mau;
 	Float Itau; // in ms .. cone adaptation at 300ms https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1003289
 	Float tau_noise;
@@ -193,6 +193,7 @@ int main(int argc, char** argv) {
 		("fbFR", po::value<vector<Float>>(&fbFR), "total simulatoin time in units of time step")
 		("snapshotInterval", po::value<Size>(&snapshotInterval)->default_value(10000), "snapshotInterval for resume or initialization")
 		("nsig", po::value<Float>(&nsig)->default_value(3), "extent of spatial RF sampling in units of std")
+		("gauss_wv", po::value<Float>(&wv)->default_value(1.0), "weight of gaussian function value when sampling input, weight of the slope = 1-gauss_wv")
 		("nSpatialSample1D", po::value<SmallSize>(&nSpatialSample1D)->default_value(WARP_SIZE), "number of samples per x,y direction for a parvo-LGN spatial RF")
 		("mSpatialSample1D", po::value<SmallSize>(&mSpatialSample1D)->default_value(WARP_SIZE), "number of samples per x,y direction for a magno-LGN spatial RF")
 		("phyWidth_scale", po::value<Float>(&phyWidth_scale)->default_value(1), "pixel width of the physical V1 sheet frame output")
@@ -1747,7 +1748,7 @@ int main(int argc, char** argv) {
     }
     cout << nParvo << " parvo-cellular LGN (" << nParvo_I << ", " << nParvo_C << ") and " << nMagno << " (" << nMagno_I << ", " << nMagno_C << ") magno-cellular LGN\n";
 
-
+    Float sigRatio = 3;
 	if (useNewLGN) { // Setup LGN here 
 		cout << "initializing LGN spatial parameters...\n";
 		// TODO: k, rx, ry, surround_x, surround_y or their distribution parameters readable from file
@@ -1914,8 +1915,7 @@ int main(int argc, char** argv) {
 
 		Float acuityC_M[2] = {6.0f*deg2rad, 0.6f*deg2rad/1.349f}; // interquartile/1.349 = std 
 		acuityC_M[0] /= rsig;
-		Float acuityS_M[2] = {18.0f*deg2rad, 1.8f*deg2rad/1.349f};
-		acuityS_M[0] /= rsig;
+		Float acuityS_M[2] = {acuityC_M[0]*sigRatio, 1.8f*deg2rad/1.349f};
 
 		Float pTspD[2];
 		Float tspR, tspD;
@@ -5183,6 +5183,43 @@ int main(int argc, char** argv) {
 	checkCudaErrors(cudaEventCreate(&storeReady));
 
 	// store spatial and temporal weights determine the maximums of LGN kernel convolutions
+    Float *d_sample_x1, *d_sample_y1, *d_sample_w1;
+    Float *sample_x1, *sample_y1, *sample_w1;
+    Float *d_sample_x2, *d_sample_y2, *d_sample_w2;
+    Float *sample_x2, *sample_y2, *sample_w2;
+    if (nsig == 0) {
+        Py_Initialize();
+        if (_import_array() < 0) {
+            PyErr_Print();
+            PyErr_SetString(PyExc_ImportError, "numpy.core.multiarray failed to import");
+            return 1;
+        }
+        if (nParvo > 0) {
+            sample_x1 = new Float[MAX_BLOCKSIZE];
+            sample_y1 = new Float[MAX_BLOCKSIZE];
+            sample_w1 = new Float[MAX_BLOCKSIZE];
+            checkCudaErrors(cudaMalloc((void**) &d_sample_x1, MAX_BLOCKSIZE * sizeof(Float)));
+            checkCudaErrors(cudaMalloc((void**) &d_sample_y1, MAX_BLOCKSIZE * sizeof(Float)));
+            checkCudaErrors(cudaMalloc((void**) &d_sample_w1, MAX_BLOCKSIZE * sizeof(Float)));
+            sample_2D_Gaussian(nsig, int(MAX_BLOCKSIZE), wv, sample_x1, sample_y1, sample_w1);
+            checkCudaErrors(cudaMemcpy(d_sample_x1, sample_x1, MAX_BLOCKSIZE * sizeof(Float), cudaMemcpyHostToDevice));
+            checkCudaErrors(cudaMemcpy(d_sample_y1, sample_y1, MAX_BLOCKSIZE * sizeof(Float), cudaMemcpyHostToDevice));
+            checkCudaErrors(cudaMemcpy(d_sample_w1, sample_w1, MAX_BLOCKSIZE * sizeof(Float), cudaMemcpyHostToDevice));
+        }
+        if (nMagno > 0) {
+            sample_x2 = new Float[MAX_BLOCKSIZE];
+            sample_y2 = new Float[MAX_BLOCKSIZE];
+            sample_w2 = new Float[MAX_BLOCKSIZE];
+            checkCudaErrors(cudaMalloc((void**) &d_sample_x2, MAX_BLOCKSIZE * sizeof(Float)));
+            checkCudaErrors(cudaMalloc((void**) &d_sample_y2, MAX_BLOCKSIZE * sizeof(Float)));
+            checkCudaErrors(cudaMalloc((void**) &d_sample_w2, MAX_BLOCKSIZE * sizeof(Float)));
+            sample_2D_Gaussian_difference(nsig, sigRatio, MAX_BLOCKSIZE, sample_x2, sample_y2, sample_w2);
+            checkCudaErrors(cudaMemcpy(d_sample_x2, sample_x2, MAX_BLOCKSIZE * sizeof(Float), cudaMemcpyHostToDevice));
+            checkCudaErrors(cudaMemcpy(d_sample_y2, sample_y2, MAX_BLOCKSIZE * sizeof(Float), cudaMemcpyHostToDevice));
+            checkCudaErrors(cudaMemcpy(d_sample_w2, sample_w2, MAX_BLOCKSIZE * sizeof(Float), cudaMemcpyHostToDevice));
+        }
+        Py_Finalize();
+    }
     if (nParvo > 0) {
 	    cout << "store_PM(0)<<<" << parvoGrid.x  << "x" << parvoGrid.y  << "x" << parvoGrid.z << ", " << parvoBlock.x  << "x" << parvoBlock.y  << "x" << parvoBlock.z << ">>>\n";
 	    store_PM<<<parvoGrid, parvoBlock>>>(
@@ -5194,6 +5231,7 @@ int main(int argc, char** argv) {
 	    		parvo_SC_storage,
 	    		parvo_center,
                 maxConvol, // not filled
+                d_sample_x1, d_sample_y1, d_sample_w1,
 	    		0, nMagno_I, nParvo_I, nLGN,
                 L_x0, L_y0, R_x0, R_y0,
 	    		normViewDistance, nsig, 0, flat_retina, virtual_LGN);
@@ -5250,11 +5288,17 @@ int main(int argc, char** argv) {
 		assert(maxConvol_shared <= deviceProps.sharedMemPerBlock - WARP_SIZE*sizeof(Float));
 
         cout << "parvo_maxConvol<<<" << nParvo << ", " << nSample << ", " << maxConvol_shared << ">>>" << "\n";
-	    parvo_maxConvol<<<nParvo, nSample, maxConvol_shared>>>(
+	    //parvo_maxConvol<<<nParvo, nSample, maxConvol_shared>>>(
+        //        *dLGN.spatial,
+        //        parvo_TW_storage,
+        //        dLGN.covariant,
+        //        maxConvol,
+        //        maxSample1D, nParvo_I, nMagno_I, nLGN, nKernelSample, kernelSampleDt, nsig);
+        parvo_maxConvol_sep<<<nParvo, nSample>>>(
                 *dLGN.spatial,
                 parvo_TW_storage,
                 dLGN.covariant,
-                maxConvol,
+                maxConvol, d_sample_x1, d_sample_y1, d_sample_w1,
                 maxSample1D, nParvo_I, nMagno_I, nLGN, nKernelSample, kernelSampleDt, nsig);
         #ifdef CHECK
 	        getLastCudaError("get_maxConvol failed");
@@ -5276,6 +5320,7 @@ int main(int argc, char** argv) {
 	    		magno_SC_storage,
 	    		magno_center,
                 maxConvol, // magno part wil be filled
+                d_sample_x2, d_sample_y2, d_sample_w2,
 	    		nParvo_I, nParvo_C, nMagno_I, nLGN,
                 L_x0, L_y0, R_x0, R_y0,
 	    		normViewDistance, nsig, 1, flat_retina, virtual_LGN);
@@ -5289,6 +5334,22 @@ int main(int argc, char** argv) {
     cudaEventRecord(storeReady, 0);
     cudaEventSynchronize(storeReady);
 	cout << "convol parameters stored\n";
+    if (nParvo > 0) {
+        delete []sample_x1;
+        delete []sample_y1;
+        delete []sample_w1;
+        checkCudaErrors(cudaFree(d_sample_x1));
+        checkCudaErrors(cudaFree(d_sample_y1));
+        checkCudaErrors(cudaFree(d_sample_w1));
+    }
+    if (nMagno > 0) {
+        delete []sample_x2;
+        delete []sample_y2;
+        delete []sample_w2;
+        checkCudaErrors(cudaFree(d_sample_x2));
+        checkCudaErrors(cudaFree(d_sample_y2));
+        checkCudaErrors(cudaFree(d_sample_w2));
+    }
     Float* tmp_maxConvol;
     if (virtual_LGN) {
 	    checkCudaErrors(cudaMalloc((void **) &tmp_maxConvol, nLGN*sizeof(Float)));

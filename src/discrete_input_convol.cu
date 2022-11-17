@@ -327,16 +327,31 @@ void store_spatialWeight(
         Float* __restrict__ SW_storage,
         float* __restrict__ SC_storage,
         Size storeID, // (id*nType + iType) * nSample + tid;
+        Float* __restrict__ sample_x,
+        Float* __restrict__ sample_y,
+        Float* __restrict__ sample_w,
         Size nSample,
+        Float nsig,
         bool uniform_retina,
         bool virtual_LGN 
 ) {
     // rads relative to center
-    Float w = (threadIdx.x + 0.5)*dw - wSpan;
-    Float h = (threadIdx.y + 0.5)*dh - hSpan;
+    Float w;
+    Float h;
+    Float areal_weight;
+    if (nsig > 0) {
+        w = (threadIdx.x + 0.5)*dw - wSpan;
+        h = (threadIdx.y + 0.5)*dh - hSpan;
+        areal_weight = 1;
+    } else {
+        int idx = threadIdx.y * WARP_SIZE + threadIdx.x;
+        w = sample_x[idx];
+        h = sample_y[idx];
+        areal_weight = sample_w[idx];
+    }
 
 	if (blockIdx.x == 0 && blockIdx.y == 0) {
-        Float spatialWeight = spatialKernel(w, h, wSigSqrt2, hSigSqrt2);
+        Float spatialWeight = spatialKernel(w, h, wSigSqrt2, hSigSqrt2) * areal_weight;
 	    block_reduce<Float>(reduced, spatialWeight);
 		SW_storage[threadIdx.x + threadIdx.y*blockDim.x] = spatialWeight/reduced[0];
 	}
@@ -423,6 +438,9 @@ void store_PM(
         float* __restrict__ SC_storage,
         float* __restrict__ center,
         Float* __restrict__ max_convol,
+        Float* __restrict__ sample_x,
+        Float* __restrict__ sample_y,
+        Float* __restrict__ sample_w,
         Size nBefore, Size nAfter, Size nL, Size nLGN,
 	    Float L_x0,
 	    Float L_y0,
@@ -470,8 +488,8 @@ void store_PM(
             Float hSpan = nsig * spat.ry / SQRT2;
             Float dh = 2*hSpan/blockDim.y;
 			{
-            	shared_spat[0] = spat.x;
-				shared_spat[1] = spat.y;
+            	shared_spat[0] = spat.x; // polar
+				shared_spat[1] = spat.y; // ecc
 				shared_spat[2] = cosine(spat.orient); 
 				shared_spat[3] = sine(spat.orient); 
 				shared_spat[4] = wSpan;
@@ -533,15 +551,15 @@ void store_PM(
         }
         __syncthreads();
         // load from shared mem
-        store_spatialWeight(reduced, shared_spat[0], shared_spat[1], shared_spat[2], shared_spat[3], shared_spat[4], shared_spat[5], shared_spat[6], shared_spat[7], shared_spat[8], shared_spat[9], normViewDistance, LR_x0, LR_y0, LR, SW_storage, SC_storage, offset*nSample+tid, nSample, uniform_retina, virtual_LGN);
+        store_spatialWeight(reduced, shared_spat[0], shared_spat[1], shared_spat[2], shared_spat[3], shared_spat[4], shared_spat[5], shared_spat[6], shared_spat[7], shared_spat[8], shared_spat[9], normViewDistance, LR_x0, LR_y0, LR, SW_storage, SC_storage, offset*nSample+tid, sample_x, sample_y, sample_w, nSample, nsig, uniform_retina, virtual_LGN);
     } else {
         assert(PM == 1);
         if (tid == 0) {
             Zip_spatial spat;
             spat.load(spatial, lid);
-            shared_spat[0] = spat.x;
-            shared_spat[1] = spat.y;
-            reduced[4] = spat.rx;
+            shared_spat[0] = spat.x; // polar
+            shared_spat[1] = spat.y; // ecc
+            reduced[4] = spat.rx; // in ecc
             reduced[5] = spat.ry;
             Float c_orient = spat.orient;
             shared_spat[2] = cosine(c_orient);
@@ -549,8 +567,9 @@ void store_PM(
             shared_spat[8] = spat.k;
 
             spat.load(spatial, nLGN + lid);
-            Float x = spat.x - shared_spat[0];
-            Float y = spat.y - shared_spat[1];
+            // visual-center-vector from center to surround 
+            Float x = spat.y*cosine(spat.x) - shared_spat[1]*cosine(shared_spat[0]); // cx -> sx
+            Float y = spat.y*sine(spat.x) - shared_spat[1]*sine(shared_spat[0]); // cy -> sy
 
             // orientation diff between center and surround
             Float d_orient = c_orient - spat.orient;
@@ -578,8 +597,17 @@ void store_PM(
         Float centerEcc = shared_spat[1];
         Float coso = reduced[0];
         Float sino = reduced[1];
-        Float cx = (threadIdx.x + 0.5)*ds - span;
-        Float cy = (threadIdx.y + 0.5)*ds - span;
+        Float cx,  cy, areal_weight;
+        if (nsig > 0) {
+            cx = (threadIdx.x + 0.5)*ds - span;
+            cy = (threadIdx.y + 0.5)*ds - span;
+            areal_weight = 1;
+        } else {
+            int idx = threadIdx.y * WARP_SIZE + threadIdx.x;
+            cx = sample_x[idx];
+            cy = sample_y[idx];
+            areal_weight = sample_w[idx];
+        }
 
         Float c_rx = reduced[4];
         Float c_ry = reduced[5];
@@ -589,18 +617,18 @@ void store_PM(
         Float s_rx = shared_spat[6];
         Float s_ry = shared_spat[7];
         Float k = shared_spat[8];
-
+        // align original center and surround sample points
         Float sx = tx*coso - ty*sino;
         Float sy = tx*sino + ty*coso;
-        Float cs_weight = spatialKernel(cx, cy, c_rx, c_ry);
+        Float cs_weight = spatialKernel(cx, cy, c_rx, c_ry) * areal_weight;
 	    block_reduce<Float>(reduced, cs_weight);
         cs_weight /= reduced[0];
 
-        Float ss_weight = spatialKernel(sx, sy, s_rx, s_ry);
+        Float ss_weight = spatialKernel(sx, sy, s_rx, s_ry) * areal_weight;
 	    block_reduce<Float>(reduced, ss_weight);
         ss_weight /= reduced[0];
 
-        Float spatialWeight = copysign(cs_weight,k) - copysign(ss_weight, k);
+        Float spatialWeight = copysign(cs_weight,k) - copysign(ss_weight, k); 
 
         coso = shared_spat[2];
         sino = shared_spat[3];
@@ -849,6 +877,155 @@ void parvo_maxConvol(Spatial_component &spatial,
     }
 }
 
+__launch_bounds__(1024,1)
+__global__
+void parvo_maxConvol_sep(Spatial_component &spatial,
+                   Float* __restrict__ TW_storage,
+                   Float* __restrict__ covariant,
+                   Float* __restrict__ max_convol,
+                   Float* __restrict__ sample_x,
+                   Float* __restrict__ sample_y,
+                   Float* __restrict__ sample_w,
+                   Size nSample1D, Size nParvo_L, Size nMagno_L, Size nLGN, SmallSize nKernelSample, Float kernelSampleDt, Float nsig)
+{
+    Size nSample = nSample1D * nSample1D;
+    __shared__ Float reduced[WARP_SIZE];
+    PosInt id = blockIdx.x;
+    if (id >= nParvo_L) {
+        id += nMagno_L;
+    }
+    Float rxs = spatial.rx[nLGN+id];
+    Float rys = spatial.ry[nLGN+id];
+
+    Float xs = spatial.x[nLGN+id];
+    Float ys = spatial.y[nLGN+id];
+
+    Float wSpanS = nsig * rxs / SQRT2;
+    Float hSpanS = nsig * rys / SQRT2;
+
+    Float rxc = spatial.rx[id];
+    Float ryc = spatial.ry[id];
+
+
+    Float xc = spatial.x[id];
+    Float yc = spatial.y[id];
+
+    Float wSpanC = nsig * rxc / SQRT2;
+    Float hSpanC = nsig * ryc / SQRT2;
+
+    Float dx = yc*cosine(xc)-ys*cosine(xs);
+    Float dy = yc*sine(xc)-ys*sine(xs);
+
+    Float cov = covariant[id];
+    Float s_orient = spatial.orient[nLGN+id];
+    Float c_orient = spatial.orient[id];
+
+    Float ks = spatial.k[nLGN + id];
+    Float kc = spatial.k[id];
+
+    Float d_orient = c_orient - s_orient;
+    if (abs(d_orient) > M_PI/2) {
+        d_orient -= copysign(M_PI, d_orient);
+    } 
+
+    Float dwC = 2*wSpanC/nSample1D;
+    Float dhC = 2*hSpanC/nSample1D;
+    Float dwS = 2*wSpanS/nSample1D;
+    Float dhS = 2*hSpanS/nSample1D;
+
+	Float cosd = cosine(d_orient); 
+	Float sind = sine(d_orient);
+
+    Size nPatch = nSample/blockDim.x;
+    assert(nSample%blockDim.x == 0);
+
+    Float convol;
+    if (threadIdx.x == 0) {
+        convol = 0.0;
+    }
+    #pragma unroll 16
+    for (PosInt it = 0; it<nKernelSample; it++) {
+        Float tc = TW_storage[blockIdx.x*2*nKernelSample + it];
+        Float ts = TW_storage[(blockIdx.x*2 + 1)*nKernelSample + it];
+
+        // center parts
+        #pragma unroll 9
+        for (PosInt iPatch = 0; iPatch < nPatch; iPatch++) {
+            PosInt pid = iPatch*blockDim.x + threadIdx.x;
+            Float x, y, areal_weight;
+            if (nsig > 0) {
+                PosInt w = pid % nSample1D;
+                PosInt h = pid / nSample1D;
+                x = (w + 0.5)*dwC - wSpanC; 
+                y = (h + 0.5)*dhC - hSpanC;
+                areal_weight = 1;
+            } else {
+                x = sample_x[pid]; 
+                y = sample_y[pid];
+                areal_weight = sample_w[pid];
+            }
+
+            // origin at the center of the surround RF
+            Float local_sw = spatialKernel(x, y, rxc, ryc) * areal_weight;
+            Float swC = local_sw * kc/(M_PI*rxs*rys) * dwC*dhC * tc;
+            Float sx = cosd*(dx + x) - sind*(dy + y);
+            Float sy = sind*(dx + x) + cosd*(dy + y);
+            local_sw = spatialKernel(sx, sy, rxs, rys) * areal_weight;
+            Float swS = local_sw * ks/(M_PI*rxs*rys) * dwS*dhS * ts;
+
+            Float local_decide;
+            if (abs(swC) > abs(swS)) { // assumed contrast must have the same sign as local_center
+                local_decide = abs(swC) + swS * copysign(cov, swC);
+            } else { // assumed contrast must have the same sign as local_surround
+                local_decide = abs(swS) + swC * copysign(cov, swS);
+            }
+	        block_reduce<Float>(reduced, local_decide);
+            if (threadIdx.x == 0) {
+                convol += reduced[0];
+            }
+        }
+        // surround parts
+        #pragma unroll 9
+        for (PosInt iPatch = 0; iPatch < nPatch; iPatch++) {
+            PosInt pid = iPatch*blockDim.x + threadIdx.x;
+            Float x, y, areal_weight;
+            if (nsig > 0) {
+                PosInt w = pid % nSample1D;
+                PosInt h = pid / nSample1D;
+                x = (w + 0.5)*dwS - wSpanS; 
+                y = (h + 0.5)*dhS - hSpanS;
+                areal_weight = 1;
+            } else {
+                x = sample_x[pid]; 
+                y = sample_y[pid];
+                areal_weight = sample_w[pid];
+            }
+
+            // origin at the center of the surround RF
+            Float local_sw = spatialKernel(x, y, rxs, rys) * areal_weight;
+            Float swS = local_sw * ks/(M_PI*rxs*rys) * dwS*dhS * ts;
+            Float cx = cosd*(x - dx) - sind*(y - dy);
+            Float cy = sind*(x - dx) + cosd*(y - dy);
+            local_sw = spatialKernel(cx, cy, rxc, ryc) * areal_weight;
+            Float swC = local_sw * kc/(M_PI*rxc*ryc) * dwC*dhC * tc;
+
+            Float local_decide;
+            if (abs(swC) > abs(swS)) { // assumed contrast must have the same sign as local_center
+                local_decide = abs(swC) + swS * copysign(cov, swC);
+            } else { // assumed contrast must have the same sign as local_surround
+                local_decide = abs(swS) + swC * copysign(cov, swS);
+            }
+	        block_reduce<Float>(reduced, local_decide);
+            if (threadIdx.x == 0) {
+                convol += reduced[0];
+            }
+        }
+    }
+    if (threadIdx.x == 0) { // add center surround together, iType = 0, 1
+		// max_convol should be initialized elsewhere 
+        max_convol[id] = convol;
+    }
+}
 // grid: [nLGN, 2, 1]
 // block: [nSpatialSample1D, nSpatialSample1D, 1]
 __launch_bounds__(1024,1)
