@@ -4,11 +4,11 @@ __device__ void warps_min(Float array[], Float data, PosInt id[], PosInt tid, Si
 	PosInt index = tid;
     unsigned MASK = __ballot_sync(FULL_MASK, tid < n);
     if (tid < n) {
-        Size half_width = warpSize/2; // ceil power of 2
+        Size half_width = WARP_SIZE/2; // ceil power of 2
         Size remain = 0;
-        if (n % warpSize != 0 && tid/warpSize == n/warpSize) {
+        if (n % WARP_SIZE != 0 && tid/WARP_SIZE == n/WARP_SIZE) {
             // get the ceil power of 2 for the last warp
-            remain = n % warpSize; // remaining element in the last warp
+            remain = n % WARP_SIZE; // remaining element in the last warp
             Size m = remain;
             half_width = 1;
             while(m >>= 1) half_width <<=1;
@@ -24,7 +24,7 @@ __device__ void warps_min(Float array[], Float data, PosInt id[], PosInt tid, Si
             Float comp_data = __shfl_down_sync(MASK, data, offset, 2*half_width);
             PosInt comp_id = __shfl_down_sync(MASK, index, offset, 2 *half_width);
             PosInt ttid = __shfl_down_sync(MASK, tid, offset, 2*half_width);
-            if (data > comp_data && (tid%warpSize < half_width - remain || offset < half_width)) {
+            if (data > comp_data && (tid%WARP_SIZE < half_width - remain || offset < half_width)) {
                 /* DEBUG
                     if (blockIdx.x == 2) {
                         printf("%u/%u, exchange %u#%e -> %u#%e\n", offset, 2*half_width, tid, data, ttid, comp_data);
@@ -36,8 +36,8 @@ __device__ void warps_min(Float array[], Float data, PosInt id[], PosInt tid, Si
         }
     }
     __syncthreads();
-    if (tid < n && tid%warpSize == 0) {
-        PosInt head = tid/warpSize;
+    if (tid < n && tid%WARP_SIZE == 0) {
+        PosInt head = tid/WARP_SIZE;
         array[head] = data;
         id[head] = index;
         /*DEBUG
@@ -83,8 +83,8 @@ __device__ void find_min(Float array[], Float data, PosInt id[], Size n) {
     */
 	warps_min(array, data, id, tid, n);
     __syncthreads();
-    n = (n + warpSize-1)/warpSize;
-    if (tid < warpSize && n > 1) {
+    n = (n + WARP_SIZE-1)/WARP_SIZE;
+    if (tid < WARP_SIZE && n > 1) {
         warp0_min(array, id, tid, n);
     }
     __syncthreads();

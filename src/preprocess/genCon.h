@@ -99,7 +99,7 @@ void read_wLGN(std::string filename, Float sSum[], Float sSumMin[], Float sSumMa
         for (PosInt j=0; j<listSize; j++) {
             sSum[i] += array[i*maxList+j];
         }
-        PosInt k = i%blockSize;
+        PosInt k = i%MAX_BLOCKSIZE;
         for (PosInt j = 0; j<nType; j++) {
             if (k<typeAcc[j]) {
                 k = j;
@@ -147,7 +147,7 @@ void read_LGN_V1(std::string filename, Size nLGN_V1[], Size nLGN_V1_Max[], Size 
         input_file.read(reinterpret_cast<char*>(&listSize), sizeof(Size));
 		nLGN_V1[i] = listSize;
         input_file.read(reinterpret_cast<char*>(&array[i*maxList]), listSize * sizeof(Float));
-        PosInt k = i%blockSize;
+        PosInt k = i%MAX_BLOCKSIZE;
         for (PosInt j = 0; j<nType; j++) {
             if (k<typeAcc[j]) {
                 k = j;

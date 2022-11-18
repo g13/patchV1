@@ -21,11 +21,11 @@ __device__ void find_min(Float array[], Float data, PosInt id[], Size n);
 
 template <typename T>
 __device__ void warps_reduce(T array[], T data, PosInt tid, Size n) {
-    Size width = warpSize; // ceil power of 2
-    Size iWarp = tid/warpSize;
-    if (n % warpSize != 0 && iWarp == n/warpSize) {
+    Size width = WARP_SIZE; // ceil power of 2
+    Size iWarp = tid/WARP_SIZE;
+    if (n % WARP_SIZE != 0 && iWarp == n/WARP_SIZE) {
         // get the ceil power of 2 for the last warp
-        n = n % warpSize; // remaining element in the last warp
+        n = n % WARP_SIZE; // remaining element in the last warp
         //Size width = 2;
         width = 2;
         n--;
@@ -35,8 +35,8 @@ __device__ void warps_reduce(T array[], T data, PosInt tid, Size n) {
         data += __shfl_down_sync(FULL_MASK, data, offset, width);
     }
     __syncthreads();
-    if (tid % warpSize == 0) {
-        array[tid/warpSize] = data;
+    if (tid % WARP_SIZE == 0) {
+        array[tid/WARP_SIZE] = data;
     }
 }
 
@@ -63,8 +63,8 @@ __device__ void block_reduce(T array[], T data) {
     Size n = blockDim.x*blockDim.y*blockDim.z;
 	warps_reduce<T>(array, data, tid, n);
     __syncthreads();
-    n = (n + warpSize-1)/warpSize;
-    if (tid < warpSize && n > 1) {
+    n = (n + WARP_SIZE-1)/WARP_SIZE;
+    if (tid < WARP_SIZE && n > 1) {
         warp0_reduce<T>(array, tid, n);
     }
     __syncthreads();
@@ -72,11 +72,11 @@ __device__ void block_reduce(T array[], T data) {
 
 template <typename T>
 __device__ void warps_reduce2(T array1[], T array2[], T data[], PosInt tid, Size n) {
-    Size width = warpSize; // ceil power of 2
-    Size iWarp = tid/warpSize;
-    if (n % warpSize != 0 && iWarp == n/warpSize) {
+    Size width = WARP_SIZE; // ceil power of 2
+    Size iWarp = tid/WARP_SIZE;
+    if (n % WARP_SIZE != 0 && iWarp == n/WARP_SIZE) {
         // get the ceil power of 2 for the last warp
-        n = n % warpSize; // remaining element in the last warp
+        n = n % WARP_SIZE; // remaining element in the last warp
         //Size width = 2;
         width = 2;
         n--;
@@ -87,9 +87,9 @@ __device__ void warps_reduce2(T array1[], T array2[], T data[], PosInt tid, Size
         data[1] += __shfl_down_sync(FULL_MASK, data[1], offset, width);
     }
     __syncthreads();
-    if (tid % warpSize == 0) {
-        array1[tid/warpSize] = data[0];
-        array2[tid/warpSize] = data[1];
+    if (tid % WARP_SIZE == 0) {
+        array1[tid/WARP_SIZE] = data[0];
+        array2[tid/WARP_SIZE] = data[1];
     }
 }
 
@@ -119,8 +119,8 @@ __device__ void block_reduce2(T array1[], T array2[], T data[]) {
     Size n = blockDim.x*blockDim.y*blockDim.z;
 	warps_reduce2<T>(array1, array2, data, tid, n);
     __syncthreads();
-    n = (n + warpSize-1)/warpSize;
-    if (tid < warpSize && n > 1) {
+    n = (n + WARP_SIZE-1)/WARP_SIZE;
+    if (tid < WARP_SIZE && n > 1) {
         warp0_reduce2<T>(array1, array2, tid, n);
     }
     __syncthreads();

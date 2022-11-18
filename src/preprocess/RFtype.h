@@ -1412,7 +1412,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         std::vector<PosInt> added;
         std::vector<PosInt> newList;
         PosInt m;
-        bool balance = true; // TODO: as input variable
+        bool balance = false; // TODO: as input variable
         if (!singleComp && balance && onComponent.size() != offComponent.size()) {
             if (onComponent.size() > offComponent.size()) {
                 onComponent.resize(offComponent.size());

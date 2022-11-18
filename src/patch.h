@@ -23,6 +23,7 @@
 #include "stats.cuh"
 #include "util/util.h"
 #include "util/po.h"
+#include "util/use_python.h"
 #include "global.h"
 #include "MACRO.h"
 

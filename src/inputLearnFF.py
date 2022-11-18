@@ -120,6 +120,8 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
         framesPerStatus = np.fromfile(f, 'u4', nStage)
         framesToFinish = np.fromfile(f, 'u4', nStage)
         max_ecc = np.fromfile(f, 'f8', 1)[0]
+        SF = np.fromfile(f,'f8',2*nStage)
+    print(f'nStage = {nStage}, nOri = {nOri}, nRep = {nRep}, frameRate = {frameRate}, framesPerStatus: {framesPerStatus}, framesToFinish: {framesToFinish}, max_ecc = {max_ecc}')
 
     if stage == 2 or stage == 3:
         ##### HERE ########
@@ -134,10 +136,12 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
         status = np.zeros((nStatus, 6))
         statusFrame = np.zeros(nStatus)
         for i in range(nOri[0]):
-            for j in range(nRep[0]):
-                statusFrame[i * nRep[0] + j] = framesPerStatus[0]
-            statusFrame[i * nRep[0]] = statusFrame[i * nRep[0]] + framesToFinish[0]
+            for j in range(nRep[0]-1):
+                statusFrame[i*nRep[0]+j] = framesPerStatus[0]
+            statusFrame[(i+1)*nRep[0]-1] = framesToFinish[0]
 
+        stageFrame = sum(statusFrame)
+        nFrame = stageFrame
         print(np.transpose(statusFrame))
         print(sum(statusFrame))
         if 2 == stage:
@@ -177,15 +181,19 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
         for k in range(nOri.size):
             for i in range(nOri[k]):
                 for j in range(nRep[k]):
-                    jFrame = iFrame + (i - 1) * nRep[k] + j
+                    jFrame = iFrame + i*nRep[k] + j
                     statusFrame[jFrame] = framesPerStatus[k]
                     if k == 2 and np.mod(j,nRep[k]) == 0:
                         status[jFrame, 4] = absentRate
                     else:
                         status[jFrame, 4] = peakRate[k]
                     status[jFrame, 5] = peakRate[k]
-                statusFrame[iFrame + i * nRep[k]] = statusFrame[iFrame + i * nRep[k]] + framesToFinish[k]
-            iFrame = iFrame + nOri[k] * nRep[k]
+                statusFrame[iFrame + (i+1)* nRep[k] - 1] = framesToFinish[k]
+            iFrame += nOri[k] * nRep[k]
+            if k == 0:
+                stageFrame = iFrame
+            else:
+                nFrame = iFrame
         print(np.transpose(statusFrame))
         print(np.sum(statusFrame))
         reverse = np.zeros(nStatus)
@@ -243,6 +251,14 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
     if np.mod(nLGNperV1,2) == 1:
         nLGNperV1 = nLGNperV1 + 1
     
+    disLGN = max_ecc*2/nLGN_1D
+    input_width = np.zeros((nStage,2), dtype = 'f4')
+    print(f'input width crosses')
+    for i in range(nOri.size):
+        input_width[i,0] = 1/SF[i*0]/2/disLGN
+        input_width[i,1] = 1/SF[i*1]/2/disLGN
+        print(f'part {i} on: {input_width[i,0]:.1f} LGNs')
+        print(f'part {i} off: {input_width[i,1]:.1f} LGNs')
     # number of E and I connecitons based on LGN connections
     nI = int(np.min([nLGNperV1 // 4,mI]))
     nE = int(np.min([nLGNperV1,mE]))
@@ -350,7 +366,8 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
         
         LGN_polar.astype('f4').tofile(f)
         LGN_ecc.astype('f4').tofile(f)
-        np.array([doubleOnOff], dtype = 'i4').tofile(f)
+        np.array([doubleOnOff, nStage, stageFrame, nFrame], dtype = 'i4').tofile(f)
+        input_width.tofile(f)
         print(LGN_type)
     
     if not (sInput == None):

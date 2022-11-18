@@ -120,7 +120,7 @@ struct initialize_package {
 };
 
 __global__ 
-__launch_bounds__(blockSize, 1)
+__launch_bounds__(MAX_BLOCKSIZE, 1)
 void initialize(curandStateMRG32k3a* __restrict__ state,
 			Size*  __restrict__ preType, // 
 			Float* __restrict__ rden,
@@ -138,14 +138,14 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
             initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, bool ClessI);
 
 __global__ 
-__launch_bounds__(blockSize, 1)
+__launch_bounds__(MAX_BLOCKSIZE, 1)
 void cal_blockPos(double* __restrict__ pos,
                   Float* __restrict__ block_x,
                   Float* __restrict__ block_y,
                   Size networkSize);
 
 __global__ 
-__launch_bounds__(blockSize, 1)
+__launch_bounds__(MAX_BLOCKSIZE, 1)
 void get_neighbor_blockId(Float* __restrict__ block_x,
                           Float* __restrict__ block_y,
                           PosInt* __restrict__ neighborBlockId,
@@ -154,7 +154,7 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
                           Size nblock, Float blockROI, Float blockROI_max, Size maxNeighborBlock);
 
 __global__ 
-__launch_bounds__(blockSize, 1)
+__launch_bounds__(MAX_BLOCKSIZE, 1)
 void generate_connections(double* __restrict__ pos,
                           Float* __restrict__ preF_type,
                           Float* __restrict__ gap_preF_type, // nTypeI x nFeature x nTypeI
@@ -197,7 +197,7 @@ void generate_connections(double* __restrict__ pos,
                           Size sum_max_N, Size gap_sum_max_N, PosInt block_offset, Size networkSize, Size mI, Size maxDistantNeighbor, Size gap_maxDistantNeighbor, Size nearNeighborBlock, Size maxNeighborBlock, Size nType, Size nTypeE, Size nTypeI, Size nE, Size nI, Size nFeature, Float disGauss, bool strictStrength, Float tol);
 
 __global__ 
-__launch_bounds__(blockSize, 1)
+__launch_bounds__(MAX_BLOCKSIZE, 1)
 void generate_symmetry(PosInt* __restrict__ clusterID,
 					   PosInt* __restrict__ neighborBlockId,
 					   int* __restrict__ neighborMat,
@@ -208,7 +208,7 @@ void generate_symmetry(PosInt* __restrict__ clusterID,
 					   curandStateMRG32k3a* __restrict__ state,
 					   PosInt* __restrict__ i_outstanding,
 					   Float* __restrict__ v_outstanding,
-					   PosInt iblock, Size nblock, Size nearNeighborBlock, Size maxNeighborBlock, Size mI, Size nE, Size nI, Size nTypeE, Size nTypeI);
+					   PosInt iblock, Size nblock, Size blockSize, Size nearNeighborBlock, Size maxNeighborBlock, Size mI, Size nE, Size nI, Size nTypeE, Size nTypeI);
 
 // co-occupied area of the presynaptic axons / dendritic area
 __host__ __device__
