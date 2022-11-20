@@ -19,7 +19,8 @@ np.seterr(invalid = 'raise')
 #@profile
 def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
     #sample = np.array([86,36,37,27,53,49])*1024 + np.array([48,664,666,564,1001,973])
-    #sample = np.array([86546, 64477, 33573, 31727, 56827, 30755, 30738, 56359, 30881, 31439])
+    # sample = np.array([86546, 64477, 33573, 31727, 56827, 30755, 30738, 56359, 30881, 31439])
+    sample = np.array([3908,4061,100,200,300,400,500,3000,1500,1000])
     #sampleName = ['s_op_med', 's_bg_med', 'c_op_med', 'c_bg_med', 'i_op_med', 'i_bg_med']
     #sample = np.array([33])*1024 + np.array([678])
     plotSampleOnly = False

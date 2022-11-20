@@ -1,28 +1,32 @@
 #!/bin/bash
-source /root/miniconda3/etc/profile.d/conda.sh
-eval "$(conda shell.bash hook)"
+# source /root/miniconda3/etc/profile.d/conda.sh
+# eval "$(conda shell.bash hook)"
 # conda activate general
 # set -e
 
 cd ${data_fdr}
 pwd
 patch_cfg=${fig_fdr}/${trial_suffix}-ori_${ori}.cfg
-
 date
+# check 1000
+# a=`check 1200`
+# echo $a
+# check 1200
+# RETURN=$?
+# echo $RETURN
+# date
 if [ "$plotOnly" = False ]; then
 	echo ${patch} -c $patch_cfg
 	${patch} -c $patch_cfg
-	RETURN=$?
-	while [ $RETURN -ne 0 ];  
-	do
-	sleep 10
-	echo sleep 10
-	${patch} -c $patch_cfg
+	# a=`check 1200`
+	# echo $a
 	RETURN=$?
 	echo $RETURN
-	done
 	date
 fi
+
+# echo ${a}
+# date
 
 # usePrefData=False
 # collectMeanDataOnly=False
@@ -56,5 +60,5 @@ fi
 # fi
 
 # wait $pid
-date
+# date
 # conda activate base

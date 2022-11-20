@@ -2,7 +2,7 @@
 source /root/miniconda3/etc/profile.d/conda.sh
 eval "$(conda shell.bash hook)"
 # conda activate general
-# set -e
+set -e
 
 cd ${data_fdr}
 pwd
@@ -12,15 +12,6 @@ date
 if [ "$plotOnly" = False ]; then
 	echo ${patch} -c $patch_cfg
 	${patch} -c $patch_cfg
-	RETURN=$?
-	while [ $RETURN -ne 0 ];  
-	do
-	sleep 10
-	echo sleep 10
-	${patch} -c $patch_cfg
-	RETURN=$?
-	echo $RETURN
-	done
 	date
 fi
 
@@ -32,8 +23,6 @@ fi
 # else
 # 	OPstatus=1
 # fi
-
-# echo python
 
 # pid=""
 # echo python ${fig_fdr}/plotLGN_response_${trial_suffix}.py ${trial_suffix}_${ori} ${LGN_V1_suffix} ${data_fdr} ${fig_fdr}

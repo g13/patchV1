@@ -42,7 +42,7 @@ Float get_acuity(Float ecc) {
     Float k = 0.20498;
     Float log_cpd0 = 3.67411;
     Float cpd = exponential(-k*ecc + log_cpd0);
-    Float acuity = 1.0/cpd/4.0;
+    Float acuity = 2.0/cpd/4.0;
     return acuity;
 }
 

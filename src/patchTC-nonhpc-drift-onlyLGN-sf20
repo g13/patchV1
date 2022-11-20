@@ -5,18 +5,18 @@
 repo=$HOME/repos/patchV1
 cfg_fdr=${repo}/src
 fdr0=/root/autodl-tmp/ljy
-res_fdr=/root/autodl-tmp/ljy/resource_16 # stimulus, V1-static and LGN-static files
+res_fdr=/root/autodl-tmp/ljy/resource_onlyLGN_sf20 # stimulus, V1-static and LGN-static files
 setup_fdr=$fdr0/setup # inputFolder in cfg
-data_fdr=$fdr0/data # outputFolder in cfg
+data_fdr=$fdr0/data_onlyLGN_sf20 # outputFolder in cfg
 
 fitTC=False
-nOri=480 # total # orientaton if applicable
+nOri=12 # total # orientaton if applicable
 TF=8 # input frequency if applicable
-SF=20
-trial_suffix=drifting64_test_test
+SF=50
+trial_suffix=onlyLGN_sf20_test
 singleOri=False
 # singleOri=True
-one_ori=200 #控制从第几个开始
+one_ori=1 #控制从第几个开始
 
 res_suffix=minimal-patch
 patch=patch_fast
@@ -24,7 +24,7 @@ patch=patch_fast
 generate_V1_connection=False
 generate_LGN_V1_connection=False
 
-patch_cfg=ori.cfg
+patch_cfg=ori-drift-onlyLGN-sf20-test.cfg
 
 LGN_V1_suffix=test_lgn
 V1_connectome_suffix=test_v1
@@ -96,7 +96,7 @@ then
 	mkdir -p ${fig_fdr}/log
 fi
 
-cp ${cfg_fdr}/patchTC ${fig_fdr}/patchTC_${trial_suffix}
+cp ${cfg_fdr}/patchTC-nonhpc16 ${fig_fdr}/patchTC_${trial_suffix}
 cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/patch_${trial_suffix}.cfg
 
 if [ "${generate_LGN_V1_connection}" = True ]
@@ -164,7 +164,7 @@ if [ "$plotTConly" = False ]; then
 			check 1200
 			RETURN=$?			
 			done
-			./ori.sh > ${fig_fdr}/log/pOri_${date}_${trial_suffix}_${ori}_${plotOnly}.out 2>&1 &
+			./ori-py.sh > ${fig_fdr}/log/pOri_${date}_${trial_suffix}_${ori}_${plotOnly}.out 2>&1 &
 			jobID+="${!} "
             sleep 1
 			if [ "$plotOnly" = False ]; then
@@ -177,7 +177,7 @@ if [ "$plotTConly" = False ]; then
 			fi
 		done
 		wait $jobID
-		# ./plotTC.sh > log/pTC_${date}_${trial_suffix}.out &
+		./plotTC.sh > log/pTC_${date}_${trial_suffix}.out &
 		job=$!
 	else
 		ori=$one_ori
@@ -185,11 +185,11 @@ if [ "$plotTConly" = False ]; then
 			cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/${trial_suffix}-ori_${ori}.cfg
 		fi
 		export ori
-		./ori.sh > ${fig_fdr}/log/pSingle_${date}_${trial_suffix}_${ori}_${plotOnly}.out 2>&1 &
+		./ori-py.sh > ${fig_fdr}/log/pSingle_${date}_${trial_suffix}_${ori}_${plotOnly}.out 2>&1 &
 		job=$!
 	fi
 else
-	./plotTC.sh > log/pTC_${date}_${trial_suffix}.out 2>&1 &
+	./plotTC.sh > ${fig_fdr}/log/pTC_${date}_${trial_suffix}.out 2>&1 &
 	job=$!
 fi
 

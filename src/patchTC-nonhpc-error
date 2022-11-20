@@ -1,22 +1,22 @@
 #!/bin/bash
 # plotTConly, fitDataReady/plotOnly, readNewSpike
-# set -e
+set -e
 
 repo=$HOME/repos/patchV1
 cfg_fdr=${repo}/src
 fdr0=/root/autodl-tmp/ljy
-res_fdr=/root/autodl-tmp/ljy/resource_16 # stimulus, V1-static and LGN-static files
+res_fdr=/root/autodl-tmp/ljy/resource_7 # stimulus, V1-static and LGN-static files
 setup_fdr=$fdr0/setup # inputFolder in cfg
 data_fdr=$fdr0/data # outputFolder in cfg
 
 fitTC=False
-nOri=480 # total # orientaton if applicable
+nOri=100 # total # orientaton if applicable
 TF=8 # input frequency if applicable
 SF=20
-trial_suffix=drifting64_test_test
-singleOri=False
-# singleOri=True
-one_ori=200 #控制从第几个开始
+trial_suffix=mistake_test_5
+# singleOri=False
+singleOri=True
+one_ori=14
 
 res_suffix=minimal-patch
 patch=patch_fast
@@ -37,7 +37,7 @@ usePrefData=False # use fitted preference from plotTC replot plotV1_response.py
 collectMeanDataOnly=False # no plots, just collect average data
 
 fig_fdr=${fdr0}/${trial_suffix} # figures and configs
-
+# log_fdr=${fig_fdr}/log
 echo ${trial_suffix}
 
 plotTConly=$1
@@ -84,16 +84,16 @@ else
 	fitDataReady=False
 fi
 
+if [ ! -d "${fig_fdr}/log" ]
+then
+	mkdir -p ${fig_fdr}/log
+fi
+
 if [ -d "$fig_fdr" ]
 then
 	echo overwrite contents in $fig_fdr
 else
 	mkdir -p $fig_fdr	
-fi
-
-if [ ! -d "${fig_fdr}/log" ]
-then
-	mkdir -p ${fig_fdr}/log
 fi
 
 cp ${cfg_fdr}/patchTC ${fig_fdr}/patchTC_${trial_suffix}
@@ -120,7 +120,7 @@ else
 fi
 echo plotting files copied
 
-# set -e
+set -e
 jobList=""
 export plotOnly
 export nOri
@@ -148,21 +148,17 @@ date=$(eval date +"%Y_%m_%d_%H-%M-%S")
 if [ "$plotTConly" = False ]; then
 	if [ "$singleOri" = False ]; then
 		if [ "$plotOnly" = False ]; then
-			cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/${trial_suffix}-ori_${one_ori}.cfg
-			cp ${fig_fdr}/${trial_suffix}-ori_${one_ori}.cfg ${fig_fdr}/${trial_suffix}-ori_$((one_ori+1)).cfg
+			cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/${trial_suffix}-ori_1.cfg
+			cp ${fig_fdr}/${trial_suffix}-ori_1.cfg ${fig_fdr}/${trial_suffix}-ori_2.cfg
 		fi
 
 		jobID=""
-		for ori in $( seq ${one_ori} ${nOri} )
+		for ori in $( seq 1 $nOri )
 		do
 			export ori
-			check 1200
-			RETURN=$?
-			while [ $RETURN -eq 1 ];  
+			while [ $(check 590) -eq -1 ];  
 			do  
 			sleep 1
-			check 1200
-			RETURN=$?			
 			done
 			./ori.sh > ${fig_fdr}/log/pOri_${date}_${trial_suffix}_${ori}_${plotOnly}.out 2>&1 &
 			jobID+="${!} "
@@ -185,6 +181,7 @@ if [ "$plotTConly" = False ]; then
 			cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/${trial_suffix}-ori_${ori}.cfg
 		fi
 		export ori
+		echo ./ori.sh
 		./ori.sh > ${fig_fdr}/log/pSingle_${date}_${trial_suffix}_${ori}_${plotOnly}.out 2>&1 &
 		job=$!
 	fi

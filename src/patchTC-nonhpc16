@@ -5,18 +5,18 @@
 repo=$HOME/repos/patchV1
 cfg_fdr=${repo}/src
 fdr0=/root/autodl-tmp/ljy
-res_fdr=/root/autodl-tmp/ljy/resource_16 # stimulus, V1-static and LGN-static files
+res_fdr=/root/autodl-tmp/ljy/resource_grid_benchmark_16pixel # stimulus, V1-static and LGN-static files
 setup_fdr=$fdr0/setup # inputFolder in cfg
-data_fdr=$fdr0/data # outputFolder in cfg
+data_fdr=$fdr0/data_grid_benchmark_16pixel # outputFolder in cfg
 
 fitTC=False
-nOri=480 # total # orientaton if applicable
+nOri=2880 # total # orientaton if applicable
 TF=8 # input frequency if applicable
 SF=20
-trial_suffix=drifting64_test_test
+trial_suffix=grid_benchmark_16pixel_test
 singleOri=False
 # singleOri=True
-one_ori=200 #控制从第几个开始
+one_ori=1 #控制从第几个开始
 
 res_suffix=minimal-patch
 patch=patch_fast
@@ -24,7 +24,7 @@ patch=patch_fast
 generate_V1_connection=False
 generate_LGN_V1_connection=False
 
-patch_cfg=ori.cfg
+patch_cfg=ori16.cfg
 
 LGN_V1_suffix=test_lgn
 V1_connectome_suffix=test_v1
@@ -96,7 +96,7 @@ then
 	mkdir -p ${fig_fdr}/log
 fi
 
-cp ${cfg_fdr}/patchTC ${fig_fdr}/patchTC_${trial_suffix}
+cp ${cfg_fdr}/patchTC-nonhpc16 ${fig_fdr}/patchTC_${trial_suffix}
 cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/patch_${trial_suffix}.cfg
 
 if [ "${generate_LGN_V1_connection}" = True ]

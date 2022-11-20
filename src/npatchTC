@@ -1,0 +1,11 @@
+#!/bin/bash
+
+n=4
+./patchTC-nonhpc-error
+echo $n
+for i in $( seq 1 $n )
+do
+    vim -s ./nextpatch_patchTC.keys ./patchTC-nonhpc-error
+    vim -s ./nextpatch_ori.keys ./ori.cfg
+    ./patchTC-nonhpc-error
+done

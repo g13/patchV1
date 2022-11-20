@@ -1,0 +1,47 @@
+#!/bin/bash
+set -e
+
+
+Nattack=20
+repo=$HOME/repos/patchV1
+cfg_fdr=${repo}/src
+fdr0=/root/autodl-tmp/ljy
+res_fdr=/root/autodl-tmp/ljy/resource_4 # stimulus, V1-static and LGN-static files
+setup_fdr=$fdr0/setup # inputFolder in cfg
+data_fdr=$fdr0/data # outputFolder in cfg
+
+trial_suffix=minimal_test
+fig_fdr=${fdr0}/${trial_suffix} # figures and configs
+
+patch_cfg=attack-ori.cfg
+
+cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/${trial_suffix}-attack_1.cfg
+cp ${fig_fdr}/${trial_suffix}-attack_1.cfg ${fig_fdr}/${trial_suffix}-attack_2.cfg
+
+# wait $jobID
+for i in $( seq 1 ${Nattack} )
+do
+    echo ${i}
+    vim -s ${cfg_fdr}/attack-nextOri_cfg.keys ${fig_fdr}/${trial_suffix}-attack_$((i+1)).cfg
+
+    cp ${fig_fdr}/${trial_suffix}-attack_$((i+1)).cfg ${fig_fdr}/${trial_suffix}-attack_$((i+2)).cfg
+    
+    # 修改cfg (vim)
+    # ./attack-patchTC-nonhpc
+
+    # python simba
+
+#     export ori
+#     ./ori.sh > log/pOri_${date}_${trial_suffix}_${ori}_${plotOnly}.out 2>&1 &
+#     jobID+="${!} "
+#     sleep 1
+#     if [ "$plotOnly" = False ]; then
+#         if [ "${ori}" -lt "${nOri}" ]; then
+#             vim -s ${cfg_fdr}/nextOri_cfg.keys ${fig_fdr}/${trial_suffix}-ori_$((ori+1)).cfg
+#             if [ "$((ori+1))" -lt "${nOri}" ]; then
+#                 cp ${fig_fdr}/${trial_suffix}-ori_$((ori+1)).cfg ${fig_fdr}/${trial_suffix}-ori_$((ori+2)).cfg
+#             fi
+#         fi
+#     fi
+    # wait $jobID
+done
