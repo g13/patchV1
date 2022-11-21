@@ -10,8 +10,7 @@ int main(int argc, char** argv) {
 	cout << nDevice << " gpu on the node\n";
 	int iDevice;
 	size_t maxFree = 0;
-	// for (PosInt i = 0; i < nDevice; i++) {
-	for (PosInt i = 1; i < 2; i++) {
+	for (PosInt i = 0; i < nDevice; i++) {
 		checkCudaErrors(cudaSetDevice(i));
 		size_t free;
 		size_t total;
@@ -1906,7 +1905,7 @@ int main(int argc, char** argv) {
 		auto getAcuityAtEcc = [&rsig, &acuityK, &logAcuity0, &deg2rad] (Float ecc, Float acuity[]) {
 			Float cpd = -acuityK * ecc/deg2rad + logAcuity0;
 			cpd = exponential(cpd);
-			acuity[0] = 2.0/cpd/4 * deg2rad/rsig; // from cpd to radius of center
+			acuity[0] = 1.0/cpd/4 * deg2rad/rsig; // from cpd to radius of center
 			acuity[1] = acuity[0]/3/1.349;
 		};
 		Float max_acuity = 0;
@@ -4639,7 +4638,6 @@ int main(int argc, char** argv) {
 	PosInt it0 = 0;
     vector<Size> sample_spikeCount;
     vector<PosInt> sampleID;
-	vector<Size> LGN_spike_time;
     if (!minimal) { // output file tests
 		if (!restore.empty() && !asInit) {
 			fSnapshot.open(restore, fstream::in | fstream::binary);
@@ -4924,10 +4922,8 @@ int main(int argc, char** argv) {
 			fSample.write((char*)&sample_t0, sizeof(Float));
             Float t1 = nt*dt;
 			fSample.write((char*)&t1, sizeof(Float));
-			fSample.write((char*)&nt, sizeof(Size));
-			fSample.write((char*)&nLGN, sizeof(Size));
+			fSample.write((char*)&(sampleID[0]), sampleSize * sizeof(PosInt));
             sample_spikeCount.assign(sampleSize, 0);
-			LGN_spike_time.assign(nLGN, 0);
         }
     }
 	cout << "output file check, done\n";
@@ -6066,13 +6062,6 @@ int main(int argc, char** argv) {
                     }
                 }
             }
-			if (minimal && it*dt >= sample_t0) {
-				for (PosInt j = 0.; j < nLGN; j++) {
-                    Float sInfo = LGN_sInfo[j];
-					LGN_spike_time[j] = flooring(sInfo);
-				}
-				fSample.write((char*)&(LGN_spike_time[0]), nLGN*sizeof(Size));
-			}
             if (rawData) {
                 if (!minimal) {
 			        fRawData.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
@@ -6989,19 +6978,6 @@ int main(int argc, char** argv) {
 	    	fPatchV1_cfg.write((char*) &(synFailFF[0]), nType*sizeof(Float));	
 	    }
     } else {
-		for (PosInt j = 0.; j < sampleID.size(); j++) {
-			Float sInfo = spikeTrain[currentTimeSlot*nV1 + sampleID[j]];
-			if (sInfo >= 1) {
-				// cout << "sInfo\n" << flooring(sInfo);
-				sample_spikeCount[j] += flooring(sInfo);
-			}
-		}
-		for (PosInt j = 0.; j < nLGN; j++) {
-			Float sInfo = LGN_sInfo[j];
-			LGN_spike_time[j] = flooring(sInfo);	
-		}
-		fSample.write((char*)&(LGN_spike_time[0]), nLGN*sizeof(Size));
-		fSample.write((char*)&(sampleID[0]), sampleSize * sizeof(PosInt));
 		fSample.write((char*)&(sample_spikeCount[0]), sampleSize*sizeof(Size));
         fSample.close();
     }
