@@ -24,10 +24,10 @@ fi
 #echo python ${fig_fdr}/plotLGN_response_${op}.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike}
 #python ${fig_fdr}/plotLGN_response_${op}.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
 
-#date
-#echo python ${fig_fdr}/plotV1_fr_${op}.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike}
-#python ${fig_fdr}/plotV1_fr_${op}.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} &
-#
+date
+echo python ${fig_fdr}/plotV1_fr_${op}.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike}
+python ${fig_fdr}/plotV1_fr_${op}.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} &
+
 #date
 #echo python ${fig_fdr}/plotV1_response_lFF_${op}.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
 #python ${fig_fdr}/plotV1_response_lFF_${op}.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}

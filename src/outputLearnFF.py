@@ -700,12 +700,14 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         qtt = np.floor(np.linspace(0, nstep-1, nit)).astype('i4')
         tLGN_all = np.zeros((ns, nstep, max_LGNperV1))
         radius_t = np.zeros((nV1, 2, nstep))
+        on_center = np.zeros((2, nV1, nstep))
+        off_center = np.zeros((2, nV1, nstep))
         with open(f_sLGN, 'rb') as f:
             f.seek(nskip * 4, 1)
             f.seek(max_LGNperV1 * nV1 * step0 * 4, 1)
             data = np.fromfile(f, 'f4', nV1*max_LGNperV1).reshape(max_LGNperV1, nV1).T
             tLGN_all[:,0,:] = data[V1_pick, :]
-            radius_t[:,:,0] = get_radius(nV1, data, nLGN_V1, LGN_vpos, LGN_type, LGN_V1_ID)
+            radius_t[:,:,0], on_center[:,:,0], off_center[:,:,0] = get_radius(nV1, data, nLGN_V1, LGN_vpos, LGN_type, LGN_V1_ID)
             for j in range(1,nstep):
                 f.seek(max_LGNperV1 * nV1 * (tstep - 1) * 4, 1)
                 data = np.fromfile(f, 'f4', nV1*max_LGNperV1).reshape(max_LGNperV1, nV1).T
@@ -720,16 +722,16 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             ax.plot(it * dt/1000, radius_t[epick,:,:].std(axis = 0)[1,:], ':c', label = 'off std.')
             ax.set_xlim(it[0]*dt/1000, it[-1]*dt/1000)
             if input_halfwidth[0] == input_halfwidth[1]:
-                ax.axhline(y = input_halfwidth[0], xmin = 0, xmax = stageFrame/nFrame, color = ':k', label = 'input HW')
+                ax.axhline(y = input_halfwidth[0], xmin = 0, xmax = stageFrame/nFrame, ls = ':', color = 'k', label = 'input HW')
             else:
-                ax.axhline(y = input_halfwidth[0], xmin = 0, xmax = stageFrame/nFrame, color = ':r', label = 'on HW')
-                ax.axhline(y = input_halfwidth[1], xmin = 0, xmax = stageFrame/nFrame, color = ':b', label = 'off HW')
+                ax.axhline(y = input_halfwidth[0], xmin = 0, xmax = stageFrame/nFrame, ls = ':', color = 'r', label = 'on HW')
+                ax.axhline(y = input_halfwidth[1], xmin = 0, xmax = stageFrame/nFrame, ls = ':', color = 'b', label = 'off HW')
             if nStage > 1:
                 if input_halfwidth[2] == input_halfwidth[3]:
-                    ax.axhline(y = input_halfwidth[2], xmin = stageFrame/nFrame, xmax = 1, color = ':k')
+                    ax.axhline(y = input_halfwidth[2], xmin = stageFrame/nFrame, xmax = 1, ls = ':', color = 'k')
                 else:
-                    ax.axhline(y = input_halfwidth[2], xmin = stageFrame/nFrame, xmax = 1, color = ':r')
-                    ax.axhline(y = input_halfwidth[3], xmin = stageFrame/nFrame, xmax = 1, color = ':b')
+                    ax.axhline(y = input_halfwidth[2], xmin = stageFrame/nFrame, xmax = 1, ls = ':', color = 'r')
+                    ax.axhline(y = input_halfwidth[3], xmin = stageFrame/nFrame, xmax = 1, ls = ':', color = 'b')
 
             ax.legend()
             ax.set_xlabel('time')
@@ -923,6 +925,8 @@ def determine_os_str(pos, ids, types, s, n, m, min_dis, os_out, nLGN_1D):
 
 def get_radius(n, s, m, pos, types ,ids):
     radius = np.zeros((n,2)) - 1
+    on_pos = np.zeros((2,n))
+    off_pos = np.zeros((2,n))
     for i in range(n):
         if m[i] > 0:
             all_id = ids[i, :m[i]]
@@ -941,7 +945,7 @@ def get_radius(n, s, m, pos, types ,ids):
                 off_pos = np.average(pos[:,off_id], axis = 1, weights = off_s)
                 radius[i, 1] = np.average(np.linalg.norm(pos[:,off_id].T - off_pos, axis = 1), weights = off_s)
         
-    return radius
+    return radius, on_pos, off_pos 
 
 if __name__ == '__main__':
     if len(sys.argv) < 14:

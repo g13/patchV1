@@ -345,9 +345,9 @@ void store_spatialWeight(
         areal_weight = 1;
     } else {
         int idx = threadIdx.y * WARP_SIZE + threadIdx.x;
-        w = sample_x[idx];
-        h = sample_y[idx];
-        areal_weight = sample_w[idx];
+        w = sample_x[idx]*wSpan/nsig;
+        h = sample_y[idx]*hSpan/nsig;
+        areal_weight = sample_w[idx]*wSpan*hSpan/nsig/nsig;
     }
 
 	if (blockIdx.x == 0 && blockIdx.y == 0) {
@@ -604,9 +604,9 @@ void store_PM(
             areal_weight = 1;
         } else {
             int idx = threadIdx.y * WARP_SIZE + threadIdx.x;
-            cx = sample_x[idx];
-            cy = sample_y[idx];
-            areal_weight = sample_w[idx];
+            cx = -sample_x[idx]*span/nsig;
+            cy = -sample_y[idx]*span/nsig;
+            areal_weight = sample_w[idx]*span*span/(nsig*nsig);
         }
 
         Float c_rx = reduced[4];
@@ -960,9 +960,9 @@ void parvo_maxConvol_sep(Spatial_component &spatial,
                 y = (h + 0.5)*dhC - hSpanC;
                 areal_weight = 1;
             } else {
-                x = sample_x[pid]; 
-                y = sample_y[pid];
-                areal_weight = sample_w[pid];
+                x = -sample_x[pid]*wSpanC/nsig; 
+                y = -sample_y[pid]*hSpanC/nsig;
+                areal_weight = sample_w[pid]*wSpanC*hSpanC/(nsig*nsig);
             }
 
             // origin at the center of the surround RF
@@ -996,9 +996,9 @@ void parvo_maxConvol_sep(Spatial_component &spatial,
                 y = (h + 0.5)*dhS - hSpanS;
                 areal_weight = 1;
             } else {
-                x = sample_x[pid]; 
-                y = sample_y[pid];
-                areal_weight = sample_w[pid];
+                x = -sample_x[pid]*wSpanS/nsig; 
+                y = -sample_y[pid]*hSpanS/nsig;
+                areal_weight = sample_w[pid]*wSpanS*hSpanS/(nsig*nsig);
             }
 
             // origin at the center of the surround RF

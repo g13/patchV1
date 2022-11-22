@@ -2539,6 +2539,10 @@ int main(int argc, char** argv) {
 	Float max_LGNy = *max_element(LGN_y.begin(), LGN_y.end());
 	Float max_LGN_radius = *max_element(LGN_rw.begin()+nLGN, LGN_rw.end());
 
+    if (nsig == 0) {
+        cout << "nsig must not be zero\n";
+        return EXIT_FAILURE;
+    }
 	cout << "LGN surround nsig x radius occupies " << max_LGN_radius*nsig/deg2rad/max_ecc * normEccMaxStimulus_extent << " of the normalized texture coords' range\n";
     cout << "the entirety of LGN RFs occupies " << (max_LGNx - min_LGNx + 2*max_LGN_radius*nsig/deg2rad)/max_ecc*normEccMaxStimulus_extent << " in normed texture coords\n";
 
@@ -4639,6 +4643,7 @@ int main(int argc, char** argv) {
 	PosInt it0 = 0;
     vector<Size> sample_spikeCount;
     vector<PosInt> sampleID;
+	vector<Size> LGN_spike_time;
     if (!minimal) { // output file tests
 		if (!restore.empty() && !asInit) {
 			fSnapshot.open(restore, fstream::in | fstream::binary);
@@ -4923,8 +4928,10 @@ int main(int argc, char** argv) {
 			fSample.write((char*)&sample_t0, sizeof(Float));
             Float t1 = nt*dt;
 			fSample.write((char*)&t1, sizeof(Float));
-			fSample.write((char*)&(sampleID[0]), sampleSize * sizeof(PosInt));
+			fSample.write((char*)&nt, sizeof(Size));
+			fSample.write((char*)&nLGN, sizeof(Size));
             sample_spikeCount.assign(sampleSize, 0);
+			LGN_spike_time.assign(nLGN, 0);
         }
     }
 	cout << "output file check, done\n";
@@ -5187,7 +5194,7 @@ int main(int argc, char** argv) {
     Float *sample_x1, *sample_y1, *sample_w1;
     Float *d_sample_x2, *d_sample_y2, *d_sample_w2;
     Float *sample_x2, *sample_y2, *sample_w2;
-    if (nsig == 0) {
+    if (nsig < 0) {
         Py_Initialize();
         if (_import_array() < 0) {
             PyErr_Print();
@@ -5195,28 +5202,30 @@ int main(int argc, char** argv) {
             return 1;
         }
         if (nParvo > 0) {
-            sample_x1 = new Float[MAX_BLOCKSIZE];
-            sample_y1 = new Float[MAX_BLOCKSIZE];
-            sample_w1 = new Float[MAX_BLOCKSIZE];
-            checkCudaErrors(cudaMalloc((void**) &d_sample_x1, MAX_BLOCKSIZE * sizeof(Float)));
-            checkCudaErrors(cudaMalloc((void**) &d_sample_y1, MAX_BLOCKSIZE * sizeof(Float)));
-            checkCudaErrors(cudaMalloc((void**) &d_sample_w1, MAX_BLOCKSIZE * sizeof(Float)));
-            sample_2D_Gaussian(nsig, int(MAX_BLOCKSIZE), wv, sample_x1, sample_y1, sample_w1);
-            checkCudaErrors(cudaMemcpy(d_sample_x1, sample_x1, MAX_BLOCKSIZE * sizeof(Float), cudaMemcpyHostToDevice));
-            checkCudaErrors(cudaMemcpy(d_sample_y1, sample_y1, MAX_BLOCKSIZE * sizeof(Float), cudaMemcpyHostToDevice));
-            checkCudaErrors(cudaMemcpy(d_sample_w1, sample_w1, MAX_BLOCKSIZE * sizeof(Float), cudaMemcpyHostToDevice));
+            sample_x1 = new Float[nSample];
+            sample_y1 = new Float[nSample];
+            sample_w1 = new Float[nSample];
+            checkCudaErrors(cudaMalloc((void**) &d_sample_x1, nSample * sizeof(Float)));
+            checkCudaErrors(cudaMalloc((void**) &d_sample_y1, nSample * sizeof(Float)));
+            checkCudaErrors(cudaMalloc((void**) &d_sample_w1, nSample * sizeof(Float)));
+            int ret = sample_2D_Gaussian(-nsig, int(nSample), wv, sample_x1, sample_y1, sample_w1);
+            if (ret == 1) return EXIT_FAILURE;
+            checkCudaErrors(cudaMemcpy(d_sample_x1, sample_x1, nSample * sizeof(Float), cudaMemcpyHostToDevice));
+            checkCudaErrors(cudaMemcpy(d_sample_y1, sample_y1, nSample * sizeof(Float), cudaMemcpyHostToDevice));
+            checkCudaErrors(cudaMemcpy(d_sample_w1, sample_w1, nSample * sizeof(Float), cudaMemcpyHostToDevice));
         }
         if (nMagno > 0) {
-            sample_x2 = new Float[MAX_BLOCKSIZE];
-            sample_y2 = new Float[MAX_BLOCKSIZE];
-            sample_w2 = new Float[MAX_BLOCKSIZE];
-            checkCudaErrors(cudaMalloc((void**) &d_sample_x2, MAX_BLOCKSIZE * sizeof(Float)));
-            checkCudaErrors(cudaMalloc((void**) &d_sample_y2, MAX_BLOCKSIZE * sizeof(Float)));
-            checkCudaErrors(cudaMalloc((void**) &d_sample_w2, MAX_BLOCKSIZE * sizeof(Float)));
-            sample_2D_Gaussian_difference(nsig, sigRatio, MAX_BLOCKSIZE, sample_x2, sample_y2, sample_w2);
-            checkCudaErrors(cudaMemcpy(d_sample_x2, sample_x2, MAX_BLOCKSIZE * sizeof(Float), cudaMemcpyHostToDevice));
-            checkCudaErrors(cudaMemcpy(d_sample_y2, sample_y2, MAX_BLOCKSIZE * sizeof(Float), cudaMemcpyHostToDevice));
-            checkCudaErrors(cudaMemcpy(d_sample_w2, sample_w2, MAX_BLOCKSIZE * sizeof(Float), cudaMemcpyHostToDevice));
+            sample_x2 = new Float[nSample];
+            sample_y2 = new Float[nSample];
+            sample_w2 = new Float[nSample];
+            checkCudaErrors(cudaMalloc((void**) &d_sample_x2, nSample * sizeof(Float)));
+            checkCudaErrors(cudaMalloc((void**) &d_sample_y2, nSample * sizeof(Float)));
+            checkCudaErrors(cudaMalloc((void**) &d_sample_w2, nSample * sizeof(Float)));
+            int ret = sample_2D_Gaussian_difference(-nsig, sigRatio, nSample, sample_x2, sample_y2, sample_w2);
+            if (ret == 1) return EXIT_FAILURE;
+            checkCudaErrors(cudaMemcpy(d_sample_x2, sample_x2, nSample * sizeof(Float), cudaMemcpyHostToDevice));
+            checkCudaErrors(cudaMemcpy(d_sample_y2, sample_y2, nSample * sizeof(Float), cudaMemcpyHostToDevice));
+            checkCudaErrors(cudaMemcpy(d_sample_w2, sample_w2, nSample * sizeof(Float), cudaMemcpyHostToDevice));
         }
         Py_Finalize();
     }
@@ -5334,21 +5343,23 @@ int main(int argc, char** argv) {
     cudaEventRecord(storeReady, 0);
     cudaEventSynchronize(storeReady);
 	cout << "convol parameters stored\n";
-    if (nParvo > 0) {
-        delete []sample_x1;
-        delete []sample_y1;
-        delete []sample_w1;
-        checkCudaErrors(cudaFree(d_sample_x1));
-        checkCudaErrors(cudaFree(d_sample_y1));
-        checkCudaErrors(cudaFree(d_sample_w1));
-    }
-    if (nMagno > 0) {
-        delete []sample_x2;
-        delete []sample_y2;
-        delete []sample_w2;
-        checkCudaErrors(cudaFree(d_sample_x2));
-        checkCudaErrors(cudaFree(d_sample_y2));
-        checkCudaErrors(cudaFree(d_sample_w2));
+    if (nsig < 0) {
+        if (nParvo > 0) {
+            delete []sample_x1;
+            delete []sample_y1;
+            delete []sample_w1;
+            checkCudaErrors(cudaFree(d_sample_x1));
+            checkCudaErrors(cudaFree(d_sample_y1));
+            checkCudaErrors(cudaFree(d_sample_w1));
+        }
+        if (nMagno > 0) {
+            delete []sample_x2;
+            delete []sample_y2;
+            delete []sample_w2;
+            checkCudaErrors(cudaFree(d_sample_x2));
+            checkCudaErrors(cudaFree(d_sample_y2));
+            checkCudaErrors(cudaFree(d_sample_w2));
+        }
     }
     Float* tmp_maxConvol;
     if (virtual_LGN) {
@@ -6124,6 +6135,13 @@ int main(int argc, char** argv) {
                     }
                 }
             }
+			if (minimal && it*dt >= sample_t0) {
+				for (PosInt j = 0.; j < nLGN; j++) {
+                    Float sInfo = LGN_sInfo[j];
+					LGN_spike_time[j] = flooring(sInfo);
+				}
+				fSample.write((char*)&(LGN_spike_time[0]), nLGN*sizeof(Size));
+			}
             if (rawData) {
                 if (!minimal) {
 			        fRawData.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
@@ -7040,6 +7058,19 @@ int main(int argc, char** argv) {
 	    	fPatchV1_cfg.write((char*) &(synFailFF[0]), nType*sizeof(Float));	
 	    }
     } else {
+		for (PosInt j = 0.; j < sampleID.size(); j++) {
+			Float sInfo = spikeTrain[currentTimeSlot*nV1 + sampleID[j]];
+			if (sInfo >= 1) {
+				// cout << "sInfo\n" << flooring(sInfo);
+				sample_spikeCount[j] += flooring(sInfo);
+			}
+		}
+		for (PosInt j = 0.; j < nLGN; j++) {
+			Float sInfo = LGN_sInfo[j];
+			LGN_spike_time[j] = flooring(sInfo);	
+		}
+		fSample.write((char*)&(LGN_spike_time[0]), nLGN*sizeof(Size));
+		fSample.write((char*)&(sampleID[0]), sampleSize * sizeof(PosInt));
 		fSample.write((char*)&(sample_spikeCount[0]), sampleSize*sizeof(Size));
         fSample.close();
     }

@@ -15,11 +15,11 @@ if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 	#inputFn=32-random3917563_10-30_stage_II 
 	fdr=wave_concat/wave_II/mechanism-a # folder will be made to store figures and configuratoin files
 	op_cfg=wave_II.cfg # the simulation config file to be used
-	new_setup=True
+	new_setup=False
 	#inputFn=64-preset_10-10_stage_II-o0
 	#inputFn=64-random3917563_10-10_stage_II
+    #inputFn=64-opponent_10-10_stage_II-o1
     inputFn=64-opponent_10-10_stage_II
-    #inputFn=64-opponent_10-10_stage_II
 	op=opp # theme string to be added to filenames of data and figures
     suffix=standard
 	lgn=lFF_II_${suffix} # the theme string to be used for LGN_V1 connections
@@ -108,7 +108,7 @@ fi
 
 echo using ${op_cfg}
 echo outputs to ${fig_fdr}
-cp lFF.slurm ${fig_fdr}/lFF_${op}.slurm
+cp lFF-nonhpc ${fig_fdr}/lFF-nonhpc_${op}
 
 readNewSpike=$2
 if [ -z "${readNewSpike}" ]; 
