@@ -61,6 +61,8 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr,
     ntype = length(types);
 	fseek(fid, (nLGN+nLGN_I)*2*4, 'cof'); % skip LGN_vpos in polar
 	doubleOnOff = fread(fid, 1, 'int')
+	nStage = fread(fid, 1, 'int')
+	input_width = fread(fid, nStage*2, 'int')/2
 	fclose(fid);
 	
 	% read the constants first only 

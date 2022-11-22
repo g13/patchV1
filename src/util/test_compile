@@ -1,0 +1,11 @@
+#!/bin/bash
+
+#inc1=/root/miniconda3/envs/general/include/python3.10/
+#inc2=/root/miniconda3/envs/general/lib/python3.10/site-packages/numpy/core/include/
+#g++ -c use_python.c -I${inc1} -I${inc2} -o use_python.o
+#g++ -c test.c -I${inc1} -I${inc2} -o test.o
+#g++ test.o use_python.o -L/root/miniconda3/envs/general/lib -lpython3.10 -o test
+
+g++ -c use_python.cpp -o use_python.o
+g++ -c test.cpp -o test.o
+g++ test.o use_python.o -L/root/miniconda3/envs/general/lib -Wl,-R/root/miniconda3/envs/general/lib -lpython3.10 -lrt -ldl -lutil -o test

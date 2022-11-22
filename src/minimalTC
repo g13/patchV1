@@ -1,33 +1,33 @@
 #!/bin/bash
 # plotTConly, fitDataReady/plotOnly, readNewSpike
-# set -e
+set -e
 
 repo=$HOME/repos/patchV1
 cfg_fdr=${repo}/src
 fdr0=/root/autodl-tmp/ljy
-res_fdr=/root/autodl-tmp/ljy/resource_16 # stimulus, V1-static and LGN-static files
-setup_fdr=$fdr0/setup # inputFolder in cfg
-data_fdr=$fdr0/data # outputFolder in cfg
+res_fdr=/root/autodl-tmp/ljy/resource_merge_test # stimulus, V1-static and LGN-static files
+setup_fdr=$fdr0/setup_merge_test # inputFolder in cfg
+data_fdr=$fdr0/data_merge_test # outputFolder in cfg
 
 fitTC=False
-nOri=480 # total # orientaton if applicable
+nOri=6 # total # orientaton if applicable
 TF=8 # input frequency if applicable
-SF=40
-trial_suffix=5th
-#singleOri=False
-singleOri=True
+SF=20
+trial_suffix=merge_test
+singleOri=False
+#singleOri=True
 one_ori=1
 
-res_suffix=square_single-layer
+res_suffix=minimal-patch
 patch=patch_fast
 
-generate_V1_connection=True
+generate_V1_connection=False
 generate_LGN_V1_connection=False
 
-patch_cfg=ori.cfg
+patch_cfg=minimal.cfg
 
-LGN_V1_suffix=opt_new
-V1_connectome_suffix=long_range
+LGN_V1_suffix=test_lgn
+V1_connectome_suffix=test_v1
 
 retino_cfg=LGN_V1.cfg
 genCon_cfg=connectome.cfg
@@ -84,16 +84,16 @@ else
 	fitDataReady=False
 fi
 
+if [ ! -d "${fig_fdr}/log" ]
+then
+	mkdir -p ${fig_fdr}/log
+fi
+
 if [ -d "$fig_fdr" ]
 then
 	echo overwrite contents in $fig_fdr
 else
 	mkdir -p $fig_fdr	
-fi
-
-if [ ! -d "${fig_fdr}/log" ]
-then
-	mkdir -p ${fig_fdr}/log
 fi
 
 cp ${cfg_fdr}/patchTC ${fig_fdr}/patchTC_${trial_suffix}
@@ -120,7 +120,7 @@ else
 fi
 echo plotting files copied
 
-# set -e
+set -e
 jobList=""
 export plotOnly
 export nOri
@@ -148,28 +148,20 @@ date=$(eval date +"%Y_%m_%d_%H-%M-%S")
 if [ "$plotTConly" = False ]; then
 	if [ "$singleOri" = False ]; then
 		if [ "$plotOnly" = False ]; then
-			cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/${trial_suffix}-ori_${one_ori}.cfg
-			cp ${fig_fdr}/${trial_suffix}-ori_${one_ori}.cfg ${fig_fdr}/${trial_suffix}-ori_$((one_ori+1)).cfg
+			cp ${cfg_fdr}/${patch_cfg} ${fig_fdr}/${trial_suffix}-ori_1.cfg
+			cp ${fig_fdr}/${trial_suffix}-ori_1.cfg ${fig_fdr}/${trial_suffix}-ori_2.cfg
 		fi
 
 		jobID=""
-		for ori in $( seq ${one_ori} ${nOri} )
+		for ori in $( seq 1 $nOri )
 		do
 			export ori
-			check 1200
-			RETURN=$?
-			while [ $RETURN -eq 1 ];  
-			do  
-			sleep 1
-			check 1200
-			RETURN=$?			
-			done
 			./ori.sh > ${fig_fdr}/log/pOri_${date}_${trial_suffix}_${ori}_${plotOnly}.out 2>&1 &
 			jobID+="${!} "
-            sleep 1
+            sleep 5
 			if [ "$plotOnly" = False ]; then
 				if [ "${ori}" -lt "${nOri}" ]; then
-					vim -s ${cfg_fdr}/nextOri_random_cfg.keys ${fig_fdr}/${trial_suffix}-ori_$((ori+1)).cfg
+					vim -s ${cfg_fdr}/nextOri_cfg.keys ${fig_fdr}/${trial_suffix}-ori_$((ori+1)).cfg
 					if [ "$((ori+1))" -lt "${nOri}" ]; then
 						cp ${fig_fdr}/${trial_suffix}-ori_$((ori+1)).cfg ${fig_fdr}/${trial_suffix}-ori_$((ori+2)).cfg
 					fi
@@ -177,7 +169,7 @@ if [ "$plotTConly" = False ]; then
 			fi
 		done
 		wait $jobID
-		# ./plotTC.sh > log/pTC_${date}_${trial_suffix}.out &
+		./plotTC.sh > ${fig_fdr}/log/pTC_${date}_${trial_suffix}.out &
 		job=$!
 	else
 		ori=$one_ori
@@ -189,7 +181,7 @@ if [ "$plotTConly" = False ]; then
 		job=$!
 	fi
 else
-	./plotTC.sh > log/pTC_${date}_${trial_suffix}.out 2>&1 &
+	./plotTC.sh > ${fig_fdr}/log/pTC_${date}_${trial_suffix}.out 2>&1 &
 	job=$!
 fi
 

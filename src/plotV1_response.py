@@ -21,9 +21,13 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     #sample = np.array([86,36,37,27,53,49])*1024 + np.array([48,664,666,564,1001,973])
     # sample = np.array([86546, 64477, 33573, 31727, 56827, 30755, 30738, 56359, 30881, 31439])
     sample = np.array([3908,4061,100,200,300,400,500,3000,1500,1000])
+    #main
+    #sample = np.array([0,1,2,3,4])*1024 + np.array([48,664,666,564,1001])
+    # sample = np.array([1288])
+    #sample = np.array([86546, 64477, 33573, 31727, 56827, 30755, 30738, 56359, 30881, 31439])
     #sampleName = ['s_op_med', 's_bg_med', 'c_op_med', 'c_bg_med', 'i_op_med', 'i_bg_med']
     #sample = np.array([33])*1024 + np.array([678])
-    plotSampleOnly = False
+    plotSampleOnly = True
     sampling = 'frTypeStat'
     pickSample = -1
     singleOri = False
@@ -32,7 +36,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     ns = 10
     seed = 657890
     np.random.seed(seed)
-    pdt = 1 # plot interval (ms)
+    pdt = 0.125 # plot interval (ms)
     #t0 = 400 # plot start time (ms)
     t0 = 0 # plot start time (ms)
     t1 = 0 # plot end time (ms)

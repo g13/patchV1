@@ -16,21 +16,21 @@ then
 		python ${fig_fdr}/inputLearnFF_${op}.py ${inputFn} ${lgn} ${seed} ${std_ecc} ${res} ${waveStage} ${res_fdr} ${setup_fdr} ${squareOrCircle} ${relay} ${binary_thres} ${fAsInput}
 	fi
 	date
+	echo ${patch} -c ${fig_fdr}/${op}.cfg
 	${patch} -c ${fig_fdr}/${op}.cfg
 	date
 fi
 
-date
-echo python ${fig_fdr}/plotLGN_response_${op}.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike}
-python ${fig_fdr}/plotLGN_response_${op}.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
+#echo python ${fig_fdr}/plotLGN_response_${op}.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike}
+#python ${fig_fdr}/plotLGN_response_${op}.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
 
-date
-echo python ${fig_fdr}/plotV1_fr_${op}.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike}
-python ${fig_fdr}/plotV1_fr_${op}.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} &
-
-date
-echo python ${fig_fdr}/plotV1_response_lFF_${op}.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
-python ${fig_fdr}/plotV1_response_lFF_${op}.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
+#date
+#echo python ${fig_fdr}/plotV1_fr_${op}.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike}
+#python ${fig_fdr}/plotV1_fr_${op}.py ${op} ${data_fdr} ${fig_fdr} ${nOri} ${readNewSpike} &
+#
+#date
+#echo python ${fig_fdr}/plotV1_response_lFF_${op}.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
+#python ${fig_fdr}/plotV1_response_lFF_${op}.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
 
 date
 #echo matlab -nodisplay -nosplash -r "outputLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${setup_fdr}', '${data_fdr}', '${fig_fdr}', ${LGN_switch}, false, ${st}, ${examSingle}, ${use_local_max});exit;" &

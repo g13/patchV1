@@ -4,10 +4,16 @@ cd preprocess
 rm -f retino.o
 rm -f dow.o
 
+optflag=O0
+#optflag=g
+#gptflag=G
+gptflag=lineinfo
+cpp_version=c++11
+
 sm=sm_86
 
-nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c retinotopic_connections.cu -o retino.o
-nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -lineinfo -std=c++11 -g -O0 -c Dow_et_al_1981.cu -o dow.o
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -$gptflag -std=$cpp_version -$optflag -c retinotopic_connections.cu -o retino.o
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -$gptflag -std=$cpp_version -$optflag -c Dow_et_al_1981.cu -o dow.o
 
 # -lcurand
 nvcc -arch=$sm -lcudadevrt -lcudart -lboost_program_options retino.o dow.o -o $HOME/bin/retino

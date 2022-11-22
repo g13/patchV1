@@ -25,7 +25,6 @@ __global__
 void testTexture(Float L, Float M, Float S);
 */
     
-
 template<typename T>
 __global__
 void cudaMemsetNonzero(
@@ -96,6 +95,9 @@ void store_PM(// weights and max convolution
         float* __restrict__ SC_storage,
         float* __restrict__ center,
         Float* __restrict__ max_convol,
+        Float* __restrict__ sample_x,
+        Float* __restrict__ sample_y,
+        Float* __restrict__ sample_w,
 		Size nBefore, Size nAfter, Size nL, Size nLGN,
 		Float L_x0,
 		Float L_y0,
@@ -115,6 +117,18 @@ void parvo_maxConvol(
         Float* __restrict__ covariant,
         Float* __restrict__ max_convol,
         Size nSample1D, Size nParvo_L, Size nMagno_L, Size nLGN, SmallSize nKernelSample, Float kernelSampleDt, Float nsig
+);
+
+
+__global__
+void parvo_maxConvol_sep(Spatial_component &spatial,
+                   Float* __restrict__ TW_storage,
+                   Float* __restrict__ covariant,
+                   Float* __restrict__ max_convol,
+                   Float* __restrict__ sample_x,
+                   Float* __restrict__ sample_y,
+                   Float* __restrict__ sample_w,
+                   Size nSample1D, Size nParvo_L, Size nMagno_L, Size nLGN, SmallSize nKernelSample, Float kernelSampleDt, Float nsig
 );
 
 __global__ 

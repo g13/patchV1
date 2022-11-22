@@ -7,9 +7,9 @@
 __launch_bounds__(1024,1)
 __global__ 
 void test_min(curandStateMRG32k3a *state, PosIntL seed, Size n) {
-    __shared__ Float array[warpSize];
-    __shared__ PosInt id[warpSize];
-    __shared__ Float serial[blockSize];
+    __shared__ Float array[WARP_SIZE];
+    __shared__ PosInt id[WARP_SIZE];
+    __shared__ Float serial[MAX_BLOCKSIZE];
     Size tid = threadIdx.x + threadIdx.y*blockDim.x;
     curandStateMRG32k3a localState = state[tid];
     curand_init(seed, tid, 0, &localState);
@@ -41,8 +41,8 @@ void test_min(curandStateMRG32k3a *state, PosIntL seed, Size n) {
 __launch_bounds__(1024,1)
 __global__ 
 void test_sum(curandStateMRG32k3a *state, PosIntL seed) {
-    __shared__ Float array[warpSize];
-    __shared__ Float serial[blockSize];
+    __shared__ Float array[WARP_SIZE];
+    __shared__ Float serial[MAX_BLOCKSIZE];
     Size tid = threadIdx.x + threadIdx.y*blockDim.x;
 
     curandStateMRG32k3a localState = state[tid];
@@ -51,7 +51,7 @@ void test_sum(curandStateMRG32k3a *state, PosIntL seed) {
     serial[tid] = data;
 
     if (tid == 0) {
-        for (PosInt i = 0; i<warpSize; i++) {
+        for (PosInt i = 0; i<WARP_SIZE; i++) {
             array[i] = 100;
         }
     }
@@ -80,7 +80,7 @@ void test_sum(curandStateMRG32k3a *state, PosIntL seed) {
 
 int main(int argc, char *argv[]) {
     curandStateMRG32k3a *state;
-	checkCudaErrors(cudaMalloc((void **)&state, blockSize * sizeof(curandStateMRG32k3a)));
+	checkCudaErrors(cudaMalloc((void **)&state, MAX_BLOCKSIZE * sizeof(curandStateMRG32k3a)));
 	PosIntL seed;
 	Size n;
     sscanf(argv[argc-1],"%u",&n);

@@ -224,7 +224,7 @@ def readLGN_sp(fn, prec='f4'):
                 #if 24277 in idxFired:
                 #    print(f'24277 fired at {LGN_spScatter[24277][-1]}')
         for i in range(nLGN):
-            LGN_spScatter[i] = np.asarray(LGN_spScatter[i])
+            LGN_spScatter[i] = np.asarray(LGN_spScatter[i]).astype(prec)
     return LGN_spScatter 
 
 def movingAvg2D(data, m):
@@ -306,7 +306,7 @@ def readSpike(rawDataFn, spFn, prec, sizeofPrec, vThres):
         spScatter = np.empty(nV1, dtype = object)
         spCount = np.zeros(nV1, dtype=int)
         for i in range(nV1):
-            spScatter[i] = np.empty(nt)
+            spScatter[i] = np.empty(nt, dtype = prec)
         for it in range(nt):
             data = np.fromfile(f, prec, nV1)
             pick = np.logical_and(data>max_vThres, data < 1)

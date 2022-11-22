@@ -20,7 +20,7 @@ void initialize(curandStateMRG32k3a* __restrict__ state,
 			Float* __restrict__ ffRatio,
             initialize_package init_pack, unsigned long long seed, Size networkSize, Size nType, Size nArchtype, Size nFeature, bool CmoreN, bool ClessI)
 {
-    //__shared__ reduced[warpSize];
+    //__shared__ reduced[WARP_SIZE];
     Size id = blockIdx.x * blockDim.x + threadIdx.x;
 	curandStateMRG32k3a localState = state[id];
     curand_init(seed, id, 0, &localState);
@@ -157,7 +157,7 @@ void cal_blockPos(double* __restrict__ pos,
                   Float* __restrict__ block_y,
                   Size networkSize) 
 {
-    __shared__ double reduced[warpSize];
+    __shared__ double reduced[WARP_SIZE];
     Size id = blockDim.x*blockIdx.x + threadIdx.x;
     double x = pos[id];
     double y = pos[id + gridDim.x*blockDim.x];
@@ -179,17 +179,17 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
                           Size* __restrict__ nNearNeighborBlock,
 						  Size nblock, Float radius, Float max_radius, Size maxNeighborBlock) 
 {
-    __shared__ PosInt id[warpSize];
-    __shared__ Float min[warpSize];
-    __shared__ Int bid[blockSize];
-	__shared__ Float distance[blockSize];
+    __shared__ PosInt id[WARP_SIZE];
+    __shared__ Float min[WARP_SIZE];
 
 	extern __shared__ Float final_distance[];
-	PosInt* final_bid = (PosInt*) (final_distance + maxNeighborBlock);
+	Float* distance = (final_distance + maxNeighborBlock);
+	PosInt* final_bid = (PosInt*) (distance + blockDim.x);
+    Int* bid = (Int*) (final_bid + maxNeighborBlock);
 
     Float bx = block_x[blockIdx.x]; // center of the target block
     Float by = block_y[blockIdx.x];
-    Size tid = threadIdx.y*blockDim.x + threadIdx.x;
+    Size tid = threadIdx.x;
 	//if (blockIdx.x == 0 && threadIdx.x ==0) {
 	//	printf("center block %i, (%f,%f)\n", blockIdx.x, bx, by);
 	//}
@@ -288,7 +288,6 @@ void get_neighbor_blockId(Float* __restrict__ block_x,
             __syncthreads();
         */
     }
-    //TODO: if nb > blockSize
     if (tid < nb) {
         neighborBlockId[maxNeighborBlock*blockIdx.x + nn + tid] = local_bid;
     }
@@ -354,9 +353,8 @@ void generate_connections(double* __restrict__ pos,
                           Size sum_max_N, Size gap_sum_max_N, PosInt block_offset, Size networkSize, Size mI, Size maxDistantNeighbor, Size gap_maxDistantNeighbor, Size nearNeighborBlock, Size maxNeighborBlock, Size nType, Size nTypeE, Size nTypeI, Size nE, Size nI, Size nFeature, Float disGauss, bool strictStrength, Float tol) 
 {
     // TODO: load with warps but more, e.g., raxn, daxn, preType
-    __shared__ double x1[blockSize];
-    __shared__ double y1[blockSize];
-    //__shared__ Float ra[blockDim.x];
+    extern  __shared__ double x1[];
+    double *y1 = x1 + blockDim.x;
     Size blockId = blockIdx.x + block_offset;
     Size nn = nNeighborBlock[blockId];
     Size ni = nNearNeighborBlock[blockId];
@@ -1041,7 +1039,7 @@ void generate_symmetry(PosInt* __restrict__ clusterID,
 					   curandStateMRG32k3a* __restrict__ state,
 					   PosInt* __restrict__ i_outstanding,
 					   Float* __restrict__ v_outstanding,
-					   PosInt iblock, Size nblock, Size nearNeighborBlock, Size maxNeighborBlock, Size mI, Size nE, Size nI, Size nTypeE, Size nTypeI)
+					   PosInt iblock, Size nblock, Size blockSize, Size nearNeighborBlock, Size maxNeighborBlock, Size mI, Size nE, Size nI, Size nTypeE, Size nTypeI)
 {
 	// sum up reciprocal connections
 	PosInt id = iblock*nI + threadIdx.x;

@@ -1,6 +1,7 @@
 clear all
-clc;
-addpath(genpath('/home/wd554/MATLAB/'))
+%clc;
+%addpath(genpath('/home/wd554/MATLAB/'))
+addpath(genpath('C:\Users\gueux\MATLAB\'))
  
 gen = 'twister';
 clear seed
@@ -12,11 +13,11 @@ exchange_nm = false;
 
 separateData = true; % set to false for ease of comparison in one folder
 plots = true;
-new = true;
+new = false;
 ENproc = 'save';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
-name = 'or-ft10';
-var = 'or-ft10-nG4s-rand2'
+name = 'recap';
+var = 'xy-OR-slow'
 equi = 'VF';
 cortical_VF = 'cortex';
 old = false;
@@ -34,40 +35,42 @@ end
 ecc = 2.0;
 %VFpath = '';
 %nvfx = 2.6880
-nvfy = 1.4981
-nvfx = 1.0
+NOR = 6
+NOD = 1
+Nx = 14
+Ny = 14
+nvfy = 1.0;
+nvfx = 1.0;
 
-G0 = [64, 94];
-rotate = [0,0,0,0,0];
-nvfRange = [0.9, 0.9, 0.9, 0.9, 0.9]*3*sqrt(2);
-%xRange = [1.5, 2.0, 2.5, 3.0, 3.5];
-%yRange = [4/3, 1.0, 0.8, 3/3, 2/3.5];
-xRange = [1.0, 1.0, 1.0, 1.0, 1.0];
-yRange = [0.75, 0.75, 0.75, 0.75, 0.75];
-%lRange = [1.0, 0.6, 1.0, 1.2, 1.0];
-%rRange = [0.0, 0.0, 0.0, 0.0, 0.0];
-rRange = [0.11, 0.11, 0.11, 0.11, 0.12];
-%lRange = [0.15, 0.15, 0.15, 0.15, 0.15];
-lRange = [0.11, 0.12, 0.13, 0.14, 0.15];
+G0 = [224, 224];
+rotate = [0,0,0,0];
+nvfRange = [0.5, 0.8, 1.0, 1.3]*1.4;
+xRange = [1.0, 1.0, 1.0, 1.0]*1.0;
+yRange = [1.0, 1.0, 1.0, 1.0]*1.0;
+rRange = [0.13, 0.1, 0.08, 0.05]*1.15;
+lRange = [0.1, 0.1, 0.1, 0.1]*1;
+rRange = rRange/(2*pi/NOR);
 
-nGrange = [4.0, 4.0, 4.0, 4.0, 4.0];
-betaRange = [15, 15, 15, 15, 15]*50;
-aRrange = [1.0, 1.0, 1.0, 1.0, 1.0;
-		   1.0, 1.0, 1.0, 1.0, 1.0];
+nGrange = [0.5, 1.0, 2, 3]*1;
+betaRange = [2.5, 2.5, 2.5, 2.5]*1;
+ibeta = [1, 1, 1, 1, 1];
+aRrange = [1.0, 1.0, 1.0, 1.0;
+		   1.0, 1.0, 1.0, 1.0];
 
-Kin = 0.1;			% Initial K ***
+Kin = 0.15;		% Initial K ***
 Kend = 0.02;        % Final K ***    
 if testRun
 	iters = 1; %21;			% No. of annealing rates (saved)
 	max_it = 2;		        % No. of iterations per annealing rate (not saved) ***
 else
-	iters = 10; %21;			% No. of annealing rates (saved)
+	iters = 21; %21;			% No. of annealing rates (saved)
 	max_it = 10;		        % No. of iterations per annealing rate (not saved) ***
 end
 %max_it = round(20 *range(i)/range(end)); 
 figlist = [1,2,4,5,6,34,50,60,100,102];
 %figlist = [1,2,4,5,6,15,16,34,50,60,100,102,600];
-VFpath = '/scratch/wd554/patchV1/or-ft10.bin';
+%VFpath = '/scratch/wd554/patchV1/or-ft10.bin';
+VFpath = '';
 if isempty(VFpath)
 	ENfilename0 = [name,'-',equi,'-',wtString,'-',var]   % Simulation name ***
 else
@@ -84,7 +87,7 @@ else
 	end
 end
 if ~testRun
-	range = [1,2,3,4,5];
+	range = 1:length(nGrange);
 	%range = [1];
 else
 	range = [1];
@@ -98,10 +101,9 @@ saveLR = true;
 %weightType = 'area';
 %uniform_LR = false;
 % SET both LR to false for manual_LR
-% cortical_shape = false;
-cortical_shape = true;
+cortical_shape = false;
+%cortical_shape = true;
 
-copyfile([mfilename,'.m'],[ENfilename0,'/',ENfilename0,'_p.m']);
 if length(range) > 1
 %if false
 	poolobj = gcp('nocreate'); % If no pool, do not create new one.
@@ -128,12 +130,13 @@ end
 if ~exist(ENfilename0, 'dir')
     mkdir(ENfilename0);
 end
+copyfile([mfilename,'.m'],[ENfilename0,'/',ENfilename0,'_p.m']);
 
 parfor (i = 1:length(range), nworker)
 %for i = 1 
     % for non_cortical_shape edge boundaries
-    test_dw = 5;
-    test_dh = 7;
+    test_dw = 1;
+    test_dh = 1;
     % Objective function weights
 
     alpha = 1;		% Fitness term weight
@@ -141,27 +144,24 @@ parfor (i = 1:length(range), nworker)
 	%beta = 100;
     % Training parameters
     % - VFx: Nx points in [0,1], with interpoint separation dx.
-	Nx = 20;
 	%Nx = range(i)
     rx = [0 1]*nvfx*xRange(i)*nvfRange(i);			% Range of VFx
     % - VFy: ditto for Ny, dy.
 	%
 	% even
-	Ny = 62;
     ry = [0 1]*nvfy*yRange(i)*nvfRange(i);			% Range of VFy
     % - OD: NOD values in range rOD, with interpoint separation dOD.
 	l = lRange(i);
 	%l = lRange(i);
 	%l = l0;
-    NOD = 2;			% Number of points along OD
     rOD = [-l l];			% Range of OD
     %  coded as NOR Cartesian-coordinate pairs (ORx,ORy). -- later by pol2cart
     %  r = 6*l/pi
 	%r = range(i)*l;			% OR modulus -- the radius of pinwheel
 	%r = r0;
-    NOR = 6;	 %8;		% Number of points along OR
 	%r = r0*NOR/2*l/pi;
 	r = rRange(i);
+    disp(['dOD = ', num2str(2*l/NOD), ', dOR = ', num2str(2*r*pi/NOR), ', dx = ', num2str((rx(2)-rx(1))/Nx), ', dy = ', num2str((ry(2)-ry(1))/Ny)]);
     % for myCortex patch
     ODnoise = l*0.0;
     ODabsol = 1.0;
@@ -177,7 +177,7 @@ parfor (i = 1:length(range), nworker)
     a = 0.635; b = 96.7; k = sqrt(140)*0.873145;
     fign = 106;
     ENfilename = [var,'-',num2str(range(i))];
-    stats(i) = myV1driver(exchange_nm,seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,iters,max_it,Kin,Kend,Nx,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,aspectRatio,nT,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,weightType,VFpath,old,randSeed,figlist,rotate);
+    stats(i) = myV1driver(exchange_nm,seed,ENproc,ENfilename0,ENfilename,non_cortical_LR,cortical_VF,cortical_shape,uniform_LR,test_dw,test_dh,alpha,beta,ibeta,iters,max_it,Kin,Kend,Nx,rx,Ny,ry,l,NOD,rOD,r,NOR,ODnoise,ODabsol,nG,G,aspectRatio,nT,ecc,nod,a,b,k,i,plots,new,saveLR,separateData,plotting,heteroAlpha,equi,weightType,VFpath,old,randSeed,figlist,rotate);
 end
 if sum(rRange) > 0 && sum(lRange) > 0
 	nnpinw = [stats.npinw];
