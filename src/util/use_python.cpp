@@ -61,6 +61,7 @@ int sample_2D_Gaussian(Float nsig, int n, Float wv, Float x[], Float y[], Float 
         printf("Failed to load %s\n", "sampler");
         return 1;
     }
+    return 0;
 }
 
 int sample_2D_Gaussian_difference(Float nsig, Float sigRatio, int n, Float x[], Float y[], Float w[]) {

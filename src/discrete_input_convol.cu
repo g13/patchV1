@@ -344,7 +344,7 @@ void store_spatialWeight(
         h = (threadIdx.y + 0.5)*dh - hSpan;
         areal_weight = 1;
     } else {
-        int idx = threadIdx.y * WARP_SIZE + threadIdx.x;
+        int idx = threadIdx.y * blockDim.x + threadIdx.x;
         w = sample_x[idx]*wSpan/nsig;
         h = sample_y[idx]*hSpan/nsig;
         areal_weight = sample_w[idx]*wSpan*hSpan/nsig/nsig;
@@ -603,7 +603,7 @@ void store_PM(
             cy = (threadIdx.y + 0.5)*ds - span;
             areal_weight = 1;
         } else {
-            int idx = threadIdx.y * WARP_SIZE + threadIdx.x;
+            int idx = threadIdx.y * blockDim.x + threadIdx.x;
             cx = -sample_x[idx]*span/nsig;
             cy = -sample_y[idx]*span/nsig;
             areal_weight = sample_w[idx]*span*span/(nsig*nsig);
@@ -1172,7 +1172,7 @@ void LGN_convol_parvo(
                        printf("\n");
                }
                __syncthreads();
-               */
+            */
 		} 
         //2. Find new frames - n, usually just 1
         PosInt old_currentFrame = currentFrame;
@@ -1180,10 +1180,9 @@ void LGN_convol_parvo(
         if (iPatch == 0) {
             T0 = iKernelSampleT0; // iKernelSampleT0 = 0 or kernelSampleInterval/2
         } else {
-            T0 = kernelSampleInterval; // iKernelSampleT0 = 0 or kernelSampleInterval/2
+            T0 = kernelSampleInterval;
 		}
-        // number of frames in one patch
-        //Size nFrame = (itFrames*denorm + iFramePhase + (ntPerFrame-1)) / ntPerFrame - 1; // exclude the currentFrame within the framePhase, already in F_1
+        // get number of frames in one patch (nFrame)
         itFrames = (T0 + (nActive-1)*kernelSampleInterval)*denorm + iFramePhase; // iKernelSampleT0 = 0 or kernelSampleInterval/2
         Size nFrame = (itFrames + ntPerFrame-1) / ntPerFrame;
         // check if the first samplePoint bypass the currentFrame
@@ -1298,7 +1297,7 @@ void LGN_convol_parvo(
 		//PosInt iFrame = 0;
         Int preFrame = old_currentFrame-1;
         for (PosInt iSample = 0; iSample < nActive; iSample++) {
-            PosInt frameNow = old_currentFrame + (static_cast<Int>(it*denorm + iFramePhase)-1)/static_cast<Int>(ntPerFrame); //time starts with old_currentFrame, frame starts with currentFrame, for sample points right on the edge of two frames, sample the previous frame
+            PosInt frameNow = old_currentFrame + (it*denorm + iFramePhase)/ntPerFrame; //time starts with old_currentFrame, frame starts with currentFrame, for sample points right on the edge of two frames, sample the previous frame
             if (frameNow > preFrame) { // advance frame
                 //Load mean luminance from shared memory first
                 PosInt iFrame = frameNow - currentFrame;
@@ -1397,7 +1396,6 @@ void LGN_convol_parvo(
 						printf("%u#%u, wspC*tw: %e*%e = %e\n", iPatch, tid, reducedC[0], temporalWeightC, tempFiltered[0]);
 					}
 				*/	
-				//
             }
 			//__syncthreads();
             // advance time
