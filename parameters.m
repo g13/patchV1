@@ -17,7 +17,7 @@ new = false;
 ENproc = 'save';		%2One of 'var', 'save', 'varplot', 'saveplot'
 % Processing of intermediate (historical) parameters:
 name = 'recap';
-var = 'nG-slow'
+var = 'xy-OR-slow'
 equi = 'VF';
 cortical_VF = 'cortex';
 old = false;
@@ -44,10 +44,10 @@ nvfx = 1.0;
 
 G0 = [224, 224];
 rotate = [0,0,0,0];
-nvfRange = [1.0, 1.0, 1.0, 1.0]*1.4;
+nvfRange = [0.5, 0.8, 1.0, 1.3]*1.4;
 xRange = [1.0, 1.0, 1.0, 1.0]*1.0;
 yRange = [1.0, 1.0, 1.0, 1.0]*1.0;
-rRange = [0.1, 0.1, 0.1, 0.1]*1.15;
+rRange = [0.13, 0.1, 0.08, 0.05]*1.15;
 lRange = [0.1, 0.1, 0.1, 0.1]*1;
 rRange = rRange/(2*pi/NOR);
 
