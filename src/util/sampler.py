@@ -74,6 +74,8 @@ def ring_dist(nsig, wv = 0.75, n = 1024, min_p = 1, baseRatio = 0.5, ratio_thres
     return np.array(r), np.array(m)
 
 def sample_phase_ring(r, m, randPhase = True, deg = True, norm_by_r = 1): # attribute sampling positions x, y and area as weight(w) to sample points(m) in ring at radius(r), and normalized by norm_by_r
+    seed = 167234352
+    np.random.seed(seed)
     norm_by_r /= np.sqrt(2)
     r0 = np.hstack((0, r))
     n = sum(m)

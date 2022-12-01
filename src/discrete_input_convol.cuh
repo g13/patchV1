@@ -119,18 +119,6 @@ void parvo_maxConvol(
         Size nSample1D, Size nParvo_L, Size nMagno_L, Size nLGN, SmallSize nKernelSample, Float kernelSampleDt, Float nsig
 );
 
-
-__global__
-void parvo_maxConvol_sep(Spatial_component &spatial,
-                   Float* __restrict__ TW_storage,
-                   Float* __restrict__ covariant,
-                   Float* __restrict__ max_convol,
-                   Float* __restrict__ sample_x,
-                   Float* __restrict__ sample_y,
-                   Float* __restrict__ sample_w,
-                   Size nSample1D, Size nParvo_L, Size nMagno_L, Size nLGN, SmallSize nKernelSample, Float kernelSampleDt, Float nsig
-);
-
 __global__ 
 void LGN_convol_parvo(
         Float* __restrict__ luminance,

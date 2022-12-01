@@ -378,7 +378,8 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     
     if plotSample or pSample:
         with open(V1_vposFn, 'rb') as f:
-            _n = np.fromfile(f, 'u4', 1)[0]
+            _nblock, _blockSize = np.fromfile(f, 'u4', 2)
+            _n = _nblock * _blockSize
             assert(_n == nV1)
             V1_ecc = np.fromfile(f, 'f8', _n)
             V1_polar = np.fromfile(f, 'f8', _n)

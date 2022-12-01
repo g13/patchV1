@@ -2004,12 +2004,15 @@ void compute_V_collect_spike_learnFF_fast(
         id = atomicAdd_block(&counter[type], 1);
     }
     __syncthreads();
+    Size npreE = counter[0];
+    Size npreI = counter[1];
     if (exist) { // fill output_g/h
         Float nsp = flooring(sInfo);
 		Size block_ngType = (ngTypeE*nE + ngTypeI*nI)*blockIdx.x;
 		PosInt i = block_ngType;
         Float tsp = (sInfo - nsp)*dt;
-        Size npreE = counter[0];
+        //Size npreE = counter[0];
+        //Size npreI = counter[1];
         if (threadIdx.x < nE) {
             assert(id < npreE);
 			i += id;
@@ -2022,7 +2025,6 @@ void compute_V_collect_spike_learnFF_fast(
 		    	output_h[ig*npreE + i] = local_h;
             }
         } else {
-            Size npreI = counter[1];
 			i += npreE*ngTypeE + id;
             #pragma unroll (max_ngTypeI)
             for (PosInt ig=0; ig<ngTypeI; ig++) {
@@ -2040,6 +2042,20 @@ void compute_V_collect_spike_learnFF_fast(
     if (threadIdx.x < 2) {
         npre[threadIdx.x*gridDim.x + blockIdx.x] = counter[threadIdx.x];
     }
+    /*if (threadIdx.x == 3 && (npreE > 0 || npreI > 0)) {
+        if (blockIdx.x == 4) {
+            printf("\nblock %d: npreE = %d, npreI = %d\n", blockIdx.x, npreE, npreI);
+            for (PosInt i=0; i<npreE + npreI; i++) {
+                Int idx = blockIdx.x*blockDim.x + i;
+                if (i != npreE-1) {
+                    printf("%d, ", ipre[idx]);
+                } else {
+                    printf("%d| ", ipre[idx]);
+                }
+            }
+            printf("done\n");
+        }
+    }*/
 }
 
 //template<int ntimesE, int ntimesI>
@@ -2644,8 +2660,18 @@ void recal_G_mat_nd_fast( // no distance involved for close-range connections, i
     Size *shared_npre = (Size*) shared;
     PosInt *shared_ipre = (PosInt*) (shared_npre + nb*2);
     Float *pre_sInfo = (Float*) shared_ipre; // reuse for gap
-    Float *og = pre_sInfo + blockDim.x;
-    Float *oh = og + blockDim.x; // TODO: not counting ngTypeE and ngTypeI, hope for 1/2 spikes at most
+    Float *og;
+    if (nE > nI) {
+        og = pre_sInfo + nE;
+    } else {
+        og = pre_sInfo + nI;
+    }
+    Float *oh;
+    if (nE*ngTypeE > ngTypeI*nI) {
+        oh = og + ngTypeE*nE;
+    } else {
+        oh = og + ngTypeI*nI;
+    }
     assert(nb <= blockDim.x);
     if (threadIdx.x < nb) {
 		PosInt local_bid = blockIdx.x*nearNeighborBlock + threadIdx.x;
@@ -2707,7 +2733,15 @@ void recal_G_mat_nd_fast( // no distance involved for close-range connections, i
                 PosInt id = block_ngType*bid + threadIdx.x;
                 shared_ipre[threadIdx.x] = ipre[bid*blockDim.x + threadIdx.x];
                 if (shared_ipre[threadIdx.x] >= nE) {
-                    printf("ipre = %u, npreE = %u, bid = %u\n", shared_ipre[threadIdx.x], npreE, bid);
+                    if (threadIdx.x == 0) {
+                        printf("\nbid = %u: ipre = %u, npreE = %u, \n", bid, shared_ipre[threadIdx.x], npreE);
+                        for (PosInt i=0; i<npreE; i++) {
+                            Int idx = bid*blockDim.x + i;
+                            if (i < npreE-1) printf("%d, ", ipre[idx]);
+                            else printf("%d\n", ipre[idx]);
+                        }
+                        printf("done\n");
+                    }
                     assert(shared_ipre[threadIdx.x] < nE);
                 }
                 //#pragma unroll (max_ngTypeE)
@@ -2754,7 +2788,15 @@ void recal_G_mat_nd_fast( // no distance involved for close-range connections, i
 			    PosInt id = block_ngType*bid + npreE*ngTypeE + threadIdx.x;
                 shared_ipre[threadIdx.x] = ipre[bid*blockDim.x + npreE + threadIdx.x];
                 if (shared_ipre[threadIdx.x] < nE || shared_ipre[threadIdx.x] >= blockDim.x) {
-                    printf("ipre = %u, npreI = %u, bid = %u\n", shared_ipre[threadIdx.x], npreI, bid);
+                    if (threadIdx.x == 0) {
+                        printf("\nbid = %u: ipre = %u, npreI = %u, \n", bid, shared_ipre[threadIdx.x], npreI);
+                        for (PosInt i=0; i<npreI; i++) {
+                            Int idx = bid*blockDim.x + npreE + i;
+                            if (i < npreI-1) printf("%d, ", ipre[idx]);
+                            else printf("%d", ipre[idx]);
+                        }
+                        printf("done\n");
+                    }
                     assert(shared_ipre[threadIdx.x] >= nE && shared_ipre[threadIdx.x] < blockDim.x);
                 }
                 //#pragma unroll (max_ngTypeI)
