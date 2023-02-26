@@ -1,0 +1,124 @@
+#!/bin/bash
+
+cleanData=1
+n=25
+n0=0
+cfg_fdr=${HOME}/repos/patchV1/src
+fdr0=/root/autodl-tmp
+res_fdr=${fdr0}/public/resource # resourceFolder in cfg stimulus, V1-static, LGN-static
+fdr0=${fdr0}/wd
+setup_fdr=${fdr0}/setup # inputFolder in cfg LGN-V1 and V1 connectome files
+data_fdr=${fdr0}/data # outputFolder in cfg
+patch=patch_fast
+waveStage=2
+
+fdr=wave_concat/wave_II/widths # folder will be made to store figures and configuratoin files
+op_cfg=wave_II.cfg # the simulation config file to be used
+new_setup=False
+#inputFn=64-preset_10-10_stage_II-p1
+#inputFn=64-random3917563_10-10_stage_II
+#inputFn=64-opponent_10-10_stage_II
+inputFn=64-opponent_10-10_stage_II-wide
+op0=opp-wide-t2cap2
+seed=20230226 # RANDOM SEED for post-analysis sampling and input randomization 
+suffix=wide
+lgn=lFF_II_${suffix} # the theme string to be used for LGN_V1 connections
+res=lFF_II_${suffix} # the theme string to be used for V1, LGN positions etc.
+squareOrCircle=true # initial LGN-recruitment shape 
+fig_fdr=${fdr0}/${fdr}
+cp ${op_cfg} ${fig_fdr}/${op0}.cfg
+
+binary_thres=0.0
+std_ecc=0
+
+st=2 # figures' output: 0 for temporal, 1 for spatial, 2 for both, otherwise none
+examSingle=false # output the spatiotemporal figure, tLGN_V1_single if true
+use_local_max=0 # output the spatiotemporal figure, sLGN_V1 with strength normalized for each frame instead over all frames if set 1
+
+# NOT RELATED, leave alone
+LGN_switch=false
+nOri=0
+relay=false
+
+echo ${op0} ${n} trials # echo/print out the variable "op" in the job's output file
+echo ${suffix}
+
+
+if [ -d "${fig_fdr}" ]
+then
+	echo overwrite contents in ${fig_fdr}
+else
+	mkdir -p ${fig_fdr}
+fi
+echo outputs to ${fig_fdr}
+
+cp lFF-hd_restricted-random-trials ${fig_fdr}/lFF-hd_restricted-random-trials_${op0}
+vim -s ${fig_fdr}/lFF-nonhpc_${op0}.keys ${fig_fdr}/lFF-restricted-random-trials_${op0} > /dev/null 2>&1
+cp lFF.sh ${fig_fdr}/lFF_${op0}.sh
+
+if [ "${new_setup}" = True ];
+then
+    cp inputLearnFF.py ${fig_fdr}/inputLearnFF_${op0}.py
+    fAsInput=''
+    echo python ${fig_fdr}/inputLearnFF_${op0}.py ${inputFn} ${lgn} ${seed} ${std_ecc} ${res} ${waveStage} ${res_fdr} ${setup_fdr} ${squareOrCircle} ${relay} ${binary_thres} ${fAsInput}
+    python ${fig_fdr}/inputLearnFF_${op0}.py ${inputFn} ${lgn} ${seed} ${std_ecc} ${res} ${waveStage} ${res_fdr} ${setup_fdr} ${squareOrCircle} ${relay} ${binary_thres} ${fAsInput}
+fi
+date
+
+plotOnly=False
+new_setup=False
+readNewSpike=True
+ns=0
+export res
+export lgn
+export res_fdr 
+export setup_fdr
+export data_fdr
+export fig_fdr 
+export LGN_switch 
+export waveStage
+export patch 
+export examSingle
+export use_local_max 
+export inputFn
+export nOri
+export cleanData
+export seed
+export plotOnly
+export new_setup
+export readNewSpike
+export st
+export ns
+
+op=${op0}_m${n0} # theme string to be added to filenames of data and figures
+cp ${fig_fdr}/${op0}.cfg ${fig_fdr}/${op}.cfg 
+cp outputLearnFF.py ${fig_fdr}/outputLearnFF_${op}.py
+cp plotV1_fr.py ${fig_fdr}/plotV1_fr_${op}.py
+export op
+for i in $( seq $((${n0} + 1)) ${n} )
+do
+    date=$(eval date +"%Y_%m_%d_%H-%M-%S")
+    ${fig_fdr}/lFF_${op0}.sh > log/pLearn_${date}_${op0}_trial${i}.out 2>&1
+    if [[ "${cleanData}" = "1" ]]
+    then
+        date
+        echo delete data
+        #ls ${data_fdr}/*${op}*
+        python clean_data.py ${data_fdr} ${op}
+        rm ${data_fdr}/snapShot_*-${op}.bin
+        #ls ${data_fdr}/*${op}*
+    fi
+    if [ ${i} -lt $((${n} + ${n0})) ];
+    then
+        echo ${i}
+        cfg_file=${fig_fdr}/${op}.cfg
+        pf1=${fig_fdr}/outputLearnFF_${op}.py
+        pf2=${fig_fdr}/plotV1_fr_${op}.py
+        op=${op0}_m${i} # theme string to be added to filenames of data and figures
+        export op
+        mv ${cfg_file} ${fig_fdr}/${op}.cfg
+        mv ${pf1} ${fig_fdr}/outputLearnFF_${op}.py
+        mv ${pf2} ${fig_fdr}/plotV1_fr_${op}.py
+	    vim -s ${cfg_fdr}/next-trial.keys ${fig_fdr}/${op}.cfg
+    fi
+done
