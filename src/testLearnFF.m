@@ -7,13 +7,13 @@ function testLearnFF(res, isuffix, osuffix, res_fdr, setup_fdr, data_fdr, fig_fd
 	nsub = 2 + 2;
 	thres = 0.5;  % as a percent of gmax
 	if ~isempty(isuffix) 
-	    isuffix = ['_', isuffix];
+	    isuffix = ['-', isuffix];
 	end
 	if ~isempty(osuffix) 
-	    osuffix = ['_', osuffix];
+	    osuffix = ['-', osuffix];
 	end
 	if ~isempty(res) 
-	    res = ['_', res];
+	    res = ['-', res];
 	end
 	res_fdr = [res_fdr, '/'];
 	setup_fdr = [setup_fdr, '/'];

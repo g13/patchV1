@@ -17,12 +17,16 @@ from LGN_surface import *
 #posL_file = 'parvo_pos_I5_uniform.bin'
 #posR_file = 'parvo_pos_C6_uniform.bin'
 #ecc = 2.50 #in deg
-theme = sys.argv[1]
+fdr = sys.argv[1]
+theme = sys.argv[2]
+if fdr[-1] != '/': 
+    fdr = fdr + '/'
+print(fdr)
 print(theme)
-posL_file = 'parvo_pos_I5-' + theme + '.bin'
-posR_file = 'parvo_pos_C6-' + theme + '.bin'
+posL_file = fdr + 'parvo_pos_I5-' + theme + '.bin'
+posR_file = fdr + 'parvo_pos_C6-' + theme + '.bin'
 pos_file = posL_file;
-fn = 'LGN_uniformL-' + theme
+fn = fdr + 'LGN_uniformL-' + theme
 
 with open(pos_file, 'rb') as f:
     _ = np.fromfile(f, 'u4', 1)
@@ -39,15 +43,15 @@ b_scale = 0.15
 roi_ratio = 4.0
 chop_ratio = 0.05
 
-dt0 = np.power(2.0,-np.arange(10,11)).reshape(1,1)
-dt1 = np.power(2.0,-np.arange(10,11)).reshape(1,1)
+dt0 = np.power(2.0,-np.arange(11,12)).reshape(1,1)
+dt1 = np.power(2.0,-np.arange(11,12)).reshape(1,1)
 dt = np.hstack((np.tile(dt0,(ndt0,1)).flatten(), np.tile(dt1,(ndt1,1)).flatten()))
 
 shape_file = 'LGN_shapeI.bin'
 
 
-nx = 41
-ny = 81
+nx = 81
+ny = 161
 
 x = np.linspace(0, ecc, nx)
 dx = x[1]-x[0]
@@ -70,12 +74,16 @@ print([np.min(x), np.max(x)])
 print([np.min(y), np.max(y)])
 
 #pos_file = 'temp_posL3.bin';
-LGN_surfaceL = surface(shape_file, pos_file, x[-1])
-
+LGN_surface = surface(shape_file, pos_file, x[-1])
+old_pos = LGN_surface.pos.copy()
 parallel_repel_file = fn + '.bin'
-LGN_surfaceL.make_pos_uniform(dt, p_scale, b_scale, fn, ncore = ncore, ndt_decay = ndt0, chop_ratio = chop_ratio, roi_ratio = roi_ratio, k1 = k1, k2 = k2, bfile = fn, vpfile = fn )
-LGN_surfaceL.save(parallel_file = parallel_repel_file)
-fig = plt.figure(fn, dpi = 150)
-ax = fig.add_subplot(111)
-LGN_surfaceL.plot_surface(ax)
-fig.savefig(fn+'.png', dpi = 150)
+LGN_surface.make_pos_uniform(dt, p_scale, b_scale, fn, ncore = ncore, ndt_decay = ndt0, chop_ratio = chop_ratio, roi_ratio = roi_ratio, k1 = k1, k2 = k2, bfile = fn, vpfile = fn )
+LGN_surface.save(parallel_file = parallel_repel_file)
+fig = plt.figure(fn, figsize = (12,10), dpi = 1000)
+ax = fig.add_subplot(121)
+for i in range(LGN_surface.nLGN):
+    ax.plot([old_pos[0,i], LGN_surface.pos[0,i]], [old_pos[1,i], LGN_surface.pos[1,i]], '-c', lw = 0.1)
+LGN_surface.plot_surface(ax)
+ax = fig.add_subplot(122)
+ax.plot(LGN_surface.pos[0,:], LGN_surface.pos[1,:], ',k')
+fig.savefig(fn+'-trace.png', dpi = 1000)

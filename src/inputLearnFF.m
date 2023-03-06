@@ -55,10 +55,10 @@ function inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, s
 	%%%%%%%%
 
 	if ~isempty(suffix0)
-	    suffix0 = ['_', suffix0];
+	    suffix0 = ['-', suffix0];
 	end
 	if ~isempty(suffix)
-	    suffix = ['_', suffix];
+	    suffix = ['-', suffix];
 	end
 
 	fLGN_V1_ID = [setup_fdr, 'LGN_V1_idList', suffix, '.bin'];

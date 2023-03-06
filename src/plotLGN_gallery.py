@@ -17,7 +17,7 @@ else:
 
 print(suffix)
 if suffix:
-    suffix = "_" + suffix
+    suffix = "-" + suffix
 
 if data_fdr[-1] != '/':
     data_fdr += '/'
@@ -62,7 +62,7 @@ print(f'nMagno = {nMagno}, mType = {mType}, mKernelSample = {mKernelSample}, mSa
 if 'iLGN' not in locals():
     iLGN = np.random.randint(nLGN, size=ns)
 
-output = data_fdr+"LGN" + suffix + ".bin"
+output = data_fdr + "LGN" + suffix + ".bin"
 with open(output, 'rb') as f:
     nLGN = np.fromfile(f, 'u4', 1)[0]
     LGN_type = np.fromfile(f, 'u4', nLGN)
@@ -127,7 +127,7 @@ if nMagno > 0:
     ax.plot(sc_m[0,:,(mSample1D-1)*mSample1D], sc_m[1,:,(mSample1D-1)*mSample1D], '*k', ms = 0.001)
     ax.plot(sc_m[0,:,mSample-1],               sc_m[1,:,mSample-1], '*k', ms = 0.001)
 ax.set_aspect('equal')
-fig.savefig(fig_fdr + 'check_coord'+suffix + '.png')
+fig.savefig(fig_fdr + 'check_coord' + suffix + '.png')
 
 def getSF(rC, rS, kC, kS, cov):
     # rC, rS in rad
@@ -190,7 +190,7 @@ if nParvo > 0:
 if nMagno > 0:
     ax.plot(np.arange(mKernelSample), temporal_m, '-b', lw = 0.2)
 ax.set_xlabel('t/ms')
-fig.savefig(fig_fdr+'SF-TF'+suffix + '.png')
+fig.savefig(fig_fdr + 'SF-TF' + suffix + '.png')
 
 print(f'SF: {[np.min(SF), np.mean(SF), np.max(SF)]}')
 print(f'TF: {[np.min(TF), np.mean(TF), np.max(TF)]}')

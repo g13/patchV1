@@ -16,20 +16,21 @@ singleOri=False
 #singleOri=True
 one_ori=1
 
-trial_suffix=newDep
-res_suffix=square-single_layer
+trial_suffix=ld_test
+#res_suffix=square-single_layer
+res_suffix=
 patch=patch_fast
 
-generate_V1_connection=False
+generate_V1_connection=True
 generate_LGN_V1_connection=True
 
-patch_cfg=ori.cfg
+patch_cfg=ld_test.cfg
 
-LGN_V1_suffix=opt_new
-V1_connectome_suffix=adjust
+LGN_V1_suffix=ld_LGN
+V1_connectome_suffix=ld_connectome
 
-retino_cfg=LGN_V1.cfg
-genCon_cfg=connectome.cfg
+retino_cfg=ld_LGN.cfg
+genCon_cfg=ld_connectome.cfg
 
 TF=8 # input frequency if applicable
 nOri=6 # total # orientaton if applicable

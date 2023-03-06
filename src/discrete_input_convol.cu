@@ -48,7 +48,7 @@ Float get_intensity(SmallSize coneType, float x, float y, unsigned int iLayer, c
             break;
         case 3: // On-Off only magnocellular excluding S cone
             contrast = (static_cast<Float>(tex2DLayered<float>(L_retinaInput, x, y, iLayer))
-                      + static_cast<Float>(tex2DLayered<float>(M_retinaInput, x, y, iLayer)))/2.0; 
+                      + static_cast<Float>(tex2DLayered<float>(M_retinaInput, x, y, iLayer)))/2.0f; 
             break;
         case 4: 
 			/* Hunt Lum
@@ -57,9 +57,9 @@ Float get_intensity(SmallSize coneType, float x, float y, unsigned int iLayer, c
                                         + static_cast<Float>(tex2DLayered(S_retinaInput, x, y, iLayer) * (-7.127501e-6);
 			*/
 			// CAT02
-            contrast = static_cast<Float>(tex2DLayered<float>(L_retinaInput, x, y, iLayer)) * 0.45436904
-                     + static_cast<Float>(tex2DLayered<float>(M_retinaInput, x, y, iLayer)) * 0.47353315
-                     + static_cast<Float>(tex2DLayered<float>(S_retinaInput, x, y, iLayer)) * 0.0720978;
+            contrast = static_cast<Float>(tex2DLayered<float>(L_retinaInput, x, y, iLayer)) * 0.45436904f
+                     + static_cast<Float>(tex2DLayered<float>(M_retinaInput, x, y, iLayer)) * 0.47353315f
+                     + static_cast<Float>(tex2DLayered<float>(S_retinaInput, x, y, iLayer)) * 0.0720978f;
             break;
         default:
             printf("unrecognized cone type");
@@ -275,7 +275,7 @@ void store_temporalWeight(
 			Float t = twid * kernelSampleDt + kernelSampleT0;
 
             if (t < 0) {
-                tw = 0.0;
+                tw = 0.0f;
             } else {
                 tw = temporalKernel(t, temp, lfac1, lfac2);
             }
@@ -283,7 +283,7 @@ void store_temporalWeight(
             TW_storage[storeID] = tw;
             tw = abs(tw);
         } else {
-            tw = 0.0;
+            tw = 0.0f;
         }
         //assert(!isnan(tw));
         block_reduce<Float>(reduced, tw);
@@ -805,8 +805,8 @@ void parvo_maxConvol(Spatial_component &spatial,
 
     Float sumC, sumS;
     if (threadIdx.x == 0) {
-        sumC = 0.0;
-        sumS = 0.0;
+        sumC = 0.0f;
+        sumS = 0.0f;
     }
     #pragma unroll 9
     for (PosInt iPatch = 0; iPatch < nPatch; iPatch++) {
@@ -847,7 +847,7 @@ void parvo_maxConvol(Spatial_component &spatial,
 
     Float convol;
     if (threadIdx.x == 0) {
-        convol = 0.0;
+        convol = 0.0f;
     }
     #pragma unroll 16
     for (PosInt it = 0; it<nKernelSample; it++) {
@@ -874,6 +874,9 @@ void parvo_maxConvol(Spatial_component &spatial,
     if (threadIdx.x == 0) { // add center surround together, iType = 0, 1
 		// max_convol should be initialized elsewhere 
         max_convol[id] = convol;
+        //if (id == 0) {
+        //    printf("maxConvol = %.10e\n", convol);
+        //}
     }
 }
 
@@ -920,8 +923,8 @@ void LGN_convol_parvo(
     // convolve center and update luminance
     Float convolS, convolC;
 	if (tid == 0) {
-		convolS = 0.0;
-		convolC = 0.0;
+		convolS = 0.0f;
+		convolC = 0.0f;
 	}
     /* kernel sampling diagram with frames
                       [,)
@@ -953,14 +956,14 @@ void LGN_convol_parvo(
     float y0C = SC_storage[gridDim.x*2*nSample + storeIDC];
     float x0S = SC_storage[storeIDS];
     float y0S = SC_storage[gridDim.x*2*nSample + storeIDS];
-    assert(x0S <= 1.0);
-    assert(y0S <= 1.0);
-    assert(x0C <= 1.0);
-    assert(y0C <= 1.0);
-    assert(x0S >= 0.0);
-    assert(y0S >= 0.0);
-    assert(x0C >= 0.0);
-    assert(y0C >= 0.0);
+    //assert(x0S <= 1.0f);
+    //assert(y0S <= 1.0f);
+    //assert(x0C <= 1.0f);
+    //assert(y0C <= 1.0f);
+    //assert(x0S >= 0.0f);
+    //assert(y0S >= 0.0f);
+    //assert(x0C >= 0.0f);
+    //assert(y0C >= 0.0f);
 
     Float kS, kC;
     if (tid == 0) {
@@ -1176,7 +1179,7 @@ void LGN_convol_parvo(
 										max = nSampleTemp[im];
 									}
 								}
-								printf("type%d-frame%d: local_I:[%e, %e, %e]->[%e,%e]\n", typeC, iFrame, min, meanC, max, min/meanC-1.0, max/meanC-1.0);
+								printf("type%d-frame%d: local_I:[%e, %e, %e]->[%e,%e]\n", typeC, iFrame, min, meanC, max, min/meanC-1.0f, max/meanC-1.0f);
 							}
 							__syncthreads();
 						}
@@ -1184,12 +1187,12 @@ void LGN_convol_parvo(
 				} */
 
                 if (meanC > 0) {
-                    local_contrast = local_I/meanC - 1.0;
+                    local_contrast = local_I/meanC - 1.0f;
                 } else {
                     local_contrast = local_I;
                 }
-                if (abs(local_contrast) > 1.0) {
-                    local_contrast = copyms(1.0, local_contrast); // copyms is copysign(value, sign);
+                if (abs(local_contrast) > 1.0f) {
+                    local_contrast = copyms(1.0f, local_contrast); // copyms is copysign(value, sign);
                 }
 
 				Float filtered[2];
@@ -1198,12 +1201,12 @@ void LGN_convol_parvo(
                 // surround 
                 local_I = get_intensity(typeS, x0S, y0S, frameNow % maxFrame, L_retinaInput, M_retinaInput, S_retinaInput);
                 if (meanS > 0) {
-                    local_contrast = local_I/meanS - 1.0;
+                    local_contrast = local_I/meanS - 1.0f;
                 } else {
                     local_contrast = local_I;
                 }
-                if (abs(local_contrast) > 1.0) {
-                    local_contrast = copyms(1.0, local_contrast); // copyms is copysign(value, sign);
+                if (abs(local_contrast) > 1.0f) {
+                    local_contrast = copyms(1.0f, local_contrast); // copyms is copysign(value, sign);
                 }
 
                 filtered[1] = spatialWeight*local_contrast;
@@ -1262,8 +1265,8 @@ void LGN_convol_parvo(
 		    }
 		*/
         if (tid >= nActive) {
-            tempFiltered[0] = 0.0;
-            tempFiltered[1] = 0.0;
+            tempFiltered[0] = 0.0f;
+            tempFiltered[1] = 0.0f;
         }
         //6. reduce sum with temporal weights: p in time
         //block_reduce<Float>(reducedS, tempFiltered[1]);
@@ -1324,6 +1327,9 @@ void LGN_convol_parvo(
         convolC *= kC;
         convolS *= kS;
         convol[id] = (convolC + convolS);        
+        //if (id == 0) {
+        //    printf("currentConvol = %.10e\n", convolC + convolS);
+        //}
         //convol[blockIdx.x] = (convolC + convolS)*kernelSampleInterval*dt;
 		/*DEBUG
 			if (blockIdx.x == 52583) {
@@ -1372,7 +1378,7 @@ void LGN_convol_magno(
     // convolve center and update luminance
     Float convol;
 	if (tid == 0) {
-		convol = 0.0;
+		convol = 0.0f;
 	}
     /* kernel sampling diagram with frames
                       [,)
@@ -1399,10 +1405,10 @@ void LGN_convol_magno(
     // coord on the stimulus plane
     float x0 = SC_storage[storeID];
     float y0 = SC_storage[gridDim.x*nSample + storeID];
-    assert(x0 <= 1.0);
-    assert(y0 <= 1.0);
-    assert(x0 >= 0.0);
-    assert(y0 >= 0.0);
+    //assert(x0 <= 1.0f);
+    //assert(y0 <= 1.0f);
+    //assert(x0 >= 0.0f);
+    //assert(y0 >= 0.0f);
 
     Float k;
     if (tid == 0) {
@@ -1504,12 +1510,12 @@ void LGN_convol_magno(
                 //Float local_contrast;
                 local_I = get_intensity(type, x0, y0, frameNow % maxFrame, L_retinaInput, M_retinaInput, S_retinaInput);
                 if (mean_I > 0) {
-                    local_contrast = local_I/mean_I - 1.0;
+                    local_contrast = local_I/mean_I - 1.0f;
                 } else {
                     local_contrast = local_I;
                 }
-                if (abs(local_contrast) > 1.0) {
-                    local_contrast = copyms(1.0, local_contrast); // copyms is copysign(value, sign);
+                if (abs(local_contrast) > 1.0f) {
+                    local_contrast = copyms(1.0f, local_contrast); // copyms is copysign(value, sign);
                 }
                 //Float filtered = spatialWeight*local_contrast;
                 filtered = spatialWeight*local_contrast;
@@ -1544,7 +1550,7 @@ void LGN_convol_magno(
         }
 		//__syncthreads();
         if (tid >= nActive) {
-            tempFiltered = 0.0;
+            tempFiltered = 0.0f;
         }
         //6. reduce sum with temporal weights: p in time
         block_reduce<Float>(reduced, tempFiltered);
@@ -1688,7 +1694,7 @@ void LGN_nonlinear(
 							switch_value[id] = 0;
 						} else {
 							local_switch = 1;
-							switch_value[id] = 1.0;
+							switch_value[id] = 1.0f;
 						}
 						break;
 					case 2:
@@ -1737,9 +1743,9 @@ void LGN_nonlinear(
         }
 
         //Size nsp;
-        //Float tsp = get_spike(nsp, lTR, lNL, dt, fr/1000.0, &local_state);
+        //Float tsp = get_spike(nsp, lTR, lNL, dt, fr/1000.0f, &local_state);
         //Float sInfo = nsp + tsp/dt; // must be float, integer part = #spikes decimals: mean tsp normalized by dt
-        tsp = get_spike(nsp, lTR, lNL, dt, fr/1000.0, &local_state, id);
+        tsp = get_spike(nsp, lTR, lNL, dt, fr/1000.0f, &local_state, id);
         sInfo = nsp + tsp/dt; // must be float, integer part = #spikes decimals: mean tsp normalized by dt
 		/* debug for snapshot
 			if (id == 0) {

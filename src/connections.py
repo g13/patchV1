@@ -21,13 +21,13 @@ fig_fdr = sys.argv[8]
 print(f'output figures to {fig_fdr}')
 
 if res_suffix:
-    res_suffix = "_" + res_suffix 
+    res_suffix = "-" + res_suffix 
 if conLGN_suffix:
-    conLGN_suffix = "_" + conLGN_suffix 
+    conLGN_suffix = "-" + conLGN_suffix 
 if conV1_suffix:
-    conV1_suffix = "_" + conV1_suffix 
+    conV1_suffix = "-" + conV1_suffix 
 if output_suffix:
-    output_suffix = "_" + output_suffix
+    output_suffix = "-" + output_suffix
 
 print(f'res_suffix = {res_suffix}')
 print(f'conLGN_suffix = {conLGN_suffix}')
@@ -630,32 +630,33 @@ if plotCon_sample:
     blue = np.array([0.666666, 1, 1])
     magenta = np.array([0.8333333, 1, 1])
     green = np.array([0.333333, 1, 0.5])
-    ms1 = 0.16
-    ms2 = 0.04
+    ms1 = 0.2
+    ms2 = 0.2
     mk1 = '.'
     mk2 = 's'
-    sat0 = 0.5
+    lw = 0.1
+    sat0 = 0.3
+    sat1 = 1.0
     #sat_pick = 1.0
 
     pos0 = np.zeros((2,networkSize))
     pos0[0,:] = pos[:,0,:].reshape(networkSize)
     pos0[1,:] = pos[:,1,:].reshape(networkSize)
 
-    mSize = 0.05
-    alpha = 0.65
+    mSize = 0.15
+    alpha0 = 0.65
+    alpha1 = 0.9
     for i in sample:
-        fig = plt.figure('V1_con-'+f'{i}', dpi = 900)
+        fig = plt.figure('V1_con-'+f'{i}', dpi = 2000)
         ax = fig.add_subplot(111)
-
-        #ax.plot(pos[:,0,:], pos[:,1,:], ',')
-
+        # background map
         pick = epick[LR[epick] > 0]
         nnE = pick.size
 
         color = np.tile(np.array([0,0,1], dtype = float), (nnE,1))
         color[:,1] = sat0
         color[:,0] = feature[1,pick]
-        ax.scatter(pos0[0,pick], pos0[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
+        ax.scatter(pos0[0,pick], pos0[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2, alpha = alpha0)
 
         pick = ipick[LR[ipick] > 0]
         nnI = pick.size
@@ -663,37 +664,36 @@ if plotCon_sample:
         color = np.tile(np.array([0,0,1], dtype = float), (nnI,1))
         color[:,1] = sat0
         color[:,0] = feature[1,pick]
-        ax.scatter(pos0[0,pick], pos0[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
+        ax.scatter(pos0[0,pick], pos0[1,pick], s = ms2, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2, alpha = alpha0)
 
         pick = epick[LR[epick] < 0]
         nnE = pick.size
 
         color = np.tile(np.array([0,0,1], dtype = float), (nnE,1))
-        color[:,1] = sat0
+        color[:,1] = sat1
         color[:,0] = feature[1,pick]
-        ax.scatter(pos0[0,pick], pos0[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
+        ax.scatter(pos0[0,pick], pos0[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2, alpha = alpha0)
 
         pick = ipick[LR[ipick] < 0]
         nnI = pick.size
 
         color = np.tile(np.array([0,0,1], dtype = float), (nnI,1))
-        color[:,1] = sat0
+        color[:,1] = sat1
         color[:,0] = feature[1,pick]
-        ax.scatter(pos0[0,pick], pos0[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2)
+        ax.scatter(pos0[0,pick], pos0[1,pick], s = ms1, c = clr.hsv_to_rgb(color), edgecolors = 'none', marker = mk2, alpha = alpha0)
 
         # post
         bid = i//blockSize
         tid = i-blockSize*bid
         # pre within the blocks nearby
-        #for j in range(nearNeighborBlock):
         for j in range(nNearNabaBlk[bid]):
             jbid = nabaBlkId[bid][j]
-            #left
+
             if j == 0:
-                marker = 'v'
+                marker = 'v' # inside own block
             else:
-                marker = 's'
-            mat_pick = np.logical_and(conMat[bid,j,:,tid]>0, LR[jbid*blockSize:(jbid+1)*blockSize]<0)
+                marker = 's' # outside
+            mat_pick = conMat[bid,j,:,tid]>0
             matE_pick = mat_pick.copy()
             matI_pick = mat_pick.copy()
             matE_pick[typeAcc[nTypeE]:typeAcc[nType]] = False
@@ -703,111 +703,54 @@ if plotCon_sample:
             msI_size = conMat[bid,j,matI_pick,tid]
 
             if msE_size.size > 0:
-                ax.scatter(pos[jbid,0,matE_pick], pos[jbid,1,matE_pick], s = mSize*msE_size/max_str[i, 0], marker = marker, facecolor = None, edgecolor = 'r', alpha = alpha)
+                ax.scatter(pos[jbid,0,matE_pick], pos[jbid,1,matE_pick], s = mSize*msE_size/max_str[i, 0], marker = marker, facecolor = None, edgecolor = 'r', linewidths = lw, alpha = alpha1)
                 #ax.plot(pos[jbid,0,matE_pick], pos[jbid,1,matE_pick], marker, mec='r', mfc = None, ms = ms1*1.1)
             if msI_size.size > 0:
-                ax.scatter(pos[jbid,0,matI_pick], pos[jbid,1,matI_pick], s = mSize*msI_size/max_str[i, 1], marker = marker, facecolor = None, edgecolor = 'b', alpha = alpha)
-                #ax.plot(pos[jbid,0,matI_pick], pos[jbid,1,matI_pick], marker, mec='b', mfc = None, ms = ms1*1.1)
-
-            #right
-            if j == 0:
-                marker = 'd'
-            else:
-                marker = 'o'
-            mat_pick = np.logical_and(conMat[bid,j,:,tid]>0, LR[jbid*blockSize:(jbid+1)*blockSize]>0)
-            matE_pick = mat_pick.copy()
-            matI_pick = mat_pick.copy()
-            matE_pick[typeAcc[nTypeE]:typeAcc[nType]] = False
-            matI_pick[:typeAcc[nTypeE]] = False
-
-            msE_size = conMat[bid,j,matE_pick,tid]
-            msI_size = conMat[bid,j,matI_pick,tid]
-
-            if msE_size.size > 0:
-                ax.scatter(pos[jbid,0,matE_pick], pos[jbid,1,matE_pick], s = mSize*msE_size/max_str[i, 0], marker = marker, facecolor = None, edgecolor = 'r', linewidths = 0.02, alpha = alpha)
-                #ax.plot(pos[jbid,0,matE_pick], pos[jbid,1,matE_pick], marker, mec='r', mfc = None, ms = ms1*1.1)
-            if msI_size.size > 0:
-                ax.scatter(pos[jbid,0,matI_pick], pos[jbid,1,matI_pick], s = mSize*msI_size/max_str[i, 1], marker = marker, facecolor = None, edgecolor = 'b', linewidths = 0.02, alpha = alpha)
+                ax.scatter(pos[jbid,0,matI_pick], pos[jbid,1,matI_pick], s = mSize*msI_size/max_str[i, 1], marker = marker, facecolor = None, edgecolor = 'b', linewidths = lw, alpha = alpha1)
                 #ax.plot(pos[jbid,0,matI_pick], pos[jbid,1,matI_pick], marker, mec='b', mfc = None, ms = ms1*1.1)
 
         if nTotalVec[i] > 0:
             vID = vecID[i][: nVec[i]]
             cStr = conVec[i][: nVec[i]]
-            # pre outside the block
-            # left, exc
-            LE_pick = np.logical_and(LR[vID] < 0, vID % blockSize < typeAcc[nTypeE])
+            # far pre 
+            # exc
+            LE_pick = vID % blockSize < typeAcc[nTypeE]
             if LE_pick.any():
                 vbid = vID[LE_pick]//blockSize
                 vtid = vID[LE_pick] - blockSize*vbid
                 msE_size = cStr[LE_pick]
-                ax.scatter(pos[vbid,0,vtid], pos[vbid,1,vtid], s = mSize*msE_size/max_str[i, 0], marker = '^', facecolor = None, edgecolor = 'r', alpha = alpha)
+                ax.scatter(pos[vbid,0,vtid], pos[vbid,1,vtid], s = mSize*msE_size/max_str[i, 0], marker = 'd', facecolor = None, edgecolor = 'r', linewidths = lw, alpha = alpha1)
 
-            # right, exc
-            RE_pick = np.logical_and(LR[vID] > 0, vID % blockSize < typeAcc[nTypeE])
-            if RE_pick.any():
-                vbid = vID[RE_pick]//blockSize
-                vtid = vID[RE_pick] - blockSize*vbid
-                msE_size = cStr[RE_pick]
-                ax.scatter(pos[vbid,0,vtid], pos[vbid,1,vtid], s = mSize*msE_size/max_str[i, 0], marker = '*', facecolor = None, edgecolor = 'r', alpha = alpha)
-
-            # left, inh 
-            LI_pick = np.logical_and(LR[vID] < 0, vID % blockSize >= typeAcc[nTypeE])
+            # inh 
+            LI_pick = vID % blockSize >= typeAcc[nTypeE]
             if LI_pick.any():
                 vbid = vID[LI_pick]//blockSize
                 vtid = vID[LI_pick] - blockSize*vbid
                 msI_size = cStr[LI_pick]
-                ax.scatter(pos[vbid,0,vtid], pos[vbid,1,vtid], s = mSize*msI_size/max_str[i, 1], marker = '^', facecolor = None, edgecolor = 'r', alpha = alpha)
+                ax.scatter(pos[vbid,0,vtid], pos[vbid,1,vtid], s = mSize*msI_size/max_str[i, 1], marker = 'd', facecolor = None, edgecolor = 'b', linewidths = lw, alpha = alpha1)
 
-            # right, inh 
-            RI_pick = np.logical_and(LR[vID] > 0, vID % blockSize >= typeAcc[nTypeE])
-            if RI_pick.any():
-                vbid = vID[RI_pick]//blockSize
-                vtid = vID[RI_pick] - blockSize*vbid
-                msI_size = cStr[RI_pick]
-                ax.scatter(pos[vbid,0,vtid], pos[vbid,1,vtid], s = mSize*msI_size/max_str[i, 1], marker = '*', facecolor = None, edgecolor = 'r', alpha = alpha)
-            
         if longRange_nVec[i] > 0:
             vID = vecID[i][nVec[i]:]
             cStr = conVec[i][nVec[i]:]
             # pre outside the block
-            # left, exc
-            LE_pick = np.logical_and(LR[vID] < 0, vID % blockSize < typeAcc[nTypeE])
+            # exc
+            LE_pick = vID % blockSize < typeAcc[nTypeE]
             if LE_pick.any():
                 vbid = vID[LE_pick]//blockSize
                 vtid = vID[LE_pick] - blockSize*vbid
                 msE_size = cStr[LE_pick]
-                ax.scatter(pos[vbid,0,vtid], pos[vbid,1,vtid], s = mSize*msE_size/max_str[i, 0], marker = '<', facecolor = None, edgecolor = 'r', alpha = alpha)
+                ax.scatter(pos[vbid,0,vtid], pos[vbid,1,vtid], s = mSize*msE_size/max_str[i, 0], marker = '^', facecolor = None, edgecolor = 'm', linewidths = lw, alpha = alpha1)
 
-            # right, exc
-            RE_pick = np.logical_and(LR[vID] > 0, vID % blockSize < typeAcc[nTypeE])
-            if RE_pick.any():
-                vbid = vID[RE_pick]//blockSize
-                vtid = vID[RE_pick] - blockSize*vbid
-                msE_size = cStr[RE_pick]
-                ax.scatter(pos[vbid,0,vtid], pos[vbid,1,vtid], s = mSize*msE_size/max_str[i, 0], marker = '>', facecolor = None, edgecolor = 'r', alpha = alpha)
-
-            # left, inh 
-            LI_pick = np.logical_and(LR[vID] < 0, vID % blockSize >= typeAcc[nTypeE])
+            # inh 
+            LI_pick = vID % blockSize >= typeAcc[nTypeE]
             if LI_pick.any():
                 vbid = vID[LI_pick]//blockSize
                 vtid = vID[LI_pick] - blockSize*vbid
                 msI_size = cStr[LI_pick]
-                ax.scatter(pos[vbid,0,vtid], pos[vbid,1,vtid], s = mSize*msI_size/max_str[i, 1], marker = '<', facecolor = None, edgecolor = 'r', alpha = alpha)
+                ax.scatter(pos[vbid,0,vtid], pos[vbid,1,vtid], s = mSize*msI_size/max_str[i, 1], marker = '^', facecolor = None, edgecolor = 'c', linewidths = lw, alpha = alpha1)
 
-            # right, inh 
-            RI_pick = np.logical_and(LR[vID] > 0, vID % blockSize >= typeAcc[nTypeE])
-            if RI_pick.any():
-                vbid = vID[RI_pick]//blockSize
-                vtid = vID[RI_pick] - blockSize*vbid
-                msI_size = cStr[RI_pick]
-                ax.scatter(pos[vbid,0,vtid], pos[vbid,1,vtid], s = mSize*msI_size/max_str[i,1 ], marker = '>', facecolor = None, edgecolor = 'r', alpha = alpha)
-
-        ax.plot(pos[bid,0,tid], pos[bid,1,tid],'*k', mfc = None, mew = 0.05, ms = 1, alpha = alpha)
+        ax.plot(pos[bid,0,tid], pos[bid,1,tid],'*k', mfc = None, mew = 0.05, ms = 1, alpha = alpha1)
         
-        if connectLongRange:
-            bx, by = ellipse(pos[bid,0,tid], pos[bid,1,tid], longRangeSOI, longRangeLOI/longRangeSOI, iPref[i]*np.pi/180)
-            ax.plot(bx, by, '--k', lw = 0.05)
-
         ax.set_aspect('equal')
         ax.set_title(f'neuron {bid}-{tid} preset to {iPref[i]:.0f} deg')
         fig.savefig(fig_fdr+'V1_conSample-'+f'{bid}-{tid}' + conV1_suffix + '.png')

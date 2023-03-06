@@ -39,10 +39,10 @@ setup_fdr = setup_fdr + "/"
 data_fdr = data_fdr + "/"
 fig_fdr = fig_fdr + "/"
 
-output_suffix = '_' + output_suffix
-res_suffix = '_' + res_suffix
-conLGN_suffix = '_' + conLGN_suffix
-conV1_suffix = '_' + conV1_suffix
+output_suffix = '-' + output_suffix
+res_suffix = '-' + res_suffix
+conLGN_suffix = '-' + conLGN_suffix
+conV1_suffix = '-' + conV1_suffix
 
 LGN_V1_idFn = setup_fdr + "LGN_V1_idList" + conLGN_suffix + ".bin"
 rawData_fn = data_fdr + 'rawData' + output_suffix + '.bin'

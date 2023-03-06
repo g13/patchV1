@@ -9,7 +9,7 @@ import warnings
 from assign_attr import *
 np.seterr(invalid = 'raise', under = 'ignore', over = 'ignore')
 
-LR_Pi_file = 'Ny-2-LR_Pi_newFormat.bin'
+LR_Pi_file = 'ibeta-4-LR_Pi21.bin'
 pos_file = 'V1_pos_2D_lowDensity.bin'
 uniform_pos_file = 'uniform_pos.bin'
 #pos_file = 'uniform_pos1.bin'

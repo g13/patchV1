@@ -165,7 +165,7 @@ class p_rec_boundary(rec_boundary):
                     self.get_acc[i] = self.get_ahv
                 # first vertical then horizontal 
                 else:
-                    if btype[i] is not 3:
+                    if btype[i] != 3:
                         raise Exception(f'btype: {btype[i]} is not implemented')
                     self.get_acc[i] = self.get_avh
 

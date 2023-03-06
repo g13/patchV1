@@ -13,6 +13,17 @@
 
 
 __host__ __device__
+inline bool v_inside_ellipse(Float vx, Float vy, Float theta, Float r, Float a, Float b, Float &value) {
+    Float beta = atanb(vy, vx); 
+    Float x = r*cosine(beta);
+    Float y = r*sine(beta);
+    Float tx = cosine(theta) * x + sine(theta) * y;
+	Float ty = -sine(theta) * x + cosine(theta) * y;
+	value = (tx*tx/(a*a) + ty*ty/(b*b));
+	return value <= 1.0;
+}
+
+__host__ __device__
 inline bool inside_ellipse(Float x, Float y, Float theta, Float a, Float b, Float &value) {
     Float tx = cosine(theta) * x + sine(theta) * y;
 	Float ty = -sine(theta) * x + cosine(theta) * y;

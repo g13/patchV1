@@ -23,7 +23,7 @@ blockSize = 1024
 a = 0.635
 b = 96.7
 k = np.sqrt(140)*0.873145
-ecc = 2.0 # must consistent with the corresponding variables in parameter.m and macro.ipynb
+ecc = 1.0 # must consistent with the corresponding variables in parameter.m and macro.ipynb
 p0 = -np.pi/2
 p1 = np.pi/2
 

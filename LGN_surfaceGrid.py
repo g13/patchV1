@@ -27,12 +27,31 @@ def nPosInRectangle(point, x0, x1, y0, y1, leftInclude = False, bottomInclude = 
     assert(xy_ready.size == point.shape[1])
     return np.sum(xy_ready), np.nonzero(xy_ready)[0]
 
+def get_duplicate_x(pos, ind):
+    points = pos[:,ind].copy()
+    n = len(ind)
+    duplicate_x = []
+    pick = np.ones(n, dtype = bool)
+    for i in range(n):
+        if pick[i]:
+            dy = points[1, i] - points[1, :]
+            iy = np.nonzero(dy == 0)[0]
+            if len(iy) > 1:
+                duplicate_x.append(points[0,iy])
+                pick[iy] = False
+    return duplicate_x
+
 exist_data = False 
-dpi = 150
-theme = sys.argv[1]
-surfID_fn = 'LGN_surfaceID-' + theme
-parallel_fileL = 'LGN_uniformL-' + theme + '.bin'
-parallel_fileR = 'LGN_uniformR-' + theme + '.bin'
+dpi = 2000
+fdr = sys.argv[1]
+theme = sys.argv[2]
+if fdr[-1] != '/': 
+    fdr = fdr + '/'
+print(fdr)
+print(theme)
+surfID_fn = fdr + 'LGN_surfaceID-' + theme
+parallel_fileL = fdr + 'LGN_uniformL-' + theme + '.bin'
+parallel_fileR = fdr + 'LGN_uniformR-' + theme + '.bin'
 
 if exist_data:
     with open(surfID_fn + '.bin', 'rb') as f:
@@ -60,7 +79,7 @@ else:
         areaL = np.fromfile(f, 'f8', count = 1)[0]
     
     xmin = np.min(bPosL[:,0,1])
-    mid = np.max(bPosL[:,0,1])
+    mid = np.max(bPosL[:,0,1]) # between L and R
     
     with open(parallel_fileR, 'rb') as f:
         nR = np.fromfile(f, 'u4', count = 1)[0]
@@ -81,6 +100,7 @@ else:
     
     nLGN = nL + nR
     print(f'nLGN {nLGN} = {nL} + {nR}')
+    print(f'x:{xmin}, {mid}, {xmax} | y:{ymin}, {ymax}') 
     pos_ind = np.zeros((2,nLGN), dtype = 'i4')
     pos_ind_fill = np.zeros(nLGN, dtype = bool)
     
@@ -123,10 +143,25 @@ else:
         #print(y)
         n = 0
         x_end = x[-1]
-        while n == 0 and x_end < xmax:
+        again = True
+        x_old = x_end
+        while again :
             n, ind_x = nPosInRectangle(pos, x[-2], x_end, ymin, ymax, len(x) == 2, True)
-            x_end += dline_x
-        x[-1] = x_end - dline_x
+            if n > 0:
+                if n > 1:
+                    meanx = get_duplicate_x(pos, ind_x)
+                    if len(meanx) > 0:
+                        x_end = np.min([np.mean(np.sort(duplicate_x)[:2]) for duplicate_x in meanx])
+                        n, ind_x = nPosInRectangle(pos, x[-2], x_end, ymin, ymax, len(x) == 2, True)
+                        assert(n > 0)
+                again = False
+            else:
+                if x_end + dline_x < xmax:
+                    x_end += dline_x
+                else:
+                    again = False
+
+        x[-1] = x_end
             
         if total_belonged + n >= nL and not right:
             old_n = n
@@ -138,7 +173,7 @@ else:
         else:
             breaked = False
             if iy > 0 and n > 0: 
-                # adjust current_x
+                # adjust current_x if no change in points included
                 x_new = x[-2] + 2*(np.mean(pos[0,ind_x]) - x[-2])
                 n_new, ind = nPosInRectangle(pos, x[-2], x_new, ymin, ymax, len(x) == 2, True)
                 if n == n_new:
@@ -208,7 +243,8 @@ else:
         if breaked:
             break
         if len(y[iy])-1 < len(idy[iy]):
-            raise Exception(f'# of rows: {len(y[iy])} >= indexed LGN {len(idy[iy])}')
+            #raise Exception(f'# of rows: {len(y[iy])} >= indexed LGN {len(idy[iy])}')
+            print(f'!!! # of rows: {len(y[iy])} >= indexed LGN {len(idy[iy])}')
         print(f'nbelong = {belonged}, n = {n}')
         if len(x) > 2 and len(y[iy]) > len(y[iy-1]) and not new:
             print(f'{len(y[iy])} <= {len(y[iy-1])}, don''t break')
@@ -223,8 +259,6 @@ else:
             for i in ind_x[miss]:
                 print([i, iy, len(y[iy])])
                 ax.plot(pos[0,i], pos[1,i], '*r', ms = 0.05)
-            #for i in ind_x[pos_ind_fill[ind_x]]:
-                #ax.plot(pos[0,i], pos[1,i], '*k', ms = 0.05)
             break
         #if total_belonged > nL:
         #    break
@@ -239,11 +273,10 @@ else:
             ymin_id = np.max(pos_ind[1,:]) # initialize with ipsi maximum
             
         stdout.write(f'\r progress: {total_belonged}/{nLGN}\n')
-        #r0 = r1
     assert(total_belonged == nLGN)
     if not pos_ind_fill.all():
         #raise Exception(f'{np.sum(np.logical_not(pos_ind_fill))} LGN failed indexing')
-        print(f'{np.sum(np.logical_not(pos_ind_fill))} LGN failed indexing')
+        print(f'!!! {np.sum(np.logical_not(pos_ind_fill))} LGN failed indexing')
     
     xmin_id = np.min(pos_ind[0,:])
     xmax_id = np.max(pos_ind[0,:])
@@ -256,7 +289,7 @@ else:
     iy = np.argmax([len(col) for col in y]) # n
     n_max = len(y[iy])
     if ymax_id > n_max-1:
-        print(f'ymax_id: {ymax_id} <= {n_max-1} (n_max-1)') # max id = n-1
+        print(f'!!! ymax_id: {ymax_id} <= {n_max-1} (n_max-1)') # max id = n-1
         #raise Exception(f'ymax_id: {ymax_id} <= {n_max-1} (n_max-1)') # max id = n-1
 
     print(f'yid range: {[ymin_id, ymax_id]}')
@@ -269,12 +302,13 @@ else:
             if n0 > 0:
                 for k in range(len(idy[i])):
                     pos_ind[1, idy[i][k]] = pos_ind[1, idy[i][k]] + n0
-    pos_ind[1,:] = pos_ind[1,:] - ymin_id
+        else: # col of n_max might not have the ymin_id
+            pos_ind[1, idy[i]] -= np.min(pos_ind[1, idy[i]])
 
 assert(np.min(pos_ind[0,:]) == 0)
 if np.min(pos_ind[1,:]) != 0:
     #raise Exception(f'id-y min = {np.min(pos_ind[1,:])} != 0')
-    print(f'id-y min = {np.min(pos_ind[1,:])} != 0')
+    print(f'!!! id-y min = {np.min(pos_ind[1,:])} != 0')
 
 figId = plt.figure('surface_Id', dpi = dpi)
 axId = figId.add_subplot(111)

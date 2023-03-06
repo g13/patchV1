@@ -1,7 +1,7 @@
 #!/bin/bash
 
 cleanData=1
-n=25
+n=50
 n0=0
 cfg_fdr=${HOME}/repos/patchV1/src
 fdr0=/root/autodl-tmp
@@ -18,10 +18,10 @@ new_setup=False
 #inputFn=64-preset_10-10_stage_II-p1
 #inputFn=64-random3917563_10-10_stage_II
 #inputFn=64-opponent_10-10_stage_II
-inputFn=64-opponent_10-10_stage_II-wide
-op0=opp-wide-t2cap2
-seed=20230226 # RANDOM SEED for post-analysis sampling and input randomization 
-suffix=wide
+inputFn=64-opponent_10-10_stage_II
+op0="opp-standard-t3cap6-2"
+seed=20230305 # RANDOM SEED for post-analysis sampling and input randomization 
+suffix=standard
 lgn=lFF_II_${suffix} # the theme string to be used for LGN_V1 connections
 res=lFF_II_${suffix} # the theme string to be used for V1, LGN positions etc.
 squareOrCircle=true # initial LGN-recruitment shape 

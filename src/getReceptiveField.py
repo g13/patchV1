@@ -78,7 +78,7 @@ def getReceptiveField(spikeInfo, inputFn, frameRate, res_fdr, setup_fdr, data_fd
     print(height)
     n = len(spikeInfo)
     print(f'n = {n}')
-    _output_suffix = '_' + output_suffix
+    _output_suffix = '-' + output_suffix
 
     stepRate = int(round(1000/dt))
     print(stepRate, frameRate)
@@ -238,7 +238,7 @@ def plotSta(isuffix, res_suffix, conLGN_suffix, output_suffix, res_fdr, setup_fd
 
     res_suffix = "_" + res_suffix
 
-    _output_suffix = '_' + output_suffix
+    _output_suffix = '-' + output_suffix
     LGN_V1_idFn = "LGN_V1_idList_" + conLGN_suffix + ".bin"
     if nf == 0:
         parameterFn = "patchV1_cfg" +_output_suffix + ".bin"
@@ -565,7 +565,7 @@ if __name__ == "__main__":
         if len(sys.argv) < 10:
             raise Exception('not enough argument for getReceptiveField.py collecting output_suffix, conLGN_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, LGN_or_V1, seed, one')
         output_suffix = sys.argv[2]
-        conLGN_suffix = '_' + sys.argv[3]
+        conLGN_suffix = '-' + sys.argv[3]
         res_fdr = sys.argv[4]
         setup_fdr = sys.argv[5]
         data_fdr = sys.argv[6]
@@ -582,7 +582,7 @@ if __name__ == "__main__":
             else:
                 raise Exception('one can only be True(1) or False(0)')
 
-        _output_suffix = '_' + output_suffix
+        _output_suffix = '-' + output_suffix
         if data_fdr[-1] != '/':
             data_fdr = data_fdr + '/'
 

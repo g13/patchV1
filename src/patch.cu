@@ -10,8 +10,7 @@ int main(int argc, char** argv) {
 	cout << nDevice << " gpu on the node\n";
 	int iDevice;
 	size_t maxFree = 0;
-	//for (PosInt i = 0; i < nDevice; i++) {
-	for (PosInt i = 0; i < 1; i++) {
+	for (PosInt i = 0; i < nDevice; i++) {
 		checkCudaErrors(cudaSetDevice(i));
 		size_t free;
 		size_t total;
@@ -586,22 +585,22 @@ int main(int argc, char** argv) {
     }
 
     if (!output_suffix0.empty())  {
-        output_suffix = "_" + output_suffix0;
+        output_suffix = "-" + output_suffix0;
     } else output_suffix = "";
     output_suffix = output_suffix + ".bin";
 
     if (!res_suffix.empty())  {
-        res_suffix = "_" + res_suffix;
+        res_suffix = "-" + res_suffix;
     }
     res_suffix = res_suffix + ".bin";
 
     if (!conLGN_suffix.empty())  {
-        conLGN_suffix = "_" + conLGN_suffix;
+        conLGN_suffix = "-" + conLGN_suffix;
     }
     conLGN_suffix = conLGN_suffix + ".bin";
 
     if (!conV1_suffix.empty())  {
-        conV1_suffix = "_" + conV1_suffix;
+        conV1_suffix = "-" + conV1_suffix;
     }
     conV1_suffix = conV1_suffix + ".bin";
 
@@ -1091,6 +1090,7 @@ int main(int argc, char** argv) {
 	Size nLearnTypeQ;
 	Float exp_homeo;
     if (learning) {
+        cout << "learning mode " << learning << "\n";
         if (tauAvg.size() > 2) {
             cout << "only E and I having different tauAvg for filtered spike response is implemented\n";
             return EXIT_FAILURE;
@@ -2801,12 +2801,12 @@ int main(int argc, char** argv) {
 				if (V1_y[i] < yMin) yMin = V1_y[i];
 			}
 		}
+        printf("V1_x range (%.5lf, %.5lf), V1_xspan(%.5lf, %.5lf)\n", xMin, xMax, V1_x0, V1_x0 + V1_xspan);
+        printf("V1_y range (%.5lf, %.5lf), V1_yspan(%.5lf, %.5lf)\n", yMin, yMax, V1_y0, V1_y0 + V1_yspan);
         assert(xMin >= V1_x0);
         assert(xMax <= V1_x0+V1_xspan);
         assert(yMin >= V1_y0);
         assert(yMax <= V1_y0+V1_yspan);
-        printf("V1_x range (%.5lf, %.5lf), V1_xspan(%.5lf, %.5lf)\n", xMin, xMax, V1_x0, V1_x0 + V1_xspan);
-        printf("V1_y range (%.5lf, %.5lf), V1_yspan(%.5lf, %.5lf)\n", yMin, yMax, V1_y0, V1_y0 + V1_yspan);
 		if (frameVisV1output) {
 			V1_vx = V1_y + nV1;
 			V1_vy = V1_vx + nV1;
@@ -2826,12 +2826,12 @@ int main(int argc, char** argv) {
 					if (V1_vy[i] < vyMin) vyMin = V1_vy[i];
 				}
 			}
+            printf("V1_vx range (%.5lf, %.5lf), V1_vxspan(%.5lf, %.5lf)\n", vxMin, vxMax, V1_vx0, V1_vx0 + V1_vxspan);
+            printf("V1_vy range (%.5lf, %.5lf), V1_vyspan(%.5lf, %.5lf)\n", vyMin, vyMax, V1_vy0, V1_vy0 + V1_vyspan);
             assert(vxMin >= V1_vx0);
             assert(vxMax <= V1_vx0+V1_vxspan);
             assert(vyMin >= V1_vy0);
             assert(vyMax <= V1_vy0+V1_vyspan);
-            printf("V1_vx range (%.5lf, %.5lf), V1_vxspan(%.5lf, %.5lf)\n", vxMin, vxMax, V1_vx0, V1_vx0 + V1_vxspan);
-            printf("V1_vy range (%.5lf, %.5lf), V1_vyspan(%.5lf, %.5lf)\n", vyMin, vyMax, V1_vy0, V1_vy0 + V1_vyspan);
 		}
 	}
 	fV1_allpos.close();
@@ -4184,6 +4184,7 @@ int main(int argc, char** argv) {
 		    Float dOriMax = *max_element(dOri.begin(), dOri.end());
 		    cout << "|dOri| = ["  << dOriMin << ", " << dOriMean << ", " << dOriMax << "]\n";
         }
+        cout << "noiseOnTonic is " << noiseOnTonic << "\n";
 
 		for (PosInt i=0; i<nblock; i++) {
 			PosInt iType = 0;
@@ -4648,7 +4649,8 @@ int main(int argc, char** argv) {
 	PosInt it0 = 0;
     vector<Size> sample_spikeCount;
     vector<PosInt> sampleID;
-	vector<Size> LGN_spike_time;
+	//vector<Size> LGN_spike_time;
+	vector<Float> LGN_spike_time;
     if (!minimal) { // output file tests
 		if (!restore.empty() && !asInit) {
 			fSnapshot.open(restore, fstream::in | fstream::binary);
@@ -4837,33 +4839,36 @@ int main(int argc, char** argv) {
             }
         }
 
-		if (!restore.empty() && !asInit) {
-			fOutputFrame.open(outputFrame_filename + output_suffix, fstream::out | fstream::in | fstream::binary | fstream::ate);
-		} else {
-			fOutputFrame.open(outputFrame_filename + output_suffix, fstream::out | fstream::binary);
-		}
-		if (!fOutputFrame) {
-			cout << "Cannot open or find " << outputFrame_filename + output_suffix <<" for output V1 simulation results to frames.\n";
-			return EXIT_FAILURE;
-		} else {
-			if (restore.empty() || asInit) {
-				fOutputFrame.write((char*)&dt, sizeof(Float));
-				fOutputFrame.write((char*)&ot, sizeof(Size));
-				fOutputFrame.write((char*)&iFrameOutput, sizeof(Size));
-				if (framePhyV1output) { //
-				    fOutputFrame.write((char*)&phyWidth, sizeof(Size));
-				    fOutputFrame.write((char*)&phyHeight, sizeof(Size));
-            	}
-				if (frameVisV1output) {
-					fOutputFrame.write((char*)&visWidth, sizeof(Size));
-					fOutputFrame.write((char*)&visHeight, sizeof(Size));
-				}
-				if (frameVisLGNoutput) {
-					fOutputFrame.write((char*)&visWidth, sizeof(Size));
-					fOutputFrame.write((char*)&visHeight, sizeof(Size));
-				}
-			}
-		}
+
+        if (framePhyV1output || frameVisV1output || frameVisLGNoutput) { // framed output
+		    if (!restore.empty() && !asInit) {
+		    	fOutputFrame.open(outputFrame_filename + output_suffix, fstream::out | fstream::in | fstream::binary | fstream::ate);
+		    } else {
+		    	fOutputFrame.open(outputFrame_filename + output_suffix, fstream::out | fstream::binary);
+		    }
+		    if (!fOutputFrame) {
+		    	cout << "Cannot open or find " << outputFrame_filename + output_suffix <<" for output V1 simulation results to frames.\n";
+		    	return EXIT_FAILURE;
+		    } else {
+		    	if (restore.empty() || asInit) {
+		    		fOutputFrame.write((char*)&dt, sizeof(Float));
+		    		fOutputFrame.write((char*)&ot, sizeof(Size));
+		    		fOutputFrame.write((char*)&iFrameOutput, sizeof(Size));
+		    		if (framePhyV1output) { //
+		    		    fOutputFrame.write((char*)&phyWidth, sizeof(Size));
+		    		    fOutputFrame.write((char*)&phyHeight, sizeof(Size));
+                	}
+		    		if (frameVisV1output) {
+		    			fOutputFrame.write((char*)&visWidth, sizeof(Size));
+		    			fOutputFrame.write((char*)&visHeight, sizeof(Size));
+		    		}
+		    		if (frameVisLGNoutput) {
+		    			fOutputFrame.write((char*)&visWidth, sizeof(Size));
+		    			fOutputFrame.write((char*)&visHeight, sizeof(Size));
+		    		}
+		    	}
+		    }
+        }
 
 		if (saveLGN_gallery) {
 			fLGN_gallery.open(LGN_gallery_filename + output_suffix, fstream::out | fstream::binary);
@@ -4909,6 +4914,7 @@ int main(int argc, char** argv) {
 			}
 		}
 	} else {
+        if (!getLGN_sp) getLGN_sp = true;
     	fSample.open(sample_filename + output_suffix, fstream::out | fstream::binary);
 		if (!fSample) {
 			cout << "Cannot open or find " << sample_filename + output_suffix <<" for minimal output.\n";
@@ -6121,10 +6127,13 @@ int main(int argc, char** argv) {
                     }
                 }
 				for (PosInt j = 0.; j < nLGN; j++) {
-                    Float sInfo = LGN_sInfo[j];
-					LGN_spike_time[j] = flooring(sInfo);
+                    //Float sInfo = LGN_sInfo[j];
+					//LGN_spike_time[j] = flooring(sInfo);
+					LGN_spike_time[j] = LGN_sInfo[j];
 				}
-				fSample.write((char*)&(LGN_spike_time[0]), nLGN*sizeof(Size));
+				//fSample.write((char*)&(LGN_spike_time[0]), nLGN*sizeof(Size));
+				fSample.write((char*)&(LGN_spike_time[0]), nLGN*sizeof(Float));
+                cout << "here: " << LGN_spike_time[67] << ", " <<LGN_spike_time[22] << "\n";
 			}
             if (!minimal) {
                 if (rawData) {
@@ -7029,10 +7038,12 @@ int main(int argc, char** argv) {
 		}
         // h_LGNready synced
 		for (PosInt j = 0.; j < nLGN; j++) {
-			Float sInfo = LGN_sInfo[j];
-			LGN_spike_time[j] = flooring(sInfo);	
+			//Float sInfo = LGN_sInfo[j];
+			//LGN_spike_time[j] = flooring(sInfo);	
+			LGN_spike_time[j] = LGN_sInfo[j];
 		}
-		fSample.write((char*)&(LGN_spike_time[0]), nLGN*sizeof(Size));
+		//fSample.write((char*)&(LGN_spike_time[0]), nLGN*sizeof(Size));
+		fSample.write((char*)&(LGN_spike_time[0]), nLGN*sizeof(Float));
 		fSample.write((char*)&(sampleID[0]), sampleSize * sizeof(PosInt));
 		fSample.write((char*)&(sample_spikeCount[0]), sampleSize*sizeof(Size));
         fSample.close();
@@ -7176,14 +7187,15 @@ int main(int argc, char** argv) {
         checkCudaErrors(cudaFree(learnVar));
         checkCudaErrors(cudaFree(d_gapS));
         if (learning) {
-	        delete []LGN_V1_s;
 			checkCudaErrors(cudaFree(d_totalFF));
 			if (learnData_FF > 0) {
 				if (learnData_FF > 1) {
 					checkCudaErrors(cudaFreeHost(lVarFFpost));
 				}
 				checkCudaErrors(cudaFreeHost(LGN_V1_s));
-			}
+			} else {
+	            delete []LGN_V1_s;
+            }
 		    checkCudaErrors(cudaFree(lVarFFpre));
         }
         if (framePhyV1output) {

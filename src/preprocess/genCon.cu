@@ -159,7 +159,7 @@ int main(int argc, char *argv[])
     cout << "blockROI = " << blockROI << " mm.\n";
 
 	if (!conLGN_suffix.empty()) {
-        conLGN_suffix = '_' + conLGN_suffix;
+        conLGN_suffix = '-' + conLGN_suffix;
     }
     conLGN_suffix = conLGN_suffix + ".bin";
 
@@ -322,6 +322,39 @@ int main(int argc, char *argv[])
     	    }
     	}
 	}
+    vector<Float> local_dis(nType,0);
+    # pragma unroll
+    for (PosInt jtype = 0; jtype < nType; jtype++) {
+        if (disGauss > 0) {
+            Float var = 0;
+            for (PosInt itype = 0; itype < nType; itype++) {
+                Float variance = (rAxon[itype]*rAxon[itype] + rDend[jtype]*rDend[jtype])/(2*logarithm(2))*disGauss*disGauss;
+                if (var < variance) {
+                    var = variance;
+                }
+            }
+            local_dis[jtype] = 3*square_root(var);
+        } else {
+            Float r = 0;
+            for (PosInt itype = 0; itype < nType; itype++) {
+                Float radius = rAxon[itype] + rDend[jtype];
+                if (r < radius) {
+                    r = radius;
+                }
+            }
+            local_dis[jtype] = r;
+        }
+    }
+    
+    Float nearRangeROI = *max_element(local_dis.begin(), local_dis.end())*2;
+    if (longRangeSOI < nearRangeROI) {
+        cout << "longRangeSOI changed to " << nearRangeROI << " by axon-dendrite overlap distance, was set to " << longRangeSOI << "\n";
+        longRangeSOI = nearRangeROI;
+    }
+    if (longRangeLOI <= longRangeSOI) {
+        cout << "longRangeSOI larger than longRangeLOI, also check rDend, rAxon.\n";
+        return EXIT_FAILURE;
+    }
 
     if (max_ffRatio.size() != nType && max_ffRatio.size() != 1) {
         cout << "max_ffRatio has size of " << max_ffRatio.size() << ", should be " << nType << ",  <nType> or 1\n";
@@ -464,7 +497,7 @@ int main(int argc, char *argv[])
 
     if (!suffix.empty()) {
 		cout << " suffix = " << suffix << "\n";
-        suffix = '_' + suffix;
+        suffix = '-' + suffix;
     }
     suffix = suffix + ".bin";
     nearNeighborBlock += 1; // including self
@@ -1552,89 +1585,33 @@ int main(int argc, char *argv[])
     fNeighborBlock.close();
 	cout << "neighbors written\n";
 
-
-    vector<PosInt> longRange_vecID;
-    vector<Float> longRange_conVec;
-    vector<Float> longRange_delayVec;
-    vector<Size> longRange_nVec;
+    vector<vector<PosInt>> longRange_vecID(networkSize);
+    vector<vector<Float>> longRange_conVec(networkSize);
+    vector<vector<Float>> longRange_delayVec(networkSize);
+    vector<Size> longRange_nVec(networkSize);;
     vector<Size> longRange_preTypeConnected;
     vector<Size> longRange_preTypeAvail;
     vector<Float> longRange_preTypeStrSum;
     Size nq;
     if (connectLongRange) {
         cout << "generating long-range connections ...\n";
-        checkCudaErrors(cudaMemcpy(d_pos, &vpos[0], 2*networkSize*sizeof(double), cudaMemcpyHostToDevice));
-        cal_blockPos<<<nblock, blockSize>>>(
-            d_pos, 
-	    	d_block_x, d_block_y,
-	    	networkSize);
-        Float block_vx[2*nblock];
-        Float *block_vy = block_vx + nblock;
-	    checkCudaErrors(cudaMemcpy(block_vx, d_block_x, 2*nblock*sizeof(Float), cudaMemcpyDeviceToHost));
-        // maximum visual field and physical distance from a exc neuron to its block center
-        vector<Float> max_vDis(nblock,0);
+        // maximum physical distance from a exc neuron to its block center
         vector<Float> max_dis(nblock,0);
-
         for (PosInt ib=0; ib<nblock; ib++) {
             for (PosInt type = 0; type < nType; type++) {
                 for (PosInt it = typeAcc0[type]; it < typeAcc0[type+1]; it++) {
                     PosInt i = ib*blockSize + it;
-                    Float dx = block_vx[ib] - vpos[i];
-                    Float dy = block_vy[ib] - vpos[networkSize + i];
+                    Float dx = block_x[ib] - pos[i];
+                    Float dy = block_y[ib] - pos[networkSize + i];
                     Float dis = square_root(power(dx,2) + power(dy,2));
-                    if (max_vDis[ib] < dis) max_vDis[ib] = dis;
-                    dx = block_x[ib] - pos[i];
-                    dy = block_y[ib] - pos[networkSize + i];
-                    dis = square_root(power(dx,2) + power(dy,2));
                     if (max_dis[ib] < dis) max_dis[ib] = dis;
                 }
             }
         }
-        //for (PosInt ib = 0; ib<nblock; ib++) {
-        //    printf("block %d, pos (%.2f, %.2f)[%.2f], vpos (%.2f, %.2f)[%.2f]\n", ib, block_x[ib], block_y[ib], max_dis[ib], block_vx[ib], block_vy[ib], max_vDis[ib]);
-        //}
-        Float est_blockArea = power(*max_element(max_dis.begin(), max_dis.end()), 2) * 2;
-        Float max_raxn = 0;
-        vector<Float> local_dis(nType,0);
-        # pragma unroll
-        for (PosInt jtype = 0; jtype < nType; jtype++) {
-            if (max_raxn < rAxon[jtype]) {
-                max_raxn = rAxon[jtype];
-            }
-            if (disGauss > 0) {
-                Float var = 0;
-                for (PosInt itype = 0; itype < nType; itype++) {
-		            Float variance = (rAxon[itype]*rAxon[itype] + rDend[jtype]*rDend[jtype])/(2*logarithm(2))*disGauss*disGauss;
-                    if (var < variance) {
-                        var = variance;
-                    }
-                }
-                local_dis[jtype] = 3*square_root(var);
-            } else {
-                Float r = 0;
-                for (PosInt itype = 0; itype < nType; itype++) {
-                    Float radius = rAxon[itype] + rDend[jtype];
-                    if (r < radius) {
-                        r = radius;
-                    }
-                }
-                local_dis[jtype] = r;
-            }
-        }
-
-        Float nearRangeROI = *max_element(local_dis.begin(), local_dis.end());
-        Size nb = ceiling(M_PI*(longRangeLOI*longRangeSOI - nearRangeROI*nearRangeROI)/est_blockArea)*2;
-        //if (nb > nblock) nb = nblock;
-        nb = nblock;
-        Float linearMagRatio0 = square_root(phys_span[0]*phys_span[1]/vis_span[0]/vis_span[1]);
-        Float linearMagRatio = 0;
-        for (PosInt ib=0; ib<nb; ib++) {
-            linearMagRatio += max_dis[ib]/max_vDis[ib];
-        }
-        linearMagRatio /= nb;
-        cout << "linear magnification ratio = " << linearMagRatio << "( " << linearMagRatio0 << ")  mm/deg\n";
-        printf("est_blockArea = %f\n", est_blockArea);
-
+        Float min_blockArea = 4*power(*max_element(max_dis.begin(), max_dis.end()), 2);
+        
+        Size nb = 2*ceiling(4*longRangeLOI*longRangeLOI/min_blockArea) - ceiling(4*longRangeSOI*longRangeSOI/min_blockArea);
+        if (nb > nblock) nb = nblock;
         vector<Size> nLongRange(nType);
         nq = 0;
         for (PosInt itype = 0; itype < nType; itype++) {
@@ -1644,23 +1621,23 @@ int main(int argc, char *argv[])
         nq = ceiling(nq*(1+nConTol));
         cout << "nq = " << nq << " max long-range connections\n";
         cout << "long-range connections covers " << nb << " square blocks by estimation\n";
-        nq *= 5; // just to be prudent
-        cout << "connection ROI = " << (rDend[0] + max_raxn)/linearMagRatio << ", longRange ROI = (" << longRangeLOI << ", " << longRangeSOI << "), nearRangeROI = " << nearRangeROI << "\n";
-        longRange_vecID.assign(networkSize*nq, 0);
-        longRange_conVec.assign(networkSize*nq, 0);
-        longRange_delayVec.assign(networkSize*nq, 0);
-        longRange_nVec.assign(networkSize, 0);
+        for (PosInt i=0; i<networkSize; i++) {
+            longRange_vecID[i].reserve(nb*3);
+            longRange_conVec[i].reserve(nb*3);
+            longRange_delayVec[i].reserve(nb*3);
+        }
         longRange_preTypeConnected.assign(nType*networkSize, 0);
         longRange_preTypeAvail.assign(nType*networkSize, 0);
         longRange_preTypeStrSum.assign(nType*networkSize, 0);
-
-        default_random_engine *longRangeConRand = new default_random_engine[networkSize];
+    
+        auto *longRangeConRand = new mt19937[networkSize];
         seed++;
         for (PosInt i=0; i<networkSize; i++) {
-            longRangeConRand[i].seed(seed);
+            seed_seq iseed = {nType+i, networkSize-i, i};
+            longRangeConRand[i].seed(iseed);
             seed++;
         }
-		auto uniform = uniform_real_distribution<Float>(0, 1);
+    	auto uniform = uniform_real_distribution<Float>(0, 1);
         pFeature pref_func[nFunc];
         pref_func[0] = ODpref;
         pref_func[1] = OPpref;
@@ -1677,9 +1654,12 @@ int main(int argc, char *argv[])
                     Float cy = pos[networkSize+i];
                     Float v_cx = vpos[i];
                     Float v_cy = vpos[networkSize+i];
-                    vector<Float> qConVec(nb*blockSize, 0);
-                    vector<Float> qDelayVec(nb*blockSize, 0);
-                    vector<PosInt> qVecID(nb*blockSize, 0);
+                    vector<Float> qConVec;
+                    vector<Float> qDelayVec;
+                    vector<PosInt> qVecID;
+                    qConVec.reserve(nb*blockSize);
+                    qDelayVec.reserve(nb*blockSize);
+                    qVecID.reserve(nb*blockSize);
                     vector<Float> sumP(nType, 0);
                     vector<Size> sumN(nType, 0);
                     vector<Float> ratio(nType, 0);
@@ -1695,50 +1675,27 @@ int main(int argc, char *argv[])
                             if (distance - max_dis[jb] > longRangeLOI || distance + max_dis[jb] < local_dis[itype]) { // closest distance larger than major radius or farthest radius inside near range ROI, skip
                                 continue;
                             }
-                            Float v_dx = block_vx[jb] - v_cx;
-                            Float v_dy = block_vy[jb] - v_cy;
-                            Float value;
-                            if (!inside_ellipse(v_dx, v_dy, alpha, longRangeSOI/linearMagRatio, longRangeLOI/linearMagRatio, value)) { // block center not inside
-                                Float vDis = square_root(power(v_dx, 2) + power(v_dy, 2));
-                                Float vDisRatio = vDis/max_vDis[jb];
-                                v_dx -= vDisRatio * v_dx;
-                                v_dy -= vDisRatio * v_dy;
-                                if (!inside_ellipse(v_dx, v_dy, alpha, longRangeSOI/linearMagRatio, longRangeLOI/linearMagRatio, value)) { // block edge not inside
-                                    if (vDis > max_vDis[jb]) { // block not crossing, skip
-                                        continue; 
-                                    }
-                                }
-                            }
-
-                            //Float theta = atan(v_dy, v_dx) - alpha;
-                            //if (theta > M_PI/2) {
-                            //    theta = M_PI - theta;
-                            //} else {
-                            //    if (theta < -M_PI/2) {
-                            //        theta += M_PI;
-                            //    }
-                            //}
-                            
                             for (PosInt jt = typeAcc0[jtype]; jt < typeAcc0[jtype+1]; jt++) {
                                 PosInt j = jb*blockSize + jt;
-                                v_dx = vpos[j] - v_cx;
-                                v_dy = vpos[networkSize + j] - v_cy;
-                                if (!inside_ellipse(v_dx, v_dy, alpha, longRangeSOI/linearMagRatio, longRangeLOI/linearMagRatio, value)) { // point not inside
+                                dx = pos[j] - cx;
+                                dy = pos[networkSize + j] - cy;
+                                Float v_dx = vpos[j] - v_cx;
+                                Float v_dy = vpos[networkSize + j] - v_cy;
+                                distance = square_root(power(dx, 2) + power(dy, 2));
+                                Float value;
+                                if (!v_inside_ellipse(v_dx, v_dy, alpha, distance, longRangeSOI, longRangeLOI, value) || inside_ellipse(dx, dy, alpha, nearRangeROI, nearRangeROI, value)) { // point not inside
                                     continue; 
                                 } else {
                                     Float p = 1;
                                     for (Size iFeature = 0; iFeature < nFeature; iFeature++) {
-					                    p *= pref_func[iFeature](featureValue[iFeature*networkSize + i], featureValue[iFeature*networkSize + j], longRange_typeFeatureMat[iFeature*nType*nType + itype*nType + jtype]);
+    				                    p *= pref_func[iFeature](featureValue[iFeature*networkSize + i], featureValue[iFeature*networkSize + j], longRange_typeFeatureMat[iFeature*nType*nType + itype*nType + jtype]);
                                     }
                                     if (p > 0) {
                                         sumP[jtype] += p;
                                         sumN[jtype] ++;
-                                        qConVec[iq] = p;
-                                        dx = pos[j] - cx;
-                                        dy = pos[networkSize + j] - cy;
-                                        distance = square_root(power(dx, 2) + power(dy, 2));
-                                        qDelayVec[iq] = distance;
-                                        qVecID[iq] = j;
+                                        qConVec.push_back(p);
+                                        qDelayVec.push_back(distance);
+                                        qVecID.push_back(j);
                                         iq ++;
                                         if (iq > nb*blockSize) {
                                             cout << "nb estimation too low " << iq << "\n";
@@ -1748,16 +1705,35 @@ int main(int argc, char *argv[])
                                 }
                             }
                         }
-
+    
+                        longRange_preTypeAvail[jtype*networkSize + i] = sumN[jtype];
+                        ratio[jtype] = longRange_nTypeMat[itype*nType + jtype]/sumP[jtype];
                         if (sumN[jtype] < longRange_nTypeMat[itype*nType + jtype]) {
                             cout << "neuron "<< ib << "-" << it <<" dont have enough type " << jtype << " neurons to make long-range connections to (" << sumN[jtype] << "/" << longRange_nTypeMat[itype*nType + jtype] << ")\n";
                         }
-                        longRange_preTypeAvail[jtype*networkSize + i] = sumN[jtype];
-                        ratio[jtype] = longRange_nTypeMat[itype*nType + jtype]/sumP[jtype];
                         sumP[jtype] = 0;
                         sumN[jtype] = 0;
                     }
                     Size cq = 0;
+                    /*
+                    if (iq > nq) { // randomize
+                        vector<Float> _qConVec(qConVec);
+                        vector<Float> _qDelayVec(qDelayVec);
+                        vector<PosInt> _qVecID(qVecID);
+                        auto shuffle_idx = uniform_int_distribution<int>(0,iq-1);
+                        vector<int> idx;
+                        idx.reserve(iq);
+                        for (PosInt j=0; j<iq; j++) {
+                            idx[j] = j;
+                        }
+                        shuffle(idx.begin(), idx.end(), longRangeConRand[i]);
+                        for (PosInt j=0; j<iq; j++) {
+                            qConVec[j] = _qConVec[idx[j]];
+                            qDelayVec[j] = _qDelayVec[idx[j]];
+                            qVecID[j] = _qVecID[idx[j]];
+                        }
+                    }
+                    */
                     for (PosInt j = 0; j < iq; j++) {
                         for (PosInt jtype = 0; jtype < nType; jtype++) {
                             if (qVecID[j] % blockSize < typeAccCount[jtype]) {
@@ -1765,25 +1741,21 @@ int main(int argc, char *argv[])
                                 Float xrand = uniform(longRangeConRand[i]);
                                 if (xrand < p) {
                                     Float str = longRange_sTypeMat[itype*nType + jtype] * (p > 1? p: 1);
-                                    longRange_conVec[i*nq + cq] = str;
-                                    longRange_delayVec[i*nq + cq] = qDelayVec[j];
-                                    longRange_vecID[i*nq + cq] = qVecID[j];
+                                    longRange_conVec[i].push_back(str);
+                                    longRange_delayVec[i].push_back(qDelayVec[j]);
+                                    longRange_vecID[i].push_back(qVecID[j]);
                                     sumP[jtype] += str;
                                     sumN[jtype] ++;
                                     cq ++;
-                                    if (cq > nq) {
-                                        cout << "too much longRange connections " << cq << "\n";
-                                        return EXIT_FAILURE;
-                                    }
                                 }
                                 break;
                             }
                         }
                     }
                     longRange_nVec[i] = cq;
-                    //if (cq == 0) {
-                    //    cout << " neuron " << ib << "-" << it << "made no longRange connections\n";
-                    //}
+                    if (cq == 0) {
+                        cout << " neuron " << ib << "-" << it << "made no longRange connections\n";
+                    }
                     if (strictStrength) {
                         for (PosInt jtype = 0; jtype < nType; jtype++) {
                             ratio[jtype] = longRange_sTypeMat[itype*nType + jtype] * longRange_nTypeMat[itype*nType + jtype]/sumP[jtype];
@@ -1791,9 +1763,9 @@ int main(int argc, char *argv[])
                         }
                         for (PosInt j = 0; j < cq; j++) {
                             for (PosInt jtype = 0; jtype < nType; jtype++) {
-                                if (longRange_vecID[j] % blockSize < typeAccCount[jtype]) {
-                                    longRange_conVec[i*nq + j] *= ratio[jtype];
-                                    sumP[jtype] += longRange_conVec[i*nq + j];
+                                if (longRange_vecID[i][j] % blockSize < typeAccCount[jtype]) {
+                                    longRange_conVec[i][j] *= ratio[jtype];
+                                    sumP[jtype] += longRange_conVec[i][j];
                                     break;
                                 }
                             }
@@ -1804,7 +1776,7 @@ int main(int argc, char *argv[])
                         longRange_preTypeStrSum[jtype*networkSize + i] = sumP[jtype];
                     }
                 }
-                printf("\r type %i: %i/%i", itype, ib, nblock);
+                printf("type %i: %i/%i\n", itype, ib, nblock);
             }
         }
         cout << " done.\n";
@@ -1830,15 +1802,15 @@ int main(int argc, char *argv[])
     for (PosInt i=0; i<networkSize; i++) {
         fV1_vec.write((char*)&(vecID[i*maxDistantNeighbor]), nVec[i]*sizeof(PosInt));
         if (connectLongRange) {
-            fV1_vec.write((char*)&(longRange_vecID[i*nq]), longRange_nVec[i]*sizeof(PosInt));
+            fV1_vec.write((char*)&(longRange_vecID[i][0]), longRange_nVec[i]*sizeof(PosInt));
         }
         fV1_vec.write((char*)&(conVec[i*maxDistantNeighbor]), nVec[i]*sizeof(Float));
         if (connectLongRange) {
-            fV1_vec.write((char*)&(longRange_conVec[i*nq]), longRange_nVec[i]*sizeof(Float));
+            fV1_vec.write((char*)&(longRange_conVec[i][0]), longRange_nVec[i]*sizeof(Float));
         }
         fV1_vec.write((char*)&(delayVec[i*maxDistantNeighbor]), nVec[i]*sizeof(Float));
         if (connectLongRange) {
-            fV1_vec.write((char*)&(longRange_delayVec[i*nq]), longRange_nVec[i]*sizeof(Float));
+            fV1_vec.write((char*)&(longRange_delayVec[i][0]), longRange_nVec[i]*sizeof(Float));
         }
     }
     fV1_vec.close();
@@ -1869,7 +1841,7 @@ int main(int argc, char *argv[])
     fStats.close();
 
 	for (PosInt i=0; i<nType; i++) {
-		cout << "feedforward excitatory contribution of total:\n";
+		cout << "type " << i << " feedforward excitatory contribution of total:\n";
 		cout << "[" << *min_element(ffRatio, ffRatio+networkSize) << ", " << accumulate(ffRatio, ffRatio+networkSize, 0.0)/networkSize << ", " << *max_element(ffRatio, ffRatio+networkSize) << "]\n";
 	}
 	delete []ffRatio;

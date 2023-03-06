@@ -53,8 +53,9 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch)
                 cl[:,i,:] = np.fromfile(f, 'f8', 2*nit).reshape(2,nit)
                 OnOff_balance[i,:] = np.fromfile(f, 'f8', nit)
             if totalFr_binned:
+                frFn = f'{data_fdr}V1_totalFr-{suffix}{num[i]}.bin'
                 try:
-                    with open(f'{data_fdr}V1_totalFr-{suffix}{num[i]}.bin', 'rb') as f:
+                    with open(frFn, 'rb') as f:
                         if i == 0:
                             nt = np.fromfile(f, 'i8', 1)[0]
                             print(nt)
@@ -66,8 +67,8 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch)
                             assert(_nt == nt)
                             assert((_ft - ft).any() == False)
                         fr[i,:] = np.fromfile(f, 'f8', nt)
-                except:
-                    print("file error, not firing rate plots")
+                except FileNotFoundError:
+                    print(f"file not found: {frFn}, no firing rate plots")
                     totalFr_binned = False
 
         t = np.arange(nit)
@@ -173,8 +174,9 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch)
                     OnOff_balance[key][i,:] = np.fromfile(f, 'f8', nit)
 
                 if totalFr_binned:
+                    frFn = f'{data_fdr}V1_totalFr-{suffix}{key}{i}.bin'
                     try:
-                        with open(f'{data_fdr}V1_totalFr-{suffix}{key}{i}.bin', 'rb') as f:
+                        with open(frFn, 'rb') as f:
                             if i == 0:
                                 nt = np.fromfile(f, 'i8', 1)[0]
                                 print(nt)
@@ -184,10 +186,10 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch)
                                 _nt = np.fromfile(f, 'i8', 1)[0]
                                 _ft = np.fromfile(f, 'f8', nt)
                                 assert(_nt == nt)
-                                assert((_ft - ft).any() == False)
+                                assert((_ft - ft[key]).any() == False)
                             fr[key][i,:] = np.fromfile(f, 'f8', nt)
-                    except:
-                        print("file error, not firing rate plots")
+                    except FileNotFoundError:
+                        print(f"file not found: {frFn}, no firing rate plots")
                         totalFr_binned = False
 
         t = np.arange(nit)
@@ -198,13 +200,12 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch)
         ax = fig.add_subplot(242)
         temporal_sep(t, rstd_norm, ax, 2, 'g. std by cell', ylim = ylim)
         ax = fig.add_subplot(243)
-        if not totalFr_binned:
-            temporal_sep(t, radius, ax, 2, 'avg. dis2c', ylim = ylim, xlabel = 't (au)')
-        else:
-            temporal_sep(t, radius, ax, 2, 'avg. dis2c', ylim = ylim)
-
+        temporal_sep(t, radius, ax, 2, 'avg. dis2c', ylim = ylim)
         ax = fig.add_subplot(244)
-        temporal_sep(t, cl, ax, 2, 'sqrt(area)/2', ylim = ylim)
+        if not totalFr_binned:
+            temporal_sep(t, cl, ax, 2, 'sqrt(area)/2', ylim = ylim)
+        else:
+            temporal_sep(t, cl, ax, 2, 'sqrt(area)/2', ylim = ylim, xlabel = 't (au)')
         ax = fig.add_subplot(245)
         temporal_sep(t, OnOff_balance, ax, 1, 'On-Off', xlabel = 't (au)')
         ax = fig.add_subplot(246)
@@ -213,7 +214,7 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch)
         temporal_sep(t, min0, ax, 2, '# disconnected', ylim = [0, nLGN_1D*nLGN_1D], xlabel = 't (au)')
         if totalFr_binned:
             ax = fig.add_subplot(248)
-            temporal_sep(ft/1000, fr, ax, 1, 'avg. FR', xlabel = 't (s)')
+            norm_temporal_sep(fr, ax, 1, 'avg. FR', xlabel = 'normalized time %')
         plt.tight_layout(w_pad = 1)
         fig.savefig(fig_fdr + 'temporal_sep-' + suffix +'.png', bbox_inches = 'tight')
 
@@ -283,6 +284,34 @@ def temporal_sep(t, d_dict, ax, n, ylabel, ylim = None, xlabel = None, legend = 
     c3 = cmap((4-0.5)/12)
     i = 0
     for data in d_dict.values(): 
+        if n == 2:
+            ax.plot(t, data[0,:,:].mean(axis = 0), '-', lw = (i+1)*0.5, color = c1, alpha = 0.7)
+            ax.plot(t, data[1,:,:].mean(axis = 0), ':', lw = (i+1)*0.5, color = c2, alpha = 0.7)
+            if i == 0 and legend:
+                ax.legend(['On', 'Off']) 
+        if n == 1:
+            ax.plot(t, data.mean(axis = 0), lw = (i+1)*0.5, color = c3, alpha = 0.7)
+        i += 1
+
+    ax.set_ylabel(ylabel)
+    if ylim is not None:
+        ax.set_ylim(ylim)
+    if xlabel is not None:
+        ax.set_xlabel(xlabel) 
+    else:
+        ax.xaxis.set_ticklabels([])
+
+
+def norm_temporal_sep(d_dict, ax, n, ylabel, ylim = None, xlabel = None, legend = False):
+    cmap = mpl.cm.get_cmap('Paired')
+    c1 = cmap((6-0.5)/12)
+    c2 = cmap((2-0.5)/12)
+    c3 = cmap((4-0.5)/12)
+    i = 0
+    data_len = [d.shape[-1] for d in d_dict.values()]
+    max_dl = np.max(data_len)
+    for data in d_dict.values(): 
+        t = np.linspace(0, 100, data_len[i])/max_dl
         if n == 2:
             ax.plot(t, data[0,:,:].mean(axis = 0), '-', lw = (i+1)*0.5, color = c1, alpha = 0.7)
             ax.plot(t, data[1,:,:].mean(axis = 0), ':', lw = (i+1)*0.5, color = c2, alpha = 0.7)

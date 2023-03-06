@@ -1,5 +1,6 @@
 #!/bin/bash
 # $1: plotOnly $2: readNewSpike
+redo=0
 
 fdr0=/root/autodl-tmp
 res_fdr=${fdr0}/public/resource # resourceFolder in cfg stimulus, V1-static, LGN-static
@@ -16,15 +17,16 @@ if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 	fdr=wave_concat/wave_II/mechanism-a # folder will be made to store figures and configuratoin files
 	op_cfg=wave_II.cfg # the simulation config file to be used
 	new_setup=False
-	#inputFn=64-preset_10-10_stage_II-o0
+	#inputFn=64-preset_10-10_stage_II-p1
 	#inputFn=64-random3917563_10-10_stage_II
-    #inputFn=64-opponent_10-10_stage_II-o1
-    inputFn=64-opponent_10-10_stage_II
-	op=opp # theme string to be added to filenames of data and figures
-    suffix=standard
+    inputFn=64-opponent_10-10_stage_II-narrow
+    #inputFn=64-opponent_10-10_stage_II
+	op=opp-narrow # theme string to be added to filenames of data and figures
+    suffix=narrow
 	lgn=lFF_II_${suffix} # the theme string to be used for LGN_V1 connections
 	res=lFF_II_${suffix} # the theme string to be used for V1, LGN positions etc.
 	squareOrCircle=true # initial LGN-recruitment shape 
+    examSingle=false # output the spatiotemporal figure, tLGN_V1_single if true
 fi
 
 relay=false
@@ -54,6 +56,7 @@ if [[ "${waveStage}" = "3" ]] ;then
 		res=lFF0
 	fi
 	squareOrCircle=false # initial LGN-recruitment shape 
+    examSingle=true # output the spatiotemporal figure, tLGN_V1_single if true
 fi
 
 if [[ "${waveStage}" = "5" ]] ;then
@@ -64,6 +67,7 @@ if [[ "${waveStage}" = "5" ]] ;then
 	lgn=lFF_l
 	res=lFF_l # starts out from stage II
 	squareOrCircle=true # initial LGN-recruitment shape 
+    examSingle=true # output the spatiotemporal figure, tLGN_V1_single if true
 fi
 
 binary_thres=0.0
@@ -77,10 +81,9 @@ std_ecc=0
 #std_ecc=4
 #std_ecc=3
 #std_ecc=2.66667
-seed=1924784 # RANDOM SEED for post-analysis sampling and input randomization 
+seed=1924783 # RANDOM SEED for post-analysis sampling and input randomization 
 # for outputLearnFF.m
 st=2 # figures' output: 0 for temporal, 1 for spatial, 2 for both, otherwise none
-examSingle=true # output the spatiotemporal figure, tLGN_V1_single if true
 use_local_max=0 # output the spatiotemporal figure, sLGN_V1 with strength normalized for each frame instead over all frames if set 1
 collectMeanDataOnly=False # not ploting samples of V1 response variable traces
 
@@ -106,9 +109,7 @@ else
 	mkdir -p ${fig_fdr}
 fi
 
-echo using ${op_cfg}
 echo outputs to ${fig_fdr}
-cp lFF-nonhpc ${fig_fdr}/lFF-nonhpc_${op}
 
 readNewSpike=$2
 if [ -z "${readNewSpike}" ]; 
@@ -124,18 +125,29 @@ then
 fi
 echo plotOnly=${plotOnly}
 
-#cp outputLearnFF.m ${fig_fdr}/outputLearnFF_${op}.m
-cp outputLearnFF.py ${fig_fdr}/outputLearnFF_${op}.py
-cp plotV1_response_lFF.py ${fig_fdr}/plotV1_response_lFF_${op}.py
-cp plotLGN_response.py ${fig_fdr}/plotLGN_response_${op}.py
-cp plotV1_fr.py ${fig_fdr}/plotV1_fr_${op}.py
-cp getReceptiveField_lFF.py ${fig_fdr}/getReceptiveField_lFF_${op}.py
+if [[ "${redo}" = "0" ]]
+then
+    cp lFF-nonhpc ${fig_fdr}/lFF-nonhpc_${op}
+    cp lFF-nonhpc.keys ${fig_fdr}/lFF-nonhpc_${op}.keys
+    chmod +x ${fig_fdr}/lFF-nonhpc_${op}
+    vim -s ${fig_fdr}/lFF-nonhpc_${op}.keys ${fig_fdr}/lFF-nonhpc_${op} > /dev/null 2>&1
+    cp outputLearnFF.py ${fig_fdr}/outputLearnFF_${op}.py
+    cp plotV1_response_lFF.py ${fig_fdr}/plotV1_response_lFF_${op}.py
+    cp plotLGN_response.py ${fig_fdr}/plotLGN_response_${op}.py
+    cp plotV1_fr.py ${fig_fdr}/plotV1_fr_${op}.py
+    cp getReceptiveField_lFF.py ${fig_fdr}/getReceptiveField_lFF_${op}.py
+    cp lFF.sh ${fig_fdr}/lFF_${op}.sh
+fi 
+
 if [ "${plotOnly}" = False ]
 then
 	gpu=1
-	cp ${op_cfg} ${fig_fdr}/${op}.cfg
-	#cp inputLearnFF.m ${fig_fdr}/inputLearnFF_${op}.m
-	cp inputLearnFF.py ${fig_fdr}/inputLearnFF_${op}.py
+    echo using ${op_cfg}
+    if [[ "${redo}" = "0" ]]
+    then
+	    cp ${op_cfg} ${fig_fdr}/${op}.cfg
+	    cp inputLearnFF.py ${fig_fdr}/inputLearnFF_${op}.py
+    fi
 else
 	gpu=0
 fi
@@ -145,6 +157,8 @@ then
 	mkdir log
 fi
 
+cleanData=0
+export ns
 export res
 export lgn
 export v1
@@ -175,8 +189,8 @@ export OPstatus
 export TF 
 export ori
 export nOri
+export cleanData
 
 date=$(eval date +"%Y_%m_%d_%H-%M-%S")
 
-./lFF.sh > log/pLearn_${date}_${op}_${plotOnly}.out 2>&1 &
-job=$!
+${fig_fdr}/lFF_${op}.sh > log/pLearn_${date}_${op}_${plotOnly}.out 2>&1 & 

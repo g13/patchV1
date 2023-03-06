@@ -24,8 +24,8 @@ else:
 
 print(output_suffix)
 print(input_suffix)
-output_suffix = "_" + output_suffix 
-input_suffix = "_" + input_suffix 
+output_suffix = "-" + output_suffix 
+input_suffix = "-" + input_suffix 
 
 data_fdr = data_fdr + '/'
 fig_fdr = fig_fdr + '/'
@@ -43,7 +43,7 @@ ns = 10
 FRbins = 50 # per sec
 nsmooth = 5
 
-parameterFn = data_fdr + "patchV1_cfg" +output_suffix + ".bin"
+parameterFn = data_fdr + "patchV1_cfg" + output_suffix + ".bin"
 
 LGN_spFn = data_fdr + "LGN_sp" + output_suffix + ".bin"
 

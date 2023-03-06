@@ -14,15 +14,15 @@ nOri=6 # total # orientaton if applicable
 TF=8 # input frequency if applicable
 SF=20
 trial_suffix=ld_test
-#singleOri=False
-singleOri=True
+singleOri=False
+#singleOri=True
 #one_ori=6
 
 res_suffix=ld_test
 patch=patch_fast
 
 generate_LGN_V1_connection=False
-generate_V1_connection=False
+generate_V1_connection=True
 
 patch_cfg=ld_test.cfg
 

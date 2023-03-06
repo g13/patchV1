@@ -17,6 +17,7 @@ import py_compile
 py_compile.compile('assign_attr.py')
 import functools
 print = functools.partial(print, flush=True)
+np.seterr(invalid = 'raise', divide = 'raise')
 
 class macroMap:
     def __init__(self, LR_Pi_file, pos_file, crop = 0, realign = False, posUniform = False, OPgrid_file = None, OD_file = None, OP_file = None, VFxy_file = None, noAdjust = False):
@@ -30,17 +31,14 @@ class macroMap:
         self.pos = np.zeros((2,self.networkSize))
         self.pos[0,:] = pos[:,0,:].reshape(self.networkSize) # dont use transpose
         self.pos[1,:] = pos[:,1,:].reshape(self.networkSize)
+        self.oldpos = self.pos.copy()
         if self.dataDim == 3:
             self.zpos = pos[:,2,:]
 
         with open(LR_Pi_file,'r') as f:
-            self.a = np.fromfile(f, 'f8', count=1)[0]
-            self.b = np.fromfile(f, 'f8', count=1)[0]
-            self.k = np.fromfile(f, 'f8', count=1)[0]
-            self.ecc = np.fromfile(f, 'f8', count=1)[0]
-            nx = np.fromfile(f, 'i4', count=1)[0]
-            ny = np.fromfile(f, 'i4', count=1)[0]
-            self.Pi = np.reshape(np.fromfile(f, 'i4', count = nx*ny),(ny,nx))
+            self.a, self.b, self.k, self.ecc = np.fromfile(f, 'f8', 4)
+            nx, ny = np.fromfile(f, 'i4', 2)
+            self.Pi = np.fromfile(f, 'i4', count = nx*ny).reshape(ny,nx)
             #for i in range(ny):
             #    print(self.Pi[i, :])
             #print('====================')
@@ -54,7 +52,7 @@ class macroMap:
             y_min = min(self.pos[1,:])
             if (y_min < self.y[0] or y_max > self.y[-1]) and not noAdjust:
                 raise Exception(f'neuronal y-position {[y_min, y_max]} break outside of grid {[self.y[0], self.y[-1]]}')
-            LR = np.reshape(np.fromfile(f, 'f8', count = nx*ny),(ny,nx))
+            LR = np.fromfile(f, 'f8', count = nx*ny).reshape(ny,nx)
 
             if crop > 0:
                 x_crop = x_ep(crop,0,self.k,self.a,self.b)
@@ -154,6 +152,7 @@ class macroMap:
             self.LR = np.empty((ny,nx), dtype = 'i4') 
             self.LR[LR > 0] = 1
             self.LR[LR < 0] = -1
+            print(f'ODgrid: {np.sum(LR < 0)} contra, {np.sum(LR>0)} ipsi')
             if crop > 0:
                 self.LR = self.LR[y0:y1,:self.nx]
 
@@ -216,7 +215,7 @@ class macroMap:
             with open(OD_file,'rb') as f:
                 self.ODlabel = np.fromfile(f, 'i4', count = self.networkSize)
                 print('loading OD_labels...')
-                assert(np.sum(self.ODlabel > 0) + np.sum(self.ODlabel < 0) == self.networkSize)
+                print(f'contra {np.sum(self.ODlabel > 0)} + ipsi {np.sum(self.ODlabel < 0)} == total {self.networkSize}')
                 print('checked')
 
         
@@ -233,6 +232,7 @@ class macroMap:
             self.adjust_pos(bfile = pos_file[:-4] + '-bound')
         else:
             self.adjusted = True
+            self.opick = None
         # not used
         self.OD_VF_reconciled = False 
 
@@ -396,523 +396,596 @@ class macroMap:
 
     # new method based on OD1, relief boundary pressure 
     def adjust_pos(self, bfile = None, check = True):
-        print('get_ij_grid')
-        i, j, d2, coord = self.get_ij_grid(get_d2 = True, get_coord = True)
-        ipick = np.argmin(d2,1)
-
-        def get_22ij(index):
-            ip = np.mod(index,2)
-            jp = index//2
-            return ip, jp
-        ip, jp = get_22ij(ipick) 
-        bpattern = np.array([self.Pi[i, j], self.Pi[i+1, j], self.Pi[i, j+1], self.Pi[i+1, j+1]]).T
-        print(f'bpattern shape = {bpattern.shape}')
-        not_rogue = np.logical_not((bpattern - np.array([0,0,0,0]) == 0).all(-1))
-        bpick = np.logical_and(self.Pi[i + ip, j + jp] == 0, not_rogue)
-        
-        index = np.unique(np.ravel_multi_index([i[bpick], j[bpick]], (self.ny, self.nx)))
-        # find all affected grids
-        affected_i, affected_j = np.unravel_index(index, (self.ny, self.nx))
-
         per_unit_area = np.sqrt(3)/2 # in cl^2
         cl = np.sqrt((self.area/self.networkSize)/per_unit_area)
         if cl > self.subgrid[0]/2 or cl > self.subgrid[1]/2:
             cl = 0.5 * np.min(self.subgrid/2)
             print('restricting buffer length to a quarter of subgrid size')
         print(f'buffer length = {cl}, subgrid: {self.subgrid}')
-        buffer_l = cl/2
-
-        for ai in range(affected_i.size):
-            stdout.write(f'\rdealing with {ai+1}/{affected_i.size} boundaries...')
-            ii = affected_i[ai]
-            jj = affected_j[ai]
-                                # left-bot          # left-top          # right-bot         # right-top
-            bpattern = np.array([self.Pi[ii, jj], self.Pi[ii+1, jj], self.Pi[ii, jj+1], self.Pi[ii+1, jj+1]])
-            # left vertical bound
-            if (bpattern - np.array([0,0,1,1]) == 0).all():
-                #print('lv')
-                gpick = np.logical_and(i == ii, j == jj)
-                x_min = min(self.pos[0,gpick])
-                if x_min <= (self.x[jj] + self.x[jj+1])/2:
-                    rpick = np.logical_and(not_rogue, np.logical_and(i == ii, coord[1,:] > 0.5))
-                    if np.sum(rpick) > 0:
-                        x_max = max(self.pos[0,rpick])
-                        self.pos[0,rpick] = x_max + (self.pos[0,rpick] - x_max) * ((self.x[jj] + self.x[jj+1])/2 + buffer_l - x_max)/(x_min - x_max)
-
-                    rpick = np.logical_and(not_rogue, np.logical_and(i == ii, coord[1,:] <= 0.5))
-                    if np.sum(rpick) > 0:
-                        x_max = max(self.pos[0,rpick])
-                        self.pos[0,rpick] = x_max + (self.pos[0,rpick] - x_max) * ((self.x[jj] + self.x[jj+1])/2 + buffer_l - x_max)/(x_min - x_max)
-
-                    #x_min0 = min(self.pos[0,gpick])
-                    #assert(x_min0 > (self.x[jj] + self.x[jj+1])/2)
-
-                    ppick = np.logical_and(not_rogue, i == ii)
-                    i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,ppick])
-                    j[ppick] = j_new
-                    d2[ppick] = d2_new
-                    coord[:,ppick] = coord_new
-                continue
-
-            # right vertical bound
-            if (bpattern - np.array([1,1,0,0]) == 0).all():
-                #print('rv')
-                gpick = np.logical_and(i == ii, j == jj)
-                x_max = max(self.pos[0,gpick])
-                if x_max >= (self.x[jj] + self.x[jj+1])/2:
-                    rpick = np.logical_and(not_rogue, np.logical_and(i == ii, coord[1,:] > 0.5))
-                    if np.sum(rpick) > 0:
-                        x_min = min(self.pos[0,rpick])
-                        self.pos[0,rpick] = x_min + (self.pos[0,rpick] - x_min) * ((self.x[jj] + self.x[jj+1])/2 - buffer_l - x_min)/(x_max - x_min)
-
-                    rpick = np.logical_and(not_rogue, np.logical_and(i == ii, coord[1,:] <= 0.5))
-                    if np.sum(rpick) > 0:
-                        x_min = min(self.pos[0,rpick])
-                        self.pos[0,rpick] = x_min + (self.pos[0,rpick] - x_min) * ((self.x[jj] + self.x[jj+1])/2 - buffer_l - x_min)/(x_max - x_min)
-
-                    #x_max0 = max(self.pos[0,gpick])
-                    #assert(x_max0 < (self.x[jj] + self.x[jj+1])/2)
-
-                    ppick = np.logical_and(not_rogue, i == ii)
-                    i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,ppick])
-                    j[ppick] = j_new
-                    d2[ppick] = d2_new
-                    coord[:,ppick] = coord_new
-                continue
-
-            # lower horizontal bound
-            if (bpattern - np.array([0,1,0,1]) == 0).all():
-                #print('lh')
-                gpick = np.logical_and(i == ii, j == jj)
-                y_min = min(self.pos[1,gpick])
-                if y_min <= (self.y[ii] + self.y[ii+1])/2:
-                    rpick = np.logical_and(not_rogue, np.logical_and(j == jj, coord[0,:] > 0.5))
-                    if np.sum(rpick) > 0:
-                        y_max = max(self.pos[1,rpick])
-                        self.pos[1,rpick] = y_max + (self.pos[1,rpick] - y_max) * ((self.y[ii] + self.y[ii+1])/2 + buffer_l - y_max)/(y_min - y_max)
-                    
-                    rpick = np.logical_and(not_rogue, np.logical_and(j == jj, coord[0,:] <= 0.5))
-                    if np.sum(rpick) > 0:
-                        y_max = max(self.pos[1,rpick])
-                        self.pos[1,rpick] = y_max + (self.pos[1,rpick] - y_max) * ((self.y[ii] + self.y[ii+1])/2 + buffer_l - y_max)/(y_min - y_max)
-
-                    #y_min0 = min(self.pos[1,gpick])
-                    #assert(y_min0 > (self.y[ii] + self.y[ii+1])/2)
-
-                    ppick = np.logical_and(not_rogue, j == jj)
-                    i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,ppick])
-                    i[ppick] = i_new
-                    d2[ppick] = d2_new
-                    coord[:,ppick] = coord_new
-                continue
-
-            # upper horizontal bound
-            if (bpattern - np.array([1,0,1,0]) == 0).all():
-                #print('uh')
-                gpick = np.logical_and(i == ii, j == jj)
-                y_max = max(self.pos[1,gpick])
-                if y_max >= (self.y[ii] + self.y[ii+1])/2:
-                    rpick = np.logical_and(not_rogue, np.logical_and(j == jj, coord[0,:] > 0.5))
-                    if np.sum(rpick) > 0:
-                        y_min = min(self.pos[1,rpick])
-                        self.pos[1,rpick] = y_min + (self.pos[1,rpick] - y_min) * ((self.y[ii] + self.y[ii+1])/2 - buffer_l - y_min)/(y_max - y_min)
-
-                    rpick = np.logical_and(not_rogue, np.logical_and(j == jj, coord[0,:] <= 0.5))
-                    if np.sum(rpick) > 0:
-                        y_min = min(self.pos[1,rpick])
-                        self.pos[1,rpick] = y_min + (self.pos[1,rpick] - y_min) * ((self.y[ii] + self.y[ii+1])/2 - buffer_l - y_min)/(y_max - y_min)
-
-                    #y_max0 = max(self.pos[1,gpick])
-                    #assert(y_max0 < (self.y[ii] + self.y[ii+1])/2)
-
-                    ppick = np.logical_and(not_rogue, j == jj)
-                    i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,ppick])
-                    i[ppick] = i_new
-                    d2[ppick] = d2_new
-                    coord[:,ppick] = coord_new
-                continue
-
-            # bot-left corner
-            if (bpattern - np.array([0,1,1,1]) == 0).all():
-                #print('bl')
-                apick = np.logical_and(i == ii, j == jj) # pick everything in the specified grid
-                aind0 = np.arange(self.networkSize)[apick]
-                aind = aind0[np.logical_and(coord[0, aind0] <= 0.5, coord[1, aind0] <= 0.5)] # points in the bottom-left quarter, outside the boundary 
-                if aind.size == 0:
-                    continue
-            
-                axind = aind0[np.logical_and(coord[0, aind0] > 0.5, coord[1, aind0] <= 0.5)] # points in the bottom-right quarter, inside the boundary
-                ayind = aind0[np.logical_and(coord[0, aind0] <= 0.5, coord[1, aind0] > 0.5)] # points in the top-left quarter, inside the boundary
-
-                ir = np.argmax(np.linalg.norm(coord[:,aind] - 0.5, axis = 0))
-                l = np.abs(coord[:,aind[ir]] - 0.5) 
-                x_thres = 0.5 - l[1]
-                y_thres = 0.5 - l[0]
-                xind = aind[np.logical_and(coord[0,aind] > x_thres, coord[1,aind] <= y_thres)] # bottom-right range of the quarter for xpick
-                yind = aind[np.logical_and(coord[0,aind] <= x_thres, coord[1,aind] > y_thres)] # top-left range of the quarter for ypick
-
-                rind = aind[np.logical_and(coord[0,aind] > x_thres, coord[1,aind] > y_thres)] # the top-right range of the quarter for random pick
-                nr = rind.size
-                rind = np.random.permutation(rind)
-                xrind = rind[:nr//2]
-                yrind = rind[nr//2:]
-
-                if nr + xind.size + yind.size != aind.size:
-                    raise Exception(f'{nr} + {xind.size} + {yind.size} != {aind.size}')
-
-                pick = np.logical_and(np.logical_and(np.logical_and(i==ii, j>jj), coord[1,:] <= 0.5), not_rogue)
-                xind0 = np.arange(self.networkSize)[pick]
-
-                pick = np.logical_and(np.logical_and(np.logical_and(j==jj, i>ii), coord[0,:] <= 0.5), not_rogue)
-                yind0 = np.arange(self.networkSize)[pick]
-
-                xpick = np.hstack((axind, xind, xind0, xrind))
-                x_max = max(self.pos[0,xpick])
-                x_min = min(self.pos[0,xpick])
-                self.pos[0,xpick] = x_max + (self.pos[0,xpick] - x_max) * ((self.x[jj] + self.x[jj+1])/2 + buffer_l - x_max)/(x_min - x_max)
-
-                ypick = np.hstack((ayind, yind, yind0, yrind))
-                y_max = max(self.pos[1,ypick])
-                y_min = min(self.pos[1,ypick])
-                self.pos[1,ypick] = y_max + (self.pos[1,ypick] - y_max) * ((self.y[ii] + self.y[ii+1])/2 + buffer_l - y_max)/(y_min - y_max)
-
-                #x_min0 = min(self.pos[0,xpick])
-                #assert(x_min0 > (self.x[jj] + self.x[jj+1])/2)
-                #y_min0 = min(self.pos[1,ypick])
-                #assert(y_min0 > (self.y[ii] + self.y[ii+1])/2)
-                
-                allpick = np.hstack((xpick, ypick))
-                i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,allpick])
-                i[allpick] = i_new
-                j[allpick] = j_new
-                d2[allpick] = d2_new
-                coord[:,allpick] = coord_new
-                continue
-                
-            # top-left corner
-            if (bpattern - np.array([1,0,1,1]) == 0).all():
-                #print('tl')
-                apick = np.logical_and(i == ii, j == jj)
-                aind0 = np.arange(self.networkSize)[apick]
-                aind = aind0[np.logical_and(coord[0, aind0] <= 0.5, coord[1, aind0] > 0.5)]
-                if aind.size == 0:
-                    continue
-
-                axind = aind0[np.logical_and(coord[0, aind0] > 0.5, coord[1, aind0] > 0.5)]
-                ayind = aind0[np.logical_and(coord[0, aind0] <= 0.5, coord[1, aind0] <= 0.5)]
-
-                ir = np.argmax(np.linalg.norm(coord[:,aind] - 0.5, axis = 0))
-                l = np.abs(coord[:,aind[ir]] - 0.5)
-                x_thres = 0.5 - l[1]
-                y_thres = 0.5 + l[0]
-                xind = aind[np.logical_and(coord[0,aind] > x_thres, coord[1,aind] > y_thres)]
-                yind = aind[np.logical_and(coord[0,aind] <= x_thres, coord[1,aind] <= y_thres)]
-
-                rind = aind[np.logical_and(coord[0,aind] > x_thres, coord[1,aind] <= y_thres)]
-                nr = rind.size
-                rind = np.random.permutation(rind)
-                xrind = rind[:nr//2]
-                yrind = rind[nr//2:]
-
-                if nr + xind.size + yind.size != aind.size:
-                    raise Exception(f'{nr} + {xind.size} + {yind.size} != {aind.size}')
-
-                pick = np.logical_and(np.logical_and(np.logical_and(i==ii, j>jj), coord[1,:] > 0.5), not_rogue)
-                xind0 = np.arange(self.networkSize)[pick]
-
-                pick = np.logical_and(np.logical_and(np.logical_and(j==jj, i<ii), coord[0,:] <= 0.5), not_rogue)
-                yind0 = np.arange(self.networkSize)[pick]
-
-                xpick = np.hstack((axind, xind, xind0, xrind))
-                x_max = max(self.pos[0,xpick])
-                x_min = min(self.pos[0,xpick])
-                self.pos[0,xpick] = x_max + (self.pos[0,xpick] - x_max) * ((self.x[jj] + self.x[jj+1])/2 + buffer_l - x_max)/(x_min - x_max)
-
-                ypick = np.hstack((ayind, yind, yind0, yrind))
-                y_max = max(self.pos[1,ypick])
-                y_min = min(self.pos[1,ypick])
-                self.pos[1,ypick] = y_min + (self.pos[1,ypick] - y_min) * ((self.y[ii] + self.y[ii+1])/2 - buffer_l - y_min)/(y_max - y_min)
-
-                #y_max0 = max(self.pos[1,ypick])
-                #assert(y_max0 < (self.y[ii] + self.y[ii+1])/2)
-                #x_min0 = min(self.pos[0,xpick])
-                #assert(x_min0 > (self.x[jj] + self.x[jj+1])/2)
-
-                allpick = np.hstack((xpick, ypick))
-                i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,allpick])
-                i[allpick] = i_new
-                j[allpick] = j_new
-                d2[allpick] = d2_new
-                coord[:,allpick] = coord_new
-                continue
-
-            # bot-right corner
-            if (bpattern - np.array([1,1,0,1]) == 0).all():
-                #print('br')
-                apick = np.logical_and(i == ii, j == jj)
-                aind0 = np.arange(self.networkSize)[apick]
-                aind = aind0[np.logical_and(coord[0, aind0] > 0.5, coord[1, aind0] <= 0.5)]
-                if aind.size == 0:
-                    continue
-
-                axind = aind0[np.logical_and(coord[0, aind0] <= 0.5, coord[1, aind0] <= 0.5)]
-                ayind = aind0[np.logical_and(coord[0, aind0] > 0.5, coord[1, aind0] > 0.5)]
-
-                ir = np.argmax(np.linalg.norm(coord[:,aind] - 0.5, axis = 0))
-                l = np.abs(coord[:,aind[ir]] - 0.5) 
-                x_thres = 0.5 + l[1]
-                y_thres = 0.5 - l[0]
-                xind = aind[np.logical_and(coord[0,aind] <= x_thres, coord[1,aind] <= y_thres)]
-                yind = aind[np.logical_and(coord[0,aind] > x_thres, coord[1,aind] > y_thres)]
-
-                rind = aind[np.logical_and(coord[0,aind] <= x_thres, coord[1,aind] > y_thres)]
-                nr = rind.size
-                rind = np.random.permutation(rind)
-                xrind = rind[:nr//2]
-                yrind = rind[nr//2:]
-
-                if nr + xind.size + yind.size != aind.size:
-                    raise Exception(f'{nr} + {xind.size} + {yind.size} != {aind.size}')
-
-                pick = np.logical_and(np.logical_and(np.logical_and(i==ii, j < jj), coord[1,:] <= 0.5), not_rogue)
-                xind0 = np.arange(self.networkSize)[pick]
-
-                pick = np.logical_and(np.logical_and(np.logical_and(j==jj, i > ii), coord[0,:] > 0.5), not_rogue)
-                yind0 = np.arange(self.networkSize)[pick]
-
-                xpick = np.hstack((axind, xind, xind0, xrind))
-                x_max = max(self.pos[0,xpick])
-                x_min = min(self.pos[0,xpick])
-                self.pos[0,xpick] = x_min + (self.pos[0,xpick] - x_min) * ((self.x[jj] + self.x[jj+1])/2 - buffer_l - x_min)/(x_max - x_min)
-
-                ypick = np.hstack((ayind, yind, yind0, yrind))
-                y_max = max(self.pos[1,ypick])
-                y_min = min(self.pos[1,ypick])
-                self.pos[1,ypick] = y_max + (self.pos[1,ypick] - y_max) * ((self.y[ii] + self.y[ii+1])/2 + buffer_l - y_max)/(y_min - y_max)
-
-                #y_min0 = min(self.pos[1,ypick])
-                #assert(y_min0 > (self.y[ii] + self.y[ii+1])/2)
-                #x_max0 = max(self.pos[0,xpick])
-                #assert(x_max0 < (self.x[jj] + self.x[jj+1])/2)
-
-                allpick = np.hstack((xpick, ypick))
-                i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,allpick])
-                i[allpick] = i_new
-                j[allpick] = j_new
-                d2[allpick] = d2_new
-                coord[:,allpick] = coord_new
-                continue
-
-            # top-right corner
-            if (bpattern - np.array([1,1,1,0]) == 0).all():
-                #print('tr')
-                apick = np.logical_and(i == ii, j == jj)
-                aind0 = np.arange(self.networkSize)[apick]
-                aind = aind0[np.logical_and(coord[0, aind0] > 0.5, coord[1, aind0] > 0.5)]
-                if aind.size == 0:
-                    continue
-            
-                axind = aind0[np.logical_and(coord[0, aind0] <= 0.5, coord[1, aind0] > 0.5)]
-                ayind = aind0[np.logical_and(coord[0, aind0] > 0.5, coord[1, aind0] <= 0.5)]
-
-                ir = np.argmax(np.linalg.norm(coord[:,aind] - 0.5, axis = 0))
-                l = np.abs(coord[:,aind[ir]] - 0.5) 
-                x_thres = 0.5 + l[1]
-                y_thres = 0.5 + l[0]
-                xind = aind[np.logical_and(coord[0,aind] <= x_thres, coord[1,aind] > y_thres)]
-                yind = aind[np.logical_and(coord[0,aind] > x_thres, coord[1,aind] <= y_thres)]
-
-                rind = aind[np.logical_and(coord[0,aind] <= x_thres, coord[1,aind] <= y_thres)]
-                nr = rind.size
-                rind = np.random.permutation(rind)
-                xrind = rind[:nr//2]
-                yrind = rind[nr//2:]
-
-                if nr + xind.size + yind.size != aind.size:
-                    raise Exception(f'{nr} + {xind.size} + {yind.size} != {aind.size}')
-
-                pick = np.logical_and(np.logical_and(np.logical_and(i==ii, j < jj), coord[1,:] > 0.5), not_rogue)
-                xind0 = np.arange(self.networkSize)[pick]
-
-                pick = np.logical_and(np.logical_and(np.logical_and(j==jj, i < ii), coord[0,:] > 0.5), not_rogue)
-                yind0 = np.arange(self.networkSize)[pick]
-
-                xpick = np.hstack((axind, xind, xind0, xrind))
-                x_max = max(self.pos[0,xpick])
-                x_min = min(self.pos[0,xpick])
-                self.pos[0,xpick] = x_min + (self.pos[0,xpick] - x_min) * ((self.x[jj] + self.x[jj+1])/2 - buffer_l - x_min)/(x_max - x_min)
-
-                ypick = np.hstack((ayind, yind, yind0, yrind))
-                y_max = max(self.pos[1,ypick])
-                y_min = min(self.pos[1,ypick])
-                self.pos[1,ypick] = y_min + (self.pos[1,ypick] - y_min) * ((self.y[ii] + self.y[ii+1])/2 - buffer_l - y_min)/(y_max - y_min)
-
-                #y_max0 = max(self.pos[1,ypick])
-                #assert(y_max0 < (self.y[ii] + self.y[ii+1])/2)
-                #x_max0 = max(self.pos[0,xpick])
-                #assert(x_max0 < (self.x[jj] + self.x[jj+1])/2)
-
-                allpick = np.hstack((xpick, ypick))
-                i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,allpick])
-                i[allpick] = i_new
-                j[allpick] = j_new
-                d2[allpick] = d2_new
-                coord[:,allpick] = coord_new
-                continue
-
-            # only bot-left corner
-            if (bpattern - np.array([1,0,0,0]) == 0).all():
-                #print('obl')
-                gpick = np.logical_and(i==ii, j==jj)
-                opick = gpick
-                change = False 
-                y_max = max(self.pos[1,gpick])
-                if y_max > (self.y[ii] + self.y[ii+1])/2:
-                    ppick = np.logical_and(j == jj, not_rogue) # squeeze y direction first
-                    y_min = min(self.pos[1,ppick])
-                    self.pos[1,ppick] = y_min + (self.pos[1,ppick] - y_min) * ((self.y[ii] + self.y[ii+1])/2 - buffer_l - y_min)/(y_max - y_min)
-
-                    #y_max0 = max(self.pos[1,gpick])
-                    #assert(y_max0 < (self.y[ii] + self.y[ii+1])/2)
-                    opick = np.logical_or(opick, ppick)
-                    change = True
-                x_max = max(self.pos[0,gpick])
-                if x_max > (self.x[jj] + self.x[jj+1])/2:
-                    ppick = np.logical_and(np.logical_and(i==ii, np.logical_or(j == jj, np.logical_and(j < jj, coord[1,:] < 0.5))), not_rogue) # then x, so that more accommodated in x direction
-                    x_min = min(self.pos[0,ppick])
-                    self.pos[0,ppick] = x_min + (self.pos[0,ppick] - x_min) * ((self.x[jj] + self.x[jj+1])/2 - buffer_l - x_min)/(x_max - x_min)
-
-                    #x_max0 = max(self.pos[0,gpick])
-                    #assert(x_max0 < (self.x[jj] + self.x[jj+1])/2)
-                    opick = np.logical_or(opick, ppick)
-                    change = True
-                if change:
-                    i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,opick])
-                    i[opick] = i_new
-                    j[opick] = j_new
-                    d2[opick] = d2_new
-                    coord[:,opick] = coord_new
-                continue
-
-            # only top-left corner
-            if (bpattern - np.array([0,1,0,0]) == 0).all():
-                #print('otl')
-                gpick = np.logical_and(i==ii, j==jj)
-                opick = gpick
-                change = False 
-                y_min = min(self.pos[1,gpick])
-                if y_min < (self.y[ii] + self.y[ii+1])/2:
-                    ppick = np.logical_and(j == jj, not_rogue)
-                    y_max = max(self.pos[1,ppick])
-                    self.pos[1,ppick] = y_max + (self.pos[1,ppick] - y_max) * ((self.y[ii] + self.y[ii+1])/2 + buffer_l - y_max)/(y_min - y_max)
-
-                    #y_min0 = min(self.pos[1,gpick])
-                    #assert(y_min0 > (self.y[ii] + self.y[ii+1])/2)
-                    opick = np.logical_or(opick, ppick)
-                    change = True 
-                x_max = max(self.pos[0,gpick])
-                if x_max > (self.x[jj] + self.x[jj+1])/2:
-                    ppick = np.logical_and(np.logical_and(i==ii, np.logical_or(j == jj, np.logical_and(j < jj, coord[1,:] > 0.5))), not_rogue) # then x, so that more accommodated in x direction
-                    x_min = min(self.pos[0,ppick])
-                    self.pos[0,ppick] = x_min + (self.pos[0,ppick] - x_min) * ((self.x[jj] + self.x[jj+1])/2 - buffer_l - x_min)/(x_max - x_min)
-
-                    #x_max0 = max(self.pos[0,gpick])
-                    #assert(x_max0 < (self.x[jj] + self.x[jj+1])/2)
-                    opick = np.logical_or(opick, ppick)
-                    change = True
-                if change:
-                    i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,opick])
-                    i[opick] = i_new
-                    j[opick] = j_new
-                    d2[opick] = d2_new
-                    coord[:,opick] = coord_new
-                continue
-
-            # only bot-right corner
-            if (bpattern - np.array([0,0,1,0]) == 0).all():
-                #print('obr')
-                gpick = np.logical_and(i==ii, j==jj)
-                opick = gpick
-                change = False
-                y_max = max(self.pos[1,gpick])
-                if y_max > (self.y[ii] + self.y[ii+1])/2:
-                    ppick = np.logical_and(j == jj, not_rogue)
-                    y_min = min(self.pos[1,ppick])
-                    self.pos[1,ppick] = y_min + (self.pos[1,ppick] - y_min) * ((self.y[ii] + self.y[ii+1])/2 - buffer_l - y_min)/(y_max - y_min)
-
-                    #y_max0 = max(self.pos[1,gpick])
-                    #assert(y_max0 < (self.y[ii] + self.y[ii+1])/2)
-                    opick = np.logical_or(opick, ppick)
-                    change = True 
-                x_min = min(self.pos[0,gpick])
-                if x_min < (self.x[jj] + self.x[jj+1])/2:
-                    ppick = np.logical_and(np.logical_and(i==ii, np.logical_or(j == jj, np.logical_and(j > jj, coord[1,:] < 0.5))), not_rogue) # then x, so that more accommodated in x direction
-                    x_max = max(self.pos[0,ppick])
-                    self.pos[0,ppick] = x_max + (self.pos[0,ppick] - x_max) * ((self.x[jj] + self.x[jj+1])/2 + buffer_l - x_max)/(x_min - x_max)
-
-                    #x_min0 = min(self.pos[0,gpick])
-                    #assert(x_min0 > (self.x[jj] + self.x[jj+1])/2)
-                    opick = np.logical_or(opick, ppick)
-                    change = True 
-                if change:
-                    i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,opick])
-                    i[opick] = i_new
-                    j[opick] = j_new
-                    d2[opick] = d2_new
-                    coord[:,opick] = coord_new
-                continue
-
-            # only top-right corner
-            if (bpattern - np.array([0,0,0,1]) == 0).all():
-                #print('otr')
-                gpick = np.logical_and(i==ii, j==jj)
-                opick = gpick
-                change = False
-                y_min = min(self.pos[1,gpick])
-                if y_min < (self.y[ii] + self.y[ii+1])/2:
-                    ppick = np.logical_and(j == jj, not_rogue)
-                    y_max = max(self.pos[1,ppick])
-                    self.pos[1,ppick] = y_max + (self.pos[1,ppick] - y_max) * ((self.y[ii] + self.y[ii+1])/2 + buffer_l - y_max)/(y_min - y_max)
-
-                    #y_min0 = min(self.pos[1,gpick])
-                    #assert(y_min0 > (self.y[ii] + self.y[ii+1])/2)
-                    opick = np.logical_or(opick, ppick)
-                    change = True 
-                x_min = min(self.pos[0,gpick])
-                if x_min < (self.x[jj] + self.x[jj+1])/2:
-                    ppick = np.logical_and(np.logical_and(i==ii, np.logical_or(j == jj, np.logical_and(j > jj, coord[1,:] > 0.5))), not_rogue) # then x, so that more accommodated in x direction
-                    x_max = max(self.pos[0,ppick])
-                    self.pos[0,ppick] = x_max + (self.pos[0,ppick] - x_max) * ((self.x[jj] + self.x[jj+1])/2 + buffer_l - x_max)/(x_min - x_max)
-
-                    #x_min0 = min(self.pos[0,gpick])
-                    #assert(x_min0 > (self.x[jj] + self.x[jj+1])/2)
-                    opick = np.logical_or(opick, ppick)
-                    change = True 
-                if change:
-                    i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,opick])
-                    i[opick] = i_new
-                    j[opick] = j_new
-                    d2[opick] = d2_new
-                    coord[:,opick] = coord_new
-                continue
-        stdout.write('done.\n')
-                        
-        if not self.noAdjust:
-            i, j, d2 = self.get_ij_grid(get_d2 = True, get_coord = False)
+        buffer_l = cl/4
+        print('get_ij_grid')
+        it = 0
+        while True:
+            i, j, d2, coord = self.get_ij_grid(get_d2 = True, get_coord = True)
             ipick = np.argmin(d2,1)
-            ip, jp = get_22ij(ipick) 
-            dropped = False
-            bpick = self.Pi[i + ip, j + jp]
-            for ind in range(4):
-                pick = bpick[ipick == ind] == 0
-                if np.sum(pick) > 0:
-                    print(f'@{ind}, {np.sum(pick)} drops out')
-                    dropped = True
-            if dropped:
-                print(self.pos[:,bpick == 0].T)
-                print('adjust_pos not doing the job')
-                #raise Exception('adjust_pos not doing the job')
 
+            def get_22ij(index):
+                ip = np.mod(index,2)
+                jp = index//2
+                return ip, jp
+
+            ip, jp = get_22ij(ipick) 
+            bpattern = np.array([self.Pi[i, j], self.Pi[i+1, j], self.Pi[i, j+1], self.Pi[i+1, j+1]]).T
+            not_rogue = np.logical_not((bpattern - np.array([0,0,0,0]) == 0).all(-1))
+            if not_rogue.sum() < self.networkSize:
+                raise Exception('not all neurons are near the boundary')
+            self.opick = np.logical_and(self.Pi[i + ip, j + jp] == 0, not_rogue)
+            if np.sum(self.opick) == 0:
+                break
+            
+            index = np.unique(np.ravel_multi_index([i[self.opick], j[self.opick]], (self.ny, self.nx)))
+            # find all affected grids
+            affected_i, affected_j = np.unravel_index(index, (self.ny, self.nx))
+            for ai in range(affected_i.size):
+                stdout.write(f'\rdealing with {ai+1}/{affected_i.size} boundaries...')
+                ii = affected_i[ai]
+                jj = affected_j[ai]
+                                    # left-bot          # left-top          # right-bot         # right-top
+                bpattern = np.array([self.Pi[ii, jj], self.Pi[ii+1, jj], self.Pi[ii, jj+1], self.Pi[ii+1, jj+1]])
+                # left vertical bound
+                if (bpattern - np.array([0,0,1,1]) == 0).all():
+                    #print('lv')
+                    gpick = np.logical_and(i == ii, j == jj) # inside grid
+                    x_min = min(self.pos[0,gpick]) 
+                    x0 = (self.x[jj] + self.x[jj+1])/2 + buffer_l
+                    if x_min < x0:
+                        # pick all above within row
+                        rpick = np.logical_and(not_rogue, np.logical_and(i == ii, coord[1,:] > 0.5)) 
+                        if np.sum(rpick) > 0:
+                            x_max = max(self.pos[0,rpick])
+                            if x_min == x_max:
+                                self.pos[0,rpick] = x0
+                            else:
+                                self.pos[0,rpick] = x0 + (self.pos[0,rpick] - x_min)/(x_max - x_min) * (x_max - x0)
+                        # pick all below within row
+                        rpick = np.logical_and(not_rogue, np.logical_and(i == ii, coord[1,:] <= 0.5)) 
+                        if np.sum(rpick) > 0:
+                            x_max = max(self.pos[0,rpick])
+                            if x_min == x_max:
+                                self.pos[0,rpick] = x0
+                            else:
+                                self.pos[0,rpick] = x0 + (self.pos[0,rpick] - x_min)/(x_max - x_min) * (x_max - x0)
+                        # update j, d2 of the whole row
+                        ppick = np.logical_and(not_rogue, i == ii) 
+                        i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,ppick])
+                        j[ppick] = j_new
+                        d2[ppick] = d2_new
+                        coord[:,ppick] = coord_new
+                    continue
+                # right vertical bound
+                if (bpattern - np.array([1,1,0,0]) == 0).all():
+                    #print('rv')
+                    gpick = np.logical_and(i == ii, j == jj)
+                    x_max = max(self.pos[0,gpick])
+                    x1 = (self.x[jj] + self.x[jj+1])/2 - buffer_l
+                    if x_max > x1:
+                        # pick all above within row
+                        rpick = np.logical_and(not_rogue, np.logical_and(i == ii, coord[1,:] > 0.5))
+                        if np.sum(rpick) > 0:
+                            x_min = min(self.pos[0,rpick])
+                            if x_min == x_max:
+                                self.pos[0,rpick] = x1
+                            else:
+                                self.pos[0,rpick] = x1 + (self.pos[0,rpick] - x_max)/(x_max - x_min) * (x1 - x_min)
+                        # pick all below within row
+                        rpick = np.logical_and(not_rogue, np.logical_and(i == ii, coord[1,:] <= 0.5))
+                        if np.sum(rpick) > 0:
+                            x_min = min(self.pos[0,rpick])
+                            if x_min == x_max:
+                                self.pos[0,rpick] = x1
+                            else:
+                                self.pos[0,rpick] = x1 + (self.pos[0,rpick] - x_max)/(x_max - x_min) * (x1 - x_min)
+                        # update j, d2 of the whole row
+                        ppick = np.logical_and(not_rogue, i == ii)
+                        i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,ppick])
+                        j[ppick] = j_new
+                        d2[ppick] = d2_new
+                        coord[:,ppick] = coord_new
+                    continue
+                # lower horizontal bound
+                if (bpattern - np.array([0,1,0,1]) == 0).all():
+                    #print('lh')
+                    gpick = np.logical_and(i == ii, j == jj)
+                    y_min = min(self.pos[1,gpick])
+                    y0 = (self.y[ii] + self.y[ii+1])/2 + buffer_l
+                    if y_min < y0:
+                        #pick all within column to the right
+                        rpick = np.logical_and(not_rogue, np.logical_and(j == jj, coord[0,:] > 0.5))
+                        if np.sum(rpick) > 0:
+                            y_max = max(self.pos[1,rpick])
+                            if y_min == y_max:
+                                self.pos[1,rpick] = y0
+                            else:
+                                self.pos[1,rpick] = y0 + (self.pos[1,rpick] - y_min)/(y_max - y_min) * (y_max - y0)
+                        #pick all within column to the left 
+                        rpick = np.logical_and(not_rogue, np.logical_and(j == jj, coord[0,:] <= 0.5))
+                        if np.sum(rpick) > 0:
+                            y_max = max(self.pos[1,rpick])
+                            if y_min == y_max:
+                                self.pos[1,rpick] = y0
+                            else:
+                                self.pos[1,rpick] = y0 + (self.pos[1,rpick] - y_min)/(y_max - y_min) * (y_max - y0)
+                        # update j, d2 of the whole column 
+                        ppick = np.logical_and(not_rogue, j == jj)
+                        i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,ppick])
+                        i[ppick] = i_new
+                        d2[ppick] = d2_new
+                        coord[:,ppick] = coord_new
+                    continue
+                # upper horizontal bound
+                if (bpattern - np.array([1,0,1,0]) == 0).all():
+                    #print('uh')
+                    gpick = np.logical_and(i == ii, j == jj)
+                    y_max = max(self.pos[1,gpick])
+                    y1 = (self.y[ii] + self.y[ii+1])/2 - buffer_l
+                    if y_max > y1:
+                        #pick all within column to the right
+                        rpick = np.logical_and(not_rogue, np.logical_and(j == jj, coord[0,:] > 0.5))
+                        if np.sum(rpick) > 0:
+                            y_min = min(self.pos[1,rpick])
+                            if y_min == y_max:
+                                self.pos[1,rpick] = y1
+                            else:
+                                self.pos[1,rpick] = y1 + (self.pos[1,rpick] - y_max)/(y_max - y_min) * (y1 - y_min)
+                        #pick all within column to the left 
+                        rpick = np.logical_and(not_rogue, np.logical_and(j == jj, coord[0,:] <= 0.5))
+                        if np.sum(rpick) > 0:
+                            y_min = min(self.pos[1,rpick])
+                            if y_min == y_max:
+                                self.pos[1,rpick] = y1
+                            else:
+                                self.pos[1,rpick] = y1 + (self.pos[1,rpick] - y_max)/(y_max - y_min) * (y1 - y_min)
+                        # update j, d2 of the whole column 
+                        ppick = np.logical_and(not_rogue, j == jj)
+                        i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,ppick])
+                        i[ppick] = i_new
+                        d2[ppick] = d2_new
+                        coord[:,ppick] = coord_new
+                    continue
+                # bot-left corner
+                if (bpattern - np.array([0,1,1,1]) == 0).all():
+                    #print('bl')
+                    apick = np.logical_and(i == ii, j == jj) # pick everything in the specified grid
+                    aind0 = np.arange(self.networkSize)[apick]
+                    aind = aind0[np.logical_and(coord[0, aind0] <= 0.5, coord[1, aind0] <= 0.5)] # points in the bottom-left quarter, outside the boundary 
+                    if aind.size == 0:
+                        continue
+
+                    axind = aind0[np.logical_and(coord[0, aind0] > 0.5, coord[1, aind0] <= 0.5)] # points in the bottom-right quarter, inside the boundary
+                    ayind = aind0[np.logical_and(coord[0, aind0] <= 0.5, coord[1, aind0] > 0.5)] # points in the top-left quarter, inside the boundary
+
+                    ir = np.argmax(np.linalg.norm(coord[:,aind] - 0.5, axis = 0))
+                    l = np.abs(coord[:,aind[ir]] - 0.5) 
+                    x_thres = 0.5 - l[1]
+                    y_thres = 0.5 - l[0]
+                    xind = aind[np.logical_and(coord[0,aind] > x_thres, coord[1,aind] <= y_thres)] # bottom-right range of the quarter for xpick
+                    yind = aind[np.logical_and(coord[0,aind] <= x_thres, coord[1,aind] > y_thres)] # top-left range of the quarter for ypick
+                    rind = aind[np.logical_and(coord[0,aind] > x_thres, coord[1,aind] > y_thres)] # the top-right range of the quarter for random pick
+                    nr = rind.size
+                    rind = np.random.permutation(rind)
+                    if nr % 2 == 0:
+                        xrind = rind[:nr//2]
+                        yrind = rind[nr//2:]
+                    else:
+                        if np.random.rand() > 0.5:
+                            xrind = rind[:(nr+1)//2]
+                            yrind = rind[(nr+1)//2:]
+                        else:
+                            xrind = rind[:(nr-1)//2]
+                            yrind = rind[(nr-1)//2:]
+
+                    if nr + xind.size + yind.size != aind.size:
+                        raise Exception(f'{nr} + {xind.size} + {yind.size} != {aind.size}')
+
+                    allpick = np.array([])
+                    # pick lower half row
+                    if xrind.size + xind.size  > 0:
+                        x0 = (self.x[jj] + self.x[jj+1])/2 + buffer_l
+                        pick = np.logical_and(np.logical_and(np.logical_and(i==ii, j>jj), coord[1,:] <= 0.5), not_rogue)
+                        xind0 = np.arange(self.networkSize)[pick]
+                        xpick = np.hstack((axind, xind, xind0, xrind))
+                        x_max = max(self.pos[0,xpick])
+                        x_min = min(self.pos[0,xpick])
+                        if x_max == x_min:
+                            self.pos[0,xpick] = x0
+                        else:
+                            self.pos[0,xpick] = x0 + (self.pos[0,xpick] - x_min)/(x_max - x_min) * (x_max - x0)
+                        allpick = xpick
+                    # pick left half column
+                    if yrind.size + yind.size  > 0:
+                        y0 = (self.y[ii] + self.y[ii+1])/2 + buffer_l
+                        pick = np.logical_and(np.logical_and(np.logical_and(j==jj, i>ii), coord[0,:] <= 0.5), not_rogue)
+                        yind0 = np.arange(self.networkSize)[pick]
+                        ypick = np.hstack((ayind, yind, yind0, yrind))
+                        y_max = max(self.pos[1,ypick])
+                        y_min = min(self.pos[1,ypick])
+                        if y_max == y_min:
+                            self.pos[1,ypick] = y0
+                        else:
+                            self.pos[1,ypick] = y0 + (self.pos[1,ypick] - y_min)/(y_max - y_min) * (y_max - y0)
+                        if allpick.size == 0:
+                            allpick = ypick
+                        else:
+                            allpick = np.hstack((allpick, ypick))
+                    #update i,j,d2 of the half row and column picked above
+                    i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,allpick])
+                    i[allpick] = i_new
+                    j[allpick] = j_new
+                    d2[allpick] = d2_new
+                    coord[:,allpick] = coord_new
+                    continue
+                # top-left corner
+                if (bpattern - np.array([1,0,1,1]) == 0).all():
+                    #print('tl')
+                    apick = np.logical_and(i == ii, j == jj)
+                    aind0 = np.arange(self.networkSize)[apick]
+                    aind = aind0[np.logical_and(coord[0, aind0] <= 0.5, coord[1, aind0] > 0.5)]
+                    if aind.size == 0:
+                        continue
+                    axind = aind0[np.logical_and(coord[0, aind0] > 0.5, coord[1, aind0] > 0.5)]
+                    ayind = aind0[np.logical_and(coord[0, aind0] <= 0.5, coord[1, aind0] <= 0.5)]
+
+                    ir = np.argmax(np.linalg.norm(coord[:,aind] - 0.5, axis = 0))
+                    l = np.abs(coord[:,aind[ir]] - 0.5)
+                    x_thres = 0.5 - l[1]
+                    y_thres = 0.5 + l[0]
+                    xind = aind[np.logical_and(coord[0,aind] > x_thres, coord[1,aind] > y_thres)]
+                    yind = aind[np.logical_and(coord[0,aind] <= x_thres, coord[1,aind] <= y_thres)]
+                    rind = aind[np.logical_and(coord[0,aind] > x_thres, coord[1,aind] <= y_thres)]
+                    nr = rind.size
+                    rind = np.random.permutation(rind)
+                    if nr % 2 == 0:
+                        xrind = rind[:nr//2]
+                        yrind = rind[nr//2:]
+                    else:
+                        if np.random.rand() > 0.5:
+                            xrind = rind[:(nr+1)//2]
+                            yrind = rind[(nr+1)//2:]
+                        else:
+                            xrind = rind[:(nr-1)//2]
+                            yrind = rind[(nr-1)//2:]
+
+                    if nr + xind.size + yind.size != aind.size:
+                        raise Exception(f'{nr} + {xind.size} + {yind.size} != {aind.size}')
+
+                    allpick = np.array([])
+                    # pick upper half row
+                    if xrind.size + xind.size  > 0:
+                        x0 = (self.x[jj] + self.x[jj+1])/2 + buffer_l
+                        pick = np.logical_and(np.logical_and(np.logical_and(i==ii, j>jj), coord[1,:] > 0.5), not_rogue)
+                        xind0 = np.arange(self.networkSize)[pick]
+                        xpick = np.hstack((axind, xind, xind0, xrind))
+                        x_max = max(self.pos[0,xpick])
+                        x_min = min(self.pos[0,xpick])
+                        if x_min == x_max:
+                            self.pos[0,xpick] = x0
+                        else:
+                            self.pos[0,xpick] = x0 + (self.pos[0,xpick] - x_min)/(x_max - x_min) * (x_max - x0)
+                        allpick = xpick
+                    # pick left half column 
+                    if yrind.size + yind.size  > 0:
+                        y1 = (self.y[ii] + self.y[ii+1])/2 - buffer_l
+                        pick = np.logical_and(np.logical_and(np.logical_and(j==jj, i<ii), coord[0,:] <= 0.5), not_rogue)
+                        yind0 = np.arange(self.networkSize)[pick]
+                        ypick = np.hstack((ayind, yind, yind0, yrind))
+                        y_max = max(self.pos[1,ypick])
+                        y_min = min(self.pos[1,ypick])
+                        if y_min == y_max:
+                            self.pos[1,ypick] = y1
+                        else:
+                            self.pos[1,ypick] = y1 + (self.pos[1,ypick] - y_max)/(y_max - y_min) * (y1 - y_min)
+                        if allpick.size == 0:
+                            allpick = ypick
+                        else:
+                            allpick = np.hstack((allpick, ypick))
+                    #update i,j,d2 of the half row and column picked above
+                    i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,allpick])
+                    i[allpick] = i_new
+                    j[allpick] = j_new
+                    d2[allpick] = d2_new
+                    coord[:,allpick] = coord_new
+                    continue
+                # bot-right corner
+                if (bpattern - np.array([1,1,0,1]) == 0).all():
+                    #print('br')
+                    apick = np.logical_and(i == ii, j == jj)
+                    aind0 = np.arange(self.networkSize)[apick]
+                    aind = aind0[np.logical_and(coord[0, aind0] > 0.5, coord[1, aind0] <= 0.5)]
+                    if aind.size == 0:
+                        continue
+                    axind = aind0[np.logical_and(coord[0, aind0] <= 0.5, coord[1, aind0] <= 0.5)]
+                    ayind = aind0[np.logical_and(coord[0, aind0] > 0.5, coord[1, aind0] > 0.5)]
+
+                    ir = np.argmax(np.linalg.norm(coord[:,aind] - 0.5, axis = 0))
+                    l = np.abs(coord[:,aind[ir]] - 0.5) 
+                    x_thres = 0.5 + l[1]
+                    y_thres = 0.5 - l[0]
+                    xind = aind[np.logical_and(coord[0,aind] <= x_thres, coord[1,aind] <= y_thres)]
+                    yind = aind[np.logical_and(coord[0,aind] > x_thres, coord[1,aind] > y_thres)]
+                    rind = aind[np.logical_and(coord[0,aind] <= x_thres, coord[1,aind] > y_thres)]
+                    nr = rind.size
+                    rind = np.random.permutation(rind)
+                    if nr % 2 == 0:
+                        xrind = rind[:nr//2]
+                        yrind = rind[nr//2:]
+                    else:
+                        if np.random.rand() > 0.5:
+                            xrind = rind[:(nr+1)//2]
+                            yrind = rind[(nr+1)//2:]
+                        else:
+                            xrind = rind[:(nr-1)//2]
+                            yrind = rind[(nr-1)//2:]
+
+                    if nr + xind.size + yind.size != aind.size:
+                        raise Exception(f'{nr} + {xind.size} + {yind.size} != {aind.size}')
+
+                    allpick = np.array([])
+                    # pick lower half row
+                    if xrind.size + xind.size  > 0:
+                        x1 = (self.x[jj] + self.x[jj+1])/2 - buffer_l
+                        pick = np.logical_and(np.logical_and(np.logical_and(i==ii, j < jj), coord[1,:] <= 0.5), not_rogue)
+                        xind0 = np.arange(self.networkSize)[pick]
+                        xpick = np.hstack((axind, xind, xind0, xrind))
+                        x_max = max(self.pos[0,xpick])
+                        x_min = min(self.pos[0,xpick])
+                        if x_max == x_min:
+                            self.pos[0,xpick] = x1
+                        else:
+                            self.pos[0,xpick] = x1 + (self.pos[0,xpick] - x_max)/(x_max - x_min) * (x1 - x_min)
+                        allpick = xpick
+                    # pick right half column
+                    if yrind.size + yind.size  > 0:
+                        y0 = (self.y[ii] + self.y[ii+1])/2 + buffer_l
+                        pick = np.logical_and(np.logical_and(np.logical_and(j==jj, i > ii), coord[0,:] > 0.5), not_rogue)
+                        yind0 = np.arange(self.networkSize)[pick]
+                        ypick = np.hstack((ayind, yind, yind0, yrind))
+                        y_max = max(self.pos[1,ypick])
+                        y_min = min(self.pos[1,ypick])
+                        if y_max == y_min:
+                            self.pos[1,ypick] = y0
+                        else:
+                            self.pos[1,ypick] = y0 + (self.pos[1,ypick] - y_min)/(y_max - y_min) * (y_max - y0)
+                        if allpick.size == 0:
+                            allpick = ypick
+                        else:
+                            allpick = np.hstack((allpick, ypick))
+                    #update i,j,d2 of the half row and column picked above
+                    i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,allpick])
+                    i[allpick] = i_new
+                    j[allpick] = j_new
+                    d2[allpick] = d2_new
+                    coord[:,allpick] = coord_new
+                    if ii == 36 and jj == 168:
+                        print(coord[:,aind])
+                        assert(np.logical_or(coord[0,aind] < 0.5, coord[1,aind] > 0.5).all())
+                    continue
+                # top-right corner
+                if (bpattern - np.array([1,1,1,0]) == 0).all():
+                    #print('tr')
+                    apick = np.logical_and(i == ii, j == jj)
+                    aind0 = np.arange(self.networkSize)[apick]
+                    aind = aind0[np.logical_and(coord[0, aind0] > 0.5, coord[1, aind0] > 0.5)]
+                    if aind.size == 0:
+                        continue
+                    axind = aind0[np.logical_and(coord[0, aind0] <= 0.5, coord[1, aind0] > 0.5)]
+                    ayind = aind0[np.logical_and(coord[0, aind0] > 0.5, coord[1, aind0] <= 0.5)]
+
+                    ir = np.argmax(np.linalg.norm(coord[:,aind] - 0.5, axis = 0))
+                    l = np.abs(coord[:,aind[ir]] - 0.5) 
+                    x_thres = 0.5 + l[1]
+                    y_thres = 0.5 + l[0]
+                    xind = aind[np.logical_and(coord[0,aind] <= x_thres, coord[1,aind] > y_thres)]
+                    yind = aind[np.logical_and(coord[0,aind] > x_thres, coord[1,aind] <= y_thres)]
+                    rind = aind[np.logical_and(coord[0,aind] <= x_thres, coord[1,aind] <= y_thres)]
+                    nr = rind.size
+                    rind = np.random.permutation(rind)
+                    if nr % 2 == 0:
+                        xrind = rind[:nr//2]
+                        yrind = rind[nr//2:]
+                    else:
+                        if np.random.rand() > 0.5:
+                            xrind = rind[:(nr+1)//2]
+                            yrind = rind[(nr+1)//2:]
+                        else:
+                            xrind = rind[:(nr-1)//2]
+                            yrind = rind[(nr-1)//2:]
+
+                    if nr + xind.size + yind.size != aind.size:
+                        raise Exception(f'{nr} + {xind.size} + {yind.size} != {aind.size}')
+
+                    allpick = np.array([])
+                    # pick upper half row
+                    if xrind.size + xind.size  > 0:
+                        x1 = (self.x[jj] + self.x[jj+1])/2 - buffer_l
+                        pick = np.logical_and(np.logical_and(np.logical_and(i==ii, j < jj), coord[1,:] > 0.5), not_rogue)
+                        xind0 = np.arange(self.networkSize)[pick]
+                        xpick = np.hstack((axind, xind, xind0, xrind))
+                        x_max = max(self.pos[0,xpick])
+                        x_min = min(self.pos[0,xpick])
+                        if x_max == x_min:
+                            self.pos[0,xpick] = x1
+                        else:
+                            self.pos[0,xpick] = x1 + (self.pos[0,xpick] - x_max)/(x_max - x_min) * (x1 - x_min)
+                        allpick = xpick
+                    # pick right half column 
+                    if yrind.size + yind.size  > 0:
+                        y1 = (self.y[ii] + self.y[ii+1])/2 - buffer_l
+                        pick = np.logical_and(np.logical_and(np.logical_and(j==jj, i < ii), coord[0,:] > 0.5), not_rogue)
+                        yind0 = np.arange(self.networkSize)[pick]
+                        ypick = np.hstack((ayind, yind, yind0, yrind))
+                        y_max = max(self.pos[1,ypick])
+                        y_min = min(self.pos[1,ypick])
+                        if y_min == y_max:
+                            self.pos[1,ypick] = y1
+                        else:
+                            self.pos[1,ypick] = y1 + (self.pos[1,ypick] - y_max)/(y_max - y_min) * (y1 - y_min)
+                        if allpick.size == 0:
+                            allpick = ypick
+                        else:
+                            allpick = np.hstack((allpick, ypick))
+                    #update i,j,d2 of the half row and column picked above
+                    i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,allpick])
+                    i[allpick] = i_new
+                    j[allpick] = j_new
+                    d2[allpick] = d2_new
+                    coord[:,allpick] = coord_new
+                    continue
+                # only bot-left corner
+                if (bpattern - np.array([1,0,0,0]) == 0).all():
+                    #print('obl')
+                    gpick = np.logical_and(i==ii, j==jj)
+                    opick = gpick
+                    x_max = max(self.pos[0,gpick])
+                    y_max = max(self.pos[1,gpick])
+                    x1 = (self.x[jj] + self.x[jj+1])/2 - buffer_l
+                    y1 = (self.y[ii] + self.y[ii+1])/2 - buffer_l
+
+                    if x_xmax <= x1 and y_max <= y1:
+                        continue
+                    # squeeze y direction first
+                    if y_max > y1:
+                        ppick = np.logical_and(j == jj, not_rogue) 
+                        y_min = min(self.pos[1,ppick])
+                        if y_max == y_min:
+                            self.pos[1,ppick] = y1
+                        else:
+                            self.pos[1,ppick] = y1 + (self.pos[1,ppick] - y_max)/(y_max - y_min) * (y1 - y_min)
+                        opick = np.logical_or(opick, ppick)
+
+                    # squeeze x direction
+                    if x_max > x1:
+                        ppick = np.logical_and(np.logical_and(i==ii, np.logical_or(j == jj, np.logical_and(j < jj, coord[1,:] < 0.5))), not_rogue)
+                        x_min = min(self.pos[0,ppick])
+                        if x_max == x_min:
+                            self.pos[0,ppick] = x1
+                        else:
+                            self.pos[0,ppick] = x1 + (self.pos[0,ppick] - x_max)/(x_max - x_min) * (x1 - x_min)
+                        opick = np.logical_or(opick, ppick)
+
+                    i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,opick])
+                    i[opick] = i_new
+                    j[opick] = j_new
+                    d2[opick] = d2_new
+                    coord[:,opick] = coord_new
+                    continue
+                # only top-left corner
+                if (bpattern - np.array([0,1,0,0]) == 0).all():
+                    #print('otl')
+                    gpick = np.logical_and(i==ii, j==jj)
+                    opick = gpick
+                    x_max = max(self.pos[0,gpick])
+                    y_min = min(self.pos[1,gpick])
+                    x1 = (self.x[jj] + self.x[jj+1])/2 - buffer_l
+                    y0 = (self.y[ii] + self.y[ii+1])/2 + buffer_l
+                    if y_min >= y0 and x_max <= x1:
+                        continue
+                    if y_min < y0:
+                        ppick = np.logical_and(j == jj, not_rogue)
+                        y_max = max(self.pos[1,ppick])
+                        if y_max == y_min:
+                            self.pos[1,ppick] = y0
+                        else:
+                            self.pos[1,ppick] = y0 + (self.pos[1,ppick] - y_min)/(y_max - y_min) * (y_max - y0)
+                        opick = np.logical_or(opick, ppick)
+
+                    if x_max > x1:
+                        ppick = np.logical_and(np.logical_and(i==ii, np.logical_or(j == jj, np.logical_and(j < jj, coord[1,:] > 0.5))), not_rogue) # then x, so that more accommodated in x direction
+                        x_min = min(self.pos[0,ppick])
+                        if x_max == x_min:
+                            self.pos[0,ppick] = x1
+                        else:
+                            self.pos[0,ppick] = x1 + (self.pos[0,ppick] - x_max)/(x_max - x_min) * (x1 - x_min)
+                        opick = np.logical_or(opick, ppick)
+
+                    i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,opick])
+                    i[opick] = i_new
+                    j[opick] = j_new
+                    d2[opick] = d2_new
+                    coord[:,opick] = coord_new
+                    continue
+                # only bot-right corner
+                if (bpattern - np.array([0,0,1,0]) == 0).all():
+                    #print('obr')
+                    gpick = np.logical_and(i==ii, j==jj)
+                    opick = gpick
+                    y_max = max(self.pos[1,gpick])
+                    x_min = min(self.pos[0,gpick])
+                    x0 = (self.x[jj] + self.x[jj+1])/2 + buffer_l
+                    y1 = (self.y[ii] + self.y[ii+1])/2 - buffer_l
+                    if x_min >= x0 and y_max <= y1:
+                        continue
+                    if y_max > y1:
+                        ppick = np.logical_and(j == jj, not_rogue)
+                        y_min = min(self.pos[1,ppick])
+                        if y_max == y_min:
+                            self.pos[1,ppick] = y1
+                        else:
+                            self.pos[1,ppick] = y1 + (self.pos[1,ppick] - y_max)/(y_max - y_min) * (y1 - y_min)
+                        opick = np.logical_or(opick, ppick)
+
+                    if x_min < x0:
+                        ppick = np.logical_and(np.logical_and(i==ii, np.logical_or(j == jj, np.logical_and(j > jj, coord[1,:] < 0.5))), not_rogue) # then x, so that more accommodated in x direction
+                        x_max = max(self.pos[0,ppick])
+                        if x_min == x_max:
+                            self.pos[0,ppick] = x0
+                        else:
+                            self.pos[0,ppick] = x0 + (self.pos[0,ppick] - x_min)/(x_max - x_min) * (x_max - x0)
+                        opick = np.logical_or(opick, ppick)
+
+                    i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,opick])
+                    i[opick] = i_new
+                    j[opick] = j_new
+                    d2[opick] = d2_new
+                    coord[:,opick] = coord_new
+                    continue
+                # only top-right corner
+                if (bpattern - np.array([0,0,0,1]) == 0).all():
+                    #print('otr')
+                    gpick = np.logical_and(i==ii, j==jj)
+                    opick = gpick
+                    x_min = min(self.pos[0,gpick])
+                    y_min = min(self.pos[1,gpick])
+                    x0 = (self.x[jj] + self.x[jj+1])/2 + buffer_l
+                    y0 = (self.y[ii] + self.y[ii+1])/2 + buffer_l
+                    if y_min >= y0 and x_min >= x0:
+                        continue
+                    if y_min < y0:
+                        ppick = np.logical_and(j == jj, not_rogue)
+                        y_max = max(self.pos[1,ppick])
+                        if y_min == y_max:
+                            self.pos[1,ppick] = y0
+                        else:
+                            self.pos[1,ppick] = y0 + (self.pos[1,ppick] - y_min)/(y_max - y_min) * (y_max - y0)
+                        opick = np.logical_or(opick, ppick)
+                    if x_min < x0:
+                        ppick = np.logical_and(np.logical_and(i==ii, np.logical_or(j == jj, np.logical_and(j > jj, coord[1,:] > 0.5))), not_rogue) # then x, so that more accommodated in x direction
+                        x_max = max(self.pos[0,ppick])
+                        if x_min == x_max:
+                            self.pos[0,ppick] = x0
+                        else:
+                            self.pos[0,ppick] = x0 + (self.pos[0,ppick] - x_min)/(x_max - x_min) * (x_max - x0)
+                        opick = np.logical_or(opick, ppick)
+
+                    i_new, j_new, d2_new, coord_new = self.get_ij_grid_local(self.pos[:,opick])
+                    i[opick] = i_new
+                    j[opick] = j_new
+                    d2[opick] = d2_new
+                    coord[:,opick] = coord_new
+                    continue
+            stdout.write(f'iter {it} done\n')
+            it += 1
+        print('adjusted.')
+                        
         self.bound, self.btype = self.define_bound(self.Pi)
 
         if bfile is not None:
@@ -1217,10 +1290,10 @@ class macroMap:
                 jp = index//2
                 return ip, jp
             ip, jp = get_22ij(ipick) 
-            bpick = self.Pi[i + ip, j + jp] == 0
-            if np.sum(bpick) > 0:
-                print(f'{np.sum(bpick)} is not inside the ragged boundary')
-                #raise Exception(f'{np.sum(bpick)} is not inside the ragged boundary')
+            self.opick = self.Pi[i + ip, j + jp] == 0
+            if np.sum(self.opick) > 0:
+                print(f'{np.sum(self.opick)} is not inside the ragged boundary')
+                #raise Exception(f'{np.sum(self.opick)} is not inside the ragged boundary')
 
 
         print('assign ocular dominance preference to neuron according to their position in the cortex')
@@ -1301,7 +1374,7 @@ class macroMap:
         self.assign_pos_OD2(bfile)
         return oldpos
 
-    def spread_pos_VF(self, dt, vpfile, lrfile, LRlabel, seed = None, firstTime = True, read_lrfile = None, read_vpfile = None, continuous = True, particle_param = None, boundary_param = None, ax = None, p_scale = 2.0, b_scale = 1.0, ndt_decay = 0, roi_ratio = 2, k1 = 1.0, k2 = 0.5, ncore= 0, limit_ratio = 1.0, damp = 0.5, l_ratio = 0.5, l_k = 0.0, chop_ratio = 0):
+    def spread_pos_VF(self, dt, vpfile, lrfile, LRlabel, seed = None, firstTime = True, read_lrfile = None, read_vpfile = None, continuous = True, particle_param = None, boundary_param = None, ax = None, p_scale = 2.0, b_scale = 1.0, ndt_decay = 0, roi_ratio = 2, k1 = 1.0, k2 = 0.5, ncore= 0, limit_ratio = 1.0, damp = 0.5, l_ratio = 0.5, l_k = 0.0, chop_ratio = 0, noSpread = False):
         if ncore == 0:
             ncore = mp.cpu_count()
             print(f'{ncore} cores found')
@@ -1375,19 +1448,7 @@ class macroMap:
                 chop_size0 = np.fromfile(f, 'i4', nchop0)
                 assert(sum(chop_size0) == nLR)
                 vposLR = np.fromfile(f, 'f8').reshape(2, nLR)
-                #i0 = 0
-                #ii0 = 0
-                #k = 0
-                #for i in range(nchop0):
-                #    if chop_size0[k] > 0:
-                #        i1 = i0 + chop_size0[k]
-                #        ii1 = ii0 + chop_size0[k]*2
-                #        shared_dmem[ii0:ii1] = vposLR[:,i0:i1].flatten()
-                #        k = k + 1
-                #        i0 = i1
-                #        ii0 = ii1
-                #assert(ii0 == 2*nLR)
-
+        old_vpos = vposLR.copy()
         assert(np.sum(chop_size0) == nLR)
         raw_shared_bmem = RawArray(c_double, np.zeros(nx*ny*6, dtype = 'f8'))
         shared_bmem = np.frombuffer(raw_shared_bmem, dtype = 'f8') 
@@ -1425,7 +1486,7 @@ class macroMap:
             ip = 0 # plotting index
             ppos = None
             starting = True
-            vposLR, LR, spreaded, ppos, _, OD_bound = self.spread(dt, vposLR, nchop0, chop_size0, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, LR, nx, ny, lrfile, particle_param, boundary_param, ax, pick, ppos, ip, starting, figname = vpfile, p_scale = p_scale, b_scale = b_scale, ndt_decay = ndt_decay, roi_ratio = roi_ratio, k1 = k1, k2 = k2, ncore = ncore, limit_ratio = limit_ratio, damp = damp, l_ratio = l_ratio, l_k = l_k, chop_ratio = 0, seed = seed, plotOnly = False, noSpread = True)
+            vposLR, LR, spreaded, ppos, _, OD_bound = self.spread(dt, vposLR, nchop0, chop_size0, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, LR, nx, ny, lrfile, particle_param, boundary_param, ax, pick, ppos, ip, starting, figname = vpfile, p_scale = p_scale, b_scale = b_scale, ndt_decay = ndt_decay, roi_ratio = roi_ratio, k1 = k1, k2 = k2, ncore = ncore, limit_ratio = limit_ratio, damp = damp, l_ratio = l_ratio, l_k = l_k, chop_ratio = 0, seed = seed, plotOnly = False, noSpread = noSpread)
             print(f'spreaded = {spreaded}')
             assert(vposLR.shape[1] == nLR)
             with open(vpfile+'-ss.bin','wb') as f:
@@ -1443,9 +1504,10 @@ class macroMap:
             ax.plot(OD_bound[:,0,1].squeeze(), OD_bound[:,1,1].squeeze(), ',g')
             #if not continuous:
                 # plot all displacement
-            ax.plot(np.vstack((self.pos[0,LRpick], self.vpos[0,LRpick])), np.vstack((self.pos[1,LRpick], self.vpos[1,LRpick])),'-,c', lw =0.01)
+            #ax.plot(np.vstack((self.pos[0,LRpick], old_vpos[0,:])), np.vstack((self.pos[1,LRpick], old_vpos[1,:])),'-,c', lw =0.01, alpha = 0.7)
+            ax.plot(np.vstack((old_vpos[0,:], self.vpos[0,LRpick])), np.vstack((old_vpos[1,:], self.vpos[1,LRpick])),'-,m', lw =0.01, alpha = 0.7)
             # final positions
-            #ax.plot(self.vpos[0,LRpick], self.vpos[1,LRpick], ',k')
+            ax.plot(self.vpos[0,LRpick], self.vpos[1,LRpick], ',k')
 
         # check only the relevant boundary
         if LRlabel == 'L':
@@ -1459,6 +1521,7 @@ class macroMap:
             self.vposRready = True
 
     def spread(self, dt, vpos_flat, nchop, chop_size, shared_dmem, shared_imem, shared_bmem, shared_nmem, shared_cmem, LR, nx, ny, lrfile, particle_param = None, boundary_param = None, ax = None, pick = None, ppos = None, ip = 0, starting = True, figname = None, p_scale = 2.0, b_scale = 1.0, ndt_decay = 0, roi_ratio = 2, k1 = 1.0, k2 = 0.5, ncore = 0, limit_ratio = 1.0, damp = 0.5, l_ratio = 0.5, l_k = 0.0, chop_ratio = 0, seed = -1, plotOnly = False, noSpread = False):
+        print(f'ax is {ax}')
         if starting and ax is not None:
             OD_bound, btype = self.define_bound(LR)
             # connecting points on grid sides
@@ -1468,7 +1531,7 @@ class macroMap:
         subarea = self.subgrid[0] * self.subgrid[1]
 
         old_area = subarea * np.sum(LR == 1)
-        if not noSpread or ip == 0:
+        if not noSpread:
             LR, spreaded = self.diffuse_bound(LR)
         else:
             spreaded = False
@@ -1507,7 +1570,8 @@ class macroMap:
         ip = ip + 1
         if ax is not None:
             ppos[ip%2,:,:] = vpos_flat[:,pick].copy()
-            ax.plot(ppos[:,0,:].squeeze(), ppos[:,1,:].squeeze(), '-,c', lw = 0.01)
+            ax.plot(ppos[:,0,:].squeeze(), ppos[:,1,:].squeeze(), '-c', lw = 0.01)
+            ax.plot(ppos[0,0,:], ppos[0,1,:], ',c')
 
         return vpos_flat, LR, spreaded, ppos, ip, OD_bound
 
@@ -1736,17 +1800,32 @@ class macroMap:
                     if self.assign_pos_OP(forceOP) is None:
                         print('Orientation Preference is not plotted')
             if pltOP and self.pOPready:
-                s = (self.networkSize/self.area/100/25*72/dpi)**2
-                hsv = cm.get_cmap('hsv')
-                pick = np.logical_not(np.isnan(self.OPgrid))
-                                                                                                                    # theta to ratio
-                #ax1.scatter(self.xx[pick], self.yy[pick], s = s, linewidths=0.0, marker = '^', c= hsv(((self.OPgrid[pick]+np.pi)/2/np.pi).flatten()))
+                s = np.power(dpi,2)/self.networkSize/100
+                print(f'marker size = {s}')
+                hsv = cm.get_cmap('hsv') # theta to ratio
                 pick = self.ODlabel>0 
-                ax1.scatter(self.pos[0,pick], self.pos[1,pick], s = s*1.5, linewidths=0.0, marker = '.', c = hsv(self.op[pick]))
-                pick = self.ODlabel<0 
-                hsv_val = np.asarray(hsv(self.op[pick]), dtype = float)
-                hsv_val[0,:] = 0.65
-                ax1.scatter(self.pos[0,pick], self.pos[1,pick], s = s/1.5, linewidths=0.0, marker = 's', c =  hsv_val)
+                if np.sum(pick) > 0:
+                    ax1.scatter(self.pos[0,pick], self.pos[1,pick], s = s, linewidths=0.0, marker = '.', c = hsv(self.op[pick]))
+                else:
+                    print('no contra-lateral neuron')
+                pick = self.ODlabel<0
+                if np.sum(pick) > 0:
+                    ax1.scatter(self.pos[0,pick], self.pos[1,pick], s = s, linewidths=0.0, marker = '.', c = hsv(self.op[pick]), alpha = 0.45)
+                else:
+                    print('no ipsi-lateral neuron')
+
+                pick = self.Pi > 0
+                ax1.plot(self.xx[pick], self.yy[pick], ',k')
+                pick = self.Pi <= 0
+                ax1.plot(self.xx[pick], self.yy[pick], ',', color = 'gray')
+
+                ax1.plot([self.oldpos[0,:], self.pos[0,:]], [self.oldpos[1,:],self.pos[1,:]], '-k', lw = 0.01)
+                ax1.plot(self.pos[0,:], self.pos[1,:], ',', color = 'blue')
+                ax1.plot(self.oldpos[0,:], self.oldpos[1,:], ',', color = 'darkblue')
+                pick = self.opick
+                if pick is not None:
+                    ax1.plot(self.pos[0,pick], self.pos[1,pick], ',', color = 'red')
+                    ax1.plot(self.oldpos[0,pick], self.oldpos[1,pick], ',', color = 'darkred')
             else:
                 #ax1.plot(self.pos[0,:], self.pos[1,:],',k')
                 #ax1.plot(self.xx[self.Pi<=0], self.yy[self.Pi<=0],',r')
@@ -1817,7 +1896,7 @@ class macroMap:
         if VFpolar_file is not None:
             vpos = self.assign_pos_VF()
             with open(VFpolar_file,'wb') as f:
-                np.array([self.networkSize]).astype('u4').tofile(f)
+                np.array([self.nblock, self.blockSize]).astype('u4').tofile(f)
                 vpos.tofile(f)
 
         if Feature_file is not None:
@@ -1860,12 +1939,11 @@ class macroMap:
             vyspan = 2*self.ecc
             with open(allpos_file,'wb') as f:
                 np.array([self.nblock, self.blockSize, dataDim]).astype('u4').tofile(f)        
-                pos = np.empty((self.nblock, dataDim, self.blockSize))
+                pos = np.empty((dataDim, self.networkSize))
                 np.array([x0, xspan, y0, yspan], dtype = float).tofile(f)        
-                pos[:,0,:] = self.pos[0,:].reshape(self.nblock,self.blockSize)
-                pos[:,1,:] = self.pos[1,:].reshape(self.nblock,self.blockSize)
+                pos[:2,:] = self.pos.copy()
                 if dataDim == 3:
-                    pos[:,2,:] = self.zpos
+                    pos[2,:] = self.zpos.flatten()
                 pos.tofile(f)
                 vpos = self.assign_pos_VF()
                 np.array([vx0, vxspan, vy0, vyspan], dtype = float).tofile(f)        

@@ -77,10 +77,10 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
     ########
     
     if not len(suffix0)==0 :
-        suffix0 = '_' + suffix0
+        suffix0 = '-' + suffix0
     
     if not len(suffix)==0 :
-        suffix = '_' + suffix
+        suffix = '-' + suffix
     
     fLGN_V1_ID = setup_fdr + 'LGN_V1_idList' + suffix + '.bin'
     fLGN_V1_s = setup_fdr + 'LGN_V1_sList' + suffix + '.bin'
@@ -552,4 +552,4 @@ if __name__ == "__main__":
         else:
             sInput = None
 
-    inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_fdr, squareOrCircle, relay, binary_thres, sInput)
+        inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_fdr, squareOrCircle, relay, binary_thres, sInput)

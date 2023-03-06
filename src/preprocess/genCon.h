@@ -7,6 +7,7 @@
 #include <cmath>
 #include <random>
 #include <fenv.h>
+#include <algorithm>
 #include <boost/program_options.hpp>
 
 #include "connect.h"

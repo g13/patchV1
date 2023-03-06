@@ -29,13 +29,13 @@ def gatherTuningCurve(output_suffix, res_suffix, conLGN_suffix, conV1_suffix, re
     fig_fdr = fig_fdr+"/"
 
     if output_suffix:
-        output_suffix = "_" + output_suffix + "_"
+        output_suffix = "-" + output_suffix + "_"
     if res_suffix:
-        res_suffix = "_" + res_suffix
+        res_suffix = "-" + res_suffix
     if conLGN_suffix:
-        conLGN_suffix = "_" + conLGN_suffix
+        conLGN_suffix = "-" + conLGN_suffix
     if conV1_suffix:
-        conV1_suffix = "_" + conV1_suffix
+        conV1_suffix = "-" + conV1_suffix
 
     seed = 17843143
     fr_thres = 1

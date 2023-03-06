@@ -39,10 +39,10 @@ void LR2original(vector<T> &seqByLR, vector<T> &original, vector<Int> LR, Size n
 }
 
 Float get_acuity(Float ecc) {
-    Float k = 0.20498;
-    Float log_cpd0 = 3.67411;
+    Float k = 0.20498f;
+    Float log_cpd0 = 3.67411f;
     Float cpd = exponential(-k*ecc + log_cpd0);
-    Float acuity = 1.0/cpd/4.0;
+    Float acuity = 1.0f/cpd/4.0f;
     return acuity;
 }
 
@@ -74,7 +74,8 @@ vector<vector<Float>> retinotopic_connection(
         Float disLGN,
 		Float dmax,
 		bool strictStrength,
-		bool top_pick
+		bool top_pick,
+        bool balance
 ) {
     uniform_real_distribution<Float> dist(0,1);
     vector<vector<Float>> srList;
@@ -141,7 +142,10 @@ vector<vector<Float>> retinotopic_connection(
 			if (conThres >= 0) {
 				Float qfreq;
 				RF->setup_param(m, sfreq[i], phase[i], 1.0, theta[i], a[i], baRatio[i], RefType[i], strictStrength, envelopeSig);
-				m = RF->construct_connection_opt(x, y, iType, poolList[i], strengthList, modAmp_nCon[i], qfreq, cart.first[i], cart.second[i], i, ori_tol, get_acuity(ecc[i])/a[i]*disLGN, p_n_LGNeff, dmax);
+				m = RF->construct_connection_opt(x, y, iType, poolList[i], strengthList, modAmp_nCon[i], qfreq, cart.first[i], cart.second[i], i, ori_tol, get_acuity(ecc[i])/a[i]*disLGN, p_n_LGNeff, balance, dmax);
+                if (i == 0) {
+                    cout << "normed disLGN = " << get_acuity(ecc[i])/a[i]*disLGN << ", dmax = " << dmax*get_acuity(ecc[i])/a[i]*disLGN << "\n"; 
+                }
 				sfreq[i] = qfreq;
 			} else {
             	if (SimpleComplex == 0) {
@@ -512,6 +516,7 @@ int main(int argc, char *argv[]) {
 	Float dmax;
 	bool strictStrength;
 	bool top_pick;
+	bool balance;
     vector<Float> pureComplexRatio;
 	vector<Size> typeAcc;
     Float LGN_V1_RFratio;
@@ -543,6 +548,7 @@ int main(int argc, char *argv[]) {
 		("disLGN", po::value<Float>(&disLGN)->default_value(1.0), "average visual distance between LGN cells")
 		("dmax", po::value<Float>(&dmax)->default_value(1.5), "subregion LGN oriented distance max in units of disLGN")
 		("strictStrength", po::value<bool>(&strictStrength)->default_value(true), "make nLGN*sLGN strictly as preset")
+        ("balance", po::value<bool>(&balance)->default_value(false), "match number of LGN in on and off subregion")
 		("pureComplexRatio", po::value<vector<Float>>(&pureComplexRatio), "determine the proportion of simple and complex in V1 of size nType")
 		("typeAccCount",po::value<vector<Size>>(&typeAcc), "neuronal types' discrete accumulative distribution size of nType")
 		("V1_RFtypeAccDist", po::value<vector<Float>>(&V1_RFtypeAccDist), "determine the relative portion of each V1 RF type")
@@ -551,7 +557,7 @@ int main(int argc, char *argv[]) {
 		("V1_RefTypeDist", po::value<vector<Float>>(&V1_RefTypeDist), "determine the relative portion of the available cone/ON-OFF combinations in each V1 RF type")
 		("resourceFolder", po::value<string>(&resourceFolder)->default_value(""), "where the resource files at(unless starts with !), must end with /")
 		("fV1_feature", po::value<string>(&V1_feature_filename)->default_value("V1_feature.bin"), "file that stores V1 neurons' parameters")
-		("fV1_RFpreset", po::value<string>(&V1_RFpreset_filename)->default_value("V1_RFpreset.bin"), "file that stores V1 neurons' parameters")
+		("fV1_RFpreset", po::value<string>(&V1_RFpreset_filename)->default_value("V1_RFpreset"), "file that stores V1 neurons' parameters")
 		("fLGN_vpos", po::value<string>(&LGN_vpos_filename)->default_value("LGN_vpos.bin"), "file that stores LGN position in visual field (and on-cell off-cell label)")
 		("fV1_vpos", po::value<string>(&V1_vpos_filename)->default_value("V1_vpos.bin"), "file that stores V1 position in visual field)");
 
@@ -603,9 +609,13 @@ int main(int argc, char *argv[]) {
 	}
     
     if (!suffix.empty()) {
-        suffix = '_' + suffix;
+        suffix = '-' + suffix;
     }
     suffix = suffix + ".bin";
+
+    if (!vm.count("fV1_RFpreset")) {
+		V1_RFpreset_filename = resourceFolder + V1_RFpreset_filename;
+    }
 
     if (useCuda) {
         cudaDeviceProp deviceProps;
@@ -1015,7 +1025,7 @@ int main(int argc, char *argv[]) {
 	vector<Float> cx(n);
 	vector<Float> cy(n);
 	vector<Float> subregion_ratio(n);
-    vector<vector<Float>> srList = retinotopic_connection(poolList, rGen, p_n_LGNeff, max_LGNeff, envelopeSig, n, cart, cart0, V1Type, theta, phase, sfreq, modAmp_nCon, baRatio, a, RefType, LGNtype, cx, cy, VFposEcc, subregion_ratio, SimpleComplex, conThres, ori_tol, dmax, disLGN, strictStrength, top_pick);
+    vector<vector<Float>> srList = retinotopic_connection(poolList, rGen, p_n_LGNeff, max_LGNeff, envelopeSig, n, cart, cart0, V1Type, theta, phase, sfreq, modAmp_nCon, baRatio, a, RefType, LGNtype, cx, cy, VFposEcc, subregion_ratio, SimpleComplex, conThres, ori_tol, disLGN, dmax, strictStrength, top_pick, balance);
 
     if (!readFromFile) {
         ofstream fV1_RFpreset(V1_RFpreset_filename, fstream::out | fstream::binary);
@@ -1053,7 +1063,7 @@ int main(int argc, char *argv[]) {
     Size nonZero = 0;
 	for (PosInt i = 0; i<n; i++) {
 		if (sfreq[i] > 0 && poolList[i].size() > 0) {
-            Float sf = sfreq[i]/(mean_a*2);
+            Float sf = sfreq[i]/(a[i]*2);
             if (sf < min_sfreq) {
                 min_sfreq = sf; 
             }
@@ -1138,13 +1148,15 @@ int main(int argc, char *argv[]) {
 
     Size nbins = 21;
     Size nOne = 0;
-    vector<Float> balanceDist(nbins);
+    vector<Float> balanceDist(nbins,0);
+    vector<Float> sfreqDist(nbins,0);
     for (PosInt i = 0; i<n; i++) {
         if (subregion_ratio[i] >= 0 && poolList[i].size() > 1) {
             for (PosInt ibin = 0; ibin < nbins; ibin++) {
                 Float ratio = 0.5/(nbins-1) + ibin * 1.0/(nbins-1);
                 if (subregion_ratio[i] <= ratio) {
                     balanceDist[ibin] += 1;
+                    sfreqDist[ibin] += sfreq[i]/(a[i]*2);
                     break;
                 }
             }
@@ -1163,7 +1175,7 @@ int main(int argc, char *argv[]) {
         for (PosInt i = 0; i < bin_size; i++) {
             printf("*");
         }
-        printf("%.0f\n", balanceDist[ibin]);
+        printf("n:%.0f, sf:%.1f\n", balanceDist[ibin], sfreqDist[ibin]/balanceDist[ibin]);
     }
     printf("# nLGN == 1: %d\n", nOne);
     printf("check total = %.0f\n", accumulate(balanceDist.begin(), balanceDist.end(), 0.0) + nOne + zeroPool);

@@ -164,7 +164,7 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
             print('failed: npixel need to be even for neye == 2')
             return
 
-    print(f'{npixel} degree per pixel')
+    print(f'{npixel} pixels')
 
     b = npixel  
     if genMovie:
@@ -354,7 +354,7 @@ def generate_grating(amp, spatialFrequency, temporalFrequency, direction, npixel
 
             if genMovie:
                 if it == 0:
-                    fig = plt.figure()
+                    fig = plt.figure(dpi = npixel)
                     ax = fig.add_subplot(131)
                     ax.imshow(data[:,:,0], cmap = 'Greys')
                     ax = fig.add_subplot(132)

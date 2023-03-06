@@ -19,11 +19,11 @@ np.seterr(invalid = 'raise')
 #@profile
 def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
     #sample = np.array([0,1,2,3,4])*1024 + np.array([48,664,666,564,1001])
-    sample = np.array([1288])
+    #sample = np.array([1288])
     #sample = np.array([86546, 64477, 33573, 31727, 56827, 30755, 30738, 56359, 30881, 31439])
     #sampleName = ['s_op_med', 's_bg_med', 'c_op_med', 'c_bg_med', 'i_op_med', 'i_bg_med']
     #sample = np.array([33])*1024 + np.array([678])
-    plotSampleOnly = True
+    plotSampleOnly = False
     sampling = 'frTypeStat'
     pickSample = -1
     singleOri = False
@@ -140,10 +140,10 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         output_suffix = output_suffix0 + '_' + str(iOri)
     else:
         output_suffix = output_suffix0
-    _output_suffix = "_" + output_suffix
-    res_suffix = "_" + res_suffix
-    conLGN_suffix = "_" + conLGN_suffix
-    conV1_suffix = "_" + conV1_suffix
+    _output_suffix = "-" + output_suffix
+    res_suffix = "-" + res_suffix
+    conLGN_suffix = "-" + conLGN_suffix
+    conV1_suffix = "-" + conV1_suffix
 
     if res_fdr[-1] != "/":
         res_fdr = res_fdr+"/"
@@ -160,9 +160,9 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     statsFn = data_fdr + "traceStats" + _output_suffix + ".bin"
     pTuningFn = data_fdr + "pTuning" + _output_suffix + ".bin"
     
-    pref_file = data_fdr + 'cort_pref_' + output_suffix0 + '.bin'
+    pref_file = data_fdr + 'cort_pref-' + output_suffix0 + '.bin'
     if nOri == 0 and singleOri:
-        max_frFn = data_fdr + 'max_fr_' + output_suffix0 + '.bin'
+        max_frFn = data_fdr + 'max_fr-' + output_suffix0 + '.bin'
 
     spDataFn = data_fdr + "V1_spikes" + _output_suffix
     parameterFn = data_fdr + "patchV1_cfg" +_output_suffix + ".bin"
@@ -179,7 +179,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     V1_allposFn = res_fdr + 'V1_allpos' + res_suffix + ".bin"
     V1_vposFn = res_fdr + 'V1_vpos' + res_suffix + ".bin"
 
-    sampleFn = data_fdr + "OS_sampleList_" + output_suffix0 + ".bin"
+    sampleFn = data_fdr + "OS_sampleList-" + output_suffix0 + ".bin"
 
     prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, nE, nI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, _virtual_LGN, tonicDep, noisyDep = read_cfg(parameterFn)
     blockSize = typeAcc[-1]
@@ -235,10 +235,6 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
         V1_x0, V1_xspan, V1_y0, V1_yspan = np.fromfile(f, 'f8', count=4)
         print(f'x:{[V1_x0, V1_x0 + V1_xspan]}')
         print(f'y:{[V1_y0, V1_y0 + V1_yspan]}')
-        #_pos = np.reshape(np.fromfile(f, 'f8', count = networkSize*dataDim), (nblock, dataDim, blockSize))
-        #pos = np.zeros((2,networkSize))
-        #pos[0,:] = _pos[:,0,:].reshape(networkSize)
-        #pos[1,:] = _pos[:,1,:].reshape(networkSize)
         pos = np.reshape(np.fromfile(f, 'f8', count = 2*networkSize), (2, networkSize))
         V1_vx0, V1_vxspan, V1_vy0, V1_vyspan = np.fromfile(f, 'f8', 4)
         print(f'vx:{[V1_vx0, V1_vx0 + V1_vxspan]}')
@@ -3569,6 +3565,12 @@ def choose_color(n, cmap):
     #hsv_c[:,2] = lightness
     #c = np.array([mpl.colors.hsv_to_rgb(color) for color in hsv_c])
     return c
+
+def get_acuity(ecc):
+    k = 0.20498
+    log_cpd0 = 3.67411- np.log(2.0)
+    cpd = np.exp(-k*ecc + log_cpd0)
+    return 1.0/cpd/4.0
 
 if __name__ == "__main__":
     if len(sys.argv) < 15:

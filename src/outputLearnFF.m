@@ -18,13 +18,13 @@ function outputLearnFF(isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr,
 
 	rng(1390843)
 	if ~isempty(isuffix0)
-	    isuffix0 = ['_', isuffix0];
+	    isuffix0 = ['-', isuffix0];
 	end
 	if ~isempty(isuffix)
-	    isuffix = ['_', isuffix];
+	    isuffix = ['-', isuffix];
 	end
 	if ~isempty(osuffix)
-	    osuffix = ['_', osuffix];
+	    osuffix = ['-', osuffix];
 	end
 	%%%% HERE %%%%
     top_thres = 0.8; % threshold to count connections of max strength, fluctuates below max

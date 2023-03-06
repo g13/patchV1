@@ -78,7 +78,7 @@ inline std::pair<Float, Float> transform_coord_to_unitRF(Float x, Float y, const
 }
 
 // TODO: document type meanings
-inline Int match_OnOff(InputType iType, OutputType oType, Float &modulation) {
+inline Int match_OnOff(InputType iType, OutputType oType) {
 	Int match;
    	switch (oType) {
    	    case OutputType::LonMon:
@@ -104,7 +104,7 @@ inline Int match_OnOff(InputType iType, OutputType oType, Float &modulation) {
    	return match;
 }
 
-inline Int oppose_Cone_OnOff_double(InputType iType, OutputType oType, Float &modulation) {
+inline Int oppose_Cone_OnOff_double(InputType iType, OutputType oType) {
 	Int opponent;
    	switch (oType) {
    	    case OutputType::LonMoff:
@@ -134,7 +134,7 @@ inline Int oppose_Cone_OnOff_double(InputType iType, OutputType oType, Float &mo
    	return opponent;
 }
 
-inline Int oppose_Cone_OnOff_single(InputType iType, OutputType oType, Float &modulation) {
+inline Int oppose_Cone_OnOff_single(InputType iType, OutputType oType) {
 	Int opponent;
    	switch (oType) {
    	    case OutputType::LonMoff:
@@ -164,7 +164,7 @@ inline Int oppose_Cone_OnOff_single(InputType iType, OutputType oType, Float &mo
    	return opponent;
 }
 
-inline void assign_component(std::vector<Float> &x, std::vector<Float> &y, std::vector<PosInt> &idx, std::vector<Float> &envelope_value, std::vector<PosInt> &component, std::vector<bool> &pick, Float &mean_phase, Float &mean_ecc, Float eccRange[], Float phaseRange[], Int &j, Float min_tan, Float max_env, Float dmin, Float dmax, bool restricted) {
+inline void assign_component(std::vector<Float> &x, std::vector<Float> &y, std::vector<PosInt> &idx, std::vector<Float> &modulated, std::vector<PosInt> &component, std::vector<bool> &pick, Float &mean_phase, Float &mean_ecc, Float eccRange[], Float phaseRange[], Int &j, Float min_tan, Float max_env, Float dmin, Float dmax, bool restricted) {
     pick[j] = true;
     Float weightedPhase = x[j]*max_env;
     Float weightedEcc = y[j]*max_env;
@@ -173,33 +173,26 @@ inline void assign_component(std::vector<Float> &x, std::vector<Float> &y, std::
     phaseRange[0] = x[j];
     phaseRange[1] = x[j];
     if (!restricted) { 
-        eccRange[0] = y[j];
-        eccRange[1] = y[j];
+        eccRange[0] = y[j] - dmin;
+        eccRange[1] = y[j] + dmin;
     } else {
-        if (eccRange[1] - eccRange[0] < 2*dmin) {
+        if (eccRange[1] - eccRange[0] < 2*dmax) {
             Float midEcc = (eccRange[1] + eccRange[0])/2;
-            eccRange[0] = midEcc - dmin;
-            eccRange[1] = midEcc + dmin;
+            eccRange[0] = midEcc - dmax;
+            eccRange[1] = midEcc + dmax;
         }
     }
     bool condition;
     // major extend
     for (PosInt i = 0; i < idx.size(); i++) {
-        condition = i != j && abs((x[i]-x[j])/(y[i]-y[j])) < min_tan;
+        if (i == j) continue;
+        Float r = square_root((x[i]-x[j])*(x[i]-x[j]) + (y[i]-y[j])*(y[i]-y[j]));
+        condition = abs((x[i]-x[j])/(y[i]-y[j])) < min_tan && r < dmax;
         if (restricted) {
-            condition = condition && y[i] < eccRange[1]  && y[i] > eccRange[0] && !pick[i];
+            condition = (condition || r < dmin) && y[i] < eccRange[1]  && y[i] > eccRange[0];
         }
         if (condition) {
-            Float r = square_root((x[i]-x[j])*(x[i]-x[j]) + (y[i]-y[j])*(y[i]-y[j]));
-            condition = condition && r < dmax;
-        }
-        if (condition) {
-            Float env;
-            if (!restricted) {
-                env = envelope_value[idx[i]];
-            } else {
-                env = envelope_value[i]; // actually modulated
-            }
+            Float env = modulated[i];
             weightedPhase += x[i]*env;
             weightedEcc += y[i]*env;
             sumEnvelope += env;
@@ -225,16 +218,13 @@ inline void assign_component(std::vector<Float> &x, std::vector<Float> &y, std::
             }
         }
     }
-    if (component.size() > 1) {
+    if (!restricted && component.size() > 1) {
     // minor extend
         for (PosInt i = 0; i < idx.size(); i++) {
-            if (x[i] < phaseRange[1] && x[i] > phaseRange[0] && y[i] < eccRange[1] && y[i] > eccRange[0] && !pick[i]) {
-                Float env;
-                if (!restricted) {
-                    env = envelope_value[idx[i]];
-                } else {
-                    env = envelope_value[i];
-                }
+            if (pick[i]) continue;
+            Float r = square_root((x[i]-x[j])*(x[i]-x[j]) + (y[i]-y[j])*(y[i]-y[j]));
+            if ((x[i] < phaseRange[1] && x[i] > phaseRange[0] && y[i] < eccRange[1] && y[i] > eccRange[0]) || r < dmin) {
+                Float env = modulated[i];
                 weightedPhase += x[i]*env;
                 weightedEcc += y[i]*env;
                 sumEnvelope += env;
@@ -556,7 +546,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 				std::cout << " c1 = [" << cx[1] << ", " << cy[1] << "]\n";
 				//assert(dis < 2);
 			}
-			sfreq = 1/(dis*2/2*2*a);
+			sfreq = a/dis;
 		} else {
 			sfreq = 0;
 		}
@@ -659,7 +649,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         }
         return nConnected;
     }
-    virtual Size construct_connection_opt(std::vector<Float> &x, std::vector<Float> &y, std::vector<InputType> &iType, std::vector<Size> &idList, std::vector<Float> &strengthList, Float zero, Float &true_sfreq, Float vx, Float vy, PosInt iV1, Float ori_tol, Float disLGN, Float sSum, Float dmax) {
+    virtual Size construct_connection_opt(std::vector<Float> &x, std::vector<Float> &y, std::vector<InputType> &iType, std::vector<Size> &idList, std::vector<Float> &strengthList, Float zero, Float &true_sfreq, Float vx, Float vy, PosInt iV1, Float ori_tol, Float disLGN, Float sSum, bool balance, Float dmax) {
         Size nConnected;
         if (n > 0) {
             if (zero > 0) {
@@ -695,7 +685,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 				}
 
                 // make connection and update ID and strength list
-                nConnected = connect_opt_new(idList, strengthList, iType, biPick, envelope_value, norm_x, norm_y, n, iOnOff, iV1, ori_tol, disLGN, sSum, dmax);
+                nConnected = connect_opt_new(idList, strengthList, iType, biPick, envelope_value, norm_x, norm_y, n, iOnOff, iV1, ori_tol, disLGN, sSum, balance, dmax);
 				idList.shrink_to_fit();
 				true_sfreq = sfreq;
             } else {
@@ -711,558 +701,10 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         return nConnected;
     }
 
-    virtual Size connect_opt(std::vector<Size> &idList, std::vector<Float> &strengthList, std::vector<InputType> &iType, std::vector<Int> &biPick, std::vector<Float> envelope_value, std::vector<Float> &norm_x, std::vector<Float> &norm_y, Size n, Int iOnOff, PosInt iV1, Float ori_tol, Float disLGN, Float sSum, Float dmax = 2) {
-		// make connections and normalized strength i.e., if prob > 1 then s = 1 else s = prob
-        ori_tol = ori_tol/180*M_PI;
-
-		std::vector<Float> xon;
-		std::vector<Float> yon;
-		std::vector<PosInt> ion;
-		std::vector<Float> xoff;
-		std::vector<Float> yoff;
-		std::vector<PosInt> ioff;
-        std::vector<std::vector<PosInt>> onComponent;
-        std::vector<std::vector<PosInt>> offComponent;
-        bool pInfo = false;
-        if (iV1 == 2420) {
-            pInfo = true;
-        }
-        
-		for (PosInt i = 0; i < n; i++) {
-            if (biPick[i] > 0) {
-                ion.push_back(i);
-                xon.push_back(norm_x[i]);
-                yon.push_back(norm_y[i]);
-            } else {
-                ioff.push_back(i);
-                xoff.push_back(norm_x[i]);
-                yoff.push_back(norm_y[i]);
-            }
-        }
-        int anyLGN = 0;
-        Float min_tan = tangent(ori_tol);
-
-        // try multiple on
-        std::vector<Float> phaseOn; 
-        std::vector<Float> disOnY; 
-        std::vector<Float> meanOnY; 
-        std::vector<Size> nExtraOn; 
-        Size non = ion.size();
-        if (pInfo) {
-            std::cout << iV1 << " have " << non << " red LGNs\n";
-		    for (PosInt i = 0; i < non; i++) {
-                printf("%i: (%.4f, %.4f)\n", i, xon[i], yon[i]);
-            }
-        }
-		for (PosInt i = 0; i < non; i++) {
-            for (PosInt j = i+1; j < non; j++) {
-                if (abs((xon[i]-xon[j])/(yon[i]-yon[j])) < min_tan && abs(yon[i] - yon[j]) < disLGN) {
-                    bool newComp = true;
-                    if (pInfo) {
-                        printf("picked: %i, %i (%.4f, %.4f)", i, j, xon[i]-xon[j], yon[i]-yon[j]);
-                    }
-                    for (PosInt ic=0; ic<onComponent.size(); ic++) {
-                        bool new_j = true;
-                        for (PosInt k=0; k<onComponent[ic].size(); k++) {
-                            if (onComponent[ic][k] == i)  {
-                                newComp = false;
-                            }
-                            if (onComponent[ic][k] == j)  {
-                                newComp = false;
-                                new_j = false;
-                            }
-                        }
-                        if (!newComp) {
-                            disOnY[ic] += abs(yon[i] - yon[j]);
-                            if (new_j) {
-                                onComponent[ic].push_back(j);
-                                phaseOn[ic] += xon[j];
-                                meanOnY[ic] += yon[j];
-                            } else {
-                                nExtraOn[ic]++;
-                            }
-                        }
-                        if (pInfo) {
-                            if (!newComp) {
-                                printf(" for component %i\n", ic);
-                            }
-                        }
-                        if (!newComp) {
-                            break;
-                        }
-                    }
-                    if (newComp) {
-                        onComponent.push_back(std::vector<PosInt>());
-                        onComponent.back().push_back(i);
-                        onComponent.back().push_back(j);
-                        phaseOn.push_back(xon[i] + xon[j]);
-                        meanOnY.push_back(yon[i] + yon[j]);
-                        disOnY.push_back(abs(yon[i] - yon[j]));
-                        nExtraOn.push_back(0);
-                        if (pInfo) {
-                            printf(" for component %lu\n", onComponent.size()-1);
-                        }
-                    }
-                }
-            }
-        }
-        
-        Size m = onComponent.size();
-        if (pInfo) {
-            std::cout << "  found " << m << " on components\n";
-        }
-        if (m > 0) {
-            anyLGN += 1;
-        }
-        Float minPhaseVar = 1;
-        PosInt ionC;
-        for (PosInt i=0; i<m; i++) {
-            Size nC = onComponent[i].size();
-            phaseOn[i] /= nC;
-            meanOnY[i] /= nC;
-            disOnY[i] /= nC-1 + nExtraOn[i];
-            Float var_x = 0;
-            for (PosInt j=0; j<nC; j++) {
-                var_x += power(xon[onComponent[i][j]] - phaseOn[i],2);
-            }
-            var_x /= onComponent[i].size();
-            if (var_x < minPhaseVar) {
-                minPhaseVar = var_x;
-                ionC = i;
-            }
-        }
-        if (m > 0) {
-            if (pInfo) {
-                printf("on component %i is chosen\n", ionC);
-            }
-        }
-
-        // try multiple off
-        std::vector<Float> phaseOff; 
-        std::vector<Float> meanOffY; 
-        std::vector<Float> disOffY; 
-        std::vector<Size> nExtraOff; 
-        Size noff = ioff.size();
-        if (pInfo) {
-            std::cout << iV1 << " have " << noff << " green LGNs\n";
-		    for (PosInt i = 0; i < noff; i++) {
-                printf("%i: (%.4f, %.4f)\n", i, xoff[i], yoff[i]);
-            }
-        }
-		for (PosInt i = 0; i < noff; i++) {
-            for (PosInt j = i+1; j < noff; j++) {
-                if (abs((xoff[i]-xoff[j])/(yoff[i]-yoff[j])) < min_tan && abs(yoff[i] - yoff[j]) < disLGN) {
-                    bool newComp = true;
-                    if (pInfo) {
-                        printf("picked: %i, %i (%.4f, %.4f) ", i, j, xoff[i]-xoff[j], yoff[i]-yoff[j]);
-                    }
-                    for (PosInt ic=0; ic<offComponent.size(); ic++) {
-                        bool new_j = true;
-                        for (PosInt k=0; k<offComponent[ic].size(); k++) {
-                            if (offComponent[ic][k] == i)  {
-                                newComp = false;
-                            }
-                            if (offComponent[ic][k] == j)  {
-                                newComp = false;
-                                new_j = false;
-                            }
-                        }
-                        if (!newComp) {
-                            disOffY[ic] += abs(yoff[i] - yoff[j]);
-                            if (new_j) {
-                                offComponent[ic].push_back(j);
-                                phaseOff[ic] += xoff[j];
-                                meanOffY[ic] += yoff[j];
-                            } else {
-                                nExtraOff[ic]++;
-                            }
-                        }
-                        if (pInfo) {
-                            if (!newComp) {
-                                printf(" for component %i\n", ic);
-                            }
-                        }
-                        if (!newComp) {
-                            break;
-                        }
-                    }
-                    if (newComp) {
-                        offComponent.push_back(std::vector<PosInt>());
-                        offComponent.back().push_back(i);
-                        offComponent.back().push_back(j);
-                        phaseOff.push_back(xoff[i] + xoff[j]);
-                        meanOffY.push_back(yoff[i] + yoff[j]);
-                        disOffY.push_back(abs(yoff[i] - yoff[j]));
-                        nExtraOff.push_back(0);
-                        if (pInfo) {
-                            printf(" for component %lu\n", offComponent.size()-1);
-                        }
-                    }
-                }
-            }
-        }
-        
-        m = offComponent.size();
-        if (pInfo) {
-            std::cout << "  found " << m << " off components\n";
-        }
-        if (m > 0) {
-            anyLGN += 2;
-        }
-        minPhaseVar = 1;
-        PosInt ioffC;
-        for (PosInt i=0; i<m; i++) {
-            Size nC = offComponent[i].size();
-            phaseOff[i] /= nC;
-            meanOffY[i] /= nC;
-            disOffY[i] /= nC-1 + nExtraOff[i];
-            Float var_x = 0;
-            for (PosInt j=0; j<offComponent[i].size(); j++) {
-                var_x += power(xoff[offComponent[i][j]] - phaseOff[i],2);
-            }
-            var_x /= offComponent[i].size();
-            if (var_x < minPhaseVar) {
-                minPhaseVar = var_x;
-                ioffC = i;
-            }
-        }
-        if (m > 0) {
-            if (pInfo) {
-                printf(" off component %i is chosen\n", ioffC);
-            }
-        }
-
-		bool try_again = true;
-		while (try_again) {
-			switch (anyLGN) {
-        	    case 0: {// two LGN 
-					try_again = false;
-        	        if (pInfo) {
-        	            std::cout << "try pairs...";
-        	        }
-        	        PosInt kon, koff;
-        	        for (PosInt i = 0; i < non; i++) {
-        	            for (PosInt j = 0; j < noff; j++) {
-                            if ((xon[i]-xoff[j]) >= disLGN && (xon[i]-xoff[j]) < dmax*disLGN) {
-        	                    Float tan0 = abs((yon[i]-yoff[j])/(xon[i]-xoff[j]));
-        	                    if (tan0 < min_tan) {
-        	                        min_tan = tan0;
-        	                        kon = i;
-        	                        koff = j;
-        	                        anyLGN = 4;
-        	                    }
-                            }
-        	            }
-        	        }
-        	        if (anyLGN) {
-        	            onComponent.push_back(std::vector<PosInt>());
-                        ionC = onComponent.size()-1;
-        	            onComponent[ionC].push_back(kon);
-        	            phaseOn.push_back(xon[kon]);
-                        if (ionC != phaseOn.size() - 1) {
-                            printf("ionC = %u, size of phaseOn: %lu, size of onComponent%lu\n", ionC, phaseOn.size(), onComponent.size());
-                            assert(ionC == phaseOn.size() - 1);
-                        }
-
-        	            offComponent.push_back(std::vector<PosInt>());
-                        ioffC = offComponent.size()-1;
-        	            offComponent[ioffC].push_back(koff);
-        	            phaseOff.push_back(xoff[koff]);
-        	            if (pInfo) {
-        	                std::cout << "succeeded with pair (" << kon << ", " << koff << ")\n";
-        	            }
-        	        } else {
-        	            if (pInfo) {
-        	                std::cout << "failed\n";
-        	            }
-        	        }
-        	    }
-        	    break;
-        	    case 1: {// on components only, get one off LGN
-        	        int imin = -1;
-        	        Float rangeOnY[2] = {100, 0};
-        	        for (PosInt i=0; i<onComponent[ionC].size(); i++) {
-        	            Float temp_y = yon[onComponent[ionC][i]];
-        	            if (rangeOnY[1] < temp_y) {
-        	                rangeOnY[1] = temp_y;
-        	            }
-        	            if (rangeOnY[0] > temp_y) {
-        	                rangeOnY[0] = temp_y;
-        	            }
-        	        }
-        	        Float centerDis = (rangeOnY[1] - rangeOnY[0]) * (1 + min_tan)/2;
-        	        if (pInfo) {
-        	            std::cout << "centerDis = " << centerDis << "\n";
-        	        }
-        	        for (PosInt i=0; i<noff; i++) {
-                        Float dx = abs(xoff[i] - phaseOn[ionC]);
-        	            if (dx >= disLGN && dx < dmax*disLGN && dx > disOnY[ionC]) {
-        	                Float cD = abs(2*yoff[i] - (rangeOnY[0] + rangeOnY[1]));
-        	                if (pInfo) {
-        	                    std::cout << i << "th off LGN cD = " << cD << "\n";
-        	                }
-        	                if (cD < centerDis) {
-        	                    centerDis = cD;
-        	                    imin = i;
-        	                } 
-        	            } else {
-        	                if (pInfo) {
-        	                    std::cout << i << "th off LGN dropped for disLGN\n";
-        	                }
-        	            }
-        	        }
-        	        if (imin >= 0) {
-        	            offComponent.push_back(std::vector<PosInt>()) ;
-        	            offComponent.back().push_back(imin);
-        	            phaseOff.push_back(xoff[imin]);
-        	            ioffC = offComponent.size()-1;
-        	            if (pInfo) {
-        	                std::cout << " chose " << imin << " th off LGN\n";
-        	            }
-					    try_again = false;
-        	        } else {
-        	            if (pInfo) {
-        	                std::cout << " all other off LGNs dropped for range, try two LGN next before falling back on using only the " << ionC << "th on component.\n";
-        	            }
-                        anyLGN = 0;
-        	        }
-        	    }
-        	    break;
-        	    case 2: {// off components only, get one on LGN
-        	        if (pInfo) {
-        	            std::cout << "try find one on LGN\n";
-        	        }
-        	        int imin = -1;
-        	        Float rangeOffY[2] = {100,0};
-        	        for (PosInt i=0; i<offComponent[ioffC].size(); i++) {
-        	            Float temp_y = yoff[offComponent[ioffC][i]];
-        	            if (rangeOffY[1] < temp_y) {
-        	                rangeOffY[1] = temp_y;
-        	            }
-        	            if (rangeOffY[0] > temp_y) {
-        	                rangeOffY[0] = temp_y;
-        	            }
-        	        }
-        	        Float centerDis = (rangeOffY[1] - rangeOffY[0]) * (1 + min_tan)/2;
-        	        if (pInfo) {
-        	            std::cout << "centerDis = " << centerDis << "\n";
-        	        }
-        	        for (PosInt i=0; i<non; i++) {
-                        Float dx = abs(xon[i] - phaseOff[ioffC]);
-        	            if (dx >= disLGN && dx < dmax*disLGN && dx > disOffY[ioffC]) {
-        	                Float cD = abs(2*yon[i] - (rangeOffY[0] + rangeOffY[1]));
-        	                if (pInfo) {
-        	                    std::cout << i << "th on LGN cD = " << cD << "\n";
-        	                }
-        	                if (cD < centerDis) {
-        	                    centerDis = cD;
-        	                    imin = i;
-        	                }
-        	            } else {
-        	                if (pInfo) {
-        	                    std::cout << i << "th on LGN dropped for disLGN\n";
-        	                }
-        	            }
-        	        }
-        	        if (imin >= 0) {
-        	            onComponent.push_back(std::vector<PosInt>()) ;
-        	            onComponent.back().push_back(imin);
-        	            phaseOn.push_back(xon[imin]);
-        	            ionC = onComponent.size()-1;
-        	            if (pInfo) {
-        	                std::cout << " chose " << imin << " th on LGN\n";
-        	            }
-                        try_again = false;
-        	        } else {
-        	            if (pInfo) {
-        	                std::cout << " all other on LGNs dropped for range, try two LGN next before falling back on using only the" << ioffC << "th off component.\n";
-        	            }
-                        anyLGN = 0;
-        	        }
-        	    }
-        	    break;
-        	    case 3: {// on and off components
-        	        Float minDisY = disLGN;
-        	        if (pInfo) {
-        	            std::cout << " pick pairs of on and off components\n";
-        	        }
-					bool nopair = true;
-        	        for (PosInt i=0; i<onComponent.size(); i++) {
-        	            for (PosInt j=0; j<offComponent.size(); j++) {
-                            Float dx = abs(phaseOn[i] - phaseOff[j]);
-        	                Float dydx_ratio = std::max(disOnY[i], disOffY[j])/dx;
-        	                if (dx >= disLGN && dx < dmax*disLGN && dydx_ratio < 1) {
-                                Float disY = abs(meanOnY[i] - meanOffY[j]);
-        	                    if (disY < minDisY) {
-                                    minDisY = disY;
-        	                        ionC = i;
-        	                        ioffC = j;
-									nopair = false;
-        	                    }
-        	                } else {
-        	                    if (pInfo) {
-        	                        std::cout << "pair: " << i << "th on and " << j << "th off is droppped, dy:dx = " << dydx_ratio << ", dx = " << dx << "\n";
-        	                    }
-        	                }
-        	            }
-        	        }
-					if (nopair) {
-						if (iOnOff > 0) {
-							anyLGN = 1;
-                            offComponent.clear();
-                            phaseOff.clear();
-        	                if (pInfo) {
-        	                    std::cout << "try again with only " << ionC << "th on component.\n";
-        	                }
-						} else {
-							anyLGN = 2;
-                            onComponent.clear();
-                            phaseOn.clear();
-        	                if (pInfo) {
-        	                    std::cout << "try again with only " << ioffC << "th off component.\n";
-        	                }
-						}
-					} else {
-						try_again = false;
-        	            if (pInfo) {
-        	                std::cout << "pair: " << ionC << "th on and " << ioffC << "th off is picked\n";
-        	            }
-					}
-        	    }
-        	    break;
-        	}
-		}
-
-        std::vector<PosInt> added;
-        if (anyLGN == 0) { // one LGN
-            PosInt j;
-            Float max_env = 0.5;
-            bool zero = true;
-            for (PosInt i = 0; i < n; i++) {
-                // find largest matching LGN
-                if (envelope_value[i] > max_env) {
-                    j = i; 
-                    max_env = envelope_value[i];
-                    zero = false;
-                }
-            }
-            if (!zero) {
-                if (iOnOff*biPick[j] < 0) {
-                    if (biPick[j] > 0) {
-                        oType = OutputType::LonMoff;
-                    } else {
-                        oType = OutputType::LoffMon;
-                    }
-                }
-                phase = -norm_x[j];
-                sfreq = 1/(2*disLGN);
-                added.push_back(j);
-                anyLGN = 5;
-                j = idList[j];
-                idList.clear();
-			    idList.push_back(j);
-            } else {
-                sfreq = 0;
-                idList.clear();
-            }
-        } else {
-            std::vector<PosInt> newList;
-
-            if (onComponent.size() > 0) {
-                Size m = onComponent[ionC].size();
-                for (PosInt i = 0; i<m; i++) {
-                    PosInt id = ion[onComponent[ionC][i]];
-                    added.push_back(id);
-                    newList.push_back(idList[id]);
-                }
-            }
-            if (offComponent.size() > 0) {
-                m = offComponent[ioffC].size();
-                for (PosInt i = 0; i<m; i++) {
-                    PosInt id = ioff[offComponent[ioffC][i]];
-                    added.push_back(id);
-                    newList.push_back(idList[id]);
-                }
-            }
-
-            idList.assign(newList.begin(), newList.end());
-
-            if (offComponent.size() > 0 && onComponent.size() > 0) {
-                sfreq = 1/abs(phaseOn[ionC] - phaseOff[ioffC]);
-                if (sfreq > 1/disLGN) {
-                    std::cout << sfreq << " = 1/(" << phaseOn[ionC] << " - " << phaseOff[ioffC] << ")\n";
-                    assert(sfreq <= 1/disLGN);
-                }
-                assert(sfreq > 1/std::max(dmax,2.0f)/disLGN);
-                if (iOnOff > 0) {
-                    phase = -phaseOn[ionC];
-                } else {
-                    phase = -phaseOff[ioffC];
-                }
-            } else {
-                sfreq = 1/(2*disLGN);
-                if (onComponent.size() > 0) {
-                    oType = OutputType::LonMoff;
-                    phase = -phaseOn[ionC];
-                } else {
-                    oType = OutputType::LoffMon;
-                    phase = -phaseOff[ioffC];
-                }
-            }
-        }
-        if (pInfo) {
-            std::cout << iV1 << " try connect " << idList.size() << ", sfreq = " << sfreq << ", phase = " << phase << "\n";
-            if (onComponent.size() > 0) {
-                std::cout << phaseOn[ionC] << "\n";
-            }
-            if (offComponent.size() > 0) {
-                std::cout << phaseOff[ioffC] << "\n";
-            }
-        }
-
-		// assign strengths.
-        Size nErase = 0;
-        PosInt j = 0;
-        m = idList.size();
-		for (Size i=0; i<m; i++) {
-            // calc. modulation of prob at coord.
-            Float modulation = modulate(norm_x[added[i]], norm_y[added[i]]); // sfreq, phase
-            // calc. cone and position opponency at coord.
-	        Float opponent = check_opponency(iType[added[i]], modulation);
-			Float _prob = get_prob(opponent, modulation, envelope_value[added[i]]);
-            if (_prob > 0) {
-                strengthList.push_back(_prob);
-                j++;
-				if (pInfo) {
-					printf("accepted (%.4f, %.4f) with modulation of %.2f and opponency: %.1f, envelope = %.3f\n", norm_x[added[i]], norm_y[added[i]], modulation, opponent, envelope_value[added[i]]);
-				}
-            } else {
-                idList.erase(idList.begin() + j);
-                nErase++;
-				if (pInfo) {
-					printf("rejected (%.4f, %.4f) with modulation of %.2f and opponency: %.1f, envelope = %.3f\n", norm_x[added[i]], norm_y[added[i]], modulation, opponent, envelope_value[added[i]]);
-				}
-            }
-            //if (one4one) {
-            //    std::cout << iV1 << ": modulation = " << modulation << ", opponent = " << opponent << ", envelope_value = " << envelope_value[i] << ", prob = " << _prob << ", sfreq = " << sfreq << ", phase = " << phase << "\n";
-            //}
-        }
-        if (pInfo) {
-            std::cout << " erased " << nErase << ".\n";
-        }
-        assert(idList.size() == strengthList.size());
-		if (strictStrength && idList.size() > 0) {
-			Float con_irl = std::accumulate(strengthList.begin(), strengthList.end(), 0.0);
-        	Float ratio = sSum/con_irl;
-        	for (PosInt i=0; i<strengthList.size(); i++) {
-        	    strengthList[i] *= ratio; 
-        	}
-		}
-        return idList.size();
-    }
-    virtual Size connect_opt_new(std::vector<Size> &idList, std::vector<Float> &strengthList, std::vector<InputType> &iType, std::vector<Int> &biPick, std::vector<Float> envelope_value, std::vector<Float> &norm_x, std::vector<Float> &norm_y, Size n, Int iOnOff, PosInt iV1, Float ori_tol, Float disLGN, Float sSum, Float dmax = 1.5) {
+    virtual Size connect_opt_new(std::vector<Size> &idList, std::vector<Float> &strengthList, std::vector<InputType> &iType, std::vector<Int> &biPick, std::vector<Float> envelope_value, std::vector<Float> &norm_x, std::vector<Float> &norm_y, Size n, Int iOnOff, PosInt iV1, Float ori_tol, Float disLGN, Float sSum, bool balance, Float dmax = 1.5) {
         ori_tol = ori_tol/180*M_PI;
         Float min_tan = tangent(ori_tol);
+        Float min_tan2 = tangent(ori_tol*1.5);
 
 		std::vector<Float> xon;
 		std::vector<Float> yon;
@@ -1271,7 +713,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 		std::vector<Float> yoff;
 		std::vector<PosInt> ioff;
         bool pInfo = false;
-        if (iV1 == 2420) {
+        if (iV1 == 24322 || iV1 == 25596) {
             pInfo = true;
         }
         
@@ -1289,22 +731,22 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         } 
 
         if (pInfo) {
-            std::cout << iV1 << " have " << ion.size() << " 'red' LGNs\n";
-		    for (PosInt i = 0; i < ion.size(); i++) {
-                printf("%i: (%.4f, %.4f)\n", i, xon[i], yon[i]);
-            }
-            std::cout << iV1 << " have " << ioff.size() << " 'green' LGNs\n";
-		    for (PosInt i = 0; i < ioff.size(); i++) {
-                printf("%i: (%.4f, %.4f)\n", i, xoff[i], yoff[i]);
-            }
-            std::cout << "sfreq: " << sfreq << "\n";
+            std::cout << iV1 << " have " << ion.size() << " on LGNs\n";
+		    //for (PosInt i = 0; i < ion.size(); i++) {
+            //    printf("%i: (%.2f, %.2f)\n", i, xon[i], yon[i]);
+            //}
+            std::cout << iV1 << " have " << ioff.size() << " off LGNs\n";
+		    //for (PosInt i = 0; i < ioff.size(); i++) {
+            //    printf("%i: (%.2f, %.2f)\n", i, xoff[i], yoff[i]);
+            //}
+            //std::cout << "sfreq: " << sfreq << "\n";
         }
-        Float max_env = 0.0;
+        Float max_env = 0.0f;
         Float phaseOn, eccOn;
         Float phaseOff, eccOff;
         std::vector<bool> onPick(ion.size(), false);
         std::vector<bool> offPick(ioff.size(), false);
-        // update oType
+        // update oType if original setup is not available
         if (iOnOff == 1 && ion.size() == 0) {
             iOnOff = -1;
 			switch (oType) {
@@ -1324,25 +766,37 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 			}
         }
         // pick initial LGN
+        phase = 0.5f;
         Int j_on, j_off;
+        std::vector<Float> modulated(std::max(ioff.size(), ion.size()), 0);
         if (iOnOff > 0) {
             j_on = -1;
             for (PosInt i = 0; i < ion.size(); i++) {
                 // find largest matching LGN
-                if (envelope_value[ion[i]] > max_env) {
+                Float modulation = modulate(xon[i], yon[i]); // sfreq, phase should've been updated
+	            Float opponent = check_opponency(iType[ion[i]], modulation);
+			    modulated[i] = get_prob(opponent, modulation, 1.0f);
+                if (modulated[i] > max_env) {
                     j_on = i;
-                    max_env = envelope_value[ion[i]];
+                    max_env = modulated[i];
                 }
+			    modulated[i] *= envelope_value[ion[i]]; 
             }
+            phase = -xon[j_on];
         } else {
             j_off = -1;
             for (PosInt i = 0; i < ioff.size(); i++) {
                 // find largest matching LGN
-                if (envelope_value[ioff[i]] > max_env) {
+                Float modulation = modulate(xoff[i], yoff[i]); // sfreq, phase should've been updated
+	            Float opponent = check_opponency(iType[ioff[i]], modulation);
+			    modulated[i] = get_prob(opponent, modulation, 1.0f);
+                if (modulated[i] > max_env) {
                     j_off = i;
-                    max_env = envelope_value[ioff[i]];
+                    max_env = modulated[i];
                 }
+			    modulated[i] *= envelope_value[ioff[i]]; 
             }
+            phase = -xoff[j_off];
         }
         std::vector<PosInt> onComponent;
         std::vector<PosInt> offComponent;
@@ -1352,67 +806,107 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         bool singleComp = true;
         // pick on/off components and phase
         if (iOnOff > 0) {
-            assign_component(xon, yon, ion, envelope_value, onComponent, onPick, phaseOn, eccOn, eccRange, phaseOnRange, j_on, min_tan, max_env, disLGN, disLGN*dmax, false);
+            assign_component(xon, yon, ion, modulated, onComponent, onPick, phaseOn, eccOn, eccRange, phaseOnRange, j_on, min_tan, max_env*envelope_value[ion[j_on]], disLGN, disLGN*dmax, false);
+			if (pInfo) {
+                printf("connected On subregion, phaseOn = %.1f:\n", phaseOn);
+                for (PosInt i=0; i<ion.size(); i++) {
+                    if (onPick[i]) {
+                        printf("pos: (%.2f, %.2f), envelope: %.2f| %i\n", xon[i], yon[i], envelope_value[ion[i]], i == j_on); 
+                    }
+                }
+				printf("potentially initialize off subregion with LGNs:\n");
+			}
 
             phase = -phaseOn;
             max_env = 0.5;
             j_off = -1;
-            std::vector<Float> modulated(ioff.size(), 0);
             for (PosInt i = 0; i < ioff.size(); i++) {
                 if (yoff[i] < eccRange[1] && yoff[i] > eccRange[0]) {
                     Float modulation = modulate(xoff[i], yoff[i]); // sfreq, phase should've been updated
-	                assert(!isnan(modulation));
-                    // calc. cone and position opponency at coord.
 	                Float opponent = check_opponency(iType[ioff[i]], modulation);
-	                assert(!isnan(opponent));
-			        modulated[i] = get_prob(opponent, modulation, envelope_value[ioff[i]]);
+			        modulated[i] = get_prob(opponent, modulation, 1.0f);
 				    if (pInfo) {
-				    	printf("potential pairing LGN (%.4f, %.4f) with modulation of %.2f and opponency: %.1f, envelope = %.3f\n", xoff[i], yoff[i], modulation, opponent, modulated[i]);
+				    	printf("pos: (%.2f, %.2f), modulation: %.2f and opponency: %.2f, envelope: %.2f\n", xoff[i], yoff[i], modulation, opponent, modulated[i]*envelope_value[ioff[i]]);
 				    }
                     if (modulated[i] > max_env) {
                         j_off = i;
                         max_env = modulated[i];
                         singleComp = false;
                     }
+                    modulated[i] *= envelope_value[ioff[i]];
                 }
             }
             if (!singleComp){
-                assign_component(xoff, yoff, ioff, modulated, offComponent, offPick, phaseOff, eccOff, eccRange, phaseOffRange, j_off, min_tan, max_env, disLGN, disLGN*dmax, true); 
+                if (pInfo) {
+                    printf("phaseOn = %.2f, phaseOff0 = %.2f\n", phaseOn, xoff[j_off]);
+                }
+                assign_component(xoff, yoff, ioff, modulated, offComponent, offPick, phaseOff, eccOff, eccRange, phaseOffRange, j_off, min_tan2, max_env*envelope_value[ioff[j_off]], disLGN, disLGN*dmax, true); 
+                if (pInfo) {
+                    for (PosInt i=0; i<ioff.size(); i++) {
+                        if (offPick[i]) {
+                            printf("pos: (%.2f, %.2f), modulated: %.2f| %i\n", xoff[i], yoff[i], modulated[i], i == j_off); 
+                        }
+                    }
+                }
+            } else {
+                if (pInfo) {
+                    printf("No off LGN connected\n");
+                }
             }
         } else {
-            assign_component(xoff, yoff, ioff, envelope_value, offComponent, offPick, phaseOff, eccOff, eccRange, phaseOffRange, j_off, min_tan, max_env, disLGN, disLGN*dmax, false);
+            assign_component(xoff, yoff, ioff, modulated, offComponent, offPick, phaseOff, eccOff, eccRange, phaseOffRange, j_off, min_tan, max_env*envelope_value[ioff[j_off]], disLGN, disLGN*dmax, false);
+
+			if (pInfo) {
+                printf("connected Off subregion:\n");
+                for (PosInt i=0; i<ioff.size(); i++) {
+                    if (offPick[i]) {
+                        printf("pos: (%.2f, %.2f), envelope: %.2f| %i\n", xoff[i], yoff[i], envelope_value[ioff[i]], i == j_off); 
+                    }
+                }
+				printf("potentially initialize On subregion with LGNs:\n");
+			}
 
             phase = -phaseOff;
             max_env = 0.5;
             j_on = -1;
-            std::vector<Float> modulated(ion.size(), 0);
             for (PosInt i = 0; i < ion.size(); i++) {
                 if (yon[i] < eccRange[1] && yon[i] > eccRange[0]) {
                     Float modulation = modulate(xon[i], yon[i]); // sfreq, phase should've been updated
-	                assert(!isnan(modulation));
-                    // calc. cone and position opponency at coord.
 	                Float opponent = check_opponency(iType[ion[i]], modulation);
-	                assert(!isnan(opponent));
-			        modulated[i] = get_prob(opponent, modulation, envelope_value[ion[i]]);
+			        modulated[i] = get_prob(opponent, modulation, 1.0f);
 				    if (pInfo) {
-				    	printf("potential pairing LGN (%.4f, %.4f) with modulation of %.2f and opponency: %.1f, envelope = %.3f\n", xon[i], yon[i], modulation, opponent, modulated[i]);
+				    	printf("pos: (%.2f, %.2f), modulation: %.2f and opponency: %.2f, envelope: %.2f\n", xon[i], yon[i], modulation, opponent, modulated[i]*envelope_value[ion[i]]);
 				    }
                     if (modulated[i] > max_env) {
                         j_on = i;
                         max_env = modulated[i];
                         singleComp = false;
                     }
+                    modulated[i] *= envelope_value[ion[i]];
                 }
             }
             if (!singleComp){
-                assign_component(xon, yon, ion, modulated, onComponent, onPick, phaseOn, eccOn, eccRange, phaseOnRange, j_on, min_tan, max_env, disLGN, disLGN*dmax, true);
+                if (pInfo) {
+                    printf("phaseOff = %.2f, phaseOn0 = %.2f\n", phaseOff, xon[j_on]);
+                }
+                assign_component(xon, yon, ion, modulated, onComponent, onPick, phaseOn, eccOn, eccRange, phaseOnRange, j_on, min_tan2, max_env*envelope_value[ion[j_on]], disLGN, disLGN*dmax, true);
+                if (pInfo) {
+                    for (PosInt i=0; i<ion.size(); i++) {
+                        if (onPick[i]) {
+                            printf("pos: (%.2f, %.2f), modulated: %.2f| %i\n", xon[i], yon[i], modulated[i], i == j_on); 
+                        }
+                    }
+                }
+            } else {
+                if (pInfo) {
+                    printf("No on LGN connected\n");
+                }
             }
         }
         // assign idList
         std::vector<PosInt> added;
         std::vector<PosInt> newList;
         PosInt m;
-        bool balance = false; // TODO: as input variable
         if (!singleComp && balance && onComponent.size() != offComponent.size()) {
             if (onComponent.size() > offComponent.size()) {
                 onComponent.resize(offComponent.size());
@@ -1453,12 +947,15 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
             }
         }
         if (pInfo) {
-            std::cout << iV1 << " try connect " << idList.size() << ", pick_sfreq = " << pick_sfreq << ", phase = " << phase << "\n";
-            if (onComponent.size() > 0) {
-                std::cout << phaseOn << "\n";
-            }
-            if (offComponent.size() > 0) {
-                std::cout << phaseOff << "\n";
+            printf("V1 %i try to connect %lu LGNs with sfreq = %.2f", iV1, idList.size(), pick_sfreq);
+            if (onComponent.size() > 0 || offComponent.size() > 0) {
+                if (onComponent.size() > 0) {
+                    printf(", phaseOn = %.2f", phaseOn);
+                }
+                if (offComponent.size() > 0) {
+                    printf(", phaseOff = %.2f", phaseOff);
+                }
+                printf("\n");
             }
         }
 		// assign strengths.
@@ -1481,13 +978,13 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                 strengthList.push_back(_prob);
                 j++;
 				if (pInfo) {
-					printf("accepted (%.4f, %.4f) with modulation of %.2f and opponency: %.1f, envelope = %.3f\n", norm_x[added[i]], norm_y[added[i]], modulation, opponent, envelope_value[added[i]]);
+					printf("accepted (%.2f, %.2f) with modulation of %.2f and opponency: %.1f, envelope = %.3f\n", norm_x[added[i]], norm_y[added[i]], modulation, opponent, envelope_value[added[i]]);
 				}
             } else {
                 idList.erase(idList.begin() + j);
                 nErase++;
 				if (pInfo) {
-					printf("rejected (%.4f, %.4f) with modulation of %.2f and opponency: %.1f, envelope = %.3f\n", norm_x[added[i]], norm_y[added[i]], modulation, opponent, envelope_value[added[i]]);
+					printf("rejected (%.2f, %.2f) with modulation of %.2f and opponency: %.1f, envelope = %.3f\n", norm_x[added[i]], norm_y[added[i]], modulation, opponent, envelope_value[added[i]]);
 				}
             }
         }
@@ -1530,7 +1027,7 @@ struct SingleOpponent: LinearReceptiveField {
     }
 
     Float check_opponency(InputType iType, Float &modulation) override {
-		return 1.0 * oppose_Cone_OnOff_single(iType, oType, modulation);
+		return 1.0 * oppose_Cone_OnOff_single(iType, oType);
 	}
 
     Float get_prob(Float opponent, Float modulation, Float envelope) override {
@@ -1554,17 +1051,13 @@ struct DoubleOpponent_Gabor: LinearReceptiveField {
         } else {
             currType = oType;
         }
-		opponent = 1.0 * oppose_Cone_OnOff_double(iType, currType, modulation);
+		opponent = 1.0 * oppose_Cone_OnOff_double(iType, currType);
         return opponent;
     }
 
     Float get_prob(Float opponent, Float modulation, Float envelope) {
         Float v = (1.0 + amp * opponent * modulation)/2;
-        //if (v < 0.5) {
-        //    v = 0;
-        //}
         v = envelope * v;
-
 	    assert(!isnan(v));
         return v;
     }
@@ -1592,7 +1085,7 @@ struct DoubleOpponent_CS: LinearReceptiveField {
     }
 
     Float check_opponency(InputType iType, Float &modulation) override {
-		return 1.0 * oppose_Cone_OnOff_double(iType, oType, modulation);
+		return 1.0 * oppose_Cone_OnOff_double(iType, oType);
 	}
 
     Float get_prob(Float opponent, Float modulation, Float envelope) override {
@@ -1627,7 +1120,7 @@ struct NonOpponent_Gabor: LinearReceptiveField {
 		} else {
             currType = oType;
         }
-		opponent = 1.0 * match_OnOff(iType, currType, modulation);
+		opponent = 1.0 * match_OnOff(iType, currType);
         return opponent;
     }
 
@@ -1658,7 +1151,7 @@ struct NonOpponent_CS: LinearReceptiveField {
     }
 
     Float check_opponency(InputType iType, Float &modulation) override {
-		return 1.0 * match_OnOff(iType, oType, modulation);
+		return 1.0 * match_OnOff(iType, oType);
 	}
 
     Float get_prob(Float opponent, Float modulation, Float envelope) override {
