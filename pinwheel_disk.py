@@ -245,7 +245,7 @@ V1_vpos = np.empty((2,n),dtype ='f8')
 V1_vpos[0,:] = np.sqrt(vpos[0,:]*vpos[0,:] + vpos[1,:]*vpos[1,:])
 V1_vpos[1,:] = np.arctan2(vpos[1,:], vpos[0,:])
 with open(vpos_filename, 'wb') as f:
-    np.array([n]).astype('u4').tofile(f)
+    np.array([nblock, blockSize]).astype('u4').tofile(f)
     V1_vpos.tofile(f)
 
 
