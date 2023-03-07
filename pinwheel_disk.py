@@ -51,7 +51,7 @@ den_L4beta = 24613.409
 #den_L4alpha = 14193.732
 #den = np.array([den_L2_3, den_L4beta, den_L4alpha])
 den = den_L4beta
-theme = '_'+theme
+theme = '-'+theme
 
 nOP = 1
 r0 = 0.25
