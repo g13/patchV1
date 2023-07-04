@@ -12,10 +12,10 @@ def clean_data(data_fdr, suffix):
     f_dsLGN = data_fdr + 'dsLGN' + suffix + '.bin'
     fLGN_fr = data_fdr + 'LGN_fr' + suffix + '.bin'
     fLGN = data_fdr + 'LGN' + suffix + '.bin'
-    #fLGN_gallery = data_fdr + 'LGN_gallery' + suffix + '.bin'
-    #fOutputB4V1 = data_fdr + 'outputB4V1' + suffix + '.bin'
-    #files = [rawDataFn, spDataFn, parameterFn, LGN_spFn, f_sLGN, f_dsLGN, fLGN, fLGN_fr, fLGN_gallery, fOutputB4V1]
-    files = [rawDataFn, spDataFn, parameterFn, LGN_spFn, f_sLGN, f_dsLGN, fLGN, fLGN_fr]
+    fLGN_gallery = data_fdr + 'LGN_gallery' + suffix + '.bin'
+    fOutputB4V1 = data_fdr + 'outputB4V1' + suffix + '.bin'
+    files = [rawDataFn, spDataFn, parameterFn, LGN_spFn, f_sLGN, f_dsLGN, fLGN, fLGN_fr, fLGN_gallery, fOutputB4V1]
+    #files = [rawDataFn, spDataFn, parameterFn, LGN_spFn, f_sLGN, f_dsLGN, fLGN, fLGN_fr]
     for f in files:
         print(f, end = ' ')
         try:

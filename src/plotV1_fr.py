@@ -65,7 +65,7 @@ def plotV1_fr(output_suffix0, res_fdr, data_fdr, fig_fdr, inputFn, nOri, readNew
         if stepInterval > nt_//10:
             stepInterval = nt_//10 
 
-    it = np.arange(0, nt_, stepInterval)
+    it = np.arange(0, nt_, stepInterval) + nt_
     it0 = np.arange(0, nt, stepInterval0)
     print(it.size)
     print(it0.size)
@@ -117,33 +117,34 @@ def plotV1_fr(output_suffix0, res_fdr, data_fdr, fig_fdr, inputFn, nOri, readNew
     max_frI = fr.max()
     ax.plot(it[:-1]*dt, fr, '-b', lw = 0.5, label = 'inh. fr', alpha = 0.7)
     ax.fill_between(it[:-1]*dt, l_fr, y2 = h_fr, color = 'b', edgecolor = 'None', alpha = 0.5)
-    total_spikesE = np.mean([sum(spScatter[i] < nt_*dt) for i in epick])
-    total_spikesI = np.mean([sum(spScatter[i] < nt_*dt) for i in ipick])
-    LGN_spikes = np.sum([sum(LGN_spScatter[i] < nt_*dt) for i in range(nLGN)])
+    total_spikesE = np.mean([sum(np.logical_and(spScatter[i] < it[-1]*dt, spScatter[i] >= it[0]*dt)) for i in epick])
+    total_spikesI = np.mean([sum(np.logical_and(spScatter[i] < it[-1]*dt, spScatter[i] >= it[0]*dt)) for i in ipick])
+    LGN_spikes = np.sum([sum(np.logical_and(LGN_spScatter[i] < it[-1]*dt, LGN_spScatter[i] >= it[0]*dt)) for i in range(nLGN)])
     denorm = stepInterval*dt/1000*nLGN
     LGN_fr = np.array([sum([sum(np.logical_and(LGN_spScatter[i]>=it[j]*dt, LGN_spScatter[i]<it[j+1]*dt)) for i in range(nLGN)]) for j in range(it.size-1)])/denorm
     ax.plot(it[:-1]*dt, LGN_fr, '-g', lw = 0.5, label = 'LGN. fr', alpha = 0.7)
-    LTP, LTD = learning_rule_convol(LGN_spScatter, spScatter, epick, tauTrip, tauLTD, tauLTP, 3, 0, nt_, dt, fig_fdr + output_suffix)
+    #LTP, LTD = learning_rule_convol(LGN_spScatter, spScatter, epick, tauTrip, tauLTD, tauLTP, 3, 0, nt_, dt, fig_fdr + output_suffix)
     
-    if LTP != 0:
-        LTD_LTP_ratio = LTD/LTP
-    else:
-        LTD_LTP_ratio = 0
-    ax.set_title(f'E: {max_frE:.1f}Hz({total_spikesE:.1f}sp), I: {max_frI:.1f}Hz({total_spikesI:.1f}sp), LGN: {LGN_fr.max():.1f}Hz, LTP:{LTP:.1f}, LTD:{LTD:.1f}; {LTD_LTP_ratio:.1f}')
+    #if LTP != 0:
+    #    LTD_LTP_ratio = LTD/LTP
+    #else:
+    #    LTD_LTP_ratio = 0
+    #ax.set_title(f'E: {max_frE:.1f}Hz({total_spikesE:.1f}sp), I: {max_frI:.1f}Hz({total_spikesI:.1f}sp), LGN: {LGN_fr.max():.1f}Hz, LTP:{LTP:.1f}, LTD:{LTD:.1f}; {LTD_LTP_ratio:.1f}')
+    ax.set_title(f'E: {max_frE:.1f}Hz({total_spikesE:.1f}sp), I: {max_frI:.1f}Hz({total_spikesI:.1f}sp), LGN: {LGN_fr.max():.1f}Hz')
     ax.set_ylabel('fr')
     ax.set_xlabel('sample range (ms)')
     ax = ax.twinx()
     for i in range(nLGN):
-        scatter = LGN_spScatter[i][LGN_spScatter[i] < nt_ * dt]
+        scatter = LGN_spScatter[i][np.logical_and(LGN_spScatter[i] >= it[0] * dt, LGN_spScatter[i] < it[-1] * dt)]
         ax.plot(scatter, len(scatter)*[i], ',g')
     for i in range(nblock):
         for j in range(nE):
             idx = i*blockSize + j
-            scatter = spScatter[idx][spScatter[idx] < nt_ * dt]
+            scatter = spScatter[idx][np.logical_and(spScatter[idx] >= it[0] * dt, spScatter[idx] < it[-1] * dt)]
             ax.plot(scatter, len(scatter)*[idx+nLGN], ',r')
         for j in range(nI):
             idx = i*blockSize + nE + j
-            scatter = spScatter[idx][spScatter[idx] < nt_ * dt]
+            scatter = spScatter[idx][np.logical_and(spScatter[idx] >= it[0] * dt, spScatter[idx] < it[-1] * dt)]
             ax.plot(scatter, len(scatter)*[idx+nLGN], ',b')
     ax.set_ylabel('LGN + V1 index')
 
@@ -208,7 +209,7 @@ def learning_rule_convol(LGN_sp, V1_sp, idx, tauTrip, tauLTD, tauLTP, ntau, t0, 
                 print(' ', len(LGN_sp[i]), LGN_i[i])
                 if LGN_i[i] >= len(LGN_sp[i]):
                     break
-        if j % round((nt-t0)*0.01) == 0:
+        if j % round((nt-t0)*0.1) == 0:
             print(f'binning {j/(nt-t0)*100:.1f}%', end = '\r')
     V1_sps /= len(idx)
     LTP_mavg = np.convolve(LGN_sps, exp_weightLTP, mode = 'same')

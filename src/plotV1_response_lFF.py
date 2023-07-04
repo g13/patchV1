@@ -115,10 +115,10 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
         output_suffix = output_suffix0 + '_' + str(iOri)
     else:
         output_suffix = output_suffix0
-    _output_suffix = "_" + output_suffix
-    res_suffix = "_" + res_suffix
-    conLGN_suffix = "_" + conLGN_suffix
-    conV1_suffix = "_" + conV1_suffix
+    _output_suffix = "-" + output_suffix
+    res_suffix = "-" + res_suffix
+    conLGN_suffix = "-" + conLGN_suffix
+    conV1_suffix = "-" + conV1_suffix
 
     if res_fdr[-1] != "/":
         res_fdr = res_fdr+"/"

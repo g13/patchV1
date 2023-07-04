@@ -9,28 +9,6 @@ import warnings
 import sys
 import matplotlib.pyplot as plt
 
-def randq(m, n, pos, r0, stdev, squareOrCircle):
-    r2 = np.sum(np.power(pos, 2), axis = 0)
-    idx = np.arange(m)
-    if squareOrCircle:
-        ndm = np.sum(np.max(np.abs(pos), axis = 0) > r0)
-        pick = np.max(np.abs(pos), axis = 0) <= r0
-    else:
-        ndm = np.sum(r2 > r0 * r0)
-        pick = r2 <= r0 * r0
-    
-    id_left = idx[pick]
-    if stdev <= 0:
-        ids = id_left[np.random.choice(m - ndm, size = n, replace = False)]
-    else:
-        rands = np.random.rand(m - ndm)
-        id0 = np.partition(rands / np.exp(- r2[pick] / (stdev * stdev)), n)
-        ids = id_left[id0]
-    
-    assert(np.all(ids >= 0))
-    assert(np.all(ids < m))
-    return ids
-    
 def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_fdr, squareOrCircle, relay, binary_thres, sInput): 
     res_fdr = res_fdr + '/'
     setup_fdr = setup_fdr + '/'
@@ -523,6 +501,28 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
         V1_pos.astype('f4').tofile(f)
         np.ones((4,nV1), dtype = 'f4').tofile(f) # a, phase, sfreq, baRatio
     return
+
+def randq(m, n, pos, r0, stdev, squareOrCircle):
+    r2 = np.sum(np.power(pos, 2), axis = 0)
+    idx = np.arange(m)
+    if squareOrCircle:
+        ndm = np.sum(np.max(np.abs(pos), axis = 0) > r0)
+        pick = np.max(np.abs(pos), axis = 0) <= r0
+    else:
+        ndm = np.sum(r2 > r0 * r0)
+        pick = r2 <= r0 * r0
+    
+    id_left = idx[pick]
+    if stdev <= 0:
+        ids = id_left[np.random.choice(m - ndm, size = n, replace = False)]
+    else:
+        rands = np.random.rand(m - ndm)
+        id0 = np.partition(rands / np.exp(- r2[pick] / (stdev * stdev)), n)
+        ids = id_left[id0]
+    
+    assert(np.all(ids >= 0))
+    assert(np.all(ids < m))
+    return ids
 
 if __name__ == "__main__":
 

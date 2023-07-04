@@ -1,5 +1,6 @@
 #!/bin/bash
 # $1: plotOnly $2: readNewSpike
+cleanData=0
 redo=0
 
 fdr0=/root/autodl-tmp
@@ -14,19 +15,24 @@ waveStage=2 # set stage number
 if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 	#inputFn=32-sequential_10-30_stage_II 
 	#inputFn=32-random3917563_10-30_stage_II 
-	fdr=wave_concat/wave_II/mechanism-a # folder will be made to store figures and configuratoin files
+	fdr=wave_concat/wave_II/mechanism-b # folder will be made to store figures and configuratoin files
 	op_cfg=wave_II.cfg # the simulation config file to be used
 	new_setup=False
 	#inputFn=64-preset_10-10_stage_II-p1
-	#inputFn=64-random3917563_10-10_stage_II
-    inputFn=64-opponent_10-10_stage_II-narrow
-    #inputFn=64-opponent_10-10_stage_II
-	op=opp-narrow # theme string to be added to filenames of data and figures
-    suffix=narrow
+	#inputFn=256-random3917563_10-10_stage_II-standard
+    #inputFn=64-random-10_stage_II
+    #inputFn=32-preset_10-10_stage_II-single45
+    #inputFn=32-preset_20-20_stage_II-nbsingle
+    inputFn=64-random3917563_10-10_stage_II-ss
+    #inputFn=64-random3917563_20-20_stage_II-nb
+    #inputFn=64-opponent_20-20_stage_II-nb
+    op=random-ss-s0-nh # theme string to be added to filenames of data and figures
+    suffix=ss
 	lgn=lFF_II_${suffix} # the theme string to be used for LGN_V1 connections
 	res=lFF_II_${suffix} # the theme string to be used for V1, LGN positions etc.
-	squareOrCircle=true # initial LGN-recruitment shape 
+	squareOrCircle=false # initial LGN-recruitment shape 
     examSingle=false # output the spatiotemporal figure, tLGN_V1_single if true
+    find_peak=false
 fi
 
 relay=false
@@ -70,6 +76,7 @@ if [[ "${waveStage}" = "5" ]] ;then
     examSingle=true # output the spatiotemporal figure, tLGN_V1_single if true
 fi
 
+examLTD=True
 binary_thres=0.0
 #binary_thres=0.5
 std_ecc=0
@@ -137,6 +144,7 @@ then
     cp plotV1_fr.py ${fig_fdr}/plotV1_fr_${op}.py
     cp getReceptiveField_lFF.py ${fig_fdr}/getReceptiveField_lFF_${op}.py
     cp lFF.sh ${fig_fdr}/lFF_${op}.sh
+    cp clean_data.py ${fig_fdr}/clean_data_${op}.py
 fi 
 
 if [ "${plotOnly}" = False ]
@@ -157,7 +165,7 @@ then
 	mkdir log
 fi
 
-cleanData=0
+ns=10
 export ns
 export res
 export lgn
@@ -180,6 +188,7 @@ export plotOnly
 export new_setup 
 export patch 
 export examSingle
+export find_peak 
 export use_local_max 
 export readNewSpike
 export usePrefData 
@@ -190,7 +199,8 @@ export TF
 export ori
 export nOri
 export cleanData
+export examLTD
 
 date=$(eval date +"%Y_%m_%d_%H-%M-%S")
 
-${fig_fdr}/lFF_${op}.sh > log/pLearn_${date}_${op}_${plotOnly}.out 2>&1 & 
+${fig_fdr}/lFF_${op}.sh > log/pLearn_${date}_${op}_${plotOnly}.out 2>&1 &

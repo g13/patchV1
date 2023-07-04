@@ -6199,10 +6199,10 @@ int main(int argc, char** argv) {
                         }
                         f_sLGN.write((char*) LGN_V1_s, sLGN_size);
                         if (store_dsLGN) { // else read vAvgE/I from fLearnData_FF
-                            if (targetFR[0] > 0) {
+                            if (nLearnTypeFF_E) {
                                 f_dsLGN.write((char*) (lVarFFpost+learnVarFFsize0), nE*nblock*2*sizeof(Float));
                             }
-                            if (targetFR[1] > 0) {
+                            if (nLearnTypeFF_I) {
                                 f_dsLGN.write((char*) (lVarFFpost+learnVarFFsize0+nE*nblock*2), nI*nblock*sizeof(Float));
                             }
                         }
@@ -6937,10 +6937,10 @@ int main(int argc, char** argv) {
             if (nt%sampleInterval_LGN_V1 == 0) {
                 f_sLGN.write((char*) LGN_V1_s, sLGN_size);
                 if (store_dsLGN && learnData_FF < 2) {
-                    if (targetFR[0] > 0) {
+                    if (nLearnTypeFF_E) {
                         f_dsLGN.write((char*) (lVarFFpost + learnVarFFsize0), nE*nblock*2*sizeof(Float));
                     }
-                    if (targetFR[1] > 0) {
+                    if (nLearnTypeFF_I) {
                         f_dsLGN.write((char*) (lVarFFpost + learnVarFFsize0 + nE*nblock*2), nI*nblock*sizeof(Float));
                     }
                 }

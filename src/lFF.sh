@@ -21,23 +21,23 @@ then
 	date
 fi
 
-#echo python ${fig_fdr}/plotLGN_response_${op}.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike}
-#python ${fig_fdr}/plotLGN_response_${op}.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
-
 jobID=""
 date
+echo python ${fig_fdr}/plotLGN_response_${op}.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike}
+python ${fig_fdr}/plotLGN_response_${op}.py ${op} ${lgn} ${data_fdr} ${fig_fdr} ${readNewSpike} & 
+
 echo python ${fig_fdr}/plotV1_fr_${op}.py ${op} ${res_fdr} ${data_fdr} ${fig_fdr} ${inputFn} ${nOri} ${readNewSpike} ${ns}
 python ${fig_fdr}/plotV1_fr_${op}.py ${op} ${res_fdr} ${data_fdr} ${fig_fdr} ${inputFn} ${nOri} ${readNewSpike} ${ns} &
 jobID+="${!} "
 
-echo python ${fig_fdr}/outputLearnFF_${op}.py ${seed} ${res} ${lgn} ${op} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${LGN_switch} false ${st} ${examSingle} ${use_local_max} ${waveStage} ${ns}
-python ${fig_fdr}/outputLearnFF_${op}.py ${seed} ${res} ${lgn} ${op} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${LGN_switch} false ${st} ${examSingle} ${use_local_max} ${waveStage} ${ns} &
+echo python ${fig_fdr}/outputLearnFF_${op}.py ${seed} ${res} ${lgn} ${op} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${inputFn} ${LGN_switch} false ${st} ${examSingle} ${use_local_max} ${waveStage} ${ns} ${examLTD} ${find_peak}
+python ${fig_fdr}/outputLearnFF_${op}.py ${seed} ${res} ${lgn} ${op} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${inputFn} ${LGN_switch} false ${st} ${examSingle} ${use_local_max} ${waveStage} ${ns} ${examLTD} ${find_peak} &
 jobID+="${!} "
 
-#date
+date
 #echo python ${fig_fdr}/plotV1_response_lFF_${op}.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
 #python ${fig_fdr}/plotV1_response_lFF_${op}.py ${op} ${res} ${lgn} ${v1} ${res_fdr} ${setup_fdr} ${data_fdr} ${fig_fdr} ${TF} ${ori} ${nOri} ${readNewSpike} ${usePrefData} ${collectMeanDataOnly} ${OPstatus}
-
+#
 #date
 #echo matlab -nodisplay -nosplash -r "testLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${setup_fdr}', '${data_fdr}', '${fig_fdr}', 233, 5000);exit;" &
 #matlab -nodisplay -nosplash -r "testLearnFF('${res}', '${lgn}', '${op}', '${res_fdr}', '${setup_fdr}', '${data_fdr}', '${fig_fdr}', 233, 5000);exit;" &
@@ -59,3 +59,11 @@ jobID+="${!} "
 
 wait ${jobID}
 date
+
+if [[ "${cleanData}" = "1" ]]
+then
+    date
+    echo delete data
+    python ${fig_fdr}/clean_data_${op}.py ${data_fdr} ${op}
+    rm ${data_fdr}/snapShot_*-${op}.bin
+fi

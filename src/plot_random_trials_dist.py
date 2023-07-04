@@ -3,8 +3,9 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import scipy.stats as stat
 import sys
+from outputLearnFF import get_oneOverYscale
 
-def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch):
+def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch, old_fmt):
     if fig_fdr[-1] != '/':
         fig_fdr = fig_fdr+'/'
     if data_fdr[-1] != '/':
@@ -25,6 +26,10 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch)
                     dt = np.fromfile(f, 'f4', 1)[0]
                     rstd = np.zeros((2,n,nit))
                     rstd_norm = np.zeros((2,n,nit))
+                    if not old_fmt:
+                        s_sum = np.zeros((2,n,nit))
+                        s_std = np.zeros((2,n,nit))
+                        n_con = np.zeros((2,n,nit))
                     max20 = np.zeros((2,n,nit))
                     min0 = np.zeros((2,n,nit))
                     radius = np.zeros((2,n,nit))
@@ -45,8 +50,12 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch)
                     _ = np.fromfile(f, 'f4', 2*2)[:2]
                 print(f'{data_fdr}metric-{suffix}{num[i]}.bin')
                 _ = np.fromfile(f, 'f8', nLGN_1D * nLGN_1D).reshape(nLGN_1D, nLGN_1D) # initial_dist
-                rstd[:,i,:] = np.fromfile(f, 'f8', 2*nit).reshape(2,nit)
-                rstd_norm[:,i,:] = np.fromfile(f, 'f8', 2*nit).reshape(2,nit)
+                rstd[:,i,:] = 1/np.fromfile(f, 'f8', 2*nit).reshape(2,nit)
+                rstd_norm[:,i,:] = 1/np.fromfile(f, 'f8', 2*nit).reshape(2,nit)
+                if not old_fmt:
+                    s_sum[:,i,:] = np.fromfile(f, 'f8', 2*nit).reshape(2,nit)
+                    s_std[:,i,:] = np.fromfile(f, 'f8', 2*nit).reshape(2,nit)
+                    n_con[:,i,:] = np.fromfile(f, 'f8', 2*nit).reshape(2,nit)
                 max20[:,i,:] = np.fromfile(f, 'int', 2*nit).reshape(2,nit)
                 min0[:,i,:] = np.fromfile(f, 'int', 2*nit).reshape(2,nit)
                 radius[:,i,:] = np.fromfile(f, 'f8', 2*nit).reshape(2,nit)
@@ -71,14 +80,41 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch)
                     print(f"file not found: {frFn}, no firing rate plots")
                     totalFr_binned = False
 
+        forward, inverse, yt, ytl, yt_neg, ytl_neg = get_oneOverYscale(nLGN_1D//2)
+        yt_full = yt_neg.copy()
+        ytl_full = ytl_neg.copy()
+        yt_full = yt_full.extend(yt)
+        ytl_full = ytl_full.extend(ytl)
         t = np.arange(nit)
-        ylim = [0, nLGN_1D/2 + 0.5]
         fig = plt.figure('temporal_plots', figsize = (14,5), dpi = 200)
         ax = fig.add_subplot(241)
-        fill_between(t, rstd, ax, 2, 'g. std', ylim = ylim)
+        state = fill_between(t, rstd, ax, 2, '1/g.std', ylim = ylim)
+        ax.set_yscale('function', functions=(forward, inverse))
+        if state == 0:
+            ax.set_yticks(yt_full, ytl_full)
+            ax.set_ylim([-1.5,1.5])
+        elif state == 1:
+            ax.set_yticks(yt, ytl)
+            ax.set_ylim([0,1.5])
+        else:
+            ax.set_yticks(yt_neg, ytl_neg)
+            ax.set_ylim([-1.5,0])
+
         ax = fig.add_subplot(242)
-        fill_between(t, rstd_norm, ax, 2, 'g. std by cell', ylim = ylim)
+        state = fill_between(t, rstd_norm, ax, 2, '1/g.std by cell', ylim = ylim)
+        ax.set_yscale('function', functions=(forward, inverse))
+        if state == 0:
+            ax.set_yticks(yt_full, ytl_full)
+            ax.set_ylim([-1.5,1.5])
+        elif state == 1:
+            ax.set_yticks(yt, ytl)
+            ax.set_ylim([0,1.5])
+        else:
+            ax.set_yticks(yt_neg, ytl_neg)
+            ax.set_ylim([-1.5,0])
+
         ax = fig.add_subplot(243)
+        ylim = [0, nLGN_1D/2*np.sqrt(2) + 0.5]
         fill_between(t, radius, ax, 2, 'avg. dis2c', ylim = ylim)
         ax = fig.add_subplot(244)
         if not totalFr_binned:
@@ -129,6 +165,10 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch)
         keys = batch.keys()
         rstd = dict({})
         rstd_norm = dict({})
+        if not old_fmt:
+            s_sum = dict({})
+            s_std = dict({})
+            n_con = dict({})
         max20 = dict({})
         min0 = dict({})
         radius = dict({})
@@ -139,12 +179,20 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch)
             fr = dict({})
         for key, ntrial in batch.items():
             for i in range(ntrial):
-                with open(f'{data_fdr}metric-{suffix}{key}{i}.bin', 'rb') as f:
+                if ntrial == 1:
+                    num_suffix = key
+                else:
+                    num_suffix = f'{key}{i}'
+                with open(f'{data_fdr}metric-{suffix}{num_suffix}.bin', 'rb') as f:
                     if i == 0:
                         step0, nt_, nit, stage, nLGN_1D = np.fromfile(f, 'int', 5)
                         dt = np.fromfile(f, 'f4', 1)[0]
                         rstd[key] = np.zeros((2,ntrial,nit))
                         rstd_norm[key] = np.zeros((2,ntrial,nit))
+                        if not old_fmt:
+                            s_sum[key] = np.zeros((2,ntrial,nit))
+                            s_std[key] = np.zeros((2,ntrial,nit))
+                            n_con[key] = np.zeros((2,ntrial,nit))
                         max20[key] = np.zeros((2,ntrial,nit))
                         min0[key] = np.zeros((2,ntrial,nit))
                         radius[key] = np.zeros((2,ntrial,nit))
@@ -163,10 +211,14 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch)
                     else:
                         assert(stage == 5)
                         _ = np.fromfile(f, 'f4', 2*2)[:2]
-                    print(f'{data_fdr}metric-{suffix}{key}{i}.bin')
+                    print(f'{data_fdr}metric-{suffix}{num_suffix}.bin')
                     _ = np.fromfile(f, 'f8', nLGN_1D * nLGN_1D).reshape(nLGN_1D, nLGN_1D) # initial_dist
-                    rstd[key][:,i,:] = np.fromfile(f, 'f8', 2*nit).reshape(2,nit)
-                    rstd_norm[key][:,i,:] = np.fromfile(f, 'f8', 2*nit).reshape(2,nit)
+                    rstd[key][:,i,:] = 1/np.fromfile(f, 'f8', 2*nit).reshape(2,nit)
+                    rstd_norm[key][:,i,:] = 1/np.fromfile(f, 'f8', 2*nit).reshape(2,nit)
+                    if not old_fmt:
+                        s_sum[key][:,i,:] = np.fromfile(f, 'f8', 2*nit).reshape(2,nit)
+                        s_std[key][:,i,:] = np.fromfile(f, 'f8', 2*nit).reshape(2,nit)
+                        n_con[key][:,i,:] = np.fromfile(f, 'f8', 2*nit).reshape(2,nit)
                     max20[key][:,i,:] = np.fromfile(f, 'int', 2*nit).reshape(2,nit)
                     min0[key][:,i,:] = np.fromfile(f, 'int', 2*nit).reshape(2,nit)
                     radius[key][:,i,:] = np.fromfile(f, 'f8', 2*nit).reshape(2,nit)
@@ -174,7 +226,7 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch)
                     OnOff_balance[key][i,:] = np.fromfile(f, 'f8', nit)
 
                 if totalFr_binned:
-                    frFn = f'{data_fdr}V1_totalFr-{suffix}{key}{i}.bin'
+                    frFn = f'{data_fdr}V1_totalFr-{suffix}{num_suffix}.bin'
                     try:
                         with open(frFn, 'rb') as f:
                             if i == 0:
@@ -192,13 +244,41 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch)
                         print(f"file not found: {frFn}, no firing rate plots")
                         totalFr_binned = False
 
+        forward, inverse, yt, ytl, yt_neg, ytl_neg = get_oneOverYscale(nLGN_1D//2)
+        yt_full = yt_neg.copy()
+        ytl_full = ytl_neg.copy()
+        yt_full.extend(yt)
+        ytl_full.extend(ytl)
+
         t = np.arange(nit)
-        ylim = [0, nLGN_1D/2 + 0.5]
         fig = plt.figure('temporal_sep', figsize = (14,5), dpi = 200)
         ax = fig.add_subplot(241)
-        temporal_sep(t, rstd, ax, 2, 'g. std', ylim = ylim, legend = True)
+        state = temporal_sep(t, rstd, ax, 2, 'g.std', legend = True)
+        ax.set_yscale('function', functions=(forward, inverse))
+        if state == 0:
+            ax.set_yticks(yt_full, ytl_full)
+            ax.set_ylim([-1.5,1.5])
+        elif state == 1:
+            ax.set_yticks(yt, ytl)
+            ax.set_ylim([0,1.5])
+        else:
+            ax.set_yticks(yt_neg, ytl_neg)
+            ax.set_ylim([-1.5,0])
+
         ax = fig.add_subplot(242)
-        temporal_sep(t, rstd_norm, ax, 2, 'g. std by cell', ylim = ylim)
+        state = temporal_sep(t, rstd_norm, ax, 2, 'g.std by cell')
+        ax.set_yscale('function', functions=(forward, inverse))
+        if state == 0:
+            ax.set_yticks(yt_full, ytl_full)
+            ax.set_ylim([-1.5,1.5])
+        elif state == 1:
+            ax.set_yticks(yt, ytl)
+            ax.set_ylim([0,1.5])
+        else:
+            ax.set_yticks(yt_neg, ytl_neg)
+            ax.set_ylim([-1.5,0])
+
+        ylim = [0, nLGN_1D/2*np.sqrt(2) + 0.5]
         ax = fig.add_subplot(243)
         temporal_sep(t, radius, ax, 2, 'avg. dis2c', ylim = ylim)
         ax = fig.add_subplot(244)
@@ -221,9 +301,31 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch)
         tpoint = -1
         fig = plt.figure('end_sep', figsize = (20,8), dpi = 200)
         ax = fig.add_subplot(241)
-        end_sep(rstd, tpoint, ax, 2, 'g. std', ylim = ylim)
+        state = end_sep(rstd, tpoint, ax, 2, 'g. std')
+        ax.set_yscale('function', functions=(forward, inverse))
+        if state == 0:
+            ax.set_yticks(yt_full, ytl_full)
+            ax.set_ylim([-1.5,1.5])
+        elif state == 1:
+            ax.set_yticks(yt, ytl)
+            ax.set_ylim([0,1.5])
+        else:
+            ax.set_yticks(yt_neg, ytl_neg)
+            ax.set_ylim([-1.5,0])
+
         ax = fig.add_subplot(242)
-        end_sep(rstd_norm, tpoint, ax, 2, 'g. std by cell', ylim = ylim)
+        state = end_sep(rstd_norm, tpoint, ax, 2, 'g. std by cell')
+        ax.set_yscale('function', functions=(forward, inverse))
+        if state == 0:
+            ax.set_yticks(yt_full, ytl_full)
+            ax.set_ylim([-1.5,1.5])
+        elif state == 1:
+            ax.set_yticks(yt, ytl)
+            ax.set_ylim([0,1.5])
+        else:
+            ax.set_yticks(yt_neg, ytl_neg)
+            ax.set_ylim([-1.5,0])
+
         ax = fig.add_subplot(243)
         end_sep(radius, tpoint, ax, 2, 'avg. dis2c', ylim = ylim)
         ax = fig.add_subplot(244)
@@ -239,6 +341,35 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch)
             end_sep(fr, tpoint, ax, 1, 'avg. FR')
         plt.tight_layout(w_pad = 2)
         fig.savefig(fig_fdr + 'end_sep-' + suffix +'.png', bbox_inches = 'tight')
+
+        
+        if totalFr_binned:
+            fig = plt.figure('normed_fr', figsize = (12,6), dpi = 100)
+            ax = fig.add_subplot(111)
+            normed_fr = fr.copy()
+            for key in normed_fr.keys(): 
+                normed_fr[key] = fr[key]/np.tile(np.max(fr[key], axis = 1).reshape(fr[key].shape[0],1), (1,fr[key].shape[1]))
+            norm_temporal_sep(normed_fr, ax, 1, 'normed. FR', xlabel = 'normalized time %')
+            fig.savefig(fig_fdr + 'normed_fr-' + suffix +'.png', bbox_inches = 'tight')
+
+        if not old_fmt:
+            if totalFr_binned:
+                fig = plt.figure('temporal_detail', figsize = (4,10), dpi = 120)
+            else:
+                fig = plt.figure('temporal_detail', figsize = (4,8), dpi = 120)
+            ax = fig.add_subplot(511)
+            temporal_sep(t, radius, ax, 2, 'avg. dis2c', ylim = ylim, i0 = 3)
+            ax = fig.add_subplot(512)
+            temporal_sep(t, n_con, ax, 2, 'avg. #connected', ylim = [0, nLGN_1D*nLGN_1D], xlabel = 't (au)', i0 = 3)
+            ax = fig.add_subplot(513)
+            temporal_sep(t, s_sum, ax, 2, 'avg. total weight', i0 = 3)
+            ax = fig.add_subplot(514)
+            temporal_sep(t, s_std, ax, 2, 'avg. weight std.', ylim = [0, np.nan], xlabel = 't (au)', i0 = 3)
+            if totalFr_binned:
+                ax = fig.add_subplot(515)
+                norm_temporal_sep(fr, ax, 1, 'avg. FR', xlabel = 'normalized time %', i0 = 2)
+            plt.tight_layout(h_pad = 1)
+            fig.savefig(fig_fdr + 'temporal_detail-' + suffix +'.png', bbox_inches = 'tight')
 
 def sig(d, n, mean = 0):
     if n == 2:
@@ -263,6 +394,12 @@ def _fill_between(t, d, c1, c2, ax, alpha):
 
 def fill_between(t, data, ax, n, ylabel, ylim = None, xlabel = None):
     cmap = mpl.cm.get_cmap('Paired')
+    has_pos = False
+    has_neg = False
+    if not has_pos and (data.flatten() > 0).any():
+        has_pos = True
+    if not has_neg and (data.flatten() < 0).any():
+        has_neg = True
     if n == 2:
         _fill_between(t, data[0,:,:], cmap((6-0.5)/12), cmap((5-0.5)/12), ax, 0.7)
         _fill_between(t, data[1,:,:], cmap((2-0.5)/12), cmap((1-0.5)/12), ax, 0.7)
@@ -276,49 +413,89 @@ def fill_between(t, data, ax, n, ylabel, ylim = None, xlabel = None):
         ax.set_xlabel(xlabel) 
     else:
         ax.xaxis.set_ticklabels([])
+    if has_pos and has_neg:
+        return 0
+    if has_pos and not has_neg:
+        return 1
+    if not has_pos and has_neg:
+        return -1
 
-def temporal_sep(t, d_dict, ax, n, ylabel, ylim = None, xlabel = None, legend = False):
+def temporal_sep(t, d_dict, ax, n, ylabel, ylim = None, xlabel = None, legend = False, c1 = None, c2 = None, c3 = None, i0 = 1):
     cmap = mpl.cm.get_cmap('Paired')
-    c1 = cmap((6-0.5)/12)
-    c2 = cmap((2-0.5)/12)
-    c3 = cmap((4-0.5)/12)
+    if c1 is None:
+        c1 = cmap((6-0.5)/12)
+    else:
+        c1 = cmap((c1-0.5)/12)
+    if c2 is None:
+        c2 = cmap((2-0.5)/12)
+    else:
+        c2 = cmap((c2-0.5)/12)
+    if c3 is None:
+        c3 = cmap((4-0.5)/12)
+    else:
+        c3 = cmap((c3-0.5)/12)
     i = 0
+    has_pos = False
+    has_neg = False
     for data in d_dict.values(): 
         if n == 2:
-            ax.plot(t, data[0,:,:].mean(axis = 0), '-', lw = (i+1)*0.5, color = c1, alpha = 0.7)
-            ax.plot(t, data[1,:,:].mean(axis = 0), ':', lw = (i+1)*0.5, color = c2, alpha = 0.7)
+            d0 = data[0,:,:].mean(axis = 0)
+            d1 = data[1,:,:].mean(axis = 0)
+            ax.plot(t, d0, '-', lw = (i+i0)*0.5, color = c1, alpha = 0.7)
+            ax.plot(t, d1, ':', lw = (i+i0)*0.5, color = c2, alpha = 0.7)
             if i == 0 and legend:
                 ax.legend(['On', 'Off']) 
+
+            if not has_pos and (d0.flatten() > 0).any() or (d1.flatten() > 0).any():
+                has_pos = True
+            if not has_neg and (d0.flatten() < 0).any() or (d1.flatten() < 0).any():
+                has_neg = True
+
         if n == 1:
-            ax.plot(t, data.mean(axis = 0), lw = (i+1)*0.5, color = c3, alpha = 0.7)
+            d = data.mean(axis = 0)
+            ax.plot(t, d, lw = (i+i0)*0.5, color = c3, alpha = 0.7)
+            if not has_pos and (d.flatten() > 0).any():
+                has_pos = True
+            if not has_neg and (d.flatten() < 0).any():
+                has_neg = True
         i += 1
 
     ax.set_ylabel(ylabel)
-    if ylim is not None:
-        ax.set_ylim(ylim)
+    if ylim is not None and not np.isnan(ylim).all():
+        if np.isnan(ylim[1]):
+            ax.set_ylim(bottom = ylim[0])
+        elif np.isnan(ylim[0]):
+            ax.set_ylim(top = ylim[0])
+        else:
+            ax.set_ylim(ylim)
     if xlabel is not None:
         ax.set_xlabel(xlabel) 
     else:
         ax.xaxis.set_ticklabels([])
+    if has_pos and has_neg:
+        return 0
+    if has_pos and not has_neg:
+        return 1
+    if not has_pos and has_neg:
+        return -1
 
-
-def norm_temporal_sep(d_dict, ax, n, ylabel, ylim = None, xlabel = None, legend = False):
+def norm_temporal_sep(d_dict, ax, n, ylabel, ylim = None, xlabel = None, legend = False, i0 = 1):
     cmap = mpl.cm.get_cmap('Paired')
     c1 = cmap((6-0.5)/12)
     c2 = cmap((2-0.5)/12)
     c3 = cmap((4-0.5)/12)
-    i = 0
     data_len = [d.shape[-1] for d in d_dict.values()]
     max_dl = np.max(data_len)
+    i = 0
     for data in d_dict.values(): 
         t = np.linspace(0, 100, data_len[i])/max_dl
         if n == 2:
-            ax.plot(t, data[0,:,:].mean(axis = 0), '-', lw = (i+1)*0.5, color = c1, alpha = 0.7)
-            ax.plot(t, data[1,:,:].mean(axis = 0), ':', lw = (i+1)*0.5, color = c2, alpha = 0.7)
+            ax.plot(t, data[0,:,:].mean(axis = 0), '-', lw = (i+i0)*0.5, color = c1, alpha = 0.7)
+            ax.plot(t, data[1,:,:].mean(axis = 0), ':', lw = (i+i0)*0.5, color = c2, alpha = 0.7)
             if i == 0 and legend:
                 ax.legend(['On', 'Off']) 
         if n == 1:
-            ax.plot(t, data.mean(axis = 0), lw = (i+1)*0.5, color = c3, alpha = 0.7)
+            ax.plot(t, data.mean(axis = 0), lw = (i+i0)*0.5, color = c3, alpha = 0.7)
         i += 1
 
     ax.set_ylabel(ylabel)
@@ -337,13 +514,24 @@ def end_sep(d_dict, tpoint, ax, n, ylabel, ylim = None):
     c_2 = cmap((1-0.5)/12)
     c3 = cmap((4-0.5)/12)
     c_3 = cmap((3-0.5)/12)
+    has_pos = False
+    has_neg = False
     if n == 2:
         data = np.array([d[:,:,tpoint] for d in d_dict.values()])
+        if not has_pos and (data.flatten() > 0).any():
+            has_pos = True
+        if not has_neg and (data.flatten() < 0).any():
+            has_neg = True
+
         p = np.zeros((2,len(d_dict)-1)) 
         p[0,:] = [sig(data[i:i+2,0,:], 2) for i in range(len(d_dict)-1)]
         p[1,:] = [sig(data[i:i+2,1,:], 2) for i in range(len(d_dict)-1)]
     else:
         data = np.array([d[:,tpoint] for d in d_dict.values()])
+        if not has_pos and (data.flatten() > 0).any():
+            has_pos = True
+        if not has_neg and (data.flatten() < 0).any():
+            has_neg = True
         p = [sig(data[i:i+2,:], 2) for i in range(len(d_dict)-1)]
     low = np.percentile(data, 25, axis = -1)
     high = np.percentile(data, 75, axis = -1)
@@ -370,6 +558,13 @@ def end_sep(d_dict, tpoint, ax, n, ylabel, ylim = None):
     if ylim is not None:
         ax.set_ylim(ylim)
 
+    if has_pos and has_neg:
+        return 0
+    if has_pos and not has_neg:
+        return 1
+    if not has_pos and has_neg:
+        return -1
+
 if __name__ == '__main__':
     data_fdr = sys.argv[1]
     fig_fdr = sys.argv[2]
@@ -385,14 +580,19 @@ if __name__ == '__main__':
     else:
         use_idx = False
 
+    if sys.argv[7] == 'True' or sys.argv[7] == '1':
+        old_fmt = True
+    else:
+        old_fmt = False
+
     if not use_idx:
         batch = dict()
         for i in range(n):
-            batch[sys.argv[7+i*2]] = int(sys.argv[7+i*2+1])
+            batch[sys.argv[8+i*2]] = int(sys.argv[8+i*2+1])
         print(batch)
         num = None
     else:
-        num = [int(sys.argv[7+i]) for i in range(n)]
+        num = [int(sys.argv[8+i]) for i in range(n)]
         batch = None 
 
-    random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch)
+    random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch, old_fmt)

@@ -77,7 +77,6 @@ warpSize = 32
 
 # In[4]:
 
-
 nV1 = int(np.round(den*area/warpSize))*warpSize
 nV1_32 = nV1//warpSize
 min_residual = np.inf
