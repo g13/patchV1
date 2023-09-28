@@ -71,6 +71,7 @@ int main(int argc, char** argv) {
 	bool noiseOnTonic;
     bool store_dsLGN;
     bool minimal;
+    bool perform_STA;
 	int rebound;
 	int learning;
 	int iModel;
@@ -168,6 +169,12 @@ int main(int argc, char** argv) {
 	PosInt frameRate; // Hz
 	Size nt; // number of steps
 	PosIntL seed;
+    Float STA_dt;
+    Size nSTA_sample;
+    vector<PosInt> STA_req_id;
+    Size STA_wpixel;
+    Size STA_nt;
+    Float const_acuity;
 
 	po::options_description generic_opt("Generic options");
 	generic_opt.add_options()
@@ -178,6 +185,13 @@ int main(int argc, char** argv) {
 	po::options_description top_opt("top-level configuration");
 	// non-files
 	top_opt.add_options()
+		("perform_STA", po::value<bool>(&perform_STA)->default_value(false), "perform STA or not")
+		("nSTA_sample", po::value<Size>(&nSTA_sample)->default_value(1024), "sample from population")
+        ("STA_sample_id",  po::value<vector<PosInt>>(&STA_req_id), "requested STA sample id")
+		("STA_wpixel", po::value<Size>(&STA_wpixel)->default_value(64), "sampling pixel width from input")
+		("STA_nt", po::value<Size>(&STA_nt)->default_value(15), "STA time steps")
+		("STA_dt", po::value<Float>(&STA_dt)->default_value(10.0), "STA timestep in ms")
+        ("acuity", po::value<Float>(&const_acuity)->default_value(0.0),"constant acuity")
 		("dt", po::value<Float>(&dt)->default_value(0.0625), "simulatoin time step in ms")
 		("nChunk,n", po::value<Size>(&nChunk)->default_value(10), "simulation in chunks, empricial")
 		("matConcurrency,n", po::value<Size>(&matConcurrency)->default_value(10), "sum presynaptic inputs from connection matrices in parallel, depends on the availability of device memory")
@@ -327,7 +341,7 @@ int main(int argc, char** argv) {
 	string V1_vec_filename, V1_gapVec_filename, V1_delayMat_filename, V1_conMat_filename, V1_gapMat_filename;
 	string LGN_surfaceID_filename;
 	string LGN_filename, LGN_vpos_filename, LGN_V1_s_filename, LGN_V1_ID_filename; // inputs
-	string LGN_fr_filename, outputFrame_filename; // outputs
+	string LGN_fr_filename, outputFrame_filename, STA_filename; // outputs
 	string LGN_convol_filename, LGN_gallery_filename, outputB4V1_filename, rawData_filename, learnData_FF_filename, learnData_V1_filename, sLGN_filename, dsLGN_filename, LGN_sp_filename;
     string sample_filename;
 	top_opt.add_options()
@@ -368,7 +382,8 @@ int main(int argc, char** argv) {
 		("f_dsLGN", po::value<string>(&dsLGN_filename)->default_value("dsLGN"), "file that stores the LGN->V1 LTP, LTD  over time, make sure learnData_FF > 0")
 		("sampleInterval_LGN_V1", po::value<Size>(&sampleInterval_LGN_V1)->default_value(100), "sample interval of LGN_V1 connection strength")
 		("fLGN_sp", po::value<string>(&LGN_sp_filename)->default_value("LGN_sp"), "write LGN spikes to file")
-		("fOutputFrame", po::value<string>(&outputFrame_filename)->default_value("outputFrame"), "file that stores firing rate from LGN and/or V1 (in physical location or visual field) spatially to be ready for frame production") // TEST 
+		("fOutputFrame", po::value<string>(&outputFrame_filename)->default_value("outputFrame"), "file that stores firing rate from LGN and/or V1 (in physical location or visual field) spatially to be ready for frame production")
+		("fSTA", po::value<string>(&STA_filename)->default_value("STA_sample"), "file that stores STA") // TEST 
 		("fOutputB4V1", po::value<string>(&outputB4V1_filename)->default_value("outputB4V1"), "file that stores luminance values, contrasts, LGN convolution and their firing rates")
 		("fLGN_gallery", po::value<string>(&LGN_gallery_filename)->default_value("LGN_gallery"), "file that stores spatial and temporal convolution parameters")
 		("fSample", po::value<string>(&sample_filename)->default_value("sample_spikeCount"), "minimal output file that stores spike counts for a sample of neuron"); 
@@ -558,6 +573,13 @@ int main(int argc, char** argv) {
 	    	LGN_gallery_filename = outputFolder + LGN_gallery_filename;
 	    } else {
             LGN_gallery_filename.erase(0,1);
+        }
+        if (perform_STA) {
+	        if (STA_filename.at(0) != '!') {
+	        	STA_filename = outputFolder + STA_filename;
+	        } else {
+                STA_filename.erase(0,1);
+            }
         }
     } else {
 	    if (sample_filename.at(0) != '!'){
@@ -1380,6 +1402,7 @@ int main(int argc, char** argv) {
 	ofstream fLGN_sp;
 	ofstream fLGN_gallery, fOutputB4V1;
 	ofstream fRawData, fOutputFrame, fLearnData_FF, f_sLGN, f_dsLGN;
+    fstream fSTA;
     ofstream fSample;
 
 	float init_L, init_M, init_S;
@@ -1750,7 +1773,7 @@ int main(int argc, char** argv) {
     }
     cout << nParvo << " parvo-cellular LGN (" << nParvo_I << ", " << nParvo_C << ") and " << nMagno << " (" << nMagno_I << ", " << nMagno_C << ") magno-cellular LGN\n";
 
-    Float sigRatio = 3;
+    Float sigRatio = 2;
 	if (useNewLGN) { // Setup LGN here 
 		cout << "initializing LGN spatial parameters...\n";
 		// TODO: k, rx, ry, surround_x, surround_y or their distribution parameters readable from file
@@ -1905,17 +1928,25 @@ int main(int argc, char** argv) {
 		Float logAcuity0 = 3.6741080244555278;
 
 		Float rsig = 1;
-		auto getAcuityAtEcc = [&rsig, &acuityK, &logAcuity0, &deg2rad] (Float ecc, Float acuity[]) {
-			Float cpd = -acuityK * ecc/deg2rad + logAcuity0;
-			cpd = exponential(cpd);
-			acuity[0] = 1.0/cpd/4 * deg2rad/rsig; // from cpd to radius of center
-			acuity[1] = acuity[0]/3/1.349;
+		auto getAcuityAtEcc = [&rsig, &acuityK, &logAcuity0, &deg2rad, &const_acuity] (Float ecc, Float acuity[]) {
+            if (const_acuity != 0) {
+			    Float cpd = -acuityK * ecc/deg2rad + logAcuity0;
+			    cpd = exponential(cpd);
+			    acuity[0] = 1.0/cpd/4 * deg2rad/rsig; // from cpd to radius of center
+			    acuity[1] = acuity[0]/3/1.349;
+            } else {
+                acuity[0] = const_acuity;
+                acuity[1] = const_acuity/3/1.349;
+            }
 		};
 		Float max_acuity = 0;
 		Float min_acuity = 10;
 		Float mean_acuity = 0;
 
 		Float acuityC_M[2] = {6.0f*deg2rad, 0.6f*deg2rad/1.349f}; // interquartile/1.349 = std 
+        if (const_acuity != 0) {
+            acuityC_M[0] = const_acuity*deg2rad;
+        }
 		acuityC_M[0] /= rsig;
 		Float acuityS_M[2] = {acuityC_M[0]*sigRatio, 1.8f*deg2rad/1.349f};
 
@@ -2539,14 +2570,17 @@ int main(int argc, char** argv) {
 	Float max_LGNx = *max_element(LGN_x.begin(), LGN_x.end());
 	Float min_LGNy = *min_element(LGN_y.begin(), LGN_y.end());
 	Float max_LGNy = *max_element(LGN_y.begin(), LGN_y.end());
-	Float max_LGN_radius = *max_element(LGN_rw.begin()+nLGN, LGN_rw.end());
+	Float center_LGN_radius = *max_element(LGN_rw.begin(), LGN_rw.begin() + nLGN);
+	Float surround_LGN_radius = *max_element(LGN_rw.begin()+nLGN, LGN_rw.end());
 
     if (nsig == 0) {
         cout << "nsig must not be zero\n";
         return EXIT_FAILURE;
     }
-	cout << "LGN surround nsig x radius occupies " << max_LGN_radius*nsig/deg2rad/max_ecc * normEccMaxStimulus_extent << " of the normalized texture coords' range\n";
-    cout << "the entirety of LGN RFs occupies " << (max_LGNx - min_LGNx + 2*max_LGN_radius*nsig/deg2rad)/max_ecc*normEccMaxStimulus_extent << " in normed texture coords\n";
+	cout << "LGN surround nsig x radius occupies " << surround_LGN_radius*nsig/deg2rad/max_ecc * normEccMaxStimulus_extent << " of the normalized texture coords' range\n";
+    cout << "the entirety of LGN RFs occupies " << (max_LGNx - min_LGNx + 2*surround_LGN_radius*nsig/deg2rad)/max_ecc*normEccMaxStimulus_extent << " in normed texture coords\n";
+    cout << "LGN center radius = " << center_LGN_radius/deg2rad << "deg.\n";
+    cout << "LGN surround radius = " << surround_LGN_radius/deg2rad << "deg.\n";
 
 	hSpatial_component hSpat(nLGN, 2, LGN_polar, LGN_rw, LGN_ecc, LGN_rh, LGN_orient, LGN_k);
 	hTemporal_component hTemp(nLGN, 2, tauR, tauD, delay, ratio, nR, nD);
@@ -4651,6 +4685,16 @@ int main(int argc, char** argv) {
     vector<PosInt> sampleID;
 	//vector<Size> LGN_spike_time;
 	vector<Float> LGN_spike_time;
+
+    Size* STA_nsp, *STA_id;
+    Size STA_size;
+    Float* STA;
+    if (STA_dt < dt) {
+        STA_dt = dt;
+    }
+    Size STA_interval = static_cast<Size>(std::round(STA_dt/dt));
+    STA_dt = STA_interval*dt;
+    Size STA_hpixel;
     if (!minimal) { // output file tests
 		if (!restore.empty() && !asInit) {
 			fSnapshot.open(restore, fstream::in | fstream::binary);
@@ -4913,6 +4957,75 @@ int main(int argc, char** argv) {
 				}
 			}
 		}
+
+        if (perform_STA) {
+            STA_hpixel = static_cast<Size>(std::round(height/width*STA_wpixel));
+            STA_size = 3*STA_wpixel*STA_hpixel*STA_nt;
+            if (STA_req_id.size() > nSTA_sample) {
+                nSTA_sample = STA_req_id.size();
+            }
+            STA_nsp = new Size[nSTA_sample]();
+            STA_id = new Size[nSTA_sample];
+            STA = new Float[nSTA_sample*STA_size];
+			if (!restore.empty() && !asInit) {
+            	fSTA.open(STA_filename + output_suffix, fstream::out | fstream::in | fstream::binary | fstream::ate);
+			} else {
+            	fSTA.open(STA_filename + output_suffix, fstream::out | fstream::binary);
+            }
+			if (!fSTA) {
+				cout << "Cannot open or find " << STA_filename + output_suffix <<" to store nsp and summed input.\n";
+				return EXIT_FAILURE;
+			} else {
+				if (!restore.empty() && !asInit) {
+					fSTA.seekp(0);
+                    int _nSTA_sample;
+                    Size _STA_wpixel, _STA_hpixel, _STA_nt;
+                    Float _STA_dt;
+                    fSTA.read(reinterpret_cast<char*>(&_STA_wpixel), sizeof(Size));
+                    fSTA.read(reinterpret_cast<char*>(&_STA_hpixel), sizeof(Size));
+                    fSTA.read(reinterpret_cast<char*>(&_STA_nt), sizeof(Size));
+                    fSTA.read(reinterpret_cast<char*>(&_STA_dt), sizeof(Float));
+				    fSTA.read(reinterpret_cast<char*>(&_nSTA_sample), sizeof(Size));
+
+                    if (_nSTA_sample != nSTA_sample || _STA_wpixel != STA_wpixel || _STA_hpixel != STA_hpixel || _STA_nt != STA_nt || _STA_dt != STA_dt) {
+                        std::cout << "STA parmeters restored differ from previous snapshot\n";
+                        return EXIT_FAILURE;
+                    }
+				    fSTA.read(reinterpret_cast<char*>(STA_id), nSTA_sample*sizeof(Size));
+				    fSTA.read(reinterpret_cast<char*>(STA_nsp), nSTA_sample*sizeof(Size));
+				    fSTA.read(reinterpret_cast<char*>(STA), nSTA_sample*STA_size*sizeof(Float));
+				} else {
+                    fSTA.write((char*)&STA_wpixel, sizeof(Size));
+                    fSTA.write((char*)&STA_hpixel, sizeof(Size));
+                    fSTA.write((char*)&STA_nt, sizeof(Size));
+                    fSTA.write((char*)&STA_dt, sizeof(Float));
+				    fSTA.write((char*)&nSTA_sample, sizeof(Size));
+                    vector<PosInt> V1_range;
+                    for (int i=0; i<nV1; i++) {
+                        bool in_sample = false;
+                        for (int j=0; j<STA_req_id.size(); j++) {
+                            if (STA_req_id[j] == i) {
+                                in_sample = true;
+                                break;
+                            }
+                        }
+                        if (!in_sample) {
+                            V1_range.push_back(i);
+                        }
+                    }
+                    if (nSTA_sample - STA_req_id.size() > 0) {
+                        random_unique(V1_range.begin(), V1_range.end(), nSTA_sample - STA_req_id.size(), seed); 
+                    }
+                    for (int i=0; i<STA_req_id.size(); i++) {
+                        STA_id[i] = STA_req_id[i];
+                    }
+                    for (int i=0; i<nSTA_sample - STA_req_id.size(); i++) {
+                        STA_id[i+STA_req_id.size()] = V1_range[i];
+                    }
+				    fSTA.write((char*)STA_id, nSTA_sample*sizeof(PosInt));
+                }
+            }
+        }
 	} else {
         if (!getLGN_sp) getLGN_sp = true;
     	fSample.open(sample_filename + output_suffix, fstream::out | fstream::binary);
@@ -5029,6 +5142,13 @@ int main(int argc, char** argv) {
 	// the number of non-zero minimum steps to meet frameLength * denorm with 0 phase
 	Size ntPerFrame = co_product; // tPerFrame in the units of dt/denorm
 
+    float *STA_frame;
+    int STA_frameHead = 0;
+    int old_STA_frameHead;
+    int STA_maxFrame = (static_cast<Size>(ceil(STA_nt*STA_interval*denorm/ntPerFrame))+1);
+    if (perform_STA) {
+		cout << "STA samples: " << STA_maxFrame << " frames of " << STA_wpixel << "x" << STA_hpixel << "\n";
+    }
 	Size maxFrame;
 	bool pLongerThanM;
 	size_t pSharedSize;
@@ -5059,7 +5179,9 @@ int main(int argc, char** argv) {
 		texture_nElem = nPixelPerFrame*nChannel*maxFrame;
 	}
 	cout << "=== texture memory required: " << maxFrame << "x" << width << "x" << height << " = " << texture_nElem*sizeof(float)/1024.0/1024.0 << "MB\n";
-
+    if (perform_STA) {
+        STA_frame = new float[nChannel*STA_wpixel*STA_hpixel*STA_maxFrame]();
+    }
 	// one cudaArray per channel
 	cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 0, 0, 0, cudaChannelFormatKindFloat); 
 	cudaArray *cuArr_L;
@@ -5940,6 +6062,7 @@ int main(int argc, char** argv) {
     //***************************
 	if (!restore.empty() && !asInit) {
 		cout << "simulation resumes from t = " << it0*dt << "...\n";
+        // TODO: STA resume, load STA_frame
 	} else {
 		cout << "simulation start: \n";
 		if (virtual_LGN) { // read one in advance
@@ -6003,6 +6126,9 @@ int main(int argc, char** argv) {
 				} else {
 					prep_sample(iFrameHead, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, init_L, init_M, init_S, cudaMemcpyHostToDevice, 0);
 				}
+                if (perform_STA) {
+                    LMS_to_STA_frame(STA_frameHead, L, M, S, STA_frame, width, height, STA_wpixel, STA_hpixel);
+                }
 				#ifdef SYNC
             	    checkCudaErrors(cudaDeviceSynchronize());
             	#endif
@@ -6036,6 +6162,10 @@ int main(int argc, char** argv) {
 			if (iFrameHead+1 == maxFrame) {
 				frameCycle++;
 			}
+            if (perform_STA) {
+                old_STA_frameHead = STA_frameHead;
+			    STA_frameHead = (STA_frameHead+1) % STA_maxFrame;
+            }
 
 			oldFrameHead = iFrameHead;
 			iFrameHead = (iFrameHead+1) % maxFrame;
@@ -6662,6 +6792,34 @@ int main(int argc, char** argv) {
             #endif
 		    cudaEventRecord(gReady[0], stream[0]);
         }
+
+        if (spiked && perform_STA) {
+            Size STA_frameSize = nChannel*STA_wpixel*STA_hpixel;
+            for (int i=0;i<nSTA_sample; i++) {
+                float sp = spikeTrain[currentTimeSlot*nV1 + STA_id[i]];
+                if (sp >= 1) {
+                //if (sp >= 1 && STA_nsp[i] == 0) {
+                    STA_nsp[i] += static_cast<Size>(sp);
+                    int k = old_STA_frameHead;
+                    int iprev = 0;
+                    for (int j=0;j<STA_nt;j++) {
+                    //for (int j=0;j<1;j++) {
+                        for (int ipixel=0;ipixel<STA_frameSize;ipixel++) {
+                            STA[i*STA_size + j*STA_frameSize + ipixel] += static_cast<Size>(sp)*STA_frame[k*STA_frameSize + ipixel];
+                        }
+
+                        if ((j+1)*STA_interval*denorm > iFramePhaseHead - denorm + iprev*ntPerFrame) {// iFramePhaseHead was advanced
+                            k = k-1;
+                            if (k == -1) {
+                                k = STA_maxFrame-1;
+                            }
+                            iprev += 1;
+                        }
+                    }
+                }
+            }
+        }
+
 		if (InhGap) {
             if (nGapFar) {
             	fill_fGapTrain(fGapTrain,  spikeTrain + nV1*currentTimeSlot, fGapCurrenSlot, gapVecID, nGapVec, mI);
@@ -6946,6 +7104,10 @@ int main(int argc, char** argv) {
                 }
             }
         }
+        if (perform_STA) {
+            fSTA.write((char*)STA_nsp, nSTA_sample*sizeof(Size));
+            fSTA.write((char*)STA, nSTA_sample*STA_size*sizeof(Float));
+        }
     }
 	cout << "simulation for " << output_suffix0 << " done.\n";
 
@@ -7064,6 +7226,9 @@ int main(int argc, char** argv) {
             }
             if (getLGN_sp) {
                 fLGN_sp.close();
+            }
+            if (perform_STA) {
+                fSTA.close();
             }
         }
 		delete []d_gE;
@@ -7186,6 +7351,11 @@ int main(int argc, char** argv) {
         checkCudaErrors(cudaFree(last_noise));
         checkCudaErrors(cudaFree(learnVar));
         checkCudaErrors(cudaFree(d_gapS));
+        if (perform_STA) {
+            delete []STA_nsp;
+            delete []STA_id;
+            delete []STA;
+        }
         if (learning) {
 			checkCudaErrors(cudaFree(d_totalFF));
 			if (learnData_FF > 0) {
@@ -7224,9 +7394,9 @@ int main(int argc, char** argv) {
 		checkCudaErrors(cudaFreeArray(cuSurfArray));
 		cudaDestroySurfaceObject(LGNspikeSurface);
 		checkCudaErrors(cudaDeviceSynchronize());
+	    delete [] gapS;
+	    delete [] ogh;
 		cout << "memory trace cleaned\n";
 	}
-	delete [] gapS;
-	delete [] ogh;
 	return EXIT_SUCCESS;
 }

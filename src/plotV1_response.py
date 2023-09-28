@@ -1387,7 +1387,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
             #if pCond:
             ax2 = ax.twinx()
             if nLGN_V1[iV1] > 0:
-                roll_c = choose_color(nLGN_V1[iV1], mpl.cm.get_cmap('Set2'))
+                roll_c = choose_color(nLGN_V1[iV1], mpl.colormaps['Set2'])
                 for j in range(nLGN_V1[iV1]):
                     spTmp = np.array(LGN_spScatter[LGN_V1_ID[iV1][j]])
                     iLGN_sp = spTmp[np.logical_and(spTmp>=step0*dt, spTmp<(nt_+step0)*dt)]

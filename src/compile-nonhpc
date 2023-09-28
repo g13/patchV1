@@ -7,19 +7,21 @@ gptflag=lineinfo
 cpp_version=c++17
 #fast_math=' -use_fast_math'
 fast_math=''
-CUDA_LIB=/usr/local/cuda-11.3/lib64/
+# redirect built-in python to conda
+PY_LIB=/opt/miniconda3/envs/general/lib
+PY_INC=/opt/miniconda3/envs/general/include/python3.11
 
 sm=sm_86
 
-rm -f patch.o 
-nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -$gptflag${fast_math} -std=$cpp_version -$optflag -c patch.cu
-
-#rm -f use_python.o 
-#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -std=$cpp_version -$optflag -c util/use_python.cpp
-#                                                                                         
-#rm -f coredynamics.o 
-#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -$gptflag${fast_math} -std=$cpp_version -$optflag -c coredynamics.cu
+#rm -f patch.o 
+#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -$gptflag${fast_math} -std=$cpp_version -$optflag -c -I$PY_INC patch.cu
 #
+#rm -f use_python.o 
+#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -std=$cpp_version -$optflag -c -I$PY_INC util/use_python.cpp
+#                                                                                         
+rm -f coredynamics.o 
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -$gptflag${fast_math} -std=$cpp_version -$optflag -c coredynamics.cu
+
 #rm -f discrete_convol.o
 #nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -$gptflag${fast_math} -std=$cpp_version -$optflag -c discrete_input_convol.cu
 #
@@ -32,4 +34,4 @@ nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -$gptflag${fas
 #rm -f condShape.o
 #nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -$gptflag${fast_math} -std=$cpp_version -$optflag -c condShape.cu
 
-nvcc -arch=$sm -Xlinker -rpath,${CUDA_LIB} -L${CUDA_LIB} -lcudadevrt -lcudart -lboost_filesystem -lboost_program_options -Xlinker -rpath,/root/miniconda3/envs/general/lib/ -L/root/miniconda3/envs/general/lib/ -lpython3.10 -lrt -ldl -lutil use_python.o condShape.o patch.o cuda_util.o stats.o discrete_input_convol.o coredynamics.o -$gptflag -$optflag -o $HOME/bin/patch_fast
+nvcc -arch=$sm -lcudadevrt -lcudart -lboost_filesystem -lboost_program_options -Xlinker -rpath,$PY_LIB -L$PY_LIB -lpython3.11 -lrt -ldl -lutil use_python.o condShape.o patch.o cuda_util.o stats.o discrete_input_convol.o coredynamics.o -$gptflag -$optflag -o $HOME/bin/patch_fast

@@ -984,12 +984,12 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                         ax = fig.add_subplot((abs(pSF) + 1)*nrow * ntype, nit0 + 1, iplot)
                         stmp0 = sLGN[i,:,:,itype]
                         local_max = np.max(np.abs(stmp0))
-                        if use_local_max == 1:
-                            stmp = stmp0 / gmax
+                        if use_local_max:
+                            vmax = local_max
                         else:
-                            stmp = stmp0 / gmaxLGN[0]
+                            vmax = gmax
 
-                        ax.imshow(stmp, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('gray'))
+                        ax.imshow(stmp0, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('gray'), vmin = 0, vmax = vmax)
                         if itype == 0:
                             mc = '*m'
                             cc = ':m'
@@ -1013,7 +1013,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                         circle = np.array([[radius * np.cos(2*np.pi/nc*ic) for ic in range(nc)], [radius * np.sin(2*np.pi/nc*ic) for ic in range(nc)]])
                         ax.plot(center[0]-0.5, center[1]-0.5, mc, ms = 1, alpha = 0.25)
                         ax.plot(center[0]-0.5 + circle[0,:], center[1]-0.5 + circle[1,:], cc, lw = 0.2, alpha = 0.5)
-                        _stmp = stmp/stmp.max()
+                        _stmp = stmp0/stmp0.max()
                         if (_stmp > 0.5).all():
                             level = (_stmp.max() + _stmp.min())/2
                         else:
@@ -1038,9 +1038,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                         ax_p = ax
                         if i == nit-1:
                             ax = fig.add_subplot((abs(pSF)+1)* nrow * ntype, nit0 + 1, iplot + 1)
-                            stmp = stmp0 / gmax
-                            stmp[stmp < thres_out] = 0
-                            im = ax.imshow(stmp, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('gray'))
+                            im = ax.imshow(stmp0, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('gray'), vmin = 0, vmax = gmaxLGN[0])
                             if itype == 0:
                                 mc = '*m'
                                 cc = ':m'
@@ -1064,7 +1062,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                             circle = np.array([[radius * np.cos(2*np.pi/nc*ic) for ic in range(nc)], [radius * np.sin(2*np.pi/nc*ic) for ic in range(nc)]])
                             ax.plot(center[0]-0.5, center[1]-0.5, mc, ms = 1, alpha = 0.25)
                             ax.plot(center[0]-0.5 + circle[0,:], center[1]-0.5 + circle[1,:], cc, lw = 0.2, alpha = 0.5)
-                            _stmp = stmp/stmp.max()
+                            _stmp = stmp0/stmp0.max()
                             if (_stmp > 0.5).all():
                                 level = (_stmp.max() + _stmp.min())/2
                             else:
@@ -1086,7 +1084,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                             plt.colorbar(im, cax = cax)
 
                         if pSF > 0 or find_peak:
-                            ft = np.fft.ifftshift(stmp)
+                            ft = np.fft.ifftshift(stmp0)
                             ft = np.fft.fft2(ft)
                             ft = np.fft.fftshift(ft)
                         if find_peak:
@@ -1098,8 +1096,8 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                             if _ori is not None:
                                 #if iV1 == nV1:
                                 #    print('===================')
-                                #_peak,  _width = get_1D_peak_pos(_ori, stmp, d = 1, debug = iV1 == nV1)
-                                _peak,  _width = get_1D_peak_pos(_ori, stmp, d = 1)
+                                #_peak,  _width = get_1D_peak_pos(_ori, stmp0, d = 1, debug = iV1 == nV1)
+                                _peak,  _width = get_1D_peak_pos(_ori, stmp0, d = 1)
 
                                 if iV1 == nV1:
                                     if len(_peak[0]) > 0:
@@ -1374,7 +1372,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             gmax = np.max(tLGN)
             if gmax == 0:
                 continue
-            if use_local_max != 1:
+            if not use_local_max:
                 gmax = gmaxLGN[0]
             gmin = np.min(tLGN)
             if examSingle:

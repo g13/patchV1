@@ -26,6 +26,7 @@
 #include "util/use_python.h"
 #include "global.h"
 #include "MACRO.h"
+//TODO: replace texture reference with texture objects (cuda 12 removed texture reference)
 
 inline void read_LGN(std::string filename, Float* &array, Size &maxList, Float s_ratio[], Size typeAcc[], Size nType, bool pinMem, bool print) {
 	std::ifstream input_file;
@@ -84,14 +85,8 @@ inline bool checkGMemUsage(size_t usingGMem, size_t GMemAvail) {
 		return false;
 	}
 }
-// the retinal discrete x, y as cone receptors id
-inline void init_layer(texture<float, cudaTextureType2DLayered> &layer) {
-	layer.addressMode[0] = cudaAddressModeBorder;
-	layer.addressMode[1] = cudaAddressModeBorder;
-	layer.filterMode = cudaFilterModeLinear;
-	layer.normalized = true; //accessing coordinates are normalized
-}
 
+// the retinal discrete x, y as cone receptors id
 inline void init_layer_obj(cudaTextureObject_t &texObj, cudaArray* cuArr) {	
 	struct cudaResourceDesc resDesc;
 	memset(&resDesc, 0, sizeof(resDesc));
@@ -166,4 +161,47 @@ void prep_frame(unsigned int iSample, unsigned int width, unsigned int height, f
 		params.dstArray = frame_cuArray[i];
 		checkCudaErrors(cudaMemcpy3D(&params));
 	}
+}
+
+void LMS_to_STA_frame(int iFrame, float* L, float* M, float* S, float* STA_frame, int w, int h, int sw, int sh) {
+    float* frame = STA_frame + iFrame *sw*sh*3;
+    float w_interval = float(w)/sw;
+    float h_interval = float(h)/sh;
+    for (int i=0; i<sw; i++) {
+        for (int j=0; j<sh; j++) {
+            float xp = w_interval/2 + i*w_interval;
+            float yp = h_interval/2 + j*h_interval;
+            float sl = 0;
+            float sm = 0;
+            float ss = 0;
+            float weight_sum = 0;
+            for (int ix = static_cast<int>(flooring(i*w_interval)); ix < static_cast<int>(ceil((i+1)*w_interval)); ix ++) {
+                for (int iy = static_cast<int>(flooring(j*h_interval)); iy < static_cast<int>(ceil((j+1)*h_interval)); iy ++) {
+                    float weight = (min(float(iy+1), (j+1)*h_interval) - max(float(iy), j*h_interval))*(min(float(ix+1), (i+1)*w_interval) - max(float(ix), i*w_interval));
+                    sl += weight*L[iy*w + ix];
+                    sm += weight*M[iy*w + ix];
+                    ss += weight*S[iy*w + ix];
+                    weight_sum += weight;
+                }
+            }
+            frame[j*sw + i] = sl/weight_sum;
+            frame[sw*sh + j*sw + i] = sm/weight_sum;
+            frame[2*sw*sh + j*sw + i] = ss/weight_sum;
+        }
+    }
+}
+
+template<class BidiIter >
+BidiIter random_unique(BidiIter begin, BidiIter end, size_t num_random, PosIntL seed) {
+    size_t left = std::distance(begin, end);
+    std::uniform_int_distribution<PosInt> iu(0, std::distance(begin, end));
+    std::default_random_engine rGen_STAsample(seed);
+    while (num_random--) {
+        BidiIter r = begin;
+        std::advance(r, iu(rGen_STAsample)%left);
+        std::swap(*begin, *r);
+        ++begin;
+        --left;
+    }
+    return begin;
 }

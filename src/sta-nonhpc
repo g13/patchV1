@@ -1,0 +1,68 @@
+#!/bin/bash
+# $1: plotOnly
+cleanData=0
+redo=0
+
+fdr0=/scratch/wd
+res_fdr=${HOME}/resource/input # resourceFolder in cfg stimulus, V1-static, LGN-static
+setup_fdr=${HOME}/resource/setup # inputFolder in cfg LGN-V1 and V1 connectome files
+data_fdr=${fdr0}/data/lFF # outputFolder in cfg
+fdr=wave_concat/wave_III # folder will be made to store figures and configuratoin files
+data_fdr=${data_fdr}/${fdr}
+fig_fdr=${fdr0}/lFF/${fdr}
+patch=patch_fast
+op_cfg=sta.cfg
+
+original_suffix=lFF_III_s0
+new_suffix=w3_random
+new_sLGN_fn=sLGN-${new_suffix}.bin
+newSetup=True
+op=w3_s0-sta_ampa-no_noise
+echo ${op}, newSetup=${newSetup}
+
+cp ${op_cfg} ${fig_fdr}/${op}.cfg
+
+if [[ "${redo}" = "0" ]]
+then
+    cp sta-nonhpc ${fig_fdr}/sta-nonhpc_${op}
+    cp sta-nonhpc.keys ${fig_fdr}/sta-nonhpc_${op}.keys
+    chmod +x ${fig_fdr}/sta-nonhpc_${op}
+    vim -s ${fig_fdr}/sta-nonhpc_${op}.keys ${fig_fdr}/sta-nonhpc_${op} > /dev/null 2>&1
+    cp plotV1_response_lFF.py ${fig_fdr}/plotV1_response_lFF_${op}.py
+    cp plotLGN_response.py ${fig_fdr}/plotLGN_response_${op}.py
+    cp plotV1_fr.py ${fig_fdr}/plotV1_fr_${op}.py
+    cp sta.sh ${fig_fdr}/sta_${op}.sh
+    cp assignLearnedWeights.py ${fig_fdr}/assignLearnedWeights_${op}.py
+    cp plotSTA_sample.py ${fig_fdr}/plotSTA_sample_${op}.py
+    cp clean_data.py ${fig_fdr}/clean_data_${op}.py
+fi 
+
+if ! [ -d "log" ]
+then
+	mkdir log
+fi
+log_fdr=${HOME}/repo/patchV1/src/log
+
+plotOnly=$1
+if [ -z "${plotOnly}" ]; 
+then
+	plotOnly=False
+fi
+echo plotOnly=${plotOnly}
+
+export original_suffix
+export new_sLGN_fn
+export setup_fdr
+export data_fdr
+export setup_fdr
+export plotOnly
+export fig_fdr
+export op
+export patch
+export cleanData
+export newSetup
+export res_fdr
+
+date=$(eval date +"%Y_%m_%d_%H-%M-%S")
+
+${fig_fdr}/sta_${op}.sh > ${log_fdr}/pSTA_${date}_${op}_${plotOnly}.out 2>&1 &

@@ -3,11 +3,10 @@
 cleanData=0
 redo=0
 
-fdr0=/root/autodl-tmp
-res_fdr=${fdr0}/public/resource # resourceFolder in cfg stimulus, V1-static, LGN-static
-fdr0=${fdr0}/wd
-setup_fdr=${fdr0}/setup # inputFolder in cfg LGN-V1 and V1 connectome files
-data_fdr=${fdr0}/data # outputFolder in cfg
+fdr0=/scratch/wd
+res_fdr=${HOME}/resource/input # resourceFolder in cfg stimulus, V1-static, LGN-static
+setup_fdr=${HOME}/resource/setup # inputFolder in cfg LGN-V1 and V1 connectome files
+data_fdr=${fdr0}/data/lFF # outputFolder in cfg
 
 patch=patch_fast
 waveStage=2 # set stage number
@@ -15,19 +14,14 @@ waveStage=2 # set stage number
 if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 	#inputFn=32-sequential_10-30_stage_II 
 	#inputFn=32-random3917563_10-30_stage_II 
-	fdr=wave_concat/wave_II/mechanism-b # folder will be made to store figures and configuratoin files
+	fdr=wave_II/mechanism # folder will be made to store figures and configuratoin files
+    data_fdr=${data_fdr}/${fdr}
 	op_cfg=wave_II.cfg # the simulation config file to be used
 	new_setup=False
-	#inputFn=64-preset_10-10_stage_II-p1
-	#inputFn=256-random3917563_10-10_stage_II-standard
-    #inputFn=64-random-10_stage_II
-    #inputFn=32-preset_10-10_stage_II-single45
-    #inputFn=32-preset_20-20_stage_II-nbsingle
-    inputFn=64-random3917563_10-10_stage_II-ss
-    #inputFn=64-random3917563_20-20_stage_II-nb
-    #inputFn=64-opponent_20-20_stage_II-nb
-    op=random-ss-s0-nh # theme string to be added to filenames of data and figures
-    suffix=ss
+    inputFn=64-opponent_10-10_stage_II-SP10
+    #op=single-nssb-nh9 # theme string to be added to filenames of data and figures
+    op=SP10-h2-A025-rLTD03 # theme string to be added to filenames of data and figures
+    suffix=SP10
 	lgn=lFF_II_${suffix} # the theme string to be used for LGN_V1 connections
 	res=lFF_II_${suffix} # the theme string to be used for V1, LGN positions etc.
 	squareOrCircle=false # initial LGN-recruitment shape 
@@ -37,17 +31,18 @@ fi
 
 relay=false
 if [[ "${waveStage}" = "3" ]] ;then
-	#inputFn=32x3-random3917563_5-15_stage_III_sym
-	inputFn=32x3-opponent_5-5_stage_III_sym
+	inputFn=64x3-random3917563_5-5_stage_III
+	#inputFn=32x3-opponent_5-5_stage_III_sym
 	#inputFn=32x3-sequential_5-15_stage_III_sym
 	#inputFn=32x3-135_5-5_stage_III_sym
 	fdr=wave_concat/wave_III
-	op=w3_opp_iwi1
+	op=w3_random
 	#op=single_test-135
 	op_cfg=wave_III.cfg
 	new_setup=True
+    data_fdr=${data_fdr}/${fdr}
 	if [[ "${relay}" = false ]]; then
-		suffix=g6
+		suffix=s0
 		lgn=lFF_III_${suffix}
 		res=lFF_III_${suffix}
 		fAsInput=''
@@ -61,7 +56,7 @@ if [[ "${waveStage}" = "3" ]] ;then
 		fi
 		res=lFF0
 	fi
-	squareOrCircle=false # initial LGN-recruitment shape 
+	squareOrCircle=true # initial LGN-recruitment shape 
     examSingle=true # output the spatiotemporal figure, tLGN_V1_single if true
 fi
 
@@ -91,7 +86,7 @@ std_ecc=0
 seed=1924783 # RANDOM SEED for post-analysis sampling and input randomization 
 # for outputLearnFF.m
 st=2 # figures' output: 0 for temporal, 1 for spatial, 2 for both, otherwise none
-use_local_max=0 # output the spatiotemporal figure, sLGN_V1 with strength normalized for each frame instead over all frames if set 1
+use_local_max=1 # output the spatiotemporal figure, sLGN_V1 with strength normalized for each frame instead over all frames if set 1
 collectMeanDataOnly=False # not ploting samples of V1 response variable traces
 
 # NOT RELATED, leave alone
@@ -107,7 +102,7 @@ v1=${lgn} # cortical V1 connections used the same theme as LGN to V1 connections
 echo ${op} # echo/print out the variable "op" in the job's output file
 echo ${suffix}
 
-fig_fdr=${fdr0}/${fdr}
+fig_fdr=${fdr0}/lFF/${fdr}
 
 if [ -d "${fig_fdr}" ]
 then
@@ -117,6 +112,15 @@ else
 fi
 
 echo outputs to ${fig_fdr}
+
+if [ -d "${data_fdr}" ]
+then
+	echo overwrite data in ${data_fdr}
+else
+	mkdir -p ${data_fdr}
+fi
+
+echo data outputs to ${data_fdr}
 
 readNewSpike=$2
 if [ -z "${readNewSpike}" ]; 

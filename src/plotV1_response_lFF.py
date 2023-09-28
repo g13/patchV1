@@ -16,7 +16,7 @@ np.seterr(invalid = 'raise')
 #@profile
 def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
     #sample = np.array([0,1,2,768])
-    sample = np.array([203,360,365,715,467,743,203,752]);
+    sample = np.array([11,133,167,333,402,459,758,971]);
 
     SCsplit = 0
     nLGNorF1F0 = True
@@ -24,7 +24,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
     seed = 657890
     np.random.seed(seed)
     step0 = 0
-    nt_ = 50000
+    nt_ = 2000
     nstep = 2000
     if nOri > 0:
         stiOri = np.pi*np.mod(iOri/nOri, 1.0)
@@ -1183,25 +1183,28 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
                 iLGN_vpos = LGN_vpos[:, LGN_V1_ID[iV1]]
                 iLGN_type = LGN_type[LGN_V1_ID[iV1]]
     
-                ms = 1.0
+                ms = 3
 
                 ax.plot(vx[iV1], vy[iV1], '*k', ms = ms)
                 ax.plot(cx[iV1], cy[iV1], 'sk', ms = ms)
 
                 iLGN_v1_s = LGN_V1_s[iV1]
                 max_s = np.max(iLGN_v1_s)
-                min_s = np.max([np.min(iLGN_v1_s), ms*0.25])
+                min_s = np.min(iLGN_v1_s)
                 if max_s == 0:
                     ms *= 0.25
                     max_s = 1 
                     min_s = 1
                 for j in range(len(markers)):
                     pick = all_type == j
-                    ax.plot(all_pos[0,pick], all_pos[1,pick], markers[j], ms = min_s/max_s*ms, mew = 0.0, alpha = 0.5)
+                    ax.plot(all_pos[0,pick], all_pos[1,pick], markers[j], ms = max(min_s/max_s*ms, 0.1), mew = 0.0, mfc = 'None', alpha = 0.3)
 
+                print(f'max_str = {max_s}, min_str = {min_s}, LGN_con_str:', end = '')
                 for j in range(nLGN_V1[iV1]):
                     jtype = iLGN_type[j]
-                    ax.plot(iLGN_vpos[0,j], iLGN_vpos[1,j], markers[jtype], ms = iLGN_v1_s[j]/max_s*ms, mew = ms*0.5)
+                    _s_ratio = iLGN_v1_s[j]/max_s
+                    print(f'{_s_ratio*100:.1f}%', end = ',')
+                    ax.plot(iLGN_vpos[0,j], iLGN_vpos[1,j], markers[jtype], ms = max(_s_ratio*ms, 0.1), mew = _s_ratio, alpha = 0.8)
 
                 orient = OP[iV1] + np.pi/2
                 if usePrefData:

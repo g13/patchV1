@@ -1,9 +1,4 @@
 #include "discrete_input_convol.cuh"
-// CANNOT USE EXPRESSION IN (inline seems fine) FUNCTION ARGUMENTS, LEADS TO ZERO!
-//extern texture<float, cudaTextureType2DLayered> L_retinaInput;
-//extern texture<float, cudaTextureType2DLayered> M_retinaInput;
-//extern texture<float, cudaTextureType2DLayered> S_retinaInput;
-//extern surface<void, cudaSurfaceType2DLayered> LGNspikeSurface;
 
 __device__ 
 __forceinline__ 
@@ -396,17 +391,18 @@ void store_spatialWeight(
             printf("x:%e->%e; dx:%e,%e\n", x1, x, x1-(LR_x0 + x0*centerEcc), x-(LR_x0 + tanEcc * x0));
         }*/
     } else {
+
         x = LR_x0 + (centerEcc * cosine(centerPolar) + w * coso - h * sino) * normViewDistance;
         y = LR_y0 + (centerEcc * sine(centerPolar) + w * sino + h * coso) * normViewDistance;
         // DEBUG visual field and stimulus field not matching
         if (!virtual_LGN) {
             if (x<0 || x>1) {
-                printf("x = %1.15e\n", x);
+                printf("x = %1.15e, %.3f deg, LR_x0 = %.1f\n", x, (centerEcc * cosine(centerPolar) + w * coso - h * sino) * 180.0/M_PI, LR_x0);
                 assert(x>=0);
                 assert(x<=1);
             }
             if (y<0 || y>1) {
-                printf("y = %1.15e\n", y);
+                printf("y = %1.15e, %.3f deg, LR_y0 = %.1f\n", y, (centerEcc * sine(centerPolar) + w * sino + h * coso) * 180.0/M_PI, LR_y0);
                 assert(y>=0);
                 assert(y<=1);
             }
@@ -533,20 +529,7 @@ void store_PM(
                         //assert(y>=0);
                         //assert(y<=1);
                     }
-                } else {
-                    if (!virtual_LGN) {
-                        if (x<0 || x>1) {
-                            printf("x = %1.15e\n", x);
-                            assert(x>=0);
-                            assert(x<=1);
-                        }
-                        if (y<0 || y>1) {
-                            printf("y = %1.15e\n", y);
-                            assert(y>=0);
-                            assert(y<=1);
-                        }
-                    }
-                }
+                } 
             }
         }
         __syncthreads();
@@ -724,12 +707,12 @@ void store_PM(
             // DEBUG visual field and stimulus field not matching
             if (!virtual_LGN) {
                 if (x<0 || x>1) {
-                    printf("x = %.3e, %.3f + (%.3e + %.3e) * %.3e\n", x, LR_x0, centerEcc * cosine(centerPolar), cx * coso - cy * sino, normViewDistance);
+                    printf("x = %.3e, %.3f + (%.3f + %.3f) * %.3f\n", x, LR_x0, centerEcc * cosine(centerPolar) * 180.0/M_PI, (cx * coso - cy * sino) * 180.0/M_PI, normViewDistance);
                     assert(x>=0);
                     assert(x<=1);
                 }
                 if (y<0 || y>1) {
-                    printf("y = %.3e, %.3f + (%.3e + %.3e) * %.3e\n", x, LR_y0, centerEcc * sine(centerPolar), cx * sino + cy * coso, normViewDistance);
+                    printf("y = %.3e, %.3f + (%.3f + %.3f) * %.3f\n", x, LR_y0, centerEcc * sine(centerPolar) * 180.0/M_PI, (cx * sino + cy * coso) * 180/M_PI, normViewDistance);
                     assert(y>=0);
                     assert(y<=1);
                 }

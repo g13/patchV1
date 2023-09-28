@@ -8,10 +8,10 @@ from readPatchOutput import *
 #np.seterr(invalid = 'raise')
 
 def plotV1_fr(output_suffix0, res_fdr, data_fdr, fig_fdr, inputFn, nOri, readNewSpike, ns):
-    sample_nOri = 1
+    sample_nOri = 5
     low = 10
     high = 100-low
-    fr_window = 500 #ms
+    fr_window = 125 #ms
     tauLTP = 17
     tauTrip = 114
     tauLTD = 34

@@ -24,6 +24,7 @@ else:
 
 print(output_suffix)
 print(input_suffix)
+print(data_fdr)
 output_suffix = "-" + output_suffix 
 input_suffix = "-" + input_suffix 
 
@@ -35,7 +36,7 @@ plotContrastDist = False
 plotStat = True 
 nLGN_1D = 8
 nt_ = 50000
-nstep = 10000
+nstep = 1000
 seed = 1653783
 #iLGN = np.array([12198, 24358, 1833,2575])
 #iLGN = np.array([0,1,nLGN_1D*nLGN_1D+nLGN_1D-1,nLGN_1D*nLGN_1D+nLGN_1D])

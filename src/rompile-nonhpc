@@ -4,7 +4,7 @@ cd preprocess
 rm -f retino.o
 rm -f dow.o
 
-optflag=O0
+optflag=O2
 #optflag=g
 #gptflag=G
 gptflag=lineinfo

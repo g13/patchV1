@@ -2,41 +2,41 @@
 # plotTConly, fitDataReady/plotOnly, readNewSpike
 set -e
 
-repo=$HOME/repos/patchV1
+repo=$HOME/repo/patchV1
 cfg_fdr=${repo}/src
-fdr0=/root/autodl-tmp/wd
-res_fdr=/root/autodl-tmp/public/resource # stimulus, V1-static and LGN-static files
-setup_fdr=$fdr0/setup # inputFolder in cfg
-data_fdr=$fdr0/data # outputFolder in cfg
+fdr0=/scratch/wd
+data_fdr=${fdr0}/data/patchV1 # outputFolder in cfg
+res_fdr=$HOME/resource/input # stimulus, V1-static and LGN-static files
+setup_fdr=$HOME/resource/setup # inputFolder in cfg
 
 fitTC=False
 nOri=6 # total # orientaton if applicable
 TF=8 # input frequency if applicable
 SF=40
-trial_suffix=5th
+trial_suffix=ld_test
 #singleOri=False
 singleOri=True
 one_ori=1
 
-res_suffix=square_single-layer
+res_suffix=ld_test
 patch=patch_fast
 
-generate_V1_connection=True
+generate_V1_connection=False
 generate_LGN_V1_connection=False
 
-patch_cfg=ori.cfg
+patch_cfg=ld_test.cfg
 
-LGN_V1_suffix=opt_new
-V1_connectome_suffix=long_range
+LGN_V1_suffix=ld_test
+V1_connectome_suffix=ld_test
 
-retino_cfg=LGN_V1.cfg
-genCon_cfg=connectome.cfg
+retino_cfg=ld_LGN.cfg
+genCon_cfg=ld_connectome.cfg
 
 OPstatus=1 
 usePrefData=False # use fitted preference from plotTC replot plotV1_response.py
 collectMeanDataOnly=False # no plots, just collect average data
 
-fig_fdr=${fdr0}/${trial_suffix} # figures and configs
+fig_fdr=${fdr0}/patchV1/${trial_suffix} # figures and configs
 
 echo ${trial_suffix}
 
@@ -122,7 +122,6 @@ echo plotting files copied
 
 set -e
 jobList=""
-export plotOnly
 export nOri
 export TF
 export res_fdr

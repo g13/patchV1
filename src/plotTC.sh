@@ -1,6 +1,6 @@
 #!/bin/bash
-source /root/miniconda3/etc/profile.d/conda.sh
-eval "$(conda shell.bash hook)"
+source /opt/miniconda3/etc/profile.d/conda.sh
+eval "$(conda shell.zsh hook)"
 conda activate general
 set -e
 

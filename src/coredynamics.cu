@@ -988,24 +988,25 @@ void compute_V_collect_spike_learnFF(
 				local_totalFF0 = totalFF[tid];
             	local_totalFF_inf = totalFF_inf[tid];
                 Float d_totalF = local_totalFF0-local_totalFF_inf;
-                if (d_totalF > 0 || symmetricHomeo) {
+                if (d_totalF == 0 || (d_totalF < 0 && !symmetricHomeo)) {
+            	    new_totalFF0 = local_totalFF0;
+				    switch (applyHomeo) {	
+				    	case 1: 
+                            homeostatic_change = 1.0f;
+				    		break;
+				    	case 2:
+				    		homeostatic_change = 0.0f;
+				    		break;
+				    }
+                } else {
             	    new_totalFF0 = d_totalF*exp_homeo + local_totalFF_inf;
 				    switch (applyHomeo) {	
 				    	case 1: 
                             homeostatic_change = new_totalFF0/local_totalFF0;
+                            assert(homeostatic_change > 0);
 				    		break;
 				    	case 2:
 				    		homeostatic_change = (new_totalFF0 - local_totalFF0)/m;
-				    		break;
-				    }
-                } else {
-            	    new_totalFF0 = local_totalFF0;
-				    switch (applyHomeo) {	
-				    	case 1: 
-                            homeostatic_change = 1;
-				    		break;
-				    	case 2:
-				    		homeostatic_change = 0;
 				    		break;
 				    }
                 }
@@ -1776,28 +1777,28 @@ void compute_V_collect_spike_learnFF_fast(
 				local_totalFF0 = totalFF[tid];
             	local_totalFF_inf = totalFF_inf[tid];
                 Float d_totalF = local_totalFF0-local_totalFF_inf;
-                if (d_totalF > 0 || symmetricHomeo) {
+                if (d_totalF == 0 || (d_totalF < 0 && !symmetricHomeo)) {
+            	    new_totalFF0 = local_totalFF0;
+				    switch (applyHomeo) {	
+				    	case 1: 
+                            homeostatic_change = 1.0f;
+				    		break;
+				    	case 2:
+				    		homeostatic_change = 0.0f;
+				    		break;
+				    }
+                } else {
             	    new_totalFF0 = d_totalF*exp_homeo + local_totalFF_inf;
 				    switch (applyHomeo) {	
 				    	case 1: 
                             homeostatic_change = new_totalFF0/local_totalFF0;
+                            assert(homeostatic_change > 0);
 				    		break;
 				    	case 2:
 				    		homeostatic_change = (new_totalFF0 - local_totalFF0)/m;
 				    		break;
 				    }
-                } else {
-            	    new_totalFF0 = local_totalFF0;
-				    switch (applyHomeo) {	
-				    	case 1: 
-                            homeostatic_change = 1;
-				    		break;
-				    	case 2:
-				    		homeostatic_change = 0;
-				    		break;
-				    }
                 }
-
 				delta_f = 0.0;
 				/*
 				if (tid == 743) {

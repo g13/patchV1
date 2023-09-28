@@ -16,6 +16,7 @@ def generate_random(amp, radius, npixel, c, fname, time, frameRate = 120, ecc = 
     if neye == 1:
         deg2pixel = npixel / (2*(ecc+buffer_ecc))
         a = npixel
+        b = a
     else:
         deg2pixel = npixel / (2*(ecc+2*buffer_ecc))
         a = npixel//2
@@ -25,12 +26,12 @@ def generate_random(amp, radius, npixel, c, fname, time, frameRate = 120, ecc = 
         if np.mod(npixel,2) != 0:
             print('failed: npixel need to be even for neye == 2')
             return
+        b = a*2  
     print(f'{1/deg2pixel} degree per pixel')
     radius_in_pixel = max(int(round(radius*deg2pixel)),1)
     if radius_in_pixel == 1:
         print('radius smaller than one pixel, mode changed to pixel')
         gtype = 'pixel'
-    b = a*2  
     npixel = b
     FourCC = cv.VideoWriter_fourcc(*'FFV1')
     output = cv.VideoWriter(fname+'.avi', FourCC, frameRate, (npixel,npixel), True)
@@ -117,15 +118,7 @@ def generate_random(amp, radius, npixel, c, fname, time, frameRate = 120, ecc = 
                 # bgr->rgb->lms
                 LMS_seq = np.matmul(sRGB2LMS, inverse_sRGB_gamma(data[:,:,::-1].reshape((npixel*npixel,3)).T)).reshape((3,npixel,npixel))
 
-            #pixelData = np.reshape(np.round(data*255), (npixel,npixel,3)).astype('uint8')
-
             output.write(pixelData)
-            #pixelData = np.reshape(np.round(data*255), (b,a,3))
-            #cv.imshow('linear', pixelData)
-            #cv.waitKey(0)
-            #pixelData = adjust_gamma(pixelData, gamma = 2.2)
-            #cv.imshow('gamma', pixelData)
-            #cv.waitKey(0)
             LMS_seq.astype('f4').tofile(f)
 
     f.close()
@@ -829,7 +822,7 @@ def randomPhaseStamp(amp, a, b, r, c, fixed = False):
     matStamp = mat[yphase:yphase+b, xphase:xphase+a].reshape(b*a)
     for i in range(nc):
         color[matStamp==i,:] = c[i,:]
-
+        
     color[color > 1] = 1
     color[color < 0] = 0
     return color.reshape((b,a,3))
