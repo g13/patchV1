@@ -84,12 +84,12 @@ inline bool checkGMemUsage(size_t usingGMem, size_t GMemAvail) {
 	}
 }
 // the retinal discrete x, y as cone receptors id
-inline void init_layer(texture<float, cudaTextureType2DLayered> &layer) {
-	layer.addressMode[0] = cudaAddressModeBorder;
-	layer.addressMode[1] = cudaAddressModeBorder;
-	layer.filterMode = cudaFilterModeLinear;
-	layer.normalized = true; //accessing coordinates are normalized
-}
+// inline void init_layer(texture<float, cudaTextureType2DLayered> &layer) {
+// 	layer.addressMode[0] = cudaAddressModeBorder;
+// 	layer.addressMode[1] = cudaAddressModeBorder;
+// 	layer.filterMode = cudaFilterModeLinear;
+// 	layer.normalized = true; //accessing coordinates are normalized
+// }
 
 inline void init_layer_obj(cudaTextureObject_t &texObj, cudaArray* cuArr) {	
 	struct cudaResourceDesc resDesc;
