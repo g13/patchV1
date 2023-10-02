@@ -2,7 +2,7 @@
 
 cd preprocess
 
-sm=sm_70
+sm=sm_86
 optflag=O2
 
 rm -f genCon.o
