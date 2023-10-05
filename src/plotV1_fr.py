@@ -9,6 +9,7 @@ from readPatchOutput import *
 
 def plotV1_fr(output_suffix0, res_fdr, data_fdr, fig_fdr, inputFn, nOri, readNewSpike, ns):
     sample_nOri = 5
+    sample_nOri0 = 0
     low = 10
     high = 100-low
     fr_window = 125 #ms
@@ -65,7 +66,7 @@ def plotV1_fr(output_suffix0, res_fdr, data_fdr, fig_fdr, inputFn, nOri, readNew
         if stepInterval > nt_//10:
             stepInterval = nt_//10 
 
-    it = np.arange(0, nt_, stepInterval) + nt_
+    it = np.arange(0, nt_, stepInterval) + sample_nOri0*stepInterval0
     it0 = np.arange(0, nt, stepInterval0)
     print(it.size)
     print(it0.size)

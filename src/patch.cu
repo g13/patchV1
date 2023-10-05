@@ -1929,7 +1929,7 @@ int main(int argc, char** argv) {
 
 		Float rsig = 1;
 		auto getAcuityAtEcc = [&rsig, &acuityK, &logAcuity0, &deg2rad, &const_acuity] (Float ecc, Float acuity[]) {
-            if (const_acuity != 0) {
+            if (const_acuity == 0) {
 			    Float cpd = -acuityK * ecc/deg2rad + logAcuity0;
 			    cpd = exponential(cpd);
 			    acuity[0] = 1.0/cpd/4 * deg2rad/rsig; // from cpd to radius of center
