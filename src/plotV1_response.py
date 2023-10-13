@@ -159,6 +159,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     LGN_spFn = data_fdr + "LGN_sp" + _output_suffix
     statsFn = data_fdr + "traceStats" + _output_suffix + ".bin"
     pTuningFn = data_fdr + "pTuning" + _output_suffix + ".bin"
+    gapSFn = data_fdr + "gapS" + _output_suffix + ".bin"
     
     pref_file = data_fdr + 'cort_pref-' + output_suffix0 + '.bin'
     if nOri == 0 and singleOri:
@@ -527,6 +528,10 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
     cI = np.zeros((ngI,nV1,2))
     cFF = np.zeros((ngFF,nV1,2))
     cGap = np.zeros((mI,2)) # gap junction current
+    with open(gapSFn, 'rb') as f:
+        _mI = np.fromfile(f, 'u4', 1)[0]
+        assert(_mI == mI)
+        gapS = np.fromfile(f, 'f4', _mI)
 
     if not usePrefData:
         r_cE = np.zeros((nV1,nstep))
@@ -725,7 +730,7 @@ def plotV1_response(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res
                 else:
                     f.seek((ngE+ngI)*nV1*sizeofPrec, 1)
 
-            s_cGap = np.fromfile(f, prec, mI)
+            s_cGap = np.fromfile(f, prec, mI) -gapS*s_v[ipick]
             cGap[:,0] = cGap[:,0] + s_cGap
             cGap[:,1] = cGap[:,1] + s_cGap*s_cGap
             if pGap and plotSample:
@@ -3516,8 +3521,12 @@ def movingAvg(data, n, m, axis = -1):
             m = m + 1
         s = (m-1)//2
         if n <= s + 1:
-            avg_data = np.tile(np.mean(data, axis = -1).reshape(data.shape[0],1), (1,data.shape[1]))
-            return avg_data
+            if len(data.shape) == 1:
+                avg_data = np.tile(np.mean(data, axis = -1), n)
+                return avg_data
+            else:
+                avg_data = np.tile(np.mean(data, axis = -1).reshape(data.shape[0],1), (1,data.shape[1]))
+                return avg_data
 
         if len(data.shape) == 1:
             avg_data[:s] = np.array([np.mean(data[:min(i+s,n)]) for i in range(1,s+1)])

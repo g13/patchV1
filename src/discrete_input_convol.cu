@@ -1716,7 +1716,7 @@ void LGN_nonlinear(
         //if (isnan(max) || max == 0 || isnan(current) || isnan(fr)) {
         //    printf("current/max: %1.3e/%1.3e = %1.3e == %1.3e\n", current, max, current/max, fr);
         //}
-        if (learning < 4) {
+        if (learning != 4) {
             #pragma unroll (sum_nLearnTypeFF)
             for (int i=0; i<nFF; i++) {
 				float varf;
@@ -1755,7 +1755,7 @@ void LGN_nonlinear(
 	}
 	__syncthreads();
     if (engaging) {
-        if (learning && learning < 4) {
+        if (learning && learning != 4) {
             Float delta_t; // from last_tsp (or start of the time step) to tsp (or end of time step)
             if (sInfo > 0) {
                 delta_t = tsp;

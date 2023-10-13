@@ -166,12 +166,15 @@ inline Int oppose_Cone_OnOff_single(InputType iType, OutputType oType) {
 
 inline void assign_component(std::vector<Float> &x, std::vector<Float> &y, std::vector<PosInt> &idx, std::vector<Float> &modulated, std::vector<PosInt> &component, std::vector<bool> &pick, Float &mean_phase, Float &mean_ecc, Float eccRange[], Float phaseRange[], Int &j, Float min_tan, Float max_env, Float dmin, Float dmax, bool restricted) {
     pick[j] = true;
-    Float weightedPhase = x[j]*max_env;
+    // for calculation of weighted center coord of the component
+    Float weightedPhase = x[j]*max_env; 
     Float weightedEcc = y[j]*max_env;
     Float sumEnvelope = max_env;
     component.push_back(idx[j]);
+    // limit of x-axis, initialized by the first pick LGN
     phaseRange[0] = x[j];
     phaseRange[1] = x[j];
+    // limit of y-axis, initialized by the first pick LGN, if resitricted (meaning another component has restrict this components' range along the major axis)
     if (!restricted) { 
         eccRange[0] = y[j] - dmin;
         eccRange[1] = y[j] + dmin;
@@ -183,13 +186,13 @@ inline void assign_component(std::vector<Float> &x, std::vector<Float> &y, std::
         }
     }
     bool condition;
-    // major extend
+    // extend in the major(y) axis
     for (PosInt i = 0; i < idx.size(); i++) {
-        if (i == j) continue;
+        if (i == j) continue; // initialized by j already
         Float r = square_root((x[i]-x[j])*(x[i]-x[j]) + (y[i]-y[j])*(y[i]-y[j]));
-        condition = abs((x[i]-x[j])/(y[i]-y[j])) < min_tan && r < dmax;
+        condition = abs((x[i]-x[j])/(y[i]-y[j])) < min_tan && r < dmax; // only if satisfied the preset tolerance and smaller than dmax
         if (restricted) {
-            condition = (condition || r < dmin) && y[i] < eccRange[1]  && y[i] > eccRange[0];
+            condition = (condition || r < dmin) && y[i] < eccRange[1]  && y[i] > eccRange[0]; // if restricted by the existing components change condition
         }
         if (condition) {
             Float env = modulated[i];
@@ -198,7 +201,7 @@ inline void assign_component(std::vector<Float> &x, std::vector<Float> &y, std::
             sumEnvelope += env;
             component.push_back(idx[i]);
             pick[i] = true;
-            if (!restricted) {
+            if (!restricted) { // if this is the first component, update y range restriction for next component
                 //update allowed pairing eccRange;
                 if (y[i] < eccRange[0]) {
                     eccRange[0] = y[i];
@@ -208,7 +211,7 @@ inline void assign_component(std::vector<Float> &x, std::vector<Float> &y, std::
                     }
                 }
             }
-            //update allowed minor extension;
+            //update allowed range in minor(x) axis;
             if (x[i] < phaseRange[0]) {
                 phaseRange[0] = x[i];
             } else {
@@ -219,7 +222,7 @@ inline void assign_component(std::vector<Float> &x, std::vector<Float> &y, std::
         }
     }
     if (!restricted && component.size() > 1) {
-    // minor extend
+    // extend in minor(x) axis, maybe we should consider extend in the x first
         for (PosInt i = 0; i < idx.size(); i++) {
             if (pick[i]) continue;
             Float r = square_root((x[i]-x[j])*(x[i]-x[j]) + (y[i]-y[j])*(y[i]-y[j]));
@@ -672,10 +675,14 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 				}
 		        for (Size i=0; i<n; i++) {
 					Float temp_x, temp_y;
+                    // normalize position
 		        	std::tie(temp_x, temp_y) = transform_coord_to_unitRF(x[i], y[i], cx, cy, theta, a);
+                    // assign gaussian envelope value (connection prob)
 					envelope_value.push_back(get_envelope(temp_x, temp_y, false));
+                    // assign position
 					norm_x.push_back(temp_x);
 					norm_y.push_back(temp_y);
+                    // assign LGN type
    					switch (iType[i]) {
 						case InputType::LonMoff: case InputType::MoffLon: case InputType::OnOff: biPick.push_back(1);
    							break;
@@ -688,7 +695,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                 nConnected = connect_opt_new(idList, strengthList, iType, biPick, envelope_value, norm_x, norm_y, n, iOnOff, iV1, ori_tol, disLGN, sSum, balance, dmax);
 				idList.shrink_to_fit();
 				true_sfreq = sfreq;
-            } else {
+            } else { // no LGN connection
                 idList = std::vector<Size>();
                 idList.shrink_to_fit();
                 nConnected = 0;
@@ -702,22 +709,25 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
     }
 
     virtual Size connect_opt_new(std::vector<Size> &idList, std::vector<Float> &strengthList, std::vector<InputType> &iType, std::vector<Int> &biPick, std::vector<Float> envelope_value, std::vector<Float> &norm_x, std::vector<Float> &norm_y, Size n, Int iOnOff, PosInt iV1, Float ori_tol, Float disLGN, Float sSum, bool balance, Float dmax = 1.5) {
+        // preset orientation tolerance
         ori_tol = ori_tol/180*M_PI;
         Float min_tan = tangent(ori_tol);
         Float min_tan2 = tangent(ori_tol*1.5);
 
-		std::vector<Float> xon;
-		std::vector<Float> yon;
-		std::vector<PosInt> ion;
+		std::vector<Float> xon; // normalized x-position of available on (R/G) LGN [-1,1]
+		std::vector<Float> yon; // normalized y-position of available off (R/G) LGN [-b/a,b/a]
+		std::vector<PosInt> ion; // index of on LGN
 		std::vector<Float> xoff;
 		std::vector<Float> yoff;
-		std::vector<PosInt> ioff;
+		std::vector<PosInt> ioff; 
+        
+        // for debug only
         bool pInfo = false;
         if (iV1 == 24322 || iV1 == 25596) {
             pInfo = true;
         }
         
-        // assign to on-off subreigons 
+        // separate LGN into two types on-off or R/G based on biPick
 		for (PosInt i = 0; i < n; i++) {
             if (biPick[i] > 0) {
                 ion.push_back(i);
@@ -742,11 +752,12 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
             //std::cout << "sfreq: " << sfreq << "\n";
         }
         Float max_env = 0.0f;
-        Float phaseOn, eccOn;
-        Float phaseOff, eccOff;
-        std::vector<bool> onPick(ion.size(), false);
-        std::vector<bool> offPick(ioff.size(), false);
+        Float phaseOn, eccOn; // on subregion center position
+        Float phaseOff, eccOff; // off ..
+        std::vector<bool> onPick(ion.size(), false); // on subregion id selection array
+        std::vector<bool> offPick(ioff.size(), false); // off ...
         // update oType if original setup is not available
+        // iOnOff denote if on or off component should be determined first
         if (iOnOff == 1 && ion.size() == 0) {
             iOnOff = -1;
 			switch (oType) {
@@ -766,13 +777,13 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 			}
         }
         // pick initial LGN
-        phase = 0.5f;
+        phase = 0.5f; // initialize phase at center (probably not a good idea)
         Int j_on, j_off;
         std::vector<Float> modulated(std::max(ioff.size(), ion.size()), 0);
         if (iOnOff > 0) {
             j_on = -1;
             for (PosInt i = 0; i < ion.size(); i++) {
-                // find largest matching LGN
+                // find LGN that has the highest probability of connection based on "modulate" (by Gabor) x gaussian envelop
                 Float modulation = modulate(xon[i], yon[i]); // sfreq, phase should've been updated
 	            Float opponent = check_opponency(iType[ion[i]], modulation);
 			    modulated[i] = get_prob(opponent, modulation, 1.0f);
@@ -782,6 +793,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                 }
 			    modulated[i] *= envelope_value[ion[i]]; 
             }
+            // update phase
             phase = -xon[j_on];
         } else {
             j_off = -1;
@@ -806,6 +818,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
         bool singleComp = true;
         // pick on/off components and phase
         if (iOnOff > 0) {
+            // based on the phase, choose nearby LGN to be included in the component
             assign_component(xon, yon, ion, modulated, onComponent, onPick, phaseOn, eccOn, eccRange, phaseOnRange, j_on, min_tan, max_env*envelope_value[ion[j_on]], disLGN, disLGN*dmax, false);
 			if (pInfo) {
                 printf("connected On subregion, phaseOn = %.1f:\n", phaseOn);
@@ -817,8 +830,8 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
 				printf("potentially initialize off subregion with LGNs:\n");
 			}
 
-            phase = -phaseOn;
-            max_env = 0.5;
+            phase = -phaseOn; // find the phase for the counter component, maybe it should be fmod(phase + 1 + 1, 2) - 1
+            max_env = 0.5; // garbor modulated value at least larger than 0.5 (near the peak), otherwise SingleComp (only one subregion)
             j_off = -1;
             for (PosInt i = 0; i < ioff.size(); i++) {
                 if (yoff[i] < eccRange[1] && yoff[i] > eccRange[0]) {
@@ -836,7 +849,8 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                     modulated[i] *= envelope_value[ioff[i]];
                 }
             }
-            if (!singleComp){
+            // pick on component
+            if (!singleComp){ 
                 if (pInfo) {
                     printf("phaseOn = %.2f, phaseOff0 = %.2f\n", phaseOn, xoff[j_off]);
                 }
@@ -853,7 +867,7 @@ struct LinearReceptiveField { // RF sample without implementation of check_oppon
                     printf("No off LGN connected\n");
                 }
             }
-        } else {
+        } else { // off first
             assign_component(xoff, yoff, ioff, modulated, offComponent, offPick, phaseOff, eccOff, eccRange, phaseOffRange, j_off, min_tan, max_env*envelope_value[ioff[j_off]], disLGN, disLGN*dmax, false);
 
 			if (pInfo) {

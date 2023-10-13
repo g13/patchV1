@@ -9,6 +9,7 @@ import scipy.stats as stat
 import scipy.signal as signal
 import sys
 import warnings
+np.seterr(all='raise')
     
 def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr, fig_fdr, inputFn, LGN_switch, mix, st, examSingle, use_local_max, stage, ns, examLTD, find_peak):
     step0 = 0
@@ -89,8 +90,13 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         gmaxLGN = np.fromfile(f, 'f4', nLearnFF) * sRatio
         FF_InfRatio = np.fromfile(f, 'f4', 1)[0]
         nskip = (10 + nLearnFF)
+        print(f'original time step = {nt}')
+        print(f'max_LGNperV1 = {max_LGNperV1}')
+        print(f'nV1 = {nV1}')
         capacity = max_LGNperV1 * sRatio * FF_InfRatio / gmaxLGN / top_thres
-        print(capacity, top_thres, gmaxLGN)
+        print(f'capacity = {capacity}')
+        print(f'top_thres = {top_thres}')
+        print(f'gmaxLGN = {gmaxLGN}')
     
     with open(fV1_allpos, 'rb') as f:
         nblock = np.fromfile(f, 'u4', 1)[0]
@@ -136,12 +142,10 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         nstep = range_nt
 
     if sampleInterval > 1:
+        print(f'sampleInterval = {sampleInterval}')
         dt = sampleInterval * dt
-        nt_float = nt / sampleInterval
-        nt = int(np.floor(nt / sampleInterval))
-        nt_ = int(np.round(nt_ / sampleInterval))
-        if nt_ > nt:
-            nt_ = nt
+        nt = nt // sampleInterval
+        nt_ = nt_ // sampleInterval
         step0 = step0 // sampleInterval
         if step0 > nt_:
             step0 = 0
@@ -169,11 +173,12 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
     
     if 'V1_pick' not in locals():
         V1_pick = np.random.randint(nV1, size = ns)
-    else:
-        ns = V1_pick.size
     
     V1_pick = np.sort(V1_pick)
+    ### TEMPORARY: test inhibitory neurons with gap junction
+    V1_pick = np.unique(np.hstack((np.array([24,25], dtype = int), V1_pick)))
     print(V1_pick)
+    ns = V1_pick.size
     nLGN_1D = int(np.round(np.sqrt(float(nLGN / 2))))
     c_offset = np.mod(nLGN_1D + 1, 2)
     if fix_ori is not None:
@@ -189,8 +194,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         print(f'fixed at {fix_ori}, {_fix_ori}')
     print(LGN_type.reshape(nLGN_1D, 2*nLGN_1D))
     print(nLGN, nLGN_1D)
-    #min_dis = xspan/(nLGN_1D-1);
-    min_dis = 0
+    min_dis = xspan/nLGN_1D/2
     if LGN_switch:
         with open(fLGN_switch, 'rb') as f:
             nStatus = np.fromfile(f, 'u4', 1)[0]
@@ -228,6 +232,9 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
     rLGN = rLGN/multiplier
     qt = np.round(np.linspace(step0, nt_-1, nit)).astype('u4')
     ################## HERE ##################
+    print(f'nt_ = {nt_}')
+    print(f'nt = {nt}')
+    print(f'qt = {qt}')
     fout = open(fStats, 'wb')
     np.array([step0, nt_, nit, stage, nLGN_1D], dtype = int).tofile(fout)
     np.array([dt]).astype('f4').tofile(fout)
@@ -245,6 +252,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
     
     with open(f_sLGN, 'rb') as f:
         f.seek(nskip * 4, 1)
+        print(f'skip {nskip*4} bytes (already read)')
         fig = plt.figure('tOS-dist', figsize = (8,nit * 1.5), dpi = 300)
         fit_x = np.linspace(0, r[-1], 100)
         op_edges = np.linspace(0,360,nop)
@@ -303,12 +311,12 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         total_err = 0
         for i in range(nit):
             nerr = 0
-            if i == 0:
-                f.seek(max_LGNperV1 * nV1 * step0 * 4, 1)
-            else:
-                if it[i-1] > 0:
-                    f.seek(max_LGNperV1 * nV1 * it[i-1] * 4, 1)
-            sLGN = np.fromfile(f, 'f4', max_LGNperV1*nV1).reshape((max_LGNperV1, nV1)).T
+            if i > 0:
+                f.seek(max_LGNperV1 * nV1 * it[i-1] * 4, 1)
+            try:
+                sLGN = np.fromfile(f, 'f4', max_LGNperV1*nV1).reshape((max_LGNperV1, nV1)).T
+            except:
+                raise Exception(f'Error at {i}/{nit}, tstep == {it[i-1]}, currently read {f.tell()/1024/1024:.3f}MB')
             sLGN_grid = np.zeros((nV1,nLGN))
             for j in range(nV1):
                 sLGN_grid[j, LGN_V1_ID[j, :nLGN_V1[j]]] = sLGN[j, :nLGN_V1[j]]
@@ -855,16 +863,16 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                 ax2.set_xlim(qt[0]*dt/1000, qt[-1]*dt/1000)
 
                 if input_halfwidth[0] == input_halfwidth[1]:
-                    ax2.axhline(y = input_halfwidth[0], xmin = 0, xmax = stageFrame/nFrame, color = ':k', label = 'input HW', lw = 1)
+                    ax2.axhline(y = input_halfwidth[0], xmin = 0, xmax = stageFrame/nFrame, ls = ':', color = 'k', label = 'input HW', lw = 1)
                 else:
-                    ax2.axhline(y = input_halfwidth[0], xmin = 0, xmax = stageFrame/nFrame, color = ':r', label = 'on HW', lw = 1)
-                    ax2.axhline(y = input_halfwidth[1], xmin = 0, xmax = stageFrame/nFrame, color = ':b', label = 'off HW', lw = 1)
+                    ax2.axhline(y = input_halfwidth[0], xmin = 0, xmax = stageFrame/nFrame, ls = ':', color = 'r', label = 'on HW', lw = 1)
+                    ax2.axhline(y = input_halfwidth[1], xmin = 0, xmax = stageFrame/nFrame, ls = ':', color = 'b', label = 'off HW', lw = 1)
                 if nStage > 1:
                     if input_halfwidth[2] == input_halfwidth[3]:
-                        ax2.axhline(y = input_halfwidth[2], xmin = stageFrame/nFrame, xmax = 1, color = ':k', lw = 1)
+                        ax2.axhline(y = input_halfwidth[2], xmin = stageFrame/nFrame, xmax = 1, ls = ':', color = 'k', lw = 1)
                     else:
-                        ax2.axhline(y = input_halfwidth[2], xmin = stageFrame/nFrame, xmax = 1, color = ':r', lw = 1)
-                        ax2.axhline(y = input_halfwidth[3], xmin = stageFrame/nFrame, xmax = 1, color = ':b', lw = 1)
+                        ax2.axhline(y = input_halfwidth[2], xmin = stageFrame/nFrame, xmax = 1, ls = ':', color = 'r', lw = 1)
+                        ax2.axhline(y = input_halfwidth[3], xmin = stageFrame/nFrame, xmax = 1, ls = ':', color = 'b', lw = 1)
 
                 ax2.set_xlabel(f'time{rtime}')
                 ax2.set_ylabel('avg. dis to center')
@@ -901,10 +909,11 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                 ax.hist(_rstd_on[epick,-1] - _rstd_off[epick,-1], bins = 20, color = 'gray', alpha = 0.7)
                 fig.savefig(f'{fig_fdr}radius_dist{osuffix}.png', bbox_inches = 'tight')
 
-        _V1_pick = np.append(V1_pick, nV1)
         if nLearnFF_I > 0:
+            _V1_pick = np.hstack((V1_pick, np.array([nV1, nV1+1], dtype = int)))
             nsq = ns + 2
         else:
+            _V1_pick = np.append(V1_pick, nV1)
             nsq = ns + 1
 
         if find_peak:
@@ -916,6 +925,17 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                 peak_width[i] = [[], []]
         for iq in range(nsq):
             iV1 = _V1_pick[iq]
+            if iV1 < nV1:
+                if np.mod(iV1,blockSize) < mE:
+                    EI_str = 'E'
+                else:
+                    EI_str = 'I'
+            else:
+                if iV1 == nV1:
+                    EI_str = 'E'
+                if iV1 == nV1+1:
+                    EI_str = 'I'
+
             sLGN = sLGN_all[iq,:,:]
             gmax = np.max(np.abs(sLGN))
             if gmax == 0:
@@ -966,8 +986,10 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                                 plt.colorbar()
                                 if iV1 < nV1:
                                     ax.set_title(f'{orient[iV1] * 180 / np.pi:.0f}deg {fr[iV1]:.2f}Hz')
+                                elif iV1 == nV1:
+                                    ax.set_title(f'E total bias: {np.mean(orient * 180 / np.pi):.0f}deg {np.mean(fr):.2f}Hz')
                                 else:
-                                    ax.set_title(f'total bias: {np.mean(orient * 180 / np.pi):.0f}deg {np.mean(fr):.2f}Hz')
+                                    ax.set_title(f'I total bias: {np.mean(orient * 180 / np.pi):.0f}deg {np.mean(fr):.2f}Hz')
             else:
                 if pSF != 0:
                     fig = plt.figure(f'sLGN_V1-{iV1}-sep', figsize = (nit0, 2*ntype * nrow), dpi = 300)
@@ -1099,7 +1121,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                                 #_peak,  _width = get_1D_peak_pos(_ori, stmp0, d = 1, debug = iV1 == nV1)
                                 _peak,  _width = get_1D_peak_pos(_ori, stmp0, d = 1)
 
-                                if iV1 == nV1:
+                                if iV1 >= nV1:
                                     if len(_peak[0]) > 0:
                                         npeak[i, itype] = _peak[0].size
                                         peak_pos[i][itype] = _peak.copy()
@@ -1176,14 +1198,14 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
 
             if iV1 < nV1:
                 if mix and doubleOnOff != 1:
-                    fig.savefig(f'{fig_fdr}sLGN_V1-{iV1}{osuffix}-mix{rtime}.png')
+                    fig.savefig(f'{fig_fdr}sLGN_V1-{EI_str}{iV1}{osuffix}-mix{rtime}.png')
                 else:
-                    fig.savefig(f'{fig_fdr}sLGN_V1-{iV1}{osuffix}-sep{rtime}.png')
+                    fig.savefig(f'{fig_fdr}sLGN_V1-{EI_str}{iV1}{osuffix}-sep{rtime}.png')
             else:
                 if mix and doubleOnOff != 1:
-                    fig.savefig(f'{fig_fdr}avg_sLGN_V1{osuffix}-mix{rtime}.png')
+                    fig.savefig(f'{fig_fdr}avg{EI_str}_sLGN_V1{osuffix}-mix{rtime}.png')
                 else:
-                    fig.savefig(f'{fig_fdr}avg_sLGN_V1{osuffix}-sep{rtime}.png')
+                    fig.savefig(f'{fig_fdr}avg{EI_str}_sLGN_V1{osuffix}-sep{rtime}.png')
             plt.close(fig)
 
         if find_peak:
@@ -1332,26 +1354,32 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
 
             fig = plt.figure('t_LTD', figsize = (10,4*(1+nLearnFF_I)), dpi = 300)
             ax = fig.add_subplot(1, 2*(1+nLearnFF_I), 1)
-            ax.imshow(LTD[:,epick].T/np.max(LTD[:,epick]), aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('Reds'))
-            ax.set_xlabel('time step')
-            ax.set_ylabel('neuron ID')
-            ax = fig.add_subplot(1, 2*(1+nLearnFF_I), 2)
-            ax.plot(it * dt/1000, LTD[:,epick].T.mean(axis = 0), '-r', lw = 0.1, alpha = 0.7)
-            ax.plot(it * dt/1000, LTD[:,epick].T.std(axis = 0), '-m', alpha = 0.7, lw = 0.1)
-            ax.axhline(A_LTP, ls = ':', color = 'r', alpha = 0.7, lw = 0.1)
-            ax.set_xlabel(f'time{rtime}')
-            ax.set_ylabel('LTD')
-            if nLearnFF_I > 0:
-                ax = fig.add_subplot(1, 2*(1+nLearnFF_I), 3)
-                ax.imshow(LTD[:,ipick].T/np.max(LTD[:,ipick]), aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('Blues'))
-                ax.set_ylabel('neuron ID')
+            if np.max(LTD[:,epick]) > 0:
+                ax.imshow(LTD[:,epick].T/np.max(LTD[:,epick]), aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('Reds'))
                 ax.set_xlabel('time step')
-                ax = fig.add_subplot(1, 2*(1+nLearnFF_I), 4)
-                ax.plot(it * dt/1000, LTD[:,ipick].T.mean(axis = 0), '-b', lw = 0.1, alpha = 0.7)
-                ax.plot(it * dt/1000, LTD[:,ipick].T.std(axis = 0), '-c', alpha = 0.7, lw = 0.1)
-                ax.axhline(A_LTP, ls = ':', color = 'b', alpha = 0.7, lw = 0.1)
+                ax.set_ylabel('neuron ID')
+                ax = fig.add_subplot(1, 2*(1+nLearnFF_I), 2)
+                ax.plot(it * dt/1000, LTD[:,epick].T.mean(axis = 0), '-r', lw = 0.1, alpha = 0.7)
+                ax.plot(it * dt/1000, LTD[:,epick].T.std(axis = 0), '-m', lw = 0.1, alpha = 0.7)
+                ax.axhline(A_LTP[0], ls = ':', color = 'r', alpha = 0.7, lw = 0.1)
                 ax.set_xlabel(f'time{rtime}')
                 ax.set_ylabel('LTD')
+            else:
+                ax.set_title('E max LTD = 0')
+            if nLearnFF_I > 0:
+                if np.max(LTD[:,ipick]) > 0:
+                    ax = fig.add_subplot(1, 2*(1+nLearnFF_I), 3)
+                    ax.imshow(LTD[:,ipick].T/np.max(LTD[:,ipick]), aspect = 'auto', origin = 'lower', cmap = plt.get_cmap('Blues'))
+                    ax.set_ylabel('neuron ID')
+                    ax.set_xlabel('time step')
+                    ax = fig.add_subplot(1, 2*(1+nLearnFF_I), 4)
+                    ax.plot(it * dt/1000, LTD[:,ipick].T.mean(axis = 0), '-b', lw = 0.1, alpha = 0.7)
+                    ax.plot(it * dt/1000, LTD[:,ipick].T.std(axis = 0), '-c', alpha = 0.7, lw = 0.1)
+                    ax.axhline(A_LTP[1], ls = ':', color = 'b', alpha = 0.7, lw = 0.1)
+                    ax.set_xlabel(f'time{rtime}')
+                    ax.set_ylabel('LTD')
+                else:
+                    ax.set_title('I max LTD = 0')
             fig.savefig(f'{fig_fdr}t_LTD{osuffix}.png')
 
         qtt = np.floor(np.linspace(0, nstep-1, nit)).astype('i4')
@@ -1368,6 +1396,10 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
 
         for iq in range(ns):
             iV1 = V1_pick[iq]
+            if np.mod(iV1,blockSize) < mE:
+                EI_str = 'E'
+            else:
+                EI_str = 'I'
             tLGN = tLGN_all[iq,:,:]
             gmax = np.max(tLGN)
             if gmax == 0:
@@ -1395,7 +1427,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                     ax.set_ylim(0, 100)
                     ax.set_xticks([])
                     ax.set_yticks([])
-                fig.savefig(f'{fig_fdr}tLGN_V1_single-{iV1}{osuffix}{rtime}.png')
+                fig.savefig(f'{fig_fdr}tLGN_V1_single-{EI_str}{iV1}{osuffix}{rtime}.png')
                 plt.close(fig)
 
             fig = plt.figure(f'tLGN_V1-{iV1}', figsize = (8,9), dpi = 500)
@@ -1454,8 +1486,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                 ax0.set_yticks([])
                 ax0.set_ylim([0, max_LGNperV1/2])
 
-            fig.tight_layout()
-            fig.savefig(f'{fig_fdr}tLGN_V1-{iV1}{osuffix}{rtime}.png')
+            fig.savefig(f'{fig_fdr}tLGN_V1-{EI_str}{iV1}{osuffix}{rtime}.png')
             plt.close(fig)
     print('tLGN finished')
     return
@@ -1630,16 +1661,19 @@ def get_contour_area(n, z, m, ids, l, level = 0.2):
 
                     idx = (-a).argsort()
                     area[i,j] = a[idx[0]]
-                    for k in range(1,nshape):
+                    outer_id = [idx[0]]
+                    for u_id in idx[1:]:
                         inside = False
-                        for ii in range(k):
-                            if point_inside_shape(shapes[k][0,:], shapes[ii]):
+                        for o_id in outer_id:
+                            if point_inside_shape(shapes[u_id][0,:], shapes[o_id]):
                                 inside = True
                                 break
                         if inside:
-                            area[i,j] -= a[idx[k]]
+                            area[i,j] -= a[u_id]
                         else:
-                            area[i,j] += a[idx[k]]
+                            area[i,j] += a[u_id]
+                        outer_id.append(u_id)
+                assert(area[i,j]>=0)
 
     if n == 1:
         return area.reshape(2)

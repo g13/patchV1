@@ -10,6 +10,7 @@ import sys
 import matplotlib.pyplot as plt
 
 def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_fdr, squareOrCircle, relay, binary_thres, sInput): 
+
     res_fdr = res_fdr + '/'
     setup_fdr = setup_fdr + '/'
     con_std = 0
@@ -37,7 +38,7 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
     same = False
     
     if stage == 2 or stage == 5:
-        pCon = 0.9
+        pCon = 1.0
         nLGN_1D = 16
         radiusRatio = 1.0
     
@@ -368,6 +369,9 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
             sLGN = np.zeros((nV1, nLGNperV1))
             for i in range(nV1):
                 sLGN[i,:] = np.exp(- np.power(LGN_ecc[idx[i,:]] / std_ecc, 2))
+            ## TEST for gap junction change in RF center migration
+            sLGN[24,:] = np.exp(- (np.power(LGN_x[idx[24,:]] - 0.25*max_ecc, 2) + np.power(LGN_y[idx[24,:]],2)) / (std_ecc*std_ecc))
+            sLGN[25,:] = np.exp(- (np.power(LGN_x[idx[25,:]] + 0.25*max_ecc, 2) + np.power(LGN_y[idx[25,:]],2)) / (std_ecc*std_ecc))
         else:
             sLGN = u0 + np.random.rand(nV1, nLGNperV1) * (u1 - u0)
 
@@ -452,7 +456,11 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
                     delayMat[i,j] = np.sqrt(np.sum(np.power(V1_pos[:, id_i] - V1_pos[:, id_j],2)))
                     delayMat[j,i] = delayMat[i,j]
         conMat.astype('f4').tofile(cid)
-        gapMat = np.zeros((mI,mI,nearNeighborBlock))
+        gapMat = np.zeros((nearNeighborBlock,mI,mI))
+        ### TEMPORARY: test gap junction on retinotopy
+        if iblock == 0:
+            gapMat[0,0,1] = 1;
+            gapMat[0,1,0] = 1;
         gapMat.astype('f4').tofile(gid)
         delayMat.astype('f4').tofile(did)
     

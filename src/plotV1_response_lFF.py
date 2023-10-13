@@ -16,7 +16,7 @@ np.seterr(invalid = 'raise')
 #@profile
 def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
     #sample = np.array([0,1,2,768])
-    sample = np.array([11,133,167,333,402,459,758,971]);
+    sample = np.array([11,24,25,133,167,380,402,459,792,971]);
 
     SCsplit = 0
     nLGNorF1F0 = True
@@ -24,8 +24,8 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
     seed = 657890
     np.random.seed(seed)
     step0 = 0
-    nt_ = 2000
-    nstep = 2000
+    nt_ = 16666
+    nstep = 1000
     if nOri > 0:
         stiOri = np.pi*np.mod(iOri/nOri, 1.0)
     else:
@@ -133,6 +133,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
     LGN_frFn = data_fdr + "LGN_fr" + _output_suffix + ".bin"
     LGN_spFn = data_fdr + "LGN_sp" + _output_suffix
     meanFn = data_fdr + "mean_data" + _output_suffix + ".bin"
+    gapSFn = data_fdr + "gapS" + _output_suffix + ".bin"
     
     pref_file = data_fdr + 'cort_pref_' + output_suffix0 + '.bin'
     if nOri == 0:
@@ -437,6 +438,10 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
         cI = np.zeros((ngI,nV1,2))
         cFF = np.zeros((ngFF,nV1,2))
         cGap = np.zeros((mI,2)) # gap junction current
+        with open(gapSFn, 'rb') as f:
+            _mI = np.fromfile(f, 'u4', 1)[0]
+            assert(_mI == mI)
+            gapS = np.fromfile(f, 'f4', _mI)
     
         s_v = np.zeros(nV1)
         s_gFF = np.zeros(nV1)
@@ -614,7 +619,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
                     else:
                         f.seek((ngE+ngI)*nV1*sizeofPrec, 1)
 
-                s_cGap = np.fromfile(f, prec, mI)
+                s_cGap = np.fromfile(f, prec, mI) - gapS*s_v[ipick]
                 cGap[:,0] = cGap[:,0] + s_cGap
                 cGap[:,1] = cGap[:,1] + s_cGap*s_cGap
                 if pGap and plotSample:
@@ -1100,44 +1105,47 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
             current = np.zeros(_v[i,:].shape)
             cL = -_gL[iV1]*(_v[i,:]-vL)
             ax.plot(t, cL, '-c', lw = lw)
-            ax.plot(t[-1], np.mean(cL), '*c', ms = lw)
+            ax.plot(t[t.size//2], np.mean(cL), '*c', ms = 1)
             current = current + cL
             for ig in range(ngFF):
                 cFF = -_gFF[0,ig,i,:]*(_v[i,:]-vE)
                 ax.plot(t, cFF, '-g', lw = (ig+1)/ngFF * lw)
-                ax.plot(t[-1], np.mean(cFF), '*g', ms = (ig+1)/ngFF * lw)
+                ax.plot(t[t.size//2], np.mean(cFF), '*g', ms = (ig+1)/ngFF) 
                 current = current + cFF
             for ig in range(ngE):
                 cE = -_gE[0,ig,i,:]*(_v[i,:]-vE)
                 ax.plot(t, cE, '-r', lw = (ig+1)/ngE * lw)
-                ax.plot(t[-1], np.mean(cE), '*r', ms = (ig+1)/ngE * lw)
+                ax.plot(t[t.size//2], np.mean(cE), '*r', ms = (ig+1)/ngE)
                 current = current + cE
             for ig in range(ngI):
                 cI = -_gI[0,ig,i,:]*(_v[i,:]-vI)
                 ax.plot(t, cI, '-b', lw = (ig+1)/ngI * lw)
-                ax.plot(t[-1], np.mean(cI), '*b', ms = (ig+1)/ngI * lw)
+                ax.plot(t[t.size//2], np.mean(cI), '*b', ms = (ig+1)/ngI)
                 current = current + cI
             if pGap and itype >= nTypeE:
                 cGap = -_cGap[i_gap,:]
                 ax.plot(t, cGap, ':k', lw = lw)
-                ax.plot(t[-1], np.mean(cGap), 'sk', ms = lw)
+                ax.plot(t[t.size//2], np.mean(cGap), 'sk', ms = 1)
+                if iV1 == 24 or iV1 == 25:
+                    print(f'{iV1} max gap: {np.max(cGap)}')
+                    print(f'{iV1} min gap: {np.min(cGap)}')
                 current = current + cGap
                 i_gap = i_gap+1
     
             ax.plot(t, _depC[i,:], '-y', lw = lw)
-            ax.plot(t[-1], np.mean(_depC[i,:]), '*y', ms = lw)
+            ax.plot(t[t.size//2], np.mean(_depC[i,:]), '*y', ms = 1)
             current = current + _depC[i,:]
     
             if iModel == 1:
                 if pW:
                     ax.plot(t, -_w[i,:], '-m', lw = lw)
-                    ax.plot(t[-1], -np.mean(_w[i,:]), '*m', ms = lw)
+                    ax.plot(t[t.size//2], -np.mean(_w[i,:]), '*m', ms = 1)
                     current = current - _w[i,:]
     
             ax.plot(t, current, '-k', lw = lw)
             ax.plot(t, np.zeros(t.shape), ':k', lw = lw/2)
             mean_current = np.mean(current)
-            ax.plot(t[-1], mean_current, '*k', ms = lw)
+            ax.plot(t[t.size//2], mean_current, '*k', ms = 1)
             if nLGN_V1[iV1] > 0:
                 title = f'FR:{fr[iV1]:.3f}, F1F0:{F1F0[iV1]:.3f}, {gFF_F1F0[iV1]:.3f}(gFF)'
             else:
@@ -1149,7 +1157,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
             ax.yaxis.grid(True, which='minor', linestyle=':', linewidth = 0.1)
             ax.yaxis.grid(True, which='major', linestyle='-', linewidth = 0.1)
             ax.tick_params(which='minor', width=0.2)
-            ax.set_xlim(t[0],t[-1])
+            ax.set_xlim(t[0]-dt,t[-1]+dt)
     
             if nLGN_V1[iV1] > 0:
 

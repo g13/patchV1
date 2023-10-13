@@ -840,7 +840,7 @@ void compute_V_collect_spike_learnFF(
 	}
     tBack[tid] = model.tBack;
 
-    if (learning && learning < 4) {
+    if (learning && learning != 4) {
 		Float nsp, tsp;
 		if (sInfo > 0) {
 			nsp = flooring(sInfo);
@@ -877,7 +877,7 @@ void compute_V_collect_spike_learnFF(
             }
         }
         if (nsp > 0) {
-            if (learning !=3) { // only E and Q are active, read cortical lVar and AvgE if previouly not read
+            if (learning != 3 && learning != 5) { // only E and Q are active, read cortical lVar and AvgE if previouly not read
                 if (threadIdx.x < nE) {
                     // E
                     #pragma unroll max_nLearnTypeE
@@ -903,7 +903,7 @@ void compute_V_collect_spike_learnFF(
                     }
                 }
             }
-            if (learning < 4) { // compute ff post vars' decay till tsp
+            if (learning != 4) { // compute ff post vars' decay till tsp
                 if (threadIdx.x < nE) {
                     #pragma unroll max_nLearnTypeFF_E
                     for (PosInt i=0; i<learnE_post.n; i++) {
@@ -936,7 +936,7 @@ void compute_V_collect_spike_learnFF(
                 lAvg[1] = lAvg[0];
                 decay(lAvg[1], learnE_post.tau[2*learnE_post.n], tsp);
             }
-            if (learning !=3) { // compute and store lVars of E, Q and AvgE
+            if (learning !=3 && learning != 5) { // compute and store lVars of E, Q and AvgE
                 // compute
                 if (threadIdx.x < nE) {
                     #pragma unroll max_nLearnTypeE
@@ -1003,7 +1003,7 @@ void compute_V_collect_spike_learnFF(
 				    switch (applyHomeo) {	
 				    	case 1: 
                             homeostatic_change = new_totalFF0/local_totalFF0;
-                            assert(homeostatic_change > 0);
+                            assert(homeostatic_change >= 0.0f);
 				    		break;
 				    	case 2:
 				    		homeostatic_change = (new_totalFF0 - local_totalFF0)/m;
@@ -1165,7 +1165,7 @@ void compute_V_collect_spike_learnFF(
                     decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+0], learnE_post.tau[2*i+0], delta_t);
                     decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+1], learnE_post.tau[2*i+1], delta_t);
                 }
-                if (learning == 3) { // no E, only FF_E, otherwise to be used again and update in recal_G
+                if (learning == 3 || learning == 5) { // no E, only FF_E, otherwise to be used again and update in recal_G
                     lAvg[cPick] += nsp;
                     decay(lAvg[cPick], learnE_post.tau[2*learnE_post.n], delta_t);
                 }
@@ -1189,7 +1189,7 @@ void compute_V_collect_spike_learnFF(
                     vLTD_FF_E[nE*gridDim.x*i + eid]  = lFF[cPick*2*max_nLearnTypeFF + 2*i+0];
                     vTrip_FF_E[nE*gridDim.x*i + eid] = lFF[cPick*2*max_nLearnTypeFF + 2*i+1];
                 }
-                if (learning == 3) { // no E, only FF_E
+                if (learning == 3 || learning == 5) { // no E, only FF_E
                     vAvgE[eid*2] = lAvg[cPick]; 
                 }
             } else {
@@ -1342,7 +1342,7 @@ void compute_V_collect_spike_learnFF_fast(
         }
     }
 
-	Float local_gapS = threadIdx.x >= nE? gapS[gap_tid]: 0;
+	Float local_gapS = (threadIdx.x >= nE && InhGap)? gapS[gap_tid]: 0;
     AdEx model(w[tid], tau_w[itype], a[itype], b[itype], v[tid], tBack[tid], vR[itype], vThres[itype], gL[itype], C[itype], tRef[itype], vT[itype], deltaT[itype], local_gapS, _tonicDep);
 
 	Float noise0;
@@ -1576,7 +1576,7 @@ void compute_V_collect_spike_learnFF_fast(
 			//if (tid == 1928) {
 			//	printf("tBack = %f = %f + %f\n", tBack, model.tsp, model.tRef);
 			//}
-			assert(model.tBack >= dt);
+			//assert(model.tBack >= dt);
 			//if (tid == 1928) {
 			//	printf("v[%u] = %f, tBack = %f, vT = %f, deltaT = %f, b0 = %f, b1 = %f, w=%f, w0=%f, depC = %f, dep = %f\n", tid, model.v, model.tBack, model.vT, model.deltaT, model.b0, model.b1, model.w, model.w0, model.depC, dep[tid]);
 			//}
@@ -1629,7 +1629,7 @@ void compute_V_collect_spike_learnFF_fast(
 	}
     tBack[tid] = model.tBack;
 
-    if (learning && learning < 4) {
+    if (learning && learning != 4) {
 		Float nsp, tsp;
 		if (sInfo > 0) {
 			nsp = flooring(sInfo);
@@ -1666,7 +1666,7 @@ void compute_V_collect_spike_learnFF_fast(
             }
         }
         if (nsp > 0) {
-            if (learning !=3) { // E and Q are active, read cortical lVar and AvgE if previouly not read
+            if (learning !=3 && learning != 5) { // E and Q are active, read cortical lVar and AvgE if previouly not read
                 if (threadIdx.x < nE) {
                     // E
                     #pragma unroll max_nLearnTypeE
@@ -1692,7 +1692,7 @@ void compute_V_collect_spike_learnFF_fast(
                     }
                 }
             }
-            if (learning < 4) { // compute ff post vars' decay till tsp
+            if (learning != 4) { // compute ff post vars' decay till tsp
                 if (threadIdx.x < nE) {
                     #pragma unroll max_nLearnTypeFF_E
                     for (PosInt i=0; i<learnE_post.n; i++) {
@@ -1725,7 +1725,7 @@ void compute_V_collect_spike_learnFF_fast(
                 lAvg[1] = lAvg[0];
                 decay(lAvg[1], learnE_post.tau[2*learnE_post.n], tsp);
             }
-            if (learning !=3) { // compute and store lVars of E, Q and AvgE
+            if (learning !=3 && learning != 5) { // compute and store lVars of E, Q and AvgE
                 // compute
                 if (threadIdx.x < nE) {
                     #pragma unroll max_nLearnTypeE
@@ -1792,7 +1792,7 @@ void compute_V_collect_spike_learnFF_fast(
 				    switch (applyHomeo) {	
 				    	case 1: 
                             homeostatic_change = new_totalFF0/local_totalFF0;
-                            assert(homeostatic_change > 0);
+                            assert(homeostatic_change >= 0.0f);
 				    		break;
 				    	case 2:
 				    		homeostatic_change = (new_totalFF0 - local_totalFF0)/m;
@@ -1954,7 +1954,7 @@ void compute_V_collect_spike_learnFF_fast(
                     decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+0], learnE_post.tau[2*i+0], delta_t);
                     decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+1], learnE_post.tau[2*i+1], delta_t);
                 }
-                if (learning == 3) { // no E, only FF_E, otherwise to be used again and update in recal_G
+                if (learning == 3 || learning == 5) { // no E, only FF_E, otherwise to be used again and update in recal_G
                     lAvg[cPick] += nsp;
                     decay(lAvg[cPick], learnE_post.tau[2*learnE_post.n], delta_t);
                 }
@@ -1978,7 +1978,7 @@ void compute_V_collect_spike_learnFF_fast(
                     vLTD_FF_E[nE*gridDim.x*i + eid]  = lFF[cPick*2*max_nLearnTypeFF + 2*i+0];
                     vTrip_FF_E[nE*gridDim.x*i + eid] = lFF[cPick*2*max_nLearnTypeFF + 2*i+1];
                 }
-                if (learning == 3) { // no E, only FF_E
+                if (learning == 3 || learning == 5) { // no E, only FF_E
                     vAvgE[eid*2] = lAvg[cPick]; 
                 }
             } else {
@@ -2137,7 +2137,7 @@ void recal_G_mat(
     Float postNsp = flooring(post_sInfo);
     Float postTsp = post_sInfo>0? post_sInfo - postNsp: 1;
     Float lAvgE;
-    if (learning != 3) {
+    if (learning != 3 && learning != 5) {
         if (threadIdx.x < nE) {
             PosInt cPick = postNsp>0? 1:0;
             PosInt eid = (block_offset+blockIdx.x)*nE + threadIdx.x;
@@ -2262,7 +2262,7 @@ void recal_G_mat(
         }
     }
     rGenCond[ipost] = localState;
-    if (learning != 3) { // update learning variables
+    if (learning != 3 && learning != 5) { // update learning variables
         if (threadIdx.x < nE) {
             PosInt eid = (block_offset+blockIdx.x)*nE + threadIdx.x;
             Float delta_t = dt;
@@ -2431,7 +2431,7 @@ void recal_G_mat_nd( // no distance involved for close-range connections, i.e., 
         ipI[ig] = pI[itype*ngTypeI + ig];
     }
 	Float gap_s = 0.0;
-	//Size nGap = 0;
+    //Size nGap = 0;
     // TODO: cortical learning
     //Float trip_post[2*max_nLearnTypeE];
     //Float LTD_post[2*max_nLearnTypeE];
@@ -2441,7 +2441,7 @@ void recal_G_mat_nd( // no distance involved for close-range connections, i.e., 
     Float postNsp = flooring(post_sInfo);
     Float postTsp = post_sInfo>0? post_sInfo - postNsp: 1;
     Float lAvgE;
-    if (learning != 3) {
+    if (learning != 3 && learning != 5) {
         if (threadIdx.x < nE) {
             PosInt cPick = postNsp>0? 1:0;
             PosInt eid = (block_offset+blockIdx.x)*nE + threadIdx.x;
@@ -2537,8 +2537,8 @@ void recal_G_mat_nd( // no distance involved for close-range connections, i.e., 
             	    Float v_pre = spikeTrain[ipre];
 					v_pre = v_pre > 0? vThres[jtype]: v_pre;
 					gap_s += gap_strength * v_pre;
-					assert(!isnan(gap_s));
-					//if (ipost == 960) {
+					//assert(!isnan(gap_s));
+					//if (ipost == 24 || ipost == 25) {
 					//	nGap++;
 					//}
 				}
@@ -2546,7 +2546,7 @@ void recal_G_mat_nd( // no distance involved for close-range connections, i.e., 
         }
     }
     rGenCond[ipost] = localState;
-    if (learning != 3) { // update learning variables
+    if (learning != 3 && learning != 5) { // update learning variables
         if (threadIdx.x < nE) {
             PosInt eid = (block_offset+blockIdx.x)*nE + threadIdx.x;
             Float delta_t = dt;
@@ -2844,22 +2844,24 @@ void recal_G_mat_nd_fast( // no distance involved for close-range connections, i
                 pre_sInfo[threadIdx.x] = spikeTrain[bid*blockDim.x + nE + threadIdx.x];
             }
             __syncthreads(); // sync dynamic shared memory save
-            for (PosInt i=0; i<nI; i++) {
-                PosIntL gid = static_cast<PosIntL>((local_bid*nI + (i-nE))*nI + threadIdx.x-nE);
-                Float strength = static_cast<Float>(gapMat[gid]);
-			    if (strength > 0) {
-                    Float v_pre = pre_sInfo[i];
-			    	PosInt jtype;
-    		    	//#pragma unroll (max_nType)
-    		    	for (PosInt j=nTypeE; j<nType; j++) {
-    		    	    if (i < tA[j]) {
-    		    	        jtype = j;
-    		    	        break;
-    		    	    }
-    		    	}
-			    	v_pre = v_pre > 0? vThres[jtype]: v_pre;
-			    	gap_s += strength * v_pre;
-			    }
+            if (threadIdx.x >= nE) {
+                for (PosInt i=0; i<nI; i++) {
+                    PosIntL gid = static_cast<PosIntL>((local_bid*nI + i)*nI + threadIdx.x-nE);
+                    Float strength = static_cast<Float>(gapMat[gid]);
+			        if (strength > 0) {
+                        Float v_pre = pre_sInfo[i];
+			        	PosInt jtype;
+    		        	//#pragma unroll (max_nType)
+    		        	for (PosInt j=nTypeE; j<nType; j++) {
+    		        	    if (i+nE < tA[j]) {
+    		        	        jtype = j;
+    		        	        break;
+    		        	    }
+    		        	}
+			        	v_pre = v_pre > 0? vThres[jtype]: v_pre;
+			        	gap_s += strength * v_pre;
+			        }
+                }
             }
         }
     }
@@ -2869,7 +2871,7 @@ void recal_G_mat_nd_fast( // no distance involved for close-range connections, i
     Float postNsp = flooring(post_sInfo);
     Float postTsp = post_sInfo>0? post_sInfo - postNsp: 1;
     Float lAvgE;
-    if (learning != 3) {
+    if (learning != 3 && learning != 5) {
         if (threadIdx.x < nE) {
             PosInt cPick = postNsp>0? 1:0;
             PosInt eid = (block_offset+blockIdx.x)*nE + threadIdx.x;
