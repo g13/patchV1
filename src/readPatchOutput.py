@@ -188,7 +188,7 @@ def readLGN_fr(fn, prec='f4'):
     with open(fn, 'rb') as f:
         nt = np.fromfile(f, 'u4', count = 1)[0]
         nLGN = np.fromfile(f, 'u4', count = 1)[0]
-        LGN_fr = np.fromfile(f,prec, count = nt*nLGN).reshape(nt, nLGN)
+        LGN_fr = np.fromfile(f,prec, count = np.int64(nt)*nLGN).reshape(nt, nLGN)
     return LGN_fr
 
 def readLGN_sp(fn, prec='f4'):

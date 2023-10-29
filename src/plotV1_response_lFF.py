@@ -16,7 +16,7 @@ np.seterr(invalid = 'raise')
 #@profile
 def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
     #sample = np.array([0,1,2,768])
-    sample = np.array([11,24,25,133,167,380,402,459,792,971]);
+    sample = np.hstack((np.array([850,248,561, 311, 496, 842, 52, 414, 988, 335, 1019], dtype = 'u4'), np.array([0,1,2,3,4], dtype = 'u4')))
 
     SCsplit = 0
     nLGNorF1F0 = True
@@ -24,8 +24,8 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
     seed = 657890
     np.random.seed(seed)
     step0 = 0
-    nt_ = 16666
-    nstep = 1000
+    nt_ = 53400
+    nstep = 10000
     if nOri > 0:
         stiOri = np.pi*np.mod(iOri/nOri, 1.0)
     else:
@@ -1168,7 +1168,6 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
                     all_pos = LGN_vpos[:,:nLGN_I]
                     all_type = LGN_type[:nLGN_I]
 
-                print(f'LGN id for neuron {iV1}: {LGN_V1_ID[iV1]}')
                 ax = fig.add_subplot(grid[2,0])
                 ax.plot(t, LGN_fr_sSum, '-g', lw = 2*lw)
     
@@ -1207,7 +1206,6 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
                     pick = all_type == j
                     ax.plot(all_pos[0,pick], all_pos[1,pick], markers[j], ms = max(min_s/max_s*ms, 0.1), mew = 0.0, mfc = 'None', alpha = 0.3)
 
-                print(f'max_str = {max_s}, min_str = {min_s}, LGN_con_str:', end = '')
                 for j in range(nLGN_V1[iV1]):
                     jtype = iLGN_type[j]
                     _s_ratio = iLGN_v1_s[j]/max_s
@@ -1287,7 +1285,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
                     ax.plot(iLGN_vpos[0,j], iLGN_vpos[1,j], '*k')
                     ax.set_aspect('equal')
 
-            fig.savefig(fig_fdr+output_suffix + f'V1-sample-{iblock}-{ithread}#{nLGN_V1[iV1]}' + '.png')
+            fig.savefig(fig_fdr+output_suffix + f'V1-sample{iV1}-{iblock}-{ithread}#{nLGN_V1[iV1]}' + '.png')
             plt.close(fig)
     
     # plot depC distribution over orientation

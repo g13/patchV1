@@ -7,10 +7,10 @@ from sys import stdout
 #warnings.filterwarnings("once", message = "The balance properties of Sobol' points require")
 warnings.filterwarnings("ignore", message = "The balance properties of Sobol\' points require", category=UserWarning)
 
-def square_pos(per_dis, n, center, rng = None):
+def square_pos(per_dis, n, center, seed = 0, rng = None):
     pos = np.zeros((2,n))
     if rng is None:
-        sampler = qmc.Sobol(d=2)
+        sampler = qmc.Sobol(d=2, seed = seed)
         rands = sampler.random(n)
         pos[0,:] = (rands[:,0]-1/2)*per_dis + center[0]
         pos[1,:] = (rands[:,1]-1/2)*per_dis + center[1]
@@ -152,9 +152,9 @@ def poisson_disk_pos0(ecc, n, ratio, seed):
     
     while pos.shape[1] != n and count < 100:
         if pos.shape[1] < n:
-            print(f'short of {n - pos.shape[1]} LGN cells')
+            print(f'short of {n - pos.shape[1]} cells')
         else:
-            print(f'extra {pos.shape[1] - n} LGN cells')
+            print(f'extra {pos.shape[1] - n} cells')
         # m = int(np.ceil(4*(n-pos.shape[1])/np.pi))
         # sample = engine.random(n = m).T
         engine = qmc.PoissonDisk(d=2, radius = _radius, ncandidates = m, seed = seed)

@@ -75,7 +75,7 @@ def create_gif(filenames, output_file, duration, crop = None, text = None, fonts
             filename = add_text(txt, filename, fontsize = fontsize, l = l, t = t)
             del_tmp.append(filename)
         images.append(iio.imread(filename))
-    iio.mimwrite(output_file + '.gif', images, duration=duration)
+    iio.mimwrite(output_file + '.gif', images, duration=duration, loop = 0)
     for f in del_tmp:
         if os.path.exists(f):
             os.remove(f) 

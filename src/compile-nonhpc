@@ -13,14 +13,14 @@ PY_INC=/opt/miniconda3/envs/general/include/python3.11
 
 sm=sm_86
 
-#rm -f patch.o 
-#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -$gptflag${fast_math} -std=$cpp_version -$optflag -c -I$PY_INC patch.cu
+rm -f patch.o 
+nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -$gptflag${fast_math} -std=$cpp_version -$optflag -c -I$PY_INC patch.cu
 #
 #rm -f use_python.o 
 #nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -std=$cpp_version -$optflag -c -I$PY_INC util/use_python.cpp
 #                                                                                         
-rm -f coredynamics.o 
-nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -$gptflag${fast_math} -std=$cpp_version -$optflag -c coredynamics.cu
+#rm -f coredynamics.o 
+#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -$gptflag${fast_math} -std=$cpp_version -$optflag -c coredynamics.cu
 
 #rm -f discrete_convol.o
 #nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg -$gptflag${fast_math} -std=$cpp_version -$optflag -c discrete_input_convol.cu

@@ -3570,7 +3570,6 @@ int main(int argc, char** argv) {
 	checkCudaErrors(cudaMemcpy(d_neighborBlockId, nBlockId, nblock*nearNeighborBlock*sizeof(PosInt), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_nVec, &(nVec[0]), nV1*sizeof(Size), cudaMemcpyHostToDevice));
 
-	delete [] nBlockId;
 	usingGMem += neighborInfo_size;
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 
@@ -3754,28 +3753,17 @@ int main(int argc, char** argv) {
 								break;
 							}
 						}
-						//
 						assert(gapMat[i][id+m] >= 0);
-						//if ((iblock+j)*nI + m == 960) {
-						//	ntmp++;
-						//	cout << gapMat[i][id + m] << ", ";
-						//	if (gapMat[i][id+m] > 0) {
-						//		ntmp_connected++;
-						//	}
-						//}//
         				gapMat[i][id + m] *=  gapRatio[jtype*nTypeI + itype];
-						gapS[(iblock+j)*nI + m] += gapMat[i][id + m];
+						gapS[nBlockId[(iblock +j)*nearNeighborBlock + k]*nI + m] += gapMat[i][id + m];
 					}
 				}
 			}
 		}
 		iblock += chunkBlockSize;
 	}
+	delete [] nBlockId;
 
-    cout << "gapS[0,24] = " << gapS[0] << "\n";
-    cout << "gapS[0,25] = " << gapS[1] << "\n";
-    cout << "gapS[0,26] = " << gapS[2] << "\n";
-    cout << "gapS[24,24] = " << gapS[24*8+0] << "\n";
 	Float *d_gapS;
 	checkCudaErrors(cudaMalloc((void**)&d_gapS, sizeof(Float)*mI));
 	checkCudaErrors(cudaMemcpy(d_gapS, gapS, sizeof(Float)*mI, cudaMemcpyHostToDevice));
@@ -6040,6 +6028,28 @@ int main(int argc, char** argv) {
 	}
 	farSpiked = false;
     bool takeSnapShot;
+
+    if (learnData_FF > 0) {
+        if (learnData_FF > 1) {
+            if (!rawData) {
+		        fLearnData_FF.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
+		        fLearnData_FF.write((char*) gFF, nV1*sizeof(Float));
+            }
+		    //hLearnData_FF_ready already synced by snapshot
+		    fLearnData_FF.write((char*) LGN_V1_s, sLGN_size);
+		    fLearnData_FF.write((char*) lVarFFpost, learnVarFFsize*sizeof(Float));
+        }
+        f_sLGN.write((char*) LGN_V1_s, sLGN_size);
+        if (store_dsLGN && learnData_FF < 2) {
+            if (nLearnTypeFF_E) {
+                f_dsLGN.write((char*) (lVarFFpost + learnVarFFsize0), nE*nblock*2*sizeof(Float));
+            }
+            if (nLearnTypeFF_I) {
+                f_dsLGN.write((char*) (lVarFFpost + learnVarFFsize0 + nE*nblock*2), nI*nblock*sizeof(Float));
+            }
+        }
+    }
+
 	for (unsigned int it = 0; it < nt; it++) {
 		Float t = it*dt;
 		// next frame comes between (t, t+dt), read and store frame to texture memory
