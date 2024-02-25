@@ -6,6 +6,8 @@ __launch_bounds__(1024,1)
 __global__ 
 void rand_spInit(Float* __restrict__ tBack,
                  Float* __restrict__ spikeTrain,
+                 Float** __restrict__ gap,
+                 Float* __restrict__ gapS,
 				 PosInt* __restrict__ ipre, // [depth, nblock, nTypeHierarchy]
         		 Size* __restrict__ npre, // [depth, nblock, nTypeHierarchy]
                  Float* __restrict__ output_g,
@@ -22,7 +24,7 @@ void rand_spInit(Float* __restrict__ tBack,
                  Float* __restrict__ b,
                  curandStateMRG32k3a* __restrict__ rGenCond,
                  curandStateMRG32k3a* __restrict__ rNoisy,
-                 PosIntL seed, Size networkSize, Size nType, Size SCsplit, Size trainDepth, Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, Size nE, Size nI, int noDelay, bool iModel) 
+                 PosIntL seed, Size networkSize, Size nType, Size SCsplit, Size trainDepth, Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, Size chunkSize, Size nE, Size nI, int noDelay, bool iModel, bool InhGap) 
 {
     __shared__ PosInt counter[2];
     if (threadIdx.x < 2) {
@@ -136,6 +138,15 @@ void rand_spInit(Float* __restrict__ tBack,
     }
     rGenCond[id] = localState;
 	assert(v[id] < 0); 
+    if (InhGap) { // initialize gap junctions
+        if (threadIdx.x % blockDim.x >= nE) {
+            PosInt iChunk = blockIdx.x / chunkSize;
+            PosInt iblock = blockIdx.x % chunkSize;
+            PosInt gid = iblock * nI + id % blockDim.x - nE;
+            PosInt iid = blockIdx.x * nI + id % blockDim.x - nE;
+            gap[iChunk][gid] = v[id]*gapS[iid];
+        }
+    }
 	//if (blockIdx.x == 0 && threadIdx.x == 960 ) {
 	//	if (noDelay) {
 	//		printf("#%u: v0 = %.3f, w0  = %.3f, sInfo = %.3f, og = %.3f, oh = %.3f\n", id, v[id], w[id], spikeTrain[id], output_g[oid], output_h[oid]);
@@ -1792,7 +1803,11 @@ void compute_V_collect_spike_learnFF_fast(
 				    switch (applyHomeo) {	
 				    	case 1: 
                             homeostatic_change = new_totalFF0/local_totalFF0;
-                            assert(homeostatic_change >= 0.0f);
+                            if (homeostatic_change < 0.0f) {
+					            printf("exp_homeo = %f, f = %f->%f, finf = %f, ratio = %f\n", exp_homeo, local_totalFF0, new_totalFF0, local_totalFF_inf, homeostatic_change);
+                                assert(homeostatic_change >= 0.0f);
+                            }
+                            //assert(homeostatic_change >= 0.0f);
 				    		break;
 				    	case 2:
 				    		homeostatic_change = (new_totalFF0 - local_totalFF0)/m;
@@ -2236,7 +2251,7 @@ void recal_G_mat(
                 }
             }
             __syncwarp(); // may not be needed
-			if (threadIdx.x >= nE && i >= nE) {
+			if (threadIdx.x >= nE && i >= nE) { // gap I-> I only
             	PosIntL gid = static_cast<PosIntL>((local_bid*nI + (i-nE))*nI + threadIdx.x-nE);
             	Float gap_strength = static_cast<Float>(gapMat[gid]);
 				if (gap_strength != 0) {
@@ -2724,15 +2739,17 @@ void recal_G_mat_nd_fast( // no distance involved for close-range connections, i
         Size npreE = shared_npre[ib];
         Size npreI = shared_npre[nb+ib];
 		local_bid = blockIdx.x*nearNeighborBlock + ib;
-        if (npreE > 0 || npreI > 0) {
+        if (npreE > 0 || npreI > 0 || InhGap) {
 		    bid = neighborBlockId[local_bid];
         }
         if (npreE > 0) {// exc neighbors in the block fired
-            if (ib > 0) __syncthreads();// sync shared memory save
+            //if (ib > 0) __syncthreads();// sync shared memory save
+            __syncthreads();// sync shared memory save
             // branching is only loop-dependent, no thread-lock
             if (threadIdx.x < npreE) {
                 PosInt id = block_ngType*bid + threadIdx.x;
                 shared_ipre[threadIdx.x] = ipre[bid*blockDim.x + threadIdx.x];
+                /*
                 if (shared_ipre[threadIdx.x] >= nE) {
                     if (threadIdx.x == 0) {
                         printf("\nbid = %u: ipre = %u, npreE = %u, \n", bid, shared_ipre[threadIdx.x], npreE);
@@ -2744,7 +2761,7 @@ void recal_G_mat_nd_fast( // no distance involved for close-range connections, i
                         printf("done\n");
                     }
                     assert(shared_ipre[threadIdx.x] < nE);
-                }
+                }*/
                 //#pragma unroll (max_ngTypeE)
                 for (PosInt ig=0; ig<ngTypeE; ig++) {
                     og[ig*npreE + threadIdx.x] = output_g[ig*npreE + id];
@@ -2788,6 +2805,7 @@ void recal_G_mat_nd_fast( // no distance involved for close-range connections, i
             if (threadIdx.x < npreI) {
 			    PosInt id = block_ngType*bid + npreE*ngTypeE + threadIdx.x;
                 shared_ipre[threadIdx.x] = ipre[bid*blockDim.x + npreE + threadIdx.x];
+                /*
                 if (shared_ipre[threadIdx.x] < nE || shared_ipre[threadIdx.x] >= blockDim.x) {
                     if (threadIdx.x == 0) {
                         printf("\nbid = %u: ipre = %u, npreI = %u, \n", bid, shared_ipre[threadIdx.x], npreI);
@@ -2799,7 +2817,7 @@ void recal_G_mat_nd_fast( // no distance involved for close-range connections, i
                         printf("done\n");
                     }
                     assert(shared_ipre[threadIdx.x] >= nE && shared_ipre[threadIdx.x] < blockDim.x);
-                }
+                }*/
                 //#pragma unroll (max_ngTypeI)
                 for (PosInt ig=0; ig<ngTypeI; ig++) {
                     og[ig*npreI + threadIdx.x] = output_g[ig*npreI + id];
@@ -2846,8 +2864,16 @@ void recal_G_mat_nd_fast( // no distance involved for close-range connections, i
             __syncthreads(); // sync dynamic shared memory save
             if (threadIdx.x >= nE) {
                 for (PosInt i=0; i<nI; i++) {
-                    PosIntL gid = static_cast<PosIntL>((local_bid*nI + i)*nI + threadIdx.x-nE);
+                    PosIntL gid = (static_cast<PosIntL>(local_bid)*nI + i)*nI + threadIdx.x-nE;
                     Float strength = static_cast<Float>(gapMat[gid]);
+                    /* debug
+                        if (473 == (block_offset+blockIdx.x)*blockDim.x + threadIdx.x && (412 == bid*blockDim.x + i + nE)) {
+                            printf("device:473[%u, %u] <- 412[%u,%u]: %.4f, gid = %lu: %u*(%u*%u*%u)+%u*(%u*%u) + %u*%u + %u\n", block_offset+blockIdx.x, threadIdx.x-nE, bid, i, strength, gid, blockIdx.x, nearNeighborBlock,nI,nI,ib,nI,nI, i,nI,threadIdx.x-nE);
+                        }
+                        if (412 == (block_offset+blockIdx.x)*blockDim.x + threadIdx.x && (473 == bid*blockDim.x + i + nE)) {
+                            printf("device:412[%u, %u] <- 473[%u,%u]: %.4f, gid = %lu: %u*(%u*%u*%u)+%u*(%u*%u) + %u*%u + %u\n", block_offset+blockIdx.x, threadIdx.x-nE, bid, i, strength, gid, blockIdx.x, nearNeighborBlock,nI,nI,ib,nI,nI, i,nI,threadIdx.x-nE);
+                        }
+                     */
 			        if (strength > 0) {
                         Float v_pre = pre_sInfo[i];
 			        	PosInt jtype;
@@ -2860,6 +2886,11 @@ void recal_G_mat_nd_fast( // no distance involved for close-range connections, i
     		        	}
 			        	v_pre = v_pre > 0? vThres[jtype]: v_pre;
 			        	gap_s += strength * v_pre;
+                        /*debug
+                            if (412 == (block_offset+blockIdx.x)*blockDim.x + threadIdx.x) {
+                                printf("gapS = %.4f, v = %.4f\n", strength, v_pre);
+                            }
+                        */
 			        }
                 }
             }

@@ -224,7 +224,7 @@ def _get_neighbor_idx(d, notSquare, row, col, l, add_idx):
 
 def fast_poisson_disk2d(len_of_edge, n, ratio = 1, m = 32, attempts = 1, attempts0 = 1, jiggle = 0.05, seed = 5617328, plot = False):
     rGen = np.random.default_rng(seed)
-    sobol_sampler = qmc.Sobol(d = 2)
+    sobol_sampler = qmc.Sobol(d = 2, seed = seed + 1)
     l = int(np.sqrt(n))
     cell_size = 1/np.sqrt(n) * ratio
     dn = n - l*l

@@ -9,9 +9,10 @@ from plotV1_response import movingAvg
 #np.seterr(invalid = 'raise')
 
 def plotV1_fr(output_suffix0, res_fdr, data_fdr, fig_fdr, inputFn, nOri, readNewSpike, ns):
+    sample = np.arange(10)
     sample_nOri = 10
     sample_nOri0 = 0
-    sample_cutoff = 0.5
+    sample_cutoff = 1.0
     low = 10
     high = 100-low
     fr_bin = 20 #ms
@@ -84,7 +85,6 @@ def plotV1_fr(output_suffix0, res_fdr, data_fdr, fig_fdr, inputFn, nOri, readNew
 
     if 'sample' not in locals():
         sample = np.random.randint(nV1, size = ns)
-    sample = np.unique(np.hstack((np.array([24,25], dtype = int), sample)))
     for i in sample:
         fig = plt.figure(f'V1-fr-{i}', dpi = 300, figsize = [16,8])
         ax = fig.add_subplot(211)

@@ -124,6 +124,8 @@ __device__ void block_collectID(bool exist, T &id, PosInt counter[], PosInt sep)
 __global__ 
 void rand_spInit(Float* __restrict__ tBack,
                  Float* __restrict__ spikeTrain,
+                 Float** __restrict__ gap,
+                 Float* __restrict__ gapS,
 				 PosInt* __restrict__ ipre, // [depth, nblock, nTypeHierarchy]
         		 Size* __restrict__ npre, // [depth, nblock, nTypeHierarchy]
                  Float* __restrict__ output_g,
@@ -140,7 +142,7 @@ void rand_spInit(Float* __restrict__ tBack,
                  Float* __restrict__ b,
                  curandStateMRG32k3a* __restrict__ rGenCond,
                  curandStateMRG32k3a* __restrict__ rNoisy,
-                 PosIntL seed, Size networkSize, Size nType, Size SCsplit, Size trainDepth, Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, Size nE, Size nI, int noDelay, bool iModel
+                 PosIntL seed, Size networkSize, Size nType, Size SCsplit, Size trainDepth, Float dt, ConductanceShape condE, ConductanceShape condI, Size ngTypeE, Size ngTypeI, Size chunkSize, Size nE, Size nI, int noDelay, bool iModel, bool InhGap
 );
 
 __global__ void logRand_init(Float *logRand, Float *lTR, int* LGN_idx, int* LGN_idy, curandStateMRG32k3a *state, cudaSurfaceObject_t LGNspikeSurface, PosIntL seed, Size n, Size nFF);

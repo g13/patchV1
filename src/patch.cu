@@ -1350,7 +1350,7 @@ int main(int argc, char** argv) {
         if (nLearnTypeFF_E) printFF_post<LearnVarShapeFF_E_post>(lFF_E_post, 1);
         if (nLearnTypeFF_I) printFF_post<LearnVarShapeFF_I_post>(lFF_I_post, 0);
 
-        if (nLearnTypeE) {
+        if (nLearnTypeE) { // TODO: A_V1 not scaled by sRatioV1
 			learnE(lE, &(tauLTP[nLearnTypeFF]), &(tauLTD[nLearnTypeFF]), &(tauTrip[nLearnTypeFF]), tauAvg[0], targetFR[0], &(A_V1[0]), gmaxE[0], gminE[0], nLearnTypeE);
 		} else {
 			lE.n = 0;
@@ -3737,7 +3737,7 @@ int main(int argc, char** argv) {
 		for (PosInt j=0; j<chunkBlockSize; j++) {
 			for (PosInt k=0; k<nNearNeighborBlock[iblock+j]; k++) {
 				for (PosInt l=0; l<nI; l++) {
-					PosInt id = j*nearNeighborBlock*nI*nI + k*nI*nI + l*nI;
+					PosIntL id = (static_cast<PosIntL>(j*nearNeighborBlock + k)*nI + l)*nI;
 					PosInt jtype;
 					for (PosInt q=0; q<nTypeI; q++) {
 						if (l < typeAccCount[q+nTypeE] - nE) {
@@ -3755,7 +3755,17 @@ int main(int argc, char** argv) {
 						}
 						assert(gapMat[i][id+m] >= 0);
         				gapMat[i][id + m] *=  gapRatio[jtype*nTypeI + itype];
-						gapS[nBlockId[(iblock +j)*nearNeighborBlock + k]*nI + m] += gapMat[i][id + m];
+
+                        /*debug
+                            PosInt jblock = nBlockId[(iblock +j)*nearNeighborBlock + k];
+                            if ((jblock == 12) && (l == 20) && gapMat[i][id+m] > 0) {
+                                printf("host:%lu <- %u: %.4f, gid = %lu: %u*(%u*%u*%u) + %u*(%u*%u) + %u*%u + %u \n", (iblock+j)*blockSize+m+nE, jblock*blockSize+l+nE,  gapMat[i][id + m], id+m, j, nearNeighborBlock, nI, nI, k, nI, nI, l, nI, m);
+                            }
+                            if ((iblock + j == 12) && (m == 20) && gapMat[i][id+m] > 0) {
+                                printf("host:%lu <- %u: %.4f, gid = %lu: %u*(%u*%u*%u) + %u*(%u*%u) + %u*%u + %u \n", (iblock+j)*blockSize+m+nE, jblock*blockSize+l+nE, gapMat[i][id + m], id+m, j, nearNeighborBlock, nI, nI, k, nI, nI, l, nI, m);
+                            }
+                        */
+						gapS[(iblock+j)*nI + m] += gapMat[i][id + m];
 					}
 				}
 			}
@@ -3763,6 +3773,10 @@ int main(int argc, char** argv) {
 		iblock += chunkBlockSize;
 	}
 	delete [] nBlockId;
+    /*
+    printf("gapS[412]=%.4f\n", gapS[12*nI + 20]);
+    printf("gapS[473]=%.4f\n", gapS[14*nI + 17]);
+    */
 
 	Float *d_gapS;
 	checkCudaErrors(cudaMalloc((void**)&d_gapS, sizeof(Float)*mI));
@@ -4616,12 +4630,11 @@ int main(int argc, char** argv) {
 			}
 		}
 
-
 		cout << "mean(gE0) =  " << gEMean/nV1/ngTypeE << "\n";
 		cout << "mean(gI0) =  " << gIMean/nV1/ngTypeI << "\n";
 
         cout << "rand_spInit<<<" << nblock << ", " << blockSize << ">>>" << "\n";
-    	rand_spInit<<<nblock, blockSize>>>(tBack, d_spikeTrain, d_ipre, d_npre, d_og, d_oh, d_v, d_w, d_nLGNperV1, d_sp0, typeAcc, d_vR, d_tRef, d_tau_w, d_a, d_b, rGenCond, rNoisy, seed, nV1, nType, SCsplit, trainDepth, dt, condE, condI, ngTypeE, ngTypeI, nE, nI, noDelay, iModel);
+    	rand_spInit<<<nblock, blockSize>>>(tBack, d_spikeTrain, dd_gap, d_gapS, d_ipre, d_npre, d_og, d_oh, d_v, d_w, d_nLGNperV1, d_sp0, typeAcc, d_vR, d_tRef, d_tau_w, d_a, d_b, rGenCond, rNoisy, seed, nV1, nType, SCsplit, trainDepth, dt, condE, condI, ngTypeE, ngTypeI, maxChunkSize, nE, nI, noDelay, iModel, InhGap);
     	checkCudaErrors(cudaDeviceSynchronize());
     	seed++;
     	//checkCudaErrors(cudaMemset(d_spikeTrain, 0, nV1*trainDepth*sizeof(Float)));
@@ -4633,7 +4646,7 @@ int main(int argc, char** argv) {
     	#else
 		    cudaMemcpy(spikeTrain, d_spikeTrain, trainSize*sizeof(Float), cudaMemcpyDeviceToHost); // to overlap with  recal_G, to be used in recal_Gvec
     	#endif
-		// debug
+		/* debug
 			for (PosInt i = 0; i<trainDepth; i++) {
 				for (PosInt j=0; j<nV1; j++) {
 					if (spikeTrain[i*nV1 + j] < 1) {
@@ -4644,7 +4657,27 @@ int main(int argc, char** argv) {
 					}
 				}
 			}
-		//
+
+    	    #ifdef CHECK
+		    	checkCudaErrors(cudaMemcpy(depC, d_depC, totalSize, cudaMemcpyDeviceToHost));
+    	    #else
+                cudaMemcpy(depC, d_depC, totalSize, cudaMemcpyDeviceToHost);
+    	    #endif
+            for (PosInt tid = 0; tid < nV1; tid++) {
+                if (tid == 412 || tid == 473) {
+                    int iChunk = (tid/blockSize) / chunkSize;
+                    int gap_block = (tid/blockSize) % chunkSize;
+                    int gap_tid = tid%blockSize - nE;
+                    int gap_id = gap_block*nI + gap_tid;
+                    int iid = (tid/blockSize)*nI + gap_tid;
+                    assert(iChunk >= 0);
+                    assert(gap_block >= 0);
+                    assert(gap_tid >= 0);
+                    assert(gap_id >= 0);
+                    printf("init:%d[%d, %d]: gapS = %.4f, gap = %.4f, v = %.4f, cGap = %.4f\n", tid, gap_block, gap_tid, gapS[iid], gap[iChunk][gap_id], v[tid], gap[iChunk][gap_id] - gapS[iid]*v[tid]);
+                }
+            }
+		*/
     	cout << "spiking... V1 initialized\n"; 
     	#ifdef CHECK
     	    getLastCudaError("spiking initialized");
@@ -6256,6 +6289,22 @@ int main(int argc, char** argv) {
 				    if (iModel == 1) {
 			        	fRawData.write((char*) depC, nV1*sizeof(Float)*(3+ngTypeFF*(1+hWrite)));
 				    }
+                    /* Debug
+                    for (PosInt tid = 0; tid < nV1; tid++) {
+                        if (tid == 412) {
+                            int iChunk = (tid/blockSize) / chunkSize;
+                            int gap_block = (tid/blockSize) % chunkSize;
+                            int gap_tid = tid%blockSize - nE;
+                            int gap_id = gap_block*nI + gap_tid;
+                            int iid = (tid/blockSize)*nI + gap_tid;
+                            assert(iChunk >= 0);
+                            assert(gap_block >= 0);
+                            assert(gap_tid >= 0);
+                            assert(gap_id >= 0);
+                            printf("host:%d[%d, %d]: gapS = %.4f, gap = %.4f, v = %.4f, cGap = %.4f\n", tid, gap_block, gap_tid, gapS[iid], gap[iChunk][gap_id], v[tid], gap[iChunk][gap_id] - gapS[iid]*v[tid]);
+                        }
+                    }
+                    */
                 } 
                 if (learnData_FF > 0) {
                     if (learnData_FF > 1) {

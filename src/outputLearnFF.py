@@ -11,11 +11,12 @@ import sys
 import warnings
 import os 
 from img_proc import create_gif
-np.seterr(all='raise')
+np.seterr(over = 'raise', under = 'ignore')
     
-def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr, fig_fdr, inputFn, LGN_switch, mix, st, examSingle, use_local_max, stage, ns, examLTD, find_peak):
-    cross_sample = np.array([850, 248], dtype = int)
+def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr, fig_fdr, inputFn, LGN_switch, mix, st, examSingle, use_local_max, stage, ns, examLTD, find_peak, retino_cross, retinotopy):
+    save_svg = True
     get_NeighborOfNeighbor = False
+    use_local_min = False
     step0 = 0
     nt_ = 0
     #nt_ = 61500
@@ -41,14 +42,14 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
     
     #### HERE ####
     top_thres = 0.8
-    thres_out = 0.2
     os_out = 0.5
     nstep = 1000
     nbins = 20
-    nit0 = 2
+    nit0 = 10
     
     #V1_pick = np.array([203,752,365,360,715,467,743]); # specify the IDs of V1 neurons to be sampled. If set, ns will be ignored.
-    V1_pick = np.hstack((np.array([561, 311, 496, 842, 52, 414, 988, 335], dtype = 'u4'), np.array([0,1,2,3,4], dtype = 'u4')))
+    #V1_pick = np.hstack((np.array([412, 473, 414, 456, 500, 40, 189, 93, 915], dtype = 'u4'), np.array([0,1,2,3,4], dtype = 'u4')))
+    V1_pick = np.hstack((np.array([412, 473, 414, 0, 1, 2], dtype = 'u4')))
     nop = 12
     ############
     
@@ -64,9 +65,18 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
     fLGN_switch = setup_fdr+'LGN_switch'+isuffix+'.bin'
     fConnectome = setup_fdr+'connectome_cfg'+isuffix+'.bin'
     fV1_gapMat = setup_fdr+'V1_gapMat' + isuffix + '.bin'
+    fV1_delayMat = setup_fdr + 'V1_delayMat' + isuffix + '.bin'
     fNeighborBlock = setup_fdr + 'neighborBlock' + isuffix + '.bin'
+    if retino_cross:
+        crossFn = setup_fdr + 'cross_pair' + isuffix + '.bin'
 
     fStats = data_fdr + 'metric' + osuffix + '.bin'
+
+    if retino_cross:
+        with open(crossFn, 'rb') as f:
+            ncross = np.fromfile(f, 'u4', 1)[0]
+            cross_sample = np.fromfile(f, 'u4', ncross)
+            cross_target = np.fromfile(f, 'u4', ncross)
 
     with open(fLGN_vpos, 'rb') as f:
         nLGN, nLGN_I = np.fromfile(f, 'u4', 2)
@@ -185,7 +195,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
     V1_pick = np.sort(V1_pick)
     ### TEMPORARY: test inhibitory neurons with gap junction
     if 'cross_sample' in locals():
-        V1_pick = np.unique(np.hstack((cross_sample, V1_pick)))
+        V1_pick = np.unique(np.hstack((cross_sample, cross_target, V1_pick)))
     else:
         cross_sample = np.array([], dtype = int)
     print(V1_pick)
@@ -258,6 +268,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         frameRate = np.fromfile(f, 'f8', 1)[0]
         framesPerStatus = np.fromfile(f, 'u4', nStage)
         framesToFinish = np.fromfile(f, 'u4', nStage)
+        max_ecc = np.fromfile(f, 'f8', 1)[0]
 
     #nit_xlabel = [f'{i/(framesToFinish[0]*1000/frameRate*dt):.1f}' for i in qt]
     
@@ -288,6 +299,9 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         n_con = np.zeros((2,nit))
         _rstd_on = np.zeros((nV1,nit))
         _rstd_off = np.zeros((nV1,nit))
+
+        ron_dist = np.zeros((nit, r.size, 3))
+        roff_dist = np.zeros((nit, r.size, 3))
 
         def Gauss_c(x, sigma, vmax):
             if sigma == 0:
@@ -326,6 +340,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         ctr_p = np.zeros(nit)
         dis2c_p = np.zeros(nit)
         total_err = 0
+
         for i in range(nit):
             nerr = 0
             if i > 0:
@@ -449,23 +464,37 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             
             g_std_p[i] = stat.ttest_1samp(_rstd_on[epick,i] - _rstd_off[epick,i], 0).pvalue
 
+            sLGN_on = np.sum(sLGN_on, axis = 0)[nonzero_pick_on]/nonzero_sum[0,:,:][nonzero_pick_on]
+            sLGN_off = np.sum(sLGN_off, axis = 0)[nonzero_pick_off]/nonzero_sum[1,:,:][nonzero_pick_off]
+            jpick_on = np.zeros_like(r, dtype = bool)
+            jpick_off = np.zeros_like(r, dtype = bool)
+            per_on = np.zeros((r.size,2))
+            per_off = np.zeros((r.size,2))
+            for j in range(r.size):
+                on_pick = np.logical_and(rLGN[nonzero_pick_on] > r[j] - min_dr/2, rLGN[nonzero_pick_on] < r[j] + min_dr/2)
+                off_pick = np.logical_and(rLGN[nonzero_pick_off] > r[j] - min_dr/2, rLGN[nonzero_pick_off] < r[j] + min_dr/2)
+                if on_pick.any():
+                    s_Don[j] = np.mean(sLGN_on[on_pick])
+                    per_on[j,0] = np.percentile(sLGN_on[on_pick], 25)
+                    per_on[j,1] = np.percentile(sLGN_on[on_pick], 75)
+                    jpick_on[j] = True
+                if off_pick.any():
+                    s_Doff[j] = np.mean(sLGN_off[off_pick])
+                    per_off[j,0] = np.percentile(sLGN_off[off_pick], 25)
+                    per_off[j,1] = np.percentile(sLGN_off[off_pick], 75)
+                    jpick_off[j] = True
+
+            ron_dist[i,:,0] = s_Don
+            roff_dist[i,:,0] = s_Doff
+            ron_dist[i,:,1] = per_on[:,0]
+            roff_dist[i,:,1] = per_off[:,0]
+            ron_dist[i,:,2] = per_on[:,1]
+            roff_dist[i,:,2] = per_off[:,1]
+
             if stage == 2: 
                 ax1 = fig.add_subplot(nit, 4, 4 * i + 2) # cell-normalized on vs. off
                 ax2 = fig.add_subplot(nit, 4, 4 * i + 3) # cell-summed on and off strength
                 ax3 = fig.add_subplot(nit, 4, 4 * i + 4) # on vs. off
-                sLGN_on = np.sum(sLGN_on, axis = 0)[nonzero_pick_on]/nonzero_sum[0,:,:][nonzero_pick_on]
-                sLGN_off = np.sum(sLGN_off, axis = 0)[nonzero_pick_off]/nonzero_sum[1,:,:][nonzero_pick_off]
-                jpick_on = np.zeros_like(r, dtype = bool)
-                jpick_off = np.zeros_like(r, dtype = bool)
-                for j in range(r.size):
-                    on_pick = np.logical_and(rLGN[nonzero_pick_on] > r[j] - min_dr/2, rLGN[nonzero_pick_on] < r[j] + min_dr/2)
-                    off_pick = np.logical_and(rLGN[nonzero_pick_off] > r[j] - min_dr/2, rLGN[nonzero_pick_off] < r[j] + min_dr/2)
-                    if on_pick.any():
-                        s_Don[j] = np.mean(sLGN_on[on_pick])
-                        jpick_on[j] = True
-                    if off_pick.any():
-                        s_Doff[j] = np.mean(sLGN_off[off_pick])
-                        jpick_off[j] = True
 
                 ax3.plot(r[jpick_on], s_Don[jpick_on], '.r', ms = 1, alpha = 0.7)
                 ax3.plot(r[jpick_off], s_Doff[jpick_off], '.b', ms = 1, alpha = 0.7)
@@ -571,8 +600,32 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         
         #fig.tight_layout()
         fig.savefig(f'{fig_fdr}tOS-dist{osuffix}{rtime}.png')
+        if save_svg:
+            fig.savefig(f'{fig_fdr}tOS-dist{osuffix}{rtime}.svg')
+
         plt.close(fig)
         print('tOS-dist finished')
+
+        fig = plt.figure('radial_dist', figsize = (10,4), dpi = 120)
+        ax = fig.add_subplot(121)
+        for i in range(nit):
+            ax.plot(r, ron_dist[i,:,0], label = f'{i/nit*100:.1f}%', lw = (i+1)/nit*3)
+            #ax.fill_between(r, ron_dist[i,:,1], ron_dist[i,:,2], alpha = 0.5)
+        ax.set_xlabel('r, distance to center (#LGN)')
+        ax.set_ylabel('average connection weight')
+        ax.set_title('On')
+        ax = fig.add_subplot(122)
+        for i in range(nit):
+            ax.plot(r, roff_dist[i,:,0], label = f'{i/nit*100:.1f}%', lw = (i+1)/nit*3)
+            #ax.fill_between(r, roff_dist[i,:,1], roff_dist[i,:,2], alpha = 0.5)
+        ax.set_xlabel('r, distance to center (#LGN)')
+        ax.set_ylabel('average connection weight')
+        ax.set_title('Off')
+        fig.savefig(f'{fig_fdr}radial_dist{osuffix}.png')
+        if save_svg:
+            fig.savefig(f'{fig_fdr}radial_dist{osuffix}.svg')
+
+
 
         n_above = np.arange(max_LGNperV1/2)
         fig = plt.figure('max_min_tDist', figsize = (6,6), dpi = 300)
@@ -650,6 +703,9 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
 
         ax.set_title(f'off: {avg_off_min:.2f}')
         fig.savefig(f'{fig_fdr}max_min_tDist{osuffix}{rtime}.png')
+        if save_svg:
+            fig.savefig(f'{fig_fdr}max_min_tDist{osuffix}{rtime}.svg')
+
         plt.close(fig)
         print('max_min_tDist finished')
         f.seek(max_LGNperV1 * nV1 * np.int64(nt_ - 1) * 4 + nskip*4, 0)
@@ -719,6 +775,9 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
     ax.set_xlabel('dis/(Ron+Roff) or overlap')
     ax.set_ylabel('#V1')
     fig.savefig(f'{fig_fdr}stats-LGN_V1{osuffix}{rtime}.png')
+    if save_svg:
+        fig.savefig(f'{fig_fdr}stats-LGN_V1{osuffix}{rtime}.svg')
+
     plt.close(fig)
     print('stats finished')
 
@@ -730,12 +789,14 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             on_center = np.zeros((2, ns+2, nit))
             off_center = np.zeros((2, ns+2, nit))
             radius_t = np.zeros((ns+2, 2, nit))
-            contour_area = np.zeros((ns+2, 2, nit))
+            contour_radius = np.zeros((ns+2, 2, nit))
+            s0 = np.zeros((ns+2, 2))
         else:
             radius_t = np.zeros((nV1+2, 2, nit))
             on_center = np.zeros((2, nV1+2, nit))
             off_center = np.zeros((2, nV1+2, nit))
-            contour_area = np.zeros((nV1+2, 2, nit))
+            contour_radius = np.zeros((nV1+2, 2, nit))
+            s0 = np.zeros((nV1+2, 2))
 
         with open(f_sLGN, 'rb') as f:
             f.seek(nskip * 4, 1)
@@ -751,29 +812,40 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                 data = np.fromfile(f, 'f4', nV1*max_LGNperV1).reshape(max_LGNperV1, nV1).T
                 if not avgOnly:
                     radius_t[:-2,:,j], on_center[:,:-2,j], off_center[:,:-2,j] = get_radius(nV1, data, nLGN_V1, LGN_vpos, LGN_type, LGN_V1_ID)
-                    contour_area[:-2,:,j] = get_contour_area(nV1, data, nLGN_V1, LGN_V1_ID, nLGN_1D)
+                    _sLGN = np.zeros((nV1, nLGN))
+                    for i in range(nV1):
+                        _sLGN[i, LGN_V1_ID[i, :nLGN_V1[i]]] = data[i, :nLGN_V1[i]]
+                    s0[:-2,:] = np.mean(_sLGN.reshape(nV1, nLGN_1D*nLGN_1D, 2), axis = 1)
+                    contour_radius[:-2,:,j] = get_contour_radius(nV1, data, nLGN_V1, LGN_V1_ID, nLGN_1D, s0[:-2,:])
                 q = 0
                 for i in range(nV1):
+                    _sLGN = np.zeros(nLGN)
+                    _sLGN[LGN_V1_ID[i, :nLGN_V1[i]]] = data[i, :nLGN_V1[i]]
                     if i in V1_pick:
                         iV1 = i
-                        sLGN_all[q, j, LGN_V1_ID[iV1, :nLGN_V1[iV1]]] = data[iV1, :nLGN_V1[iV1]]
+                        sLGN_all[q, j, :] = _sLGN
                         if avgOnly:
                             radius_t[q,:,j], on_center[:,q,j], off_center[:,q,j] = get_radius(1, data[iV1, :nLGN_V1[iV1]], nLGN_V1[iV1], LGN_vpos, LGN_type, LGN_V1_ID[iV1,:])
-                            contour_area[q,:,j] = get_contour_area(1, data[iV1, :nLGN_V1[iV1]], nLGN_V1[iV1], LGN_V1_ID[iV1,:], nLGN_1D)
+                            s0[q,:] = np.mean(_sLGN.reshape(nLGN_1D*nLGN_1D,2), axis = 0)
+                            contour_radius[q,:,j] = get_contour_radius(1, data[iV1, :nLGN_V1[iV1]], nLGN_V1[iV1], LGN_V1_ID[iV1,:], nLGN_1D, s0[q, :])
                         q += 1
                     if i in epick:
-                        sLGN_all[-2, j, LGN_V1_ID[i, :nLGN_V1[i]]] += data[i, :nLGN_V1[i]]
+                        sLGN_all[-2, j, :] += _sLGN
+                        s0[-2,:] += np.mean(_sLGN.reshape(nLGN_1D*nLGN_1D,2), axis = 0)
                     if i in ipick and nLearnFF_I > 0:
-                        sLGN_all[-1, j, LGN_V1_ID[i, :nLGN_V1[i]]] += data[i, :nLGN_V1[i]]
+                        sLGN_all[-1, j, :] += _sLGN
+                        s0[-1,:] += np.mean(_sLGN.reshape(nLGN_1D*nLGN_1D,2), axis = 0)
                 # averaged
                 sLGN_all[-2, j, :] /= nE
+                s0[-2,:] /= nE
                 radius_t[-2,:,j], on_center[:,-2,j], off_center[:,-2,j] = get_radius(1, sLGN_all[-2, j, :], nLGN, LGN_vpos, LGN_type, np.arange(nLGN))
-                contour_area[-2,:,j] = get_contour_area(1, sLGN_all[-2, j, :], nLGN, np.arange(nLGN), nLGN_1D)
+                contour_radius[-2,:,j] = get_contour_radius(1, sLGN_all[-2, j, :], nLGN, np.arange(nLGN), nLGN_1D, s0[-2,:])
                 if nLearnFF_I > 0:
                     sLGN_all[-1, j, :] /= nI
+                    s0[-1,:] /= nI
                     radius_t[-1,:,j], on_center[:,-1,j], off_center[:,-1,j] = get_radius(1, sLGN_all[-1, j, :], nLGN, LGN_vpos, LGN_type, np.arange(nLGN))
-                    contour_area[-1,:,j] = get_contour_area(1, sLGN_all[-1, j, :], nLGN, np.arange(nLGN), nLGN_1D)
-                ctr_p[j] = stat.ttest_1samp(np.sqrt(contour_area[:-2,0,j]) - np.sqrt(contour_area[:-2,1,j]), 0).pvalue
+                    contour_radius[-1,:,j] = get_contour_radius(1, sLGN_all[-1, j, :], nLGN, np.arange(nLGN), nLGN_1D, s0[-1,:])
+                ctr_p[j] = stat.ttest_1samp(contour_radius[:-2,0,j] - contour_radius[:-2,1,j], 0).pvalue
                 dis2c_p[j] = stat.ttest_1samp(radius_t[:-2,0,j] - radius_t[:-2,1,j], 0).pvalue
         forward, inverse, yt, ytl, yt_neg, ytl_neg = get_oneOverYscale(nLGN_1D//2)
         yt_full = yt_neg.copy()
@@ -788,24 +860,26 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             ax1.plot(qt*dt/1000, radius_t[-2,0,:], '-r', label = 'on radius')
             ax1.plot(qt*dt/1000, radius_t[-2,1,:], '-b', label = 'off radius')
             # contour
-            ax1.plot(qt*dt/1000, np.sqrt(contour_area[-2,0,:])/2, ':m', label = 'on sqrt(area)/2')
-            ax1.plot(qt*dt/1000, np.sqrt(contour_area[-2,1,:])/2, ':c', label = 'off sqrt(area)/2')
+            ax1.plot(qt*dt/1000, contour_radius[-2,0,:], ':m', label = 'on sqrt(area)/2')
+            ax1.plot(qt*dt/1000, contour_radius[-2,1,:], ':c', label = 'off sqrt(area)/2')
             # std
             ax2.plot(qt*dt/1000, 1/rstd_on, ':r', label = f'on 1/g-std.')
             ax2.plot(qt*dt/1000, 1/rstd_off, ':b', label = f'off 1/g-std.')
             ax2.set_yscale('function', functions = (forward, inverse))
             ax2.set_ylabel('1/g-std.')
             rstd = np.concatenate((rstd_on, rstd_off))
-            if (rstd > 0).any() and (rstd < 0).any():
-                ax2.set_ylim([-1.5, 1.5])
-                ax2.set_yticks(yt_full, ytl_full, fontsize = 'x-small')
-            else:
-                if (rstd > 0).all():
-                    ax2.set_ylim([0, 1.5])
-                    ax2.set_yticks(yt, ytl, fontsize = 'x-small')
-                if (rstd < 0).all():
-                    ax2.set_ylim([-1.5, 0])
-                    ax2.set_yticks(yt_neg, ytl_neg, fontsize = 'x-small')
+            print('rstd:')
+            print(rstd)
+            #if (rstd > 0).any() and (rstd < 0).any():
+            #    ax2.set_ylim([-1.5, 1.5])
+            #    ax2.set_yticks(yt_full, ytl_full, fontsize = 'x-small')
+            #else:
+            #    if (rstd > 0).all():
+            #        ax2.set_ylim([0, 1.5])
+            #        ax2.set_yticks(yt, ytl, fontsize = 'x-small')
+            #    if (rstd < 0).all():
+            #        ax2.set_ylim([-1.5, 0])
+            #        ax2.set_yticks(yt_neg, ytl_neg, fontsize = 'x-small')
         else:
             # radius
             ax1.plot(qt*dt/1000, radius_t[epick,0,:].mean(axis = 0), '-r', label = 'on radius', lw  =1)
@@ -813,10 +887,10 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             ax1.plot(qt*dt/1000, radius_t[epick,1,:].mean(axis = 0), '-b', label = 'off radius', lw = 1)
             ax1.fill_between(qt*dt/1000, np.percentile(radius_t[epick,1,:], 10, axis = 0), np.percentile(radius_t[epick,1,:], 90, axis = 0), edgecolor = 'None', color = 'b', alpha = 0.5, lw = 0)
             # contour
-            contour_length = np.sqrt(contour_area[epick,0,:])/2
+            contour_length = contour_radius[epick,0,:]
             ax1.plot(qt*dt/1000, contour_length.mean(axis = 0), '-m', label = 'on sqrt(area)/2', lw = 1)
             ax1.fill_between(qt*dt/1000, np.percentile(contour_length, 10, axis = 0), np.percentile(contour_length, 90, axis = 0), edgecolor = 'None', color = 'm', alpha = 0.5, lw = 0)
-            contour_length = np.sqrt(contour_area[epick,1,:])/2
+            contour_length = contour_radius[epick,1,:]
             ax1.plot(qt*dt/1000, contour_length.mean(axis = 0), '-c', label = 'off sqrt(area)/2', lw = 1)
             ax1.fill_between(qt*dt/1000, np.percentile(contour_length, 10, axis = 0), np.percentile(contour_length, 90, axis = 0), edgecolor = 'None', color = 'c', alpha = 0.5, lw = 0)
 
@@ -826,6 +900,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             ax2.set_yscale('function', functions = (forward, inverse))
             ax2.set_ylabel('1/g-std.')
             rstd = np.concatenate((rstd_on, rstd_off))
+            print('rstd:')
             print(rstd)
             if (rstd > 0).any() and (rstd < 0).any():
                 ax2.set_ylim([-1.5, 1.5])
@@ -857,7 +932,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         ax1.set_xlabel(f'time{rtime}')
         ax1.set_ylabel('avg. dis to center')
         if avgOnly:
-            ax1.set_title(f'on diff: ({radius_t[-2,0,0]-radius_t[-2,0,-1]:.1f}, {(np.sqrt(contour_area[-2,0,0]) - np.sqrt(contour_area[-2,0,-1]))/2:.1f}, {rstd_on[0] - rstd_on[-1]:.1f})\n off diff: ({radius_t[-2,1,0]-radius_t[-2,1,-1]:.1f}, {(np.sqrt(contour_area[-2,1,0]) - np.sqrt(contour_area[-2,1,-1]))/2:.1f}, {rstd_off[0] - rstd_off[-1]:.1f})')
+            ax1.set_title(f'on diff: ({radius_t[-2,0,0]-radius_t[-2,0,-1]:.1f}, {contour_radius[-2,0,0] - contour_radius[-2,0,-1]:.1f}, {rstd_on[0] - rstd_on[-1]:.1f})\n off diff: ({radius_t[-2,1,0]-radius_t[-2,1,-1]:.1f}, {contour_radius[-2,1,0] - contour_radius[-2,1,-1]:.1f}, {rstd_off[0] - rstd_off[-1]:.1f})')
         else:
             ax1.set_title(f'on diff: {radius_t[epick,0,0].mean()-radius_t[epick,0,-1].mean():.1f}, off diff: {radius_t[epick,1,0].mean()-radius_t[epick,1,-1].mean():.1f}')
         if nLearnFF_I > 0:
@@ -867,8 +942,8 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                 ax2.plot(qt*dt/1000, radius_t[-1,0,:], '-r', label = 'on radius')
                 ax2.plot(qt*dt/1000, radius_t[-1,1,:], '-b', label = 'off radius')
                 # contour
-                ax2.plot(qt*dt/1000, np.sqrt(contour_area[-1,0,:])/2, ':m', label = 'on sqrt(area)/2')
-                ax2.plot(qt*dt/1000, np.sqrt(contour_area[-1,1,:])/2, ':c', label = 'off sqrt(area)/2')
+                ax2.plot(qt*dt/1000, contour_radius[-1,0,:], ':m', label = 'on sqrt(area)/2')
+                ax2.plot(qt*dt/1000, contour_radius[-1,1,:], ':c', label = 'off sqrt(area)/2')
 
             else:
                 # radius
@@ -877,11 +952,11 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                 ax2.plot(qt*dt/1000, radius_t[ipick,1,:].mean(axis = 0), '-b', label = 'off radius', lw = 1)
                 ax2.fill_between(qt*dt/1000, np.percentile(radius_t[ipick,1,:], 10, axis = 0), np.percentile(radius_t[ipick,1,:], 90, axis = 0), edgecolor = 'None', color = 'b', alpha = 0.5, lw = 0)
                 # contour
-                contour_length = np.sqrt(contour_area[ipick,0,:])/2
-                ax2.plot(qt*dt/1000, np.sqrt(contour_length.mean(axis = 0)), '-m', label = 'on sqrt(area)/2', lw = 1)
+                contour_length = contour_radius[ipick,0,:]
+                ax2.plot(qt*dt/1000, contour_length.mean(axis = 0), '-m', label = 'on sqrt(area)/2', lw = 1)
                 ax2.fill_between(qt*dt/1000, np.percentile(contour_length, 10, axis = 0), np.percentile(contour_length, 90, axis = 0), edgecolor = 'None', color = 'm', alpha = 0.5, lw = 0)
-                contour_length = np.sqrt(contour_area[ipick,1,:])/2
-                ax2.plot(qt*dt/1000, np.sqrt(contour_length.mean(axis = 0)), '-c', label = 'off sqrt(area)/2', lw = 1)
+                contour_length = contour_radius[ipick,1,:]
+                ax2.plot(qt*dt/1000, contour_length.mean(axis = 0), '-c', label = 'off sqrt(area)/2', lw = 1)
                 ax2.fill_between(qt*dt/1000, np.percentile(contour_length, 10, axis = 0), np.percentile(contour_length, 90, axis = 0), edgecolor = 'None', color = 'c', alpha = 0.5, lw = 0)
 
             ax2.set_xlim(qt[0]*dt/1000, qt[-1]*dt/1000)
@@ -902,8 +977,11 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             ax2.set_ylabel('avg. dis to center')
             ax2.set_ylim(0, nLGN_1D/2 * np.sqrt(2))
         fig.savefig(f'{fig_fdr}t_radius{osuffix}.png', bbox_inches = 'tight')
+        if save_svg:
+            fig.savefig(f'{fig_fdr}t_radius{osuffix}.svg', bbox_inches = 'tight')
+
         radius_t[-2,:,:].tofile(fout)
-        (np.sqrt(contour_area[-2,:,:])/2).tofile(fout)
+        contour_radius[-2,:,:].tofile(fout)
         OnOff_balance.tofile(fout)
         OnOff_balance_p.tofile(fout)
         g_std_p.tofile(fout)
@@ -911,368 +989,480 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         ctr_p.tofile(fout)
 
         fout.close()
+
         if not avgOnly:
             fig = plt.figure('radius_dist', figsize = (10,3), dpi = 300)
             ax = fig.add_subplot(231) 
             #_, edges, _ = ax.hist(radius_t[epick,0,-1], bins = 20, color = 'r', alpha = 0.7)
             #ax.hist(radius_t[epick,0,-1], bins = edges, color = ['r','b'], alpha = 0.7)
             ax.hist(radius_t[epick,:,-1], bins = 20, color = ['r','b'], alpha = 0.7)
+            ax.set_title('E radius')
             ax = fig.add_subplot(234)
             ax.hist(radius_t[epick,0,-1] - radius_t[epick,1,-1], bins = 20, color = 'gray', alpha = 0.7)
+            ax.set_title('E on-off radius')
             ax = fig.add_subplot(232) 
-            #_, edges, _ = ax.hist(np.sqrt(contour_area[epick,0,-1])/2, bins = 20, color = 'r', alpha = 0.7)
-            #ax.hist(np.sqrt(contour_area[epick,1,-1])/2, bins = edges, color = 'b', alpha = 0.7)
-            ax.hist(np.sqrt(contour_area[epick,:,-1])/2, bins = 20, color = ['r','b'], alpha = 0.7)
+            #_, edges, _ = ax.hist(contour_radius[epick,0,-1], bins = 20, color = 'r', alpha = 0.7)
+            #ax.hist(contour_radius[epick,1,-1], bins = edges, color = 'b', alpha = 0.7)
+            ax.hist(contour_radius[epick,:,-1], bins = 20, color = ['r','b'], alpha = 0.7)
+            ax.set_title('E contour')
             ax = fig.add_subplot(235)
-            ax.hist((np.sqrt(contour_area[epick,0,-1]) - np.sqrt(contour_area[epick,1,-1]))/2, bins = 20, color = 'gray', alpha = 0.7)
+            ax.hist(contour_radius[epick,0,-1] - contour_radius[epick,1,-1], bins = 20, color = 'gray', alpha = 0.7)
+            ax.set_title('E on-off contour')
             ax = fig.add_subplot(233) 
             #_, edges, _ = ax.hist(_rstd_on[epick,-1], bins = 20, color = 'r', alpha = 0.7)
             #ax.hist(_rstd_off[epick,-1], bins = edges, color = 'b', alpha = 0.7)
             ax.hist([_rstd_on[epick,-1],_rstd_off[epick,-1]], bins = 20, color = ['r','b'], alpha = 0.7)
+            ax.set_title('E gauss fit std')
             ax = fig.add_subplot(236)
             ax.hist(_rstd_on[epick,-1] - _rstd_off[epick,-1], bins = 20, color = 'gray', alpha = 0.7)
+            ax.set_title('E on-off gauss fit std')
             fig.savefig(f'{fig_fdr}radius_dist{osuffix}.png', bbox_inches = 'tight')
-        
-            if cross_sample.size > 0:
-                cross_neighbor = np.empty(cross_sample.size, dtype = object)
-                neighbor_loose = np.empty(cross_sample.size, dtype = object)
-                for i in range(cross_sample.size):
-                    cross_neighbor[i] = []
-                    neighbor_loose[i] = []
-            
-            with open(fNeighborBlock, 'rb') as g:
-                tmp = np.fromfile(g, 'u4', nblock*2)
-                nearNeighborBlock = tmp[0]
-                nBlockId = np.fromfile(g, 'u4', nblock*nearNeighborBlock).reshape((nblock, nearNeighborBlock))
+            if save_svg:
+                fig.savefig(f'{fig_fdr}radius_dist{osuffix}.svg', bbox_inches = 'tight')
 
-            with open(fV1_gapMat, 'rb') as g:
-                _nearNeighborBlock = np.fromfile(g, 'u4', 1)[0]
-                assert(_nearNeighborBlock == nearNeighborBlock)
-                gapMat = np.fromfile(g, 'f4', nblock*nearNeighborBlock*mI*mI).reshape(nblock,nearNeighborBlock,mI,mI)
+            if retinotopy: 
+                with open(fNeighborBlock, 'rb') as g:
+                    tmp = np.fromfile(g, 'u4', nblock*2)
+                    nearNeighborBlock = tmp[0]
+                    nBlockId = np.fromfile(g, 'u4', nblock*nearNeighborBlock).reshape((nblock, nearNeighborBlock))
 
-            mk = [".", "o", "v", "^", "<", ">", "1", "2", "3", "4", "8", "s", "p", "P", "*", "h", "H", "+", "x", "X", "D", "d"]
-            sat0 = 0.2
-            r_hsv = np.vstack([np.zeros(nit-1)+0, np.linspace(sat0,1.0,nit-1), np.zeros(nit-1)+1]).T
-            b_hsv = np.vstack([np.zeros(nit-1)+2/3, np.linspace(sat0,1.0,nit-1), np.zeros(nit-1)+1]).T
-            m_hsv = np.vstack([np.zeros(nit-1)+5/6, np.linspace(sat0,1.0,nit-1), np.zeros(nit-1)+1]).T
-            c_hsv = np.vstack([np.zeros(nit-1)+0.5, np.linspace(sat0,1.0,nit-1), np.zeros(nit-1)+1]).T
-            r_c = clr.hsv_to_rgb(r_hsv)
-            b_c = clr.hsv_to_rgb(b_hsv)
-            m_c = clr.hsv_to_rgb(m_hsv)
-            c_c = clr.hsv_to_rgb(c_hsv)
+                with open(fV1_gapMat, 'rb') as g:
+                    _nearNeighborBlock = np.fromfile(g, 'u4', 1)[0]
+                    assert(_nearNeighborBlock == nearNeighborBlock)
+                    gapMat = np.fromfile(g, 'f4', nblock*nearNeighborBlock*mI*mI).reshape(nblock,nearNeighborBlock,mI,mI)
 
-            if cross_sample.size > 0:
-                icross = 0
-                for i in cross_sample:
+                mk = [".", "o", "v", "^", "<", ">", "1", "2", "3", "4", "8", "s", "p", "P", "*", "h", "H", "+", "x", "X", "D", "d"]
+                sat0 = 0.2
+                r_hsv = np.vstack([np.zeros(nit-1)+0, np.linspace(sat0,1.0,nit-1), np.zeros(nit-1)+1]).T
+                b_hsv = np.vstack([np.zeros(nit-1)+2/3, np.linspace(sat0,1.0,nit-1), np.zeros(nit-1)+1]).T
+                m_hsv = np.vstack([np.zeros(nit-1)+5/6, np.linspace(sat0,1.0,nit-1), np.zeros(nit-1)+1]).T
+                c_hsv = np.vstack([np.zeros(nit-1)+0.5, np.linspace(sat0,1.0,nit-1), np.zeros(nit-1)+1]).T
+                r_c = clr.hsv_to_rgb(r_hsv)
+                b_c = clr.hsv_to_rgb(b_hsv)
+                m_c = clr.hsv_to_rgb(m_hsv)
+                c_c = clr.hsv_to_rgb(c_hsv)
+
+                if retino_cross:
+                    cross_neighbor = np.empty(cross_sample.size, dtype = object)
+                    neighbor_loose = np.empty(cross_sample.size, dtype = object)
+                    for i in range(cross_sample.size):
+                        cross_neighbor[i] = []
+                        neighbor_loose[i] = []
+                    icross = 0
+                    for i in cross_sample:
+                        iblock = i//blockSize
+                        ii = i - iblock*blockSize - mE 
+                        for j in range(nearNeighborBlock):
+                            gap_pick = gapMat[iblock, j, :, ii] > 0
+                            if any(gap_pick):
+                                lon = list(nBlockId[iblock, j]*blockSize + mE + np.arange(mI)[gap_pick])
+                                cross_neighbor[icross].extend(lon)
+                                neighbor_loose[icross].extend([True]*len(lon))
+
+                        if get_NeighborOfNeighbor:
+                            while any(neighbor_loose[icross]):
+                                for j in range(len(cross_neighbor[icross])):
+                                    if not neighbor_loose[icross][j]:
+                                        continue
+                                    jdx = cross_neighbor[icross][j]
+                                    jblock = jdx//blockSize
+                                    jj = jdx - jblock*blockSize - mE
+                                    for k in range(nearNeighborBlock):
+                                        gap_pick = gapMat[jblock, k, :, jj] > 0
+                                        if any(gap_pick):
+                                            lon = list(nBlockId[jblock, k]*blockSize + mE + np.arange(mI)[gap_pick])
+                                            for _id in lon:
+                                                if _id not in cross_neighbor[icross] and _id != i:
+                                                    cross_neighbor[icross].append(_id)
+                                                    neighbor_loose[icross].append(True)
+                                    neighbor_loose[icross][j] = False
+                                sys.stdout.write(f'neighbors of {i}: {len(neighbor_loose[icross]) - sum(neighbor_loose[icross])}/{len(neighbor_loose[icross])}')
+                            sys.stdout.write('\n')
+                        icross += 1
+
+                    print(cross_neighbor)
+                    msize = 4
+                    ii = 0
+                    for ic in cross_sample:
+                        fn = []
+                        for j in range(nit):
+                            fig = plt.figure(figsize = (6,6), dpi = 200)
+                            ax = fig.add_subplot(111)
+                            if j > 0:
+                                for jj in range(j+1):
+                                    ax.plot(on_center[0,ic,jj-1:jj+1], on_center[1,ic,jj-1:jj+1], c = r_c[jj-1,:], ls = '-', lw = 0.5)
+                                    ax.plot(off_center[0,ic,jj-1:jj+1], off_center[1,ic,jj-1:jj+1], c = b_c[jj-1,:], ls = '-', lw = 0.5)
+                            ax.plot([on_center[0,ic,j], off_center[0,ic,j]], [on_center[1,ic,j], off_center[1,ic,j]], '-k', lw = 0.5)
+                            ax.plot(on_center[0,ic,j], on_center[1,ic,j], 'r', marker = mk[ii], ms = msize)
+                            ax.plot(off_center[0,ic,j], off_center[1,ic,j], 'b', marker = mk[ii], ms = msize)
+                            ax.plot(off_center[0,ic,j], off_center[1,ic,j], 'b', marker = mk[ii], ms = msize)
+                            ax.plot(V1_pos[0,ic], V1_pos[1,ic], 'k', marker = mk[ii], ms = msize)
+                            for i in cross_neighbor[ii]:
+                                if j > 0:
+                                    for jj in range(j+1):
+                                        ax.plot(on_center[0,i,jj-1:jj+1], on_center[1,i,jj-1:jj+1], c = m_c[jj-1,:], ls = ':', alpha = 0.6, lw = 0.5)
+                                        ax.plot(off_center[0,i,jj-1:jj+1], off_center[1,i,jj-1:jj+1], c = c_c[jj-1,:], ls = ':', alpha = 0.6, lw = 0.5)
+                                ax.plot(V1_pos[0,i], V1_pos[1,i], 'k', marker = mk[ii], ms = max(msize-1,1), alpha = 0.5)
+                                ax.plot(on_center[0,i,j], on_center[1,i,j], 'm', marker = mk[ii], ms = msize)
+                                ax.plot(off_center[0,i,j], off_center[1,i,j], 'c', marker = mk[ii], ms = msize)
+                                ax.plot([on_center[0,i,j], off_center[0,i,j]], [on_center[1,i,j], off_center[1,i,j]], '-k', lw = 0.1, alpha = 0.5)
+
+                            ax.set_title(f'{ic} crossed: {j+1}/{nit}time-slice')
+
+                            ax.set_xlabel('visual field (deg)')
+                            ax.set_ylabel('visual field (deg)')
+                            ax.set_xlim([np.min(V1_pos[0,:])-0.5, np.max(V1_pos[0,:]) + 0.5])
+                            ax.set_ylim([np.min(V1_pos[1,:])-0.5, np.max(V1_pos[1,:]) + 0.5])
+
+                            filename = fig_fdr + f'{osuffix}_tmp-V1_RF_center{j}.png'
+                            fig.savefig(filename)
+                            plt.close(fig)
+                            fn.append(filename)
+                        create_gif(fn, fig_fdr + f'V1_RFcenterOT{osuffix}-crossed{ic}', nit)
+                        for f in fn:
+                            os.remove(f)
+                        ii += 1
+
+                fn = []
+                msize = 3
+                for j in range(nit):
+                    fig = plt.figure(figsize = (6,6), dpi = 200)
+                    ax = fig.add_subplot(111)
+                    ii = 0
+                    for ismpl in V1_pick:
+                        if ismpl in cross_sample or ismpl%blockSize >= mE:
+                            continue
+                        ax.plot(on_center[0,ismpl,:j+1], on_center[1,ismpl,:j+1], marker = ',', c = 'r', ls = '-', lw = 0.5)
+                        ax.plot(off_center[0,ismpl,:j+1], off_center[1,ismpl,:j+1], marker = ',', c = 'b', ls = '-', lw = 0.5)
+                        ax.plot([on_center[0,ismpl,j], off_center[0,ismpl,j]], [on_center[1,ismpl,j], off_center[1,ismpl,j]], '-k', lw = 0.5)
+                        ax.plot(on_center[0,ismpl,j], on_center[1,ismpl,j], 'r', marker = mk[ii], ms = msize)
+                        ax.plot(off_center[0,ismpl,j], off_center[1,ismpl,j], 'b', marker = mk[ii], ms = msize)
+                        ax.plot(off_center[0,ismpl,j], off_center[1,ismpl,j], 'b', marker = mk[ii], ms = msize)
+
+                        ax.set_title(f'V1-E: {j+1}/{nit}time-slice')
+                        ii += 1
+
+                    ax.set_xlabel('visual field (deg)')
+                    ax.set_ylabel('visual field (deg)')
+                    ax.set_xlim([np.min(V1_pos[0,:])-0.5, np.max(V1_pos[0,:]) + 0.5])
+                    ax.set_ylim([np.min(V1_pos[1,:])-0.5, np.max(V1_pos[1,:]) + 0.5])
+
+                    filename = fig_fdr + f'_tmp-V1_RF_center{j}.png'
+                    fig.savefig(filename)
+                    plt.close(fig)
+                    fn.append(filename)
+                create_gif(fn, fig_fdr + f'V1_RFcenterOT{osuffix}-sampleE', nit)
+                for f in fn:
+                    os.remove(f)
+
+                nsI = np.sum(np.mod(V1_pick, blockSize) >= mE) - cross_sample.size
+                sampleI_neighbor = np.empty(nsI, dtype = object)
+                for i in range(nsI):
+                    sampleI_neighbor[i] = []
+
+                ismpl = 0
+                for i in V1_pick:
+                    if np.mod(i, blockSize) < mE or i in cross_sample:
+                        continue
                     iblock = i//blockSize
                     ii = i - iblock*blockSize - mE 
                     for j in range(nearNeighborBlock):
-                        gap_pick = gapMat[iblock, j, ii, :] > 0
+                        gap_pick = gapMat[iblock, j, :, ii] > 0
                         if any(gap_pick):
                             lon = list(nBlockId[iblock, j]*blockSize + mE + np.arange(mI)[gap_pick])
-                            cross_neighbor[icross].extend(lon)
-                            neighbor_loose[icross].extend([True]*len(lon))
+                            sampleI_neighbor[ismpl].extend(lon)
+                    ismpl += 1
+                print(f'sample I neighbors: {sampleI_neighbor}')
 
-                    if get_NeighborOfNeighbor:
-                        while any(neighbor_loose[icross]):
-                            for j in range(len(cross_neighbor[icross])):
-                                if not neighbor_loose[icross][j]:
-                                    continue
-                                jdx = cross_neighbor[icross][j]
-                                jblock = jdx//blockSize
-                                jj = jdx - jblock*blockSize - mE
-                                for k in range(nearNeighborBlock):
-                                    gap_pick = gapMat[jblock, k, jj, :] > 0
-                                    if any(gap_pick):
-                                        lon = list(nBlockId[jblock, k]*blockSize + mE + np.arange(mI)[gap_pick])
-                                        for _id in lon:
-                                            if _id not in cross_neighbor[icross] and _id != i:
-                                                cross_neighbor[icross].append(_id)
-                                                neighbor_loose[icross].append(True)
-                                neighbor_loose[icross][j] = False
-                            sys.stdout.write(f'neighbors of {i}: {len(neighbor_loose[icross]) - sum(neighbor_loose[icross])}/{len(neighbor_loose[icross])}')
-                        sys.stdout.write('\n')
-                    icross += 1
-                print(cross_neighbor)
-                msize = 4
-                ii = 0
-                for ic in cross_sample:
-                    fn = []
-                    for j in range(nit):
-                        fig = plt.figure(figsize = (6,6), dpi = 200)
-                        ax = fig.add_subplot(111)
-                        if j > 0:
-                            for jj in range(j):
-                                ax.plot(on_center[0,ic,jj-1:jj+1], on_center[1,ic,jj-1:jj+1], c = r_c[jj-1,:], ls = '-', lw = 0.5)
-                                ax.plot(off_center[0,ic,jj-1:jj+1], off_center[1,ic,jj-1:jj+1], c = b_c[jj-1,:], ls = '-', lw = 0.5)
-                        ax.plot([on_center[0,ic,j], off_center[0,ic,j]], [on_center[1,ic,j], off_center[1,ic,j]], '-k', lw = 0.5)
-                        ax.plot(on_center[0,ic,j], on_center[1,ic,j], 'r', marker = mk[ii], ms = msize)
-                        ax.plot(off_center[0,ic,j], off_center[1,ic,j], 'b', marker = mk[ii], ms = msize)
-                        ax.plot(off_center[0,ic,j], off_center[1,ic,j], 'b', marker = mk[ii], ms = msize)
-                        ax.plot(V1_pos[0,ic], V1_pos[1,ic], 'k', marker = mk[ii], ms = msize)
-                        for i in cross_neighbor[ii]:
-                            if j > 0:
-                                for jj in range(j):
-                                    ax.plot(on_center[0,i,jj-1:jj+1], on_center[1,i,jj-1:jj+1], c = m_c[jj-1,:], ls = ':', alpha = 0.6, lw = 0.5)
-                                    ax.plot(off_center[0,i,jj-1:jj+1], off_center[1,i,jj-1:jj+1], c = c_c[jj-1,:], ls = ':', alpha = 0.6, lw = 0.5)
-                            ax.plot(V1_pos[0,i], V1_pos[1,i], 'k', marker = mk[ii], ms = max(msize-1,1), alpha = 0.5)
-                            ax.plot(on_center[0,i,j], on_center[1,i,j], 'm', marker = mk[ii], ms = msize)
-                            ax.plot(off_center[0,i,j], off_center[1,i,j], 'c', marker = mk[ii], ms = msize)
-                            ax.plot([on_center[0,i,j], off_center[0,i,j]], [on_center[1,i,j], off_center[1,i,j]], '-k', lw = 0.1, alpha = 0.5)
+                fn = []
+                mk = [".", "o", "v", "^", "<", ">", "1", "2", "3", "4", "8", "s", "p", "P", "*", "h", "H", "+", "x", "X", "D", "d"]
+                msize = 3
+                for j in range(nit):
+                    fig = plt.figure(figsize = (6,6), dpi = 200)
+                    ax = fig.add_subplot(111)
+                    ii = 0
+                    for ismpl in V1_pick:
+                        if ismpl in cross_sample or ismpl%blockSize < mE:
+                            continue
+                        ax.plot(on_center[0,ismpl,:j+1], on_center[1,ismpl,:j+1], marker = ',', c = 'r', ls = '-', lw = 0.5)
+                        ax.plot(off_center[0,ismpl,:j+1], off_center[1,ismpl,:j+1], marker = ',', c = 'b', ls = '-', lw = 0.5)
+                        ax.plot([on_center[0,ismpl,j], off_center[0,ismpl,j]], [on_center[1,ismpl,j], off_center[1,ismpl,j]], '-k', lw = 0.5)
+                        ax.plot(on_center[0,ismpl,j], on_center[1,ismpl,j], 'r', marker = mk[ii%len(mk)], ms = msize)
+                        ax.plot(off_center[0,ismpl,j], off_center[1,ismpl,j], 'b', marker = mk[ii%len(mk)], ms = msize)
+                        ax.plot(off_center[0,ismpl,j], off_center[1,ismpl,j], 'b', marker = mk[ii%len(mk)], ms = msize)
+                        ax.plot(V1_pos[0,ismpl], V1_pos[1,ismpl], 'k', marker = mk[ii%len(mk)], ms = msize)
+                        for i in sampleI_neighbor[ii]:
+                            ax.plot(on_center[0,i,:j+1], on_center[1,i,:j+1], c = 'm', ls = ':', alpha = 0.6, lw = 0.5)
+                            ax.plot(off_center[0,i,:j+1], off_center[1,i,:j+1], c = 'c', ls = ':', alpha = 0.6, lw = 0.5)
+                            ax.plot(on_center[0,i,0], on_center[1,i,0], ',m')
+                            ax.plot(off_center[0,i,0], off_center[1,i,0], ',c')
+                            ax.plot(on_center[0,i,j], on_center[1,i,j], 'm', marker = mk[ii%len(mk)], ms = msize)
+                            ax.plot(off_center[0,i,j], off_center[1,i,j], 'c', marker = mk[ii%len(mk)], ms = msize)
+                            ax.plot([on_center[0,i,j], off_center[0,i,j]], [on_center[1,i,j], off_center[1,i,j]], '-k', lw = 0.1, alpha = 0.4)
 
-                        ax.set_title(f'{ic} crossed: {j+1}/{nit}time-slice')
+                        ax.set_title(f'V1-I:{j+1}/{nit}time-slice')
+                        ii += 1
 
-                        ax.set_xlabel('visual field (deg)')
-                        ax.set_ylabel('visual field (deg)')
-                        ax.set_xlim([np.min(V1_pos[0,:])-0.5, np.max(V1_pos[0,:]) + 0.5])
-                        ax.set_ylim([np.min(V1_pos[1,:])-0.5, np.max(V1_pos[1,:]) + 0.5])
+                    ax.set_xlabel('visual field (deg)')
+                    ax.set_ylabel('visual field (deg)')
+                    ax.set_xlim([np.min(V1_pos[0,:])-0.5, np.max(V1_pos[0,:]) + 0.5])
+                    ax.set_ylim([np.min(V1_pos[1,:])-0.5, np.max(V1_pos[1,:]) + 0.5])
 
-                        filename = fig_fdr + f'{osuffix}_tmp-V1_RF_center{j}.png'
-                        fig.savefig(filename)
-                        plt.close(fig)
-                        fn.append(filename)
-                    create_gif(fn, fig_fdr + f'V1_RFcenterOT{osuffix}-crossed{ic}', nit)
-                    for f in fn:
-                        os.remove(f)
-                    ii += 1
+                    filename = fig_fdr + f'_tmp-V1_RF_center{j}.png'
+                    fig.savefig(filename)
+                    plt.close(fig)
+                    fn.append(filename)
+                create_gif(fn, fig_fdr + f'V1_RFcenterOT{osuffix}-sampleI', nit)
+                for f in fn:
+                    os.remove(f)
 
-            fn = []
-            msize = 3
-            for j in range(nit):
-                fig = plt.figure(figsize = (6,6), dpi = 200)
+                with open(fV1_delayMat, 'rb') as fd:
+                    _nearNeighborBlock = np.fromfile(fd, 'u4', 1)[0]
+                    assert(_nearNeighborBlock == nearNeighborBlock)
+                    delayMat = np.fromfile(fd, 'f4', nblock*nearNeighborBlock*blockSize*blockSize).reshape(nblock,nearNeighborBlock,blockSize,blockSize)
+
+                x_pos = (on_center[0,:,[0,-1]] + off_center[0,:,[0,-1]])/2
+                y_pos = (on_center[1,:,[0,-1]] + off_center[1,:,[0,-1]])/2
+
+                fig = plt.figure('global vf movement', figsize = (6,6), dpi = 400)
                 ax = fig.add_subplot(111)
+                ax.plot(x_pos[:,epick], y_pos[:,epick], ',-k', lw = 0.1, alpha = 0.5)
+                ax.plot(x_pos[1,epick], y_pos[1,epick], ls = 'None', marker = ',', color = 'k')
+                for i in epick:
+                    ax.text(x_pos[0,i], y_pos[0,i], f'{i}', fontsize = 2, color = 'k', alpha = 0.5)
                 ii = 0
-                for ismpl in V1_pick:
-                    if ismpl in cross_sample or ismpl%blockSize >= mE:
-                        continue
-                    ax.plot(on_center[0,ismpl,:j+1], on_center[1,ismpl,:j+1], marker = ',', c = 'r', ls = '-', lw = 0.5)
-                    ax.plot(off_center[0,ismpl,:j+1], off_center[1,ismpl,:j+1], marker = ',', c = 'b', ls = '-', lw = 0.5)
-                    ax.plot([on_center[0,ismpl,j], off_center[0,ismpl,j]], [on_center[1,ismpl,j], off_center[1,ismpl,j]], '-k', lw = 0.5)
-                    ax.plot(on_center[0,ismpl,j], on_center[1,ismpl,j], 'r', marker = mk[ii], ms = msize)
-                    ax.plot(off_center[0,ismpl,j], off_center[1,ismpl,j], 'b', marker = mk[ii], ms = msize)
-                    ax.plot(off_center[0,ismpl,j], off_center[1,ismpl,j], 'b', marker = mk[ii], ms = msize)
+                jj = 0
+                for i in ipick:
+                    if i in cross_sample:
+                        ax.plot(x_pos[:,i], y_pos[:,i], ',-r', lw = 0.1, alpha = 0.5)
+                        ax.plot(x_pos[1,i], y_pos[1,i], ls = 'None', marker = ',', color = 'r')
+                        ax.text(V1_pos[0,i], V1_pos[1,i], f'{i}', color = 'r', fontsize = 2)
+                        ax.plot(V1_pos[0,[i, cross_target[jj]]], V1_pos[1,[i,cross_target[jj]]], ':k', lw = 0.1, alpha = 0.5)
+                        ax.plot([V1_pos[0,i], x_pos[0,cross_target[jj]]], [V1_pos[1,i], y_pos[0,cross_target[jj]]], ':k', lw = 0.1, alpha = 0.5)
+                        for j in cross_neighbor[jj]:
+                            ax.plot([V1_pos[0,i], x_pos[0,j]], [V1_pos[1,i], y_pos[0,j]], '-k', lw = 0.1)
+                            ax.plot(x_pos[1,j], y_pos[1,j], ls = 'None', marker = ',', color = 'k')
 
-                    ax.set_title(f'V1-E: {j+1}/{nit}time-slice')
-                    ii += 1
+                        jj += 1
+                    elif i in V1_pick:
+                        ax.plot(x_pos[:,i], y_pos[:,i], ',-m', lw = 0.1, alpha = 0.5)
+                        ax.text(x_pos[0,i], y_pos[0,i], f'{i}', color = 'm', fontsize = 2)
+                        if i in V1_pick:
+                            for j in sampleI_neighbor[ii]:
+                                ax.plot([x_pos[0,j], x_pos[0,i]], [y_pos[0,j], y_pos[0,i]], '-,k', lw = 0.1)
+                            ii += 1
+                    else:
+                        ax.plot(x_pos[:,i], y_pos[:,i], ',-c', lw = 0.1, alpha = 0.5)
+                        ax.text(x_pos[0,i], y_pos[0,i], f'{i}', color = 'c', fontsize = 2)
+                ax.set_aspect('equal')
+                fig.savefig(fig_fdr + f'global_vfchange{osuffix}.png')
+                if save_svg:
+                    fig.savefig(fig_fdr + f'global_vfchange{osuffix}.svg')
 
-                ax.set_xlabel('visual field (deg)')
-                ax.set_ylabel('visual field (deg)')
-                ax.set_xlim([np.min(V1_pos[0,:])-0.5, np.max(V1_pos[0,:]) + 0.5])
-                ax.set_ylim([np.min(V1_pos[1,:])-0.5, np.max(V1_pos[1,:]) + 0.5])
+                on_pos_dirE = np.arctan2(on_center[1,epick,-1] - on_center[1,epick,0], on_center[0,epick,-1] - on_center[0,epick,0])
+                on_pos_dirI = np.arctan2(on_center[1,ipick,-1] - on_center[1,ipick,0], on_center[0,ipick,-1] - on_center[0,ipick,0])
+                off_pos_dirE = np.arctan2(off_center[1,epick,-1] - off_center[1,epick,0], off_center[0,epick,-1] - off_center[0,epick,0])
+                off_pos_dirI = np.arctan2(off_center[1,ipick,-1] - off_center[1,ipick,0], off_center[0,ipick,-1] - off_center[0,ipick,0])
 
-                filename = fig_fdr + f'_tmp-V1_RF_center{j}.png'
-                fig.savefig(filename)
-                plt.close(fig)
-                fn.append(filename)
-            create_gif(fn, fig_fdr + f'V1_RFcenterOT{osuffix}-sampleE', nit)
-            for f in fn:
-                os.remove(f)
+                on_disE = np.linalg.norm(on_center[:,epick,-1] - on_center[:,epick,0], axis = 0)
+                on_disI = np.linalg.norm(on_center[:,ipick,-1] - on_center[:,ipick,0], axis = 0)
+                off_disE = np.linalg.norm(off_center[:,epick,-1] - off_center[:,epick,0], axis = 0)
+                off_disI = np.linalg.norm(off_center[:,ipick,-1] - off_center[:,ipick,0], axis = 0)
+                
+                fig = plt.figure('pos_dir', figsize = (6,8), dpi = 120)
+                nbins = 24
+                width = 2*np.pi/nbins * 0.6
+                radi = 0
+                edges = np.linspace(-np.pi, np.pi, nbins+1)
+                centers = (edges[:-1] + edges[1:])/2
 
-            nsI = np.sum(np.mod(V1_pick, blockSize) >= mE) - cross_sample.size
-            sampleI_neighbor = np.empty(nsI, dtype = object)
-            for i in range(nsI):
-                sampleI_neighbor[i] = []
+                ax = fig.add_subplot(321, polar = True)
+                counts, _ = np.histogram(on_pos_dirE, bins=edges, density = True)
+                wc, _ = np.histogram(on_pos_dirE, bins=edges, weights = on_disE, density = True)
+                ax.bar(centers, counts*100, width=width, bottom=radi, color='r', alpha=0.5)
+                ax.bar(centers, wc*100, width=width, bottom=radi, color='k', alpha=0.5)
+                ax.set_title('on E')
 
-            ismpl = 0
-            for i in V1_pick:
-                if np.mod(i, blockSize) < mE or i in cross_sample:
-                    continue
-                iblock = i//blockSize
-                ii = i - iblock*blockSize - mE 
-                for j in range(nearNeighborBlock):
-                    gap_pick = gapMat[iblock, j, ii, :] > 0
-                    if any(gap_pick):
-                        lon = list(nBlockId[iblock, j]*blockSize + mE + np.arange(mI)[gap_pick])
-                        sampleI_neighbor[ismpl].extend(lon)
-                ismpl += 1
-            print(f'sample I neighbors: {sampleI_neighbor}')
+                ax = fig.add_subplot(322, polar = True)
+                counts, _ = np.histogram(on_pos_dirI, bins=edges, density = True)
+                wc, _ = np.histogram(on_pos_dirI, bins=edges, weights = on_disI, density = True)
+                ax.bar(centers, counts*100, width=width, bottom=radi, color='m', alpha=0.5)
+                ax.bar(centers, wc*100, width=width, bottom=radi, color='k', alpha=0.5)
+                ax.set_title('on I')
 
-            fn = []
-            mk = [".", "o", "v", "^", "<", ">", "1", "2", "3", "4", "8", "s", "p", "P", "*", "h", "H", "+", "x", "X", "D", "d"]
-            msize = 3
-            for j in range(nit):
-                fig = plt.figure(figsize = (6,6), dpi = 200)
-                ax = fig.add_subplot(111)
-                ii = 0
-                for ismpl in V1_pick:
-                    if ismpl in cross_sample or ismpl%blockSize < mE:
-                        continue
-                    ax.plot(on_center[0,ismpl,:j+1], on_center[1,ismpl,:j+1], marker = ',', c = 'r', ls = '-', lw = 0.5)
-                    ax.plot(off_center[0,ismpl,:j+1], off_center[1,ismpl,:j+1], marker = ',', c = 'b', ls = '-', lw = 0.5)
-                    ax.plot([on_center[0,ismpl,j], off_center[0,ismpl,j]], [on_center[1,ismpl,j], off_center[1,ismpl,j]], '-k', lw = 0.5)
-                    ax.plot(on_center[0,ismpl,j], on_center[1,ismpl,j], 'r', marker = mk[ii], ms = msize)
-                    ax.plot(off_center[0,ismpl,j], off_center[1,ismpl,j], 'b', marker = mk[ii], ms = msize)
-                    ax.plot(off_center[0,ismpl,j], off_center[1,ismpl,j], 'b', marker = mk[ii], ms = msize)
-                    ax.plot(V1_pos[0,ismpl], V1_pos[1,ismpl], 'k', marker = mk[ii], ms = msize)
-                    for i in sampleI_neighbor[ii]:
-                        ax.plot(on_center[0,i,:j+1], on_center[1,i,:j+1], c = 'm', ls = ':', alpha = 0.6, lw = 0.5)
-                        ax.plot(off_center[0,i,:j+1], off_center[1,i,:j+1], c = 'c', ls = ':', alpha = 0.6, lw = 0.5)
-                        ax.plot(on_center[0,i,0], on_center[1,i,0], ',m')
-                        ax.plot(off_center[0,i,0], off_center[1,i,0], ',c')
-                        ax.plot(on_center[0,i,j], on_center[1,i,j], 'm', marker = mk[ii], ms = msize)
-                        ax.plot(off_center[0,i,j], off_center[1,i,j], 'c', marker = mk[ii], ms = msize)
-                        ax.plot([on_center[0,i,j], off_center[0,i,j]], [on_center[1,i,j], off_center[1,i,j]], '-k', lw = 0.1, alpha = 0.4)
+                ax = fig.add_subplot(323, polar = True)
+                counts, _ = np.histogram(off_pos_dirE, bins=edges, density = True)
+                wc, _ = np.histogram(off_pos_dirE, bins=edges, weights = off_disE, density = True)
+                ax.bar(centers, counts*100, width=width, bottom=radi, color='b', alpha=0.5)
+                ax.bar(centers, wc*100, width=width, bottom=radi, color='k', alpha=0.5)
+                ax.set_title('off E')
 
-                    ax.set_title(f'V1-I:{j+1}/{nit}time-slice')
-                    ii += 1
+                ax = fig.add_subplot(324, polar = True)
+                counts, _ = np.histogram(off_pos_dirI, bins=edges, density = True)
+                wc, _ = np.histogram(off_pos_dirI, bins=edges, weights = off_disI, density = True)
+                ax.bar(centers, counts*100, width=width, bottom=radi, color='c', alpha=0.5)
+                ax.bar(centers, wc*100, width=width, bottom=radi, color='k', alpha=0.5)
+                ax.set_title('off I')
 
-                ax.set_xlabel('visual field (deg)')
-                ax.set_ylabel('visual field (deg)')
-                ax.set_xlim([np.min(V1_pos[0,:])-0.5, np.max(V1_pos[0,:]) + 0.5])
-                ax.set_ylim([np.min(V1_pos[1,:])-0.5, np.max(V1_pos[1,:]) + 0.5])
+                V1_OnEcc = np.linalg.norm(on_center[:,:,[0,-1]], axis = 0)
+                V1_OffEcc = np.linalg.norm(off_center[:,:,[0,-1]], axis = 0)
+                ax = fig.add_subplot(325)
+                ax.scatter(V1_OnEcc[epick,0], V1_OnEcc[epick,1] - V1_OnEcc[epick,0], s = 2, marker = 'o', color = 'r', alpha = 0.5)
+                ax.scatter(V1_OffEcc[epick,0], V1_OffEcc[epick,1] - V1_OffEcc[epick,0], s = 2, marker = 'o', color = 'b', alpha = 0.5)
+                ax.set_ylabel('RF center moved (deg)')
+                ax.set_xlabel('RF center position (deg)')
+                ax.set_title('Exc')
 
-                filename = fig_fdr + f'_tmp-V1_RF_center{j}.png'
-                fig.savefig(filename)
-                plt.close(fig)
-                fn.append(filename)
-            create_gif(fn, fig_fdr + f'V1_RFcenterOT{osuffix}-sampleI', nit)
-            for f in fn:
-                os.remove(f)
+                ax = fig.add_subplot(326)
+                nGap = np.zeros(nI, dtype = 'u4')
+                orth = np.zeros(nI, dtype = 'f4')
+                para = np.zeros(nI, dtype = 'f4')
+                orth_pick = np.ones(nI, dtype = bool)
+                para_weight = np.zeros(nI, dtype = 'f4')
+                for ii in range(nI):
+                    iblock = ii//mI
+                    i = ii - iblock*mI
+                    nGap[ii] = np.sum(gapMat[iblock, :, :, i] > 0)
+                    i_id = iblock*blockSize + mE + i
+                    jj = np.hstack([nBlockId[iblock,j]*blockSize + mE + np.arange(mI) for j in range(nBlockId.shape[1])])
+                    j_id = jj[(gapMat[iblock, :, :, i]>0).flatten()]
+                    if j_id.size > 0:
+                        if i_id in V1_pick:
+                            print(f'gap neighbors of {i_id}: {j_id}')
+                        _vec = np.sum(V1_pos[:, j_id], axis = -1) - V1_pos[:,i_id]
+                        orth[ii] = np.arccos(np.dot(_vec, V1_pos[:,i_id])/(np.linalg.norm(_vec)*np.linalg.norm(V1_pos[:,i_id])))*180/np.pi
+                        _vec = (off_center[:, j_id,-1] + on_center[:,j_id,-1])/2 - (off_center[:,j_id,0] + on_center[:,j_id,0])/2
+                        if len(_vec.shape) > 1:
+                            _vec = _vec.mean(-1)
+                        vec0 = (off_center[:, i_id,-1] + on_center[:,i_id,-1])/2 - (off_center[:,i_id,0] + on_center[:,i_id,0])/2
+                        _d, d0 = np.linalg.norm(_vec), np.linalg.norm(vec0)
+                        if _d != 0 and d0 != 0:
+                            para[ii] = np.dot(_vec, vec0)/(_d * d0)
+                            para_weight[ii] = min(_d, d0)/max(_d, d0)
+                    else:
+                        orth_pick[ii] = False
 
-        fig = plt.figure('global vf movement', figsize = (6,6), dpi = 400)
-        ax = fig.add_subplot(111)
-        x_pos = (on_center[0,:,[0,-1]] + off_center[0,:,[0,-1]])/2
-        y_pos = (on_center[1,:,[0,-1]] + off_center[1,:,[0,-1]])/2
-        ax.plot(x_pos[:,epick], y_pos[:,epick], ',-k', lw = 0.1, alpha = 0.5)
-        ax.plot(x_pos[1,epick], y_pos[1,epick], ls = 'None', marker = ',', color = 'k')
-        for i in epick:
-            ax.text(x_pos[0,i], y_pos[0,i], f'{i}', fontsize = 2, color = 'k', alpha = 0.5)
-        for i in ipick:
-            if i in cross_sample:
-                ax.plot(x_pos[:,i], y_pos[:,i], ',-r', lw = 0.1, alpha = 0.5)
-                ax.plot(x_pos[1,i], y_pos[1,i], ls = 'None', marker = ',', color = 'r')
-                ax.text(x_pos[0,i], y_pos[0,i], f'{i}', color = 'r', fontsize = 2)
-            elif i in V1_pick:
-                ax.plot(x_pos[:,i], y_pos[:,i], ',-m', lw = 0.1, alpha = 0.5)
-                ax.plot(x_pos[1,i], y_pos[1,i], ls = 'None', marker = ',', color = 'm')
-                ax.text(x_pos[0,i], y_pos[0,i], f'{i}', color = 'm', fontsize = 2)
-            else:
-                ax.plot(x_pos[:,i], y_pos[:,i], ',-c', lw = 0.1, alpha = 0.5)
-                ax.plot(x_pos[1,i], y_pos[1,i], ls = 'None', marker = ',', color = 'c')
-                ax.text(x_pos[0,i], y_pos[0,i], f'{i}', color = 'c', fontsize = 2)
-        fig.savefig(fig_fdr + f'global_vfchange{osuffix}.png')
+                ax.scatter(V1_OnEcc[ipick,0], V1_OnEcc[ipick,1] - V1_OnEcc[ipick,0], s = nGap, marker = 'o', color = 'm', alpha = 0.5)
+                ax.scatter(V1_OffEcc[ipick,0], V1_OffEcc[ipick,1] - V1_OffEcc[ipick,0], s = nGap, marker = 'o', color = 'c', alpha = 0.5)
+                ax.set_ylabel('change along radial axis(deg)')
+                ax.set_xlabel('RF center position (deg)')
+                ax.set_title('Inh')
+                fig.tight_layout()
+                fig.savefig(fig_fdr + f'pos_dir{osuffix}.png')
+                if save_svg:
+                    fig.savefig(fig_fdr + f'pos_dir{osuffix}.svg')
 
-        on_pos_dirE = np.arctan2(on_center[1,epick,-1] - on_center[1,epick,0], on_center[0,epick,-1] - on_center[0,epick,0])
-        on_pos_dirI = np.arctan2(on_center[1,ipick,-1] - on_center[1,ipick,0], on_center[0,ipick,-1] - on_center[0,ipick,0])
-        off_pos_dirE = np.arctan2(off_center[1,epick,-1] - off_center[1,epick,0], off_center[0,epick,-1] - off_center[0,epick,0])
-        off_pos_dirI = np.arctan2(off_center[1,ipick,-1] - off_center[1,ipick,0], off_center[0,ipick,-1] - off_center[0,ipick,0])
+                fig = plt.figure('analysis', figsize = (6,6), dpi = 400)
+                ax = fig.add_subplot(121)
 
-        on_disE = np.linalg.norm(on_center[:,epick,-1] - on_center[:,epick,0], axis = 0)
-        on_disI = np.linalg.norm(on_center[:,ipick,-1] - on_center[:,ipick,0], axis = 0)
-        off_disE = np.linalg.norm(off_center[:,epick,-1] - off_center[:,epick,0], axis = 0)
-        off_disI = np.linalg.norm(off_center[:,ipick,-1] - off_center[:,ipick,0], axis = 0)
-        
-        fig = plt.figure('pos_dir', figsize = (6,8), dpi = 120)
-        nbins = 24
-        width = 2*np.pi/nbins * 0.6
-        radi = 0
-        edges = np.linspace(-np.pi, np.pi, nbins+1)
-        centers = (edges[:-1] + edges[1:])/2
+                ax.scatter(orth[orth_pick], (V1_OnEcc[ipick[orth_pick],1] + V1_OffEcc[ipick[orth_pick],1])/2 - (V1_OnEcc[ipick[orth_pick],0] + V1_OffEcc[ipick[orth_pick],0])/2, s = nGap[orth_pick], marker = 'o', color = 'k', alpha = 0.5)
+                for i in cross_sample:
+                    iblock = (i//blockSize)
+                    assert(i%blockSize >= mE)
+                    ii = iblock*mI + i%blockSize - mE
+                    if nGap[ii] > 0:
+                        deltaEcc = (V1_OnEcc[i,1] + V1_OffEcc[i,1])/2 - (V1_OnEcc[i,0] + V1_OffEcc[i,0])/2
+                        ax.scatter(orth[ii], deltaEcc, s = nGap[ii], marker = 's', color = 'r', alpha = 0.5)
+                        ax.text(orth[ii], deltaEcc, f'{i}', color = 'r', fontsize = 4)
+                for i in V1_pick:
+                    if i%blockSize >= mE:
+                        iblock = (i//blockSize)
+                        ii = iblock*mI + i%blockSize - mE
+                        if i not in cross_sample and nGap[ii] > 0:
+                            deltaEcc = (V1_OnEcc[i,1] + V1_OffEcc[i,1])/2 - (V1_OnEcc[i,0] + V1_OffEcc[i,0])/2
+                            ax.scatter(orth[ii], deltaEcc, s = nGap[ii], marker = 's', color = 'm', alpha = 0.5)
+                            ax.text(orth[ii], deltaEcc, f'{i}', color = 'm', fontsize = 4)
 
-        ax = fig.add_subplot(321, polar = True)
-        counts, _ = np.histogram(on_pos_dirE, bins=edges, density = True)
-        wc, _ = np.histogram(on_pos_dirE, bins=edges, weights = on_disE, density = True)
-        ax.bar(centers, counts*100, width=width, bottom=radi, color='r', alpha=0.5)
-        ax.bar(centers, wc*100, width=width, bottom=radi, color='k', alpha=0.5)
-        ax.set_title('on E')
+                ax.set_xlabel('gap con. angle')
+                ax.set_ylabel('RF center movement (deg)')
+                ax = fig.add_subplot(122, polar = True)
+                wc, _ = np.histogram(para, bins=edges, weights = para_weight, density = True)
+                ax.bar(centers, wc*100, width=width, bottom=radi, color='k', alpha=0.5)
+                ax.set_title('gap con. co-move angle dist (dis weighted)')
+                fig.savefig(fig_fdr + f'pos_dir{osuffix}-analysis.png')
+                if save_svg:
+                    fig.savefig(fig_fdr + f'pos_dir{osuffix}-analysis.svg')
 
-        ax = fig.add_subplot(322, polar = True)
-        counts, _ = np.histogram(on_pos_dirI, bins=edges, density = True)
-        wc, _ = np.histogram(on_pos_dirI, bins=edges, weights = on_disI, density = True)
-        ax.bar(centers, counts*100, width=width, bottom=radi, color='m', alpha=0.5)
-        ax.bar(centers, wc*100, width=width, bottom=radi, color='k', alpha=0.5)
-        ax.set_title('on I')
+                gapNeighbor_dis = np.zeros((nblock*mI, 2))
+                neighbor_dis = np.zeros((nblock*mI, 2))
+                upper_limit_avg_dis_est = np.sqrt(np.pi*(max_ecc*max_ecc)/nI)
+                max_nearest_n = 0
+                for iblock in range(nblock):
+                    disImat = delayMat[iblock, :, mE:, mE:]
+                    neighbor_id = (nBlockId[iblock,:] * blockSize + np.tile(np.arange(mI)+mE, (nearNeighborBlock,1)).T).T.flatten()
+                    for i in range(mI):
+                        iid = iblock*blockSize + mE + i
+                        # gap neighbor
+                        nid = neighbor_id[(gapMat[iblock, :, :, i] > 0).flatten()]
+                        ndis = np.linalg.norm([x_pos[0, nid] - x_pos[0, iid], y_pos[0, nid] - y_pos[0, iid]], axis = 0)
+                        gapNeighbor_dis[iblock*mI +i, 0] = np.mean(ndis)
+                        ndis = np.linalg.norm([x_pos[1, nid] - x_pos[1, iid], y_pos[1, nid] - y_pos[1, iid]], axis = 0)
+                        gapNeighbor_dis[iblock*mI +i, 1] = np.mean(ndis)
 
-        ax = fig.add_subplot(323, polar = True)
-        counts, _ = np.histogram(off_pos_dirE, bins=edges, density = True)
-        wc, _ = np.histogram(off_pos_dirE, bins=edges, weights = off_disE, density = True)
-        ax.bar(centers, counts*100, width=width, bottom=radi, color='b', alpha=0.5)
-        ax.bar(centers, wc*100, width=width, bottom=radi, color='k', alpha=0.5)
-        ax.set_title('off E')
+                        if iid == 55:
+                            print(f'{iid}: ({x_pos[0,iid]},{y_pos[0,iid]}); nid:{nid}, ({np.mean(x_pos[0,nid])},{np.mean(y_pos[0,nid])}): {gapNeighbor_dis[iblock*mI+i,0]}->{gapNeighbor_dis[iblock*mI+i,1]}')
 
-        ax = fig.add_subplot(324, polar = True)
-        counts, _ = np.histogram(off_pos_dirI, bins=edges, density = True)
-        wc, _ = np.histogram(off_pos_dirI, bins=edges, weights = off_disI, density = True)
-        ax.bar(centers, counts*100, width=width, bottom=radi, color='c', alpha=0.5)
-        ax.bar(centers, wc*100, width=width, bottom=radi, color='k', alpha=0.5)
-        ax.set_title('off I')
+                        # dis neighbor
+                        _id = np.argpartition(disImat[:,:,i].flatten(), 8)[:8]
+                        nid = neighbor_id[_id]
+                        ndis = disImat[:,:,i].flatten()[_id]
+                        self_id = np.arange(nid.size)[nid == iid]
+                        nid = np.delete(nid, self_id)
+                        ndis = np.delete(ndis, self_id)
+                        id_ndis = np.argsort(ndis)
+                        ndis = ndis[id_ndis]
+                        nid = nid[id_ndis]
+                        if ndis[0] > upper_limit_avg_dis_est:
+                            raise Exception(f'{iid}: {ndis[0]} < {upper_limit_avg_dis_est}')
+                        _n = 0
+                        while ndis[_n] <= upper_limit_avg_dis_est:
+                            _n += 1
+                            if _n == nid.size:
+                                break
+                        if max_nearest_n < _n:
+                            max_nearest_n = _n
 
-        V1_OnEcc = np.linalg.norm(on_center[:,:,[0,-1]], axis = 0)
-        V1_OffEcc = np.linalg.norm(off_center[:,:,[0,-1]], axis = 0)
-        ax = fig.add_subplot(325)
-        ax.scatter(V1_OnEcc[epick,0], V1_OnEcc[epick,1] - V1_OnEcc[epick,0], s = 2, marker = 'o', color = 'r', alpha = 0.5)
-        ax.scatter(V1_OffEcc[epick,0], V1_OffEcc[epick,1] - V1_OffEcc[epick,0], s = 2, marker = 'o', color = 'b', alpha = 0.5)
-        ax.set_ylabel('RF center moved (deg)')
-        ax.set_xlabel('RF center position (deg)')
-        ax.set_title('Exc')
+                        nid = nid[:_n]
+                        ndis = np.linalg.norm([x_pos[0, nid] - x_pos[0, iid], y_pos[0, nid] - y_pos[0, iid]], axis = 0)
+                        neighbor_dis[iblock*mI +i, 0] = np.mean(ndis)
+                        ndis = np.linalg.norm([x_pos[1, nid] - x_pos[1, iid], y_pos[1, nid] - y_pos[1, iid]], axis = 0)
+                        neighbor_dis[iblock*mI +i, 1] = np.mean(ndis)
+                print(f'max {max_nearest_n} neurons has distance < {upper_limit_avg_dis_est}')
 
-        ax = fig.add_subplot(326)
-        nGap = np.zeros(nI, dtype = 'u4')
-        orth = np.zeros(nI, dtype = 'f4')
-        para = np.zeros(nI, dtype = 'f4')
-        orth_pick = np.ones(nI, dtype = bool)
-        para_weight = np.zeros(nI, dtype = 'f4')
-        for ii in range(nI):
-            iblock = ii//mI
-            i = ii - iblock*mI
-            nGap[ii] = np.sum(gapMat[iblock, :, i, :] > 0)
-            i_id = iblock*blockSize + mE + i
-            jj = np.hstack([nBlockId[iblock,j]*blockSize + mE + np.arange(mI) for j in range(nBlockId.shape[1])])
-            j_id = jj[(gapMat[iblock, :, i, :]>0).flatten()]
-            if j_id.size > 0:
-                if i_id in V1_pick:
-                    print(f'gap neighbors of {i_id}: {j_id}')
-                _vec = np.sum(V1_pos[:, j_id], axis = -1) - V1_pos[:,i_id]
-                orth[ii] = np.arccos(np.dot(_vec, V1_pos[:,i_id])/(np.linalg.norm(_vec)*np.linalg.norm(V1_pos[:,i_id])))*180/np.pi
-                _vec = (off_center[:, j_id,-1] + on_center[:,j_id,-1])/2 - (off_center[:,j_id,0] + on_center[:,j_id,0])/2
-                if len(_vec.shape) > 1:
-                    _vec = _vec.mean(-1)
-                vec0 = (off_center[:, i_id,-1] + on_center[:,i_id,-1])/2 - (off_center[:,i_id,0] + on_center[:,i_id,0])/2
-                _d, d0 = np.linalg.norm(_vec), np.linalg.norm(vec0)
-                if _d != 0 and d0 != 0:
-                    para[ii] = np.dot(_vec, vec0)/(_d * d0)
-                    para_weight[ii] = min(_d, d0)/max(_d, d0)
-            else:
-                orth_pick[ii] = False
+                fig = plt.figure(figsize = (12,4), dpi = 120)
+                ax = fig.add_subplot(131)
+                cross_ii = (cross_sample//blockSize)*mI + cross_sample%blockSize - mE
+                ax.plot(gapNeighbor_dis[:,0], gapNeighbor_dis[:,1], ',k')
+                ax.plot(gapNeighbor_dis[cross_ii,0], gapNeighbor_dis[cross_ii,1], ',r')
+                for i in range(nI):
+                    ii = (i//mI)*blockSize + i%mI + mE
+                    if gapNeighbor_dis[i,0] > 1.0 and ii not in cross_sample:
+                        print(f'neuron {ii} gap neighbor distance: {gapNeighbor_dis[i,0]:.4f}->{gapNeighbor_dis[i,1]:.4f}')
 
-        ax.scatter(V1_OnEcc[ipick,0], V1_OnEcc[ipick,1] - V1_OnEcc[ipick,0], s = nGap, marker = 'o', color = 'm', alpha = 0.5)
-        ax.scatter(V1_OffEcc[ipick,0], V1_OffEcc[ipick,1] - V1_OffEcc[ipick,0], s = nGap, marker = 'o', color = 'c', alpha = 0.5)
-        ax.set_ylabel('change along radial axis(deg)')
-        ax.set_xlabel('RF center position (deg)')
-        ax.set_title('Inh')
-        fig.tight_layout()
-        fig.savefig(fig_fdr + f'pos_dir{osuffix}.png')
+                ax.set_xlabel('initial distance to gap neighbors')
+                ax.set_ylabel('final distance to gap neighbors')
+                ax.set_title('gap neighbor distance')
+                ax.set_aspect('equal')
+                ax = fig.add_subplot(132)
+                ax.plot(neighbor_dis[:,0], neighbor_dis[:,1], ',k')
+                ax.plot(neighbor_dis[cross_ii,0], neighbor_dis[cross_ii,1], ',r')
+                for i in range(nI):
+                    ii = (i//mI)*blockSize + i%mI + mE
+                    if neighbor_dis[i,1] > 1.0 and ii not in cross_sample:
+                        print(f'neuron {ii} neighbor distance: {neighbor_dis[i,0]:.4f}->{neighbor_dis[i,1]:.4f}')
 
-        fig = plt.figure('analysis', figsize = (6,6), dpi = 400)
-        ax = fig.add_subplot(121)
-        for i in V1_pick:
-            iblock = (i//blockSize)
-            ii = iblock*mI + i - iblock*blockSize - mE
-            orth_pick[ii] = False
+                ax.set_xlabel('initial distance to neighbor')
+                ax.set_ylabel('final distance to neighbor')
+                ax.set_title('neighbor distance')
+                #ax.set_aspect('equal')
+                ax = fig.add_subplot(133)
+                ax.plot((V1_OnEcc[ipick,0] + V1_OffEcc[ipick,0])/2, neighbor_dis[:,1]-neighbor_dis[:,0], ',k')
+                ax.set_xlabel('initial distance to center')
+                ax.set_ylabel('delta distance to neighbor')
 
-        ax.scatter(orth[orth_pick], (V1_OnEcc[ipick[orth_pick],1] + V1_OffEcc[ipick[orth_pick],1])/2 - (V1_OnEcc[ipick[orth_pick],0] + V1_OffEcc[ipick[orth_pick],0])/2, s = nGap[orth_pick], marker = 'o', color = 'k', alpha = 0.5)
-        for i in cross_sample:
-            if nGap[ii] > 0:
-                iblock = (i//blockSize)
-                ii = iblock*mI + i - iblock*blockSize - mE
-                deltaEcc = (V1_OnEcc[ii,1] + V1_OffEcc[ii,1])/2 - (V1_OnEcc[ii,0] + V1_OffEcc[ii,0])/2
-                ax.scatter(orth[ii], deltaEcc, s = nGap[ii], marker = 's', color = 'r', alpha = 0.5)
-                ax.text(orth[ii], deltaEcc, f'{i}', color = 'r', fontsize = 4)
-        for i in V1_pick:
-            if i not in cross_sample and nGap[ii] > 0:
-                iblock = (i//blockSize)
-                ii = iblock*mI + i - iblock*blockSize - mE
-                deltaEcc = (V1_OnEcc[ii,1] + V1_OffEcc[ii,1])/2 - (V1_OnEcc[ii,0] + V1_OffEcc[ii,0])/2
-                ax.scatter(orth[ii], deltaEcc, s = nGap[ii], marker = 's', color = 'm', alpha = 0.5)
-                ax.text(orth[ii], deltaEcc, f'{i}', color = 'm', fontsize = 4)
-
-        ax.set_xlabel('gap con. angle')
-        ax.set_ylabel('RF center movement (deg)')
-        ax = fig.add_subplot(122, polar = True)
-        wc, _ = np.histogram(para, bins=edges, weights = para_weight, density = True)
-        ax.bar(centers, wc*100, width=width, bottom=radi, color='k', alpha=0.5)
-        ax.set_title('gap con. co-move angle dist (dis weighted)')
-        fig.savefig(fig_fdr + f'pos_dir{osuffix}-analysis.png')
+                fig.savefig(fig_fdr + f'neighbor_gap_dis{osuffix}.png')
+                if save_svg:
+                    fig.savefig(fig_fdr + f'neighbor_gap_dis{osuffix}.svg')
 
         if nLearnFF_I > 0:
             _V1_pick = np.hstack((V1_pick, np.array([nV1, nV1+1], dtype = int)))
@@ -1314,12 +1504,12 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                         stmp = sLGN[i,:,:]
                         offPick = LGN_type == 5
                         stmp[offPick] = - stmp[offPick]
-                        local_max = np.max(np.abs(stmp))
                         stmp = stmp / gmax
-                        stmp[np.abs(stmp) < local_max / gmax * thres_out] = 0
                         ax.imshow(stmp, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('gray'))
+                        gmax_on = np.max(sLGN)
+                        gmax_off = np.min(sLGN)
 
-                        ax.set_title(f't{float(qt[i]) / nt * 100:.0f}%-n{np.sum(np.sum(stmp > 0))}-p{gmax / gmaxLGN[0] * 100:.0f}%', fontsize = 6)
+                        ax.set_title(f't{float(qt[i]) / nt * 100:.0f}%-n{np.sum(np.sum(stmp > s0[iq,0] / gmax) + np.sum(stmp < s0[iq,1] / gmax))}-m{gmax_on / s0[iq,0]:.1f}x, {gmax_off/s0[iq,1]:.1f}x', fontsize = 6)
                         if i == nit-1:
                             ax = fig.add_subplot(1,nit + 1,nit + 1)
                             ax.imshow(stmp, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('gray'))
@@ -1339,8 +1529,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                             local_max = np.max(np.abs(stmp))
                             stmp = stmp / gmax
                             ax.imshow(stmp, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('gray'))
-                            if itype == 0:
-                                ax.set_title(f't{float(qt[i]) / nt * 100:.0f}%-n{np.sum(np.sum(stmp > 0))}-p{gmax / gmaxLGN[0] * 100:.0f}%', fontsize = 6)
+                            ax.set_title(f't{float(qt[i]) / nt * 100:.0f}%-n{np.sum(np.sum(stmp > s0[iq,itype] / gmax))}-m{local_max / s0[iq,itype]:.1f}x', fontsize = 6)
                             if i == 0:
                                 ax.set_ylabel(f'type: {types[itype]}')
                             if i == nit-1:
@@ -1375,8 +1564,12 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                             vmax = local_max
                         else:
                             vmax = gmax
+                        if use_local_min:
+                            vmin = np.min(np.abs(stmp0))
+                        else:
+                            vmin = 0
 
-                        ax.imshow(stmp0, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('gray'), vmin = 0, vmax = vmax)
+                        ax.imshow(stmp0, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('gray'), vmin = vmin, vmax = vmax)
                         if itype == 0:
                             mc = '*m'
                             cc = ':m'
@@ -1400,11 +1593,14 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                         circle = np.array([[radius * np.cos(2*np.pi/nc*ic) for ic in range(nc)], [radius * np.sin(2*np.pi/nc*ic) for ic in range(nc)]])
                         ax.plot(center[0]-0.5, center[1]-0.5, mc, ms = 1, alpha = 0.25)
                         ax.plot(center[0]-0.5 + circle[0,:], center[1]-0.5 + circle[1,:], cc, lw = 0.2, alpha = 0.5)
-                        _stmp = stmp0/stmp0.max()
-                        if (_stmp > 0.5).all():
-                            level = (_stmp.max() + _stmp.min())/2
+                        _max = stmp0.max()
+                        if _max > 0:
+                            _stmp = stmp0/_max
+                            level = s0[iq,itype]/_max
                         else:
+                            _stmp = np.zeros_like(stmp0)
                             level = 0.5
+
                         try:
                             ax.contour(_stmp, levels = [level], linewidths = 0.5, colors = lc)
                         except UserWarning:
@@ -1415,7 +1611,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                         ax.set_xlim([-0.5, nLGN_1D-0.5])
                         ax.set_ylim([-0.5, nLGN_1D-0.5])
                         ax.set_aspect('equal')
-                        local_nCon = np.sum(np.sum(stmp0 >= thres_out * gmaxLGN[0]))
+                        local_nCon = np.sum(np.sum(stmp0 >= s0[iq,itype]))
                         if itype == 0:
                             ax.set_title(f't{float(qt[i]) / nt * 100:.0f}%-n{local_nCon}-p{local_max / gmaxLGN[0] * 100:.0f}%', fontsize = 5)
                         else:
@@ -1425,7 +1621,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                         ax_p = ax
                         if i == nit-1:
                             ax = fig.add_subplot((abs(pSF)+1)* nrow * ntype, nit0 + 1, iplot + 1)
-                            im = ax.imshow(stmp0, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('gray'), vmin = 0, vmax = gmaxLGN[0])
+                            im = ax.imshow(stmp0, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('gray'), vmin = 0, vmax = gmax)
                             if itype == 0:
                                 mc = '*m'
                                 cc = ':m'
@@ -1449,11 +1645,14 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                             circle = np.array([[radius * np.cos(2*np.pi/nc*ic) for ic in range(nc)], [radius * np.sin(2*np.pi/nc*ic) for ic in range(nc)]])
                             ax.plot(center[0]-0.5, center[1]-0.5, mc, ms = 1, alpha = 0.25)
                             ax.plot(center[0]-0.5 + circle[0,:], center[1]-0.5 + circle[1,:], cc, lw = 0.2, alpha = 0.5)
-                            _stmp = stmp0/stmp0.max()
-                            if (_stmp > 0.5).all():
-                                level = (_stmp.max() + _stmp.min())/2
+                            _max = stmp0.max()
+                            if _max > 0:
+                                _stmp = stmp0/_max
+                                level = s0[iq,itype]/_max
                             else:
+                                _stmp = np.zeros_like(stmp0)
                                 level = 0.5
+
                             ax.contour(_stmp, levels = [level], linewidths = 0.5, colors = lc)
 
                             pos_bbox = ax.get_position()
@@ -1564,13 +1763,21 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             if iV1 < nV1:
                 if mix and doubleOnOff != 1:
                     fig.savefig(f'{fig_fdr}sLGN_V1-{EI_str}{iV1}{osuffix}-mix{rtime}.png')
+                    if save_svg:
+                        fig.savefig(f'{fig_fdr}sLGN_V1-{EI_str}{iV1}{osuffix}-mix{rtime}.svg')
                 else:
                     fig.savefig(f'{fig_fdr}sLGN_V1-{EI_str}{iV1}{osuffix}-sep{rtime}.png')
+                    if save_svg:
+                        fig.savefig(f'{fig_fdr}sLGN_V1-{EI_str}{iV1}{osuffix}-sep{rtime}.svg')
             else:
                 if mix and doubleOnOff != 1:
                     fig.savefig(f'{fig_fdr}avg{EI_str}_sLGN_V1{osuffix}-mix{rtime}.png')
+                    if save_svg:
+                        fig.savefig(f'{fig_fdr}avg{EI_str}_sLGN_V1{osuffix}-mix{rtime}.svg')
                 else:
                     fig.savefig(f'{fig_fdr}avg{EI_str}_sLGN_V1{osuffix}-sep{rtime}.png')
+                    if save_svg:
+                        fig.savefig(f'{fig_fdr}avg{EI_str}_sLGN_V1{osuffix}-sep{rtime}.svg')
             plt.close(fig)
 
         if find_peak:
@@ -1643,6 +1850,8 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                     ticks = ax[i].get_xticks()
                     ax[i].set_xticklabels([f'{(step0 + j*(nt_-1-step0)/(nit-1))*dt/(framesToFinish[0]*1000/frameRate):.1f}' for j in ticks])
             fig.savefig(f'{fig_fdr}avg_RFpeak{osuffix}-sep{rtime}.png')
+            if save_svg:
+                fig.savefig(f'{fig_fdr}avg_RFpeak{osuffix}-sep{rtime}.svg')
             fpeak_out.close()
     print('sLGN finished')
 
@@ -1746,6 +1955,8 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                 else:
                     ax.set_title('I max LTD = 0')
             fig.savefig(f'{fig_fdr}t_LTD{osuffix}.png')
+            if save_svg:
+                fig.savefig(f'{fig_fdr}t_LTD{osuffix}.svg')
 
         qtt = np.floor(np.linspace(0, nstep-1, nit)).astype('i4')
         tLGN_all = np.zeros((ns, nstep, max_LGNperV1))
@@ -1793,6 +2004,8 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                     ax.set_xticks([])
                     ax.set_yticks([])
                 fig.savefig(f'{fig_fdr}tLGN_V1_single-{EI_str}{iV1}{osuffix}{rtime}.png')
+                if save_svg:
+                    fig.savefig(f'{fig_fdr}tLGN_V1_single-{EI_str}{iV1}{osuffix}{rtime}.svg')
                 plt.close(fig)
 
             fig = plt.figure(f'tLGN_V1-{iV1}', figsize = (8,9), dpi = 500)
@@ -1842,7 +2055,10 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                     ax0.bar(j, sum(data==0), alpha = 0.5, color = cmap(j/ntype))
                 ax.hist(ss, bins = edges, alpha = 0.5, color = [cmap(j/ntype) for j in range(ntype)])
                 if i == nit-1:
-                    ax.set_xlabel(f'strength/max_cap(%), on:off= {onS[iV1] / offS[iV1]:.1f}')
+                    if offS[iV1] > 0:
+                        ax.set_xlabel(f'strength/max_cap(%), on:off= {onS[iV1] / offS[iV1]:.1f}')
+                    else:
+                        ax.set_xlabel(f'strength/max_cap(%), on:off= {onS[iV1]:.1f}:{offS[iV1]:.1f}')
                     ax0.set_xticks([0,1], labels = ['on', 'off'])
                 else:
                     ax.set_xticks([])
@@ -1852,6 +2068,8 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                 ax0.set_ylim([0, max_LGNperV1/2])
 
             fig.savefig(f'{fig_fdr}tLGN_V1-{EI_str}{iV1}{osuffix}{rtime}.png')
+            if save_svg:
+                fig.savefig(f'{fig_fdr}tLGN_V1-{EI_str}{iV1}{osuffix}{rtime}.svg')
             plt.close(fig)
     print('tLGN finished')
     return
@@ -1885,12 +2103,19 @@ def determine_os_str(pos, ids, types, s, n, m, min_dis, os_out, nLGN_1D):
         onPick = on_id[sPick]
         onS[i] = np.sum(on_s)
         on_pos = np.mean(pos[:,onPick], axis = 1)
+        for i in range(onPick.size):
+            for j in range(i+1, onPick.size):
+                assert(pos[0,onPick[i]] !=  pos[0,onPick[j]] or pos[1,onPick[i]] !=  pos[1,onPick[j]])
+
         off_s = all_s[all_type == 5]
         off_id = all_id[all_type == 5]
         sPick = off_s >= np.max(off_s) * os_out
         offPick = off_id[sPick]
         offS[i] = np.sum(off_s)
         off_pos = np.mean(pos[:,offPick], axis = 1)
+        for i in range(offPick.size):
+            for j in range(i+1, offPick.size):
+                assert(pos[0,offPick[i]] !=  pos[0,offPick[j]] or pos[1,offPick[i]] !=  pos[1,offPick[j]])
         dis_vec = np.array([on_pos[0] - off_pos[0], off_pos[1] - on_pos[1]])
         on_off_dis = np.sqrt(np.sum(dis_vec * dis_vec))
         if on_off_dis <= min_dis / 2:
@@ -1910,9 +2135,10 @@ def determine_os_str(pos, ids, types, s, n, m, min_dis, os_out, nLGN_1D):
                 proj_on = on_dis*cos_on
                 max_on_p = np.max(proj_on[proj_on >= 0])
                 max_on_m = np.max(np.abs(proj_on[proj_on <= 0]))
-                r_on = (max_on_p + max_on_m) * max_on_p / max_on_m
-                if np.isnan(r_on):
+                if max_on_m == 0:
                     r_on = min_dis / 2
+                else:
+                    r_on = (max_on_p + max_on_m) * max_on_p / max_on_m
             else:
                 r_on = min_dis / 2
             if offPick.size > 1:
@@ -1924,9 +2150,10 @@ def determine_os_str(pos, ids, types, s, n, m, min_dis, os_out, nLGN_1D):
                 proj_off = off_dis*cos_off
                 max_off_p = np.max(proj_off[proj_off >= 0])
                 max_off_m = np.max(np.abs(proj_off[proj_off <= 0]))
-                r_off = (max_off_p + max_off_m) * (max_off_p / max_off_m)
-                if np.isnan(r_off):
+                if max_off_m == 0:
                     r_off = min_dis / 2
+                else:
+                    r_off = (max_off_p + max_off_m) * (max_off_p / max_off_m)
             else:
                 r_off = min_dis / 2
             osel[i] = on_off_dis / (r_on + r_off)
@@ -1952,16 +2179,16 @@ def get_radius(n, s, m, pos, types ,ids):
             if (on_s > 0).any():
                 on_id = all_id[all_type == 4]
                 weights = on_s.copy()
-                pick = weights < on_s.max()/2
-                weights[pick] = 0
+                #pick = weights < on_s.max()/2
+                #weights[pick] = 0
                 on_center[:,i] = np.average(pos[:,on_id], axis = 1, weights = weights)
                 radius[i, 0] = np.average(np.linalg.norm(pos[:,on_id].T - on_center[:,i], axis = 1), weights = weights)
 
             if (off_s > 0).any():
                 off_id = all_id[all_type == 5]
                 weights = off_s.copy()
-                pick = weights < off_s.max()/2
-                weights[pick] = 0
+                #pick = weights < off_s.max()/2
+                #weights[pick] = 0
                 off_center[:,i] = np.average(pos[:,off_id], axis = 1, weights = weights)
                 radius[i, 1] = np.average(np.linalg.norm(pos[:,off_id].T - off_center[:,i], axis = 1), weights = weights)
         
@@ -1989,11 +2216,13 @@ def point_inside_shape(point, shape):
     else:
         return False
 
-def get_contour_area(n, z, m, ids, l, level = 0.2):
+def get_contour_radius(n, z, m, ids, l, s0 = None, level = None):
     if n == 1:
         z = np.reshape(z, (1, *z.shape))
         ids = np.reshape(ids, (1,*ids.shape))
         m = np.array([m])
+        if s0 is not None:
+            s0 = np.reshape(s0, (1, *s0.shape))
     area = np.zeros((n,2))
     for i in range(n):
         if m[i] > 0 and (z[i,:] > 0).any():
@@ -2005,14 +2234,27 @@ def get_contour_area(n, z, m, ids, l, level = 0.2):
                     normed = data[:,:,j]/data[:,:,j].max()
                 else:
                     normed = data[:,:,j]
+                if s0 is None:
+                    level = 0.5
+                else:
+                    level = s0[i,j]/data[:,:,j].max()
+
                 nrow = normed.shape[0]
                 ncol = normed.shape[1]
-                normed = np.hstack((np.zeros((nrow,1)), normed, np.zeros((nrow,1))))
-                normed = np.vstack((np.zeros((1,ncol+2)), normed, np.zeros((1,ncol+2))))
-                assert((normed[:,0] == 0).all())
-                assert((normed[:,-1] == 0).all())
-                assert((normed[0,:] == 0).all())
-                assert((normed[-1,:] == 0).all())
+                lc = np.zeros((nrow,1))
+                rc = np.zeros((nrow,1))
+                #lc[:,0] = normed[:,0]
+                #rc[:,0] = normed[:,-1]
+                tr = np.zeros((1,ncol+2))
+                br = np.zeros((1,ncol+2))
+                #tr[0,1:-1] = normed[0,:]
+                #br[0,1:-1] = normed[-1,:]
+                #tr[0,0] = tr[0,1]
+                #tr[0,-1] = tr[0,-2]
+                #br[0,0] = br[0,1]
+                #br[0,-1] = br[0,-2]
+                normed = np.hstack((lc, normed, rc))
+                normed = np.vstack((tr, normed, br))
                 quadset = ctr.contour_generator(z = normed)
                 shapes = quadset.lines(level)
                 nshape = len(shapes)
@@ -2043,11 +2285,11 @@ def get_contour_area(n, z, m, ids, l, level = 0.2):
                         outer_id.append(u_id)
                 assert(area[i,j]>=0)
 
+        radius = np.sqrt(area/np.pi)
     if n == 1:
-        return area.reshape(2)
+        return radius.reshape(2)
     else:
-        return area
-    #return contour, area
+        return radius
 
 def linear_interp_2d(data, xgrid, ygrid, x, y, debug = False):
     assert(x <= xgrid[-1] and x >= xgrid[0])
@@ -2262,7 +2504,7 @@ def get_oneOverYscale(n):
 
 if __name__ == '__main__':
     if len(sys.argv) < 14:
-        print("outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr, fig_fdr, LGN_switch, mix, st, examSingle, use_local_max, waveStage, ns, examLTD, find_peak)")
+        print("outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr, fig_fdr, LGN_switch, mix, st, examSingle, use_local_max, waveStage, ns, examLTD, find_peak, retino_cross, retinotopy)")
         print('no default argument available')
     else:
         seed = int(sys.argv[1])
@@ -2307,14 +2549,32 @@ if __name__ == '__main__':
                         find_peak = True
                     else:
                         find_peak = False
+                    if len(sys.argv) > 19:
+                        if sys.argv[19] == 'True' or sys.argv[19] == 'true' or sys.argv[19] == '1':
+                            retino_cross = True
+                        else:
+                            retino_cross = False
+                        if len(sys.argv) > 20:
+                            retinotopy = float(sys.argv[20])
+                        else:
+                            retinotopy = 0.0
+                    else:
+                        retino_cross = False
+                        retinotopy = 0.0
                 else:
                     find_peak = False
+                    retino_cross = False
+                    retinotopy = 0.0
             else:
                 examLTD = False
                 find_peak = False
+                retino_cross = False
+                retinotopy = 0.0
         else:
             ns = 10
             examLTD=False
             find_peak = False
+            retino_cross = False
+            retinotopy = 0.0
 
-    outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr, fig_fdr, inputFn, LGN_switch, mix, st, examSingle, use_local_max, stage, ns, examLTD, find_peak)
+    outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr, fig_fdr, inputFn, LGN_switch, mix, st, examSingle, use_local_max, stage, ns, examLTD, find_peak, retino_cross, retinotopy)

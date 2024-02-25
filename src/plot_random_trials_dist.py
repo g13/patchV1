@@ -6,6 +6,7 @@ import sys
 from outputLearnFF import get_oneOverYscale
 
 def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch, old_fmt):
+    save_svg = True
     if fig_fdr[-1] != '/':
         fig_fdr = fig_fdr+'/'
     if data_fdr[-1] != '/':
@@ -132,6 +133,8 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch,
             fill_between(ft/1000, fr, ax, 1, 'avg. FR', xlabel = 't (s)')
         plt.tight_layout(w_pad = 1)
         fig.savefig(fig_fdr + 'temporal_plots-' + suffix +'.png', bbox_inches = 'tight')
+        if save_svg:
+            fig.savefig(fig_fdr + 'temporal_plots-' + suffix +'.svg', bbox_inches = 'tight')
 
         tpoint = -1
         fig = plt.figure('end_dist', figsize = (14,8), dpi = 200)
@@ -160,6 +163,8 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch,
             ax = fig.add_subplot(248)
             hist(fr[:,tpoint-1], ax, 1, 'avg. FR')
         fig.savefig(fig_fdr + 'end_dist-' + suffix +'.png', bbox_inches = 'tight')
+        if save_svg:
+            fig.savefig(fig_fdr + 'end_dist-' + suffix +'.svg', bbox_inches = 'tight')
     else:
         nbatch = len(batch)
         keys = batch.keys()
@@ -297,6 +302,8 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch,
             norm_temporal_sep(fr, ax, 1, 'avg. FR', xlabel = 'normalized time %')
         plt.tight_layout(w_pad = 1)
         fig.savefig(fig_fdr + 'temporal_sep-' + suffix +'.png', bbox_inches = 'tight')
+        if save_svg:
+            fig.savefig(fig_fdr + 'temporal_sep-' + suffix +'.svg', bbox_inches = 'tight')
 
         tpoint = -1
         fig = plt.figure('end_sep', figsize = (20,8), dpi = 200)
@@ -341,6 +348,8 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch,
             end_sep(fr, tpoint, ax, 1, 'avg. FR')
         plt.tight_layout(w_pad = 2)
         fig.savefig(fig_fdr + 'end_sep-' + suffix +'.png', bbox_inches = 'tight')
+        if save_svg:
+            fig.savefig(fig_fdr + 'end_sep-' + suffix +'.svg', bbox_inches = 'tight')
 
         
         if totalFr_binned:
@@ -351,6 +360,8 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch,
                 normed_fr[key] = fr[key]/np.tile(np.max(fr[key], axis = 1).reshape(fr[key].shape[0],1), (1,fr[key].shape[1]))
             norm_temporal_sep(normed_fr, ax, 1, 'normed. FR', xlabel = 'normalized time %')
             fig.savefig(fig_fdr + 'normed_fr-' + suffix +'.png', bbox_inches = 'tight')
+            if save_svg:
+                fig.savefig(fig_fdr + 'normed_fr-' + suffix +'.svg', bbox_inches = 'tight')
 
         if not old_fmt:
             if totalFr_binned:
@@ -370,6 +381,8 @@ def random_trials_plot(data_fdr, fig_fdr, suffix, separate, use_idx, num, batch,
                 norm_temporal_sep(fr, ax, 1, 'avg. FR', xlabel = 'normalized time %', i0 = 2)
             plt.tight_layout(h_pad = 1)
             fig.savefig(fig_fdr + 'temporal_detail-' + suffix +'.png', bbox_inches = 'tight')
+            if save_svg:
+                fig.savefig(fig_fdr + 'temporal_detail-' + suffix +'.svg', bbox_inches = 'tight')
 
 def sig(d, n, mean = 0):
     if n == 2:

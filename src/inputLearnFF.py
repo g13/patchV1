@@ -11,15 +11,14 @@ import matplotlib.pyplot as plt
 from patch_square import *
 from scipy.stats import qmc
 
-def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_fdr, squareOrCircle, relay, binary_thres, sInput, retinotopy = 0): 
-    retinotopy = 0.35 # V1 visual field ratio of LGN pool size in 1D
-    nc = 2
-    retino_cross = True
-    cross_reldis = 0.5
+def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_fdr, squareOrCircle, relay, binary_thres, sInput, retino_cross, retinotopy = 0): 
+    nc = 16
+    cross_reldis = 0.75
     res_fdr = res_fdr + '/'
     setup_fdr = setup_fdr + '/'
     con_std = 0
-    gapCon = 0.1
+    gapCon = 0.2
+    gapStr = 0.5
     nmin = 6
 
     if std_ecc > 0:
@@ -44,11 +43,14 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
         nother = 0
     
     same = False
-    gapStr = 1
     
     if stage == 2 or stage == 5:
-        pCon = 1.0
-        nLGN_1D = 24
+        pCon = 0.95
+        if retinotopy > 0:
+            nLGN_1D = 24
+        else:
+            nLGN_1D = 16
+
         radiusRatio = 1.0
     
     if stage == 3:
@@ -74,6 +76,14 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
     fLGN_V1_s = setup_fdr + 'LGN_V1_sList' + suffix + '.bin'
     fV1_RFprop = setup_fdr + 'V1_RFprop' + suffix + '.bin'
     fLGN_switch = setup_fdr + 'LGN_switch' + suffix + '.bin'
+    if retino_cross:
+        crossFn = setup_fdr + 'cross_pair' + suffix + '.bin'
+        mI = 24
+        mE = 8
+    else:
+        mE = 24
+        mI = 8
+
     fV1_vposFn = res_fdr + 'V1_vpos' + suffix0 + '.bin'
     fV1_allpos = res_fdr + 'V1_allpos' + suffix0 + '.bin'
     fV1_feature = res_fdr + 'V1_feature' + suffix0 + '.bin'
@@ -90,8 +100,6 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
     ieStrength = 0.0
     nblock = 32
     blockSize = 32
-    mE = 8
-    mI = 24
     #nblock = 1;
     #blockSize = 1024;
     #mE = 768;
@@ -229,17 +237,16 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
     
     if retinotopy > 0:
         nLGN_circ = np.sum(np.sum(LGN_vpos0 * LGN_vpos0, axis = 0) <= max_ecc * max_ecc * np.power(1-retinotopy,2))
-        nLGNperV1 = int(np.round(nLGN_circ * 2 * pCon))
+        nLGNperV1 = int(np.round(nLGN_circ * pCon))*2
     else:
         if squareOrCircle:
             nLGN_square = np.sum(np.max(np.abs(LGN_vpos0), axis = 0) <= max_ecc * radiusRatio)
-            nLGNperV1 = int(np.round(nLGN_square * 2 * pCon))
+            nLGNperV1 = int(np.round(nLGN_square * pCon))*2
         else:
             nLGN_circ = np.sum(np.sum(LGN_vpos0 * LGN_vpos0, axis = 0) <= max_ecc * max_ecc * radiusRatio * radiusRatio)
-            nLGNperV1 = int(np.round(nLGN_circ * 2 * pCon))
+            nLGNperV1 = int(np.round(nLGN_circ * pCon))*2
     
-    if np.mod(nLGNperV1,2) == 1:
-        nLGNperV1 = nLGNperV1 + 1
+    assert(np.mod(nLGNperV1,2) == 0)
     
     print(f'nLGNperV1 = {nLGNperV1}')
     disLGN = max_ecc*2/nLGN_1D
@@ -259,10 +266,16 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
         rng = np.random.default_rng(seed+1)
         qdx = rng.permutation(np.arange(nV1))
         if retinotopy != 0:
-            candidate_pos = square_pos(2*max_ecc*retinotopy, int(round(nV1/np.pi*4)), [0,0], seed = seed)
-            pdx = np.argpartition(np.linalg.norm(candidate_pos, axis = 0), nV1)
             V1_pos = np.zeros((2,nV1))
-            V1_pos[:,qdx] = candidate_pos[:,pdx[:nV1]]
+            #candidate_pos = square_pos(2*max_ecc*retinotopy, int(round(nV1/np.pi*4)), [0,0], seed = seed)
+            candidate_pos = fast_poisson_disk2d(2*max_ecc*retinotopy, int(round(nblock*mE/np.pi*4)), ratio = 0.8, seed = seed).T - max_ecc*retinotopy
+            pdx = np.argpartition(np.linalg.norm(candidate_pos, axis = 0), nblock*mE)
+            V1_pos[:,epick] = candidate_pos[:,pdx[:nblock*mE]]
+
+            candidate_pos = fast_poisson_disk2d(2*max_ecc*retinotopy, int(round(nblock*mI/np.pi*4)), ratio = 0.8, seed = seed + 2).T - max_ecc*retinotopy
+            pdx = np.argpartition(np.linalg.norm(candidate_pos, axis = 0), nblock*mI)
+            V1_pos[:,ipick] = candidate_pos[:,pdx[:nblock*mI]]
+
             ecc = np.linalg.norm(V1_pos, axis = 0)
             polar = np.arctan2(V1_pos[1,:], V1_pos[0,:])
         else:
@@ -385,6 +398,7 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
     for iblock in range(nblock):
         conMat = np.zeros((nearNeighborBlock,blockSize,blockSize))
         delayMat = np.zeros((nearNeighborBlock,blockSize,blockSize))
+        id_i = iblock * blockSize + np.arange(blockSize)
         for iNeighbor in range(nearNeighborBlock):
             #(post, pre)
             conIE = np.zeros((mE,mI))
@@ -397,17 +411,21 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
                 conEI[eid,i] = eiStrength
             conMat[iNeighbor, mE:, :mE] = conEI
             conMat[iNeighbor, :mE, mE:] = conIE
-            for i in range(blockSize):
-                id_i = iblock * blockSize + i
-                for j in range(blockSize):
-                    id_j = nBlockId[iblock,iNeighbor] * blockSize + j
-                    distance = np.linalg.norm(V1_pos[:, id_i] - V1_pos[:, id_j])
-                    delayMat[iNeighbor,i,j] = distance
+            for j in range(blockSize):
+                id_j = nBlockId[iblock,iNeighbor] * blockSize + j
+                distance = np.linalg.norm(V1_pos[:, id_i].T - V1_pos[:, id_j], axis = -1)
+                delayMat[iNeighbor,j,:] = distance
 
         conMat.astype('f4').tofile(cid)
         delayMat.astype('f4').tofile(did)
-        tmpMat = np.hstack(delayMat[:,mE:,mE:])
-        imin_ids[iblock, :, :] = np.argpartition(tmpMat, nmin+1, -1)[:,:nmin+1]
+        tmpMat = np.vstack(delayMat[:,mE:,mE:])
+        imin_ids[iblock, :, :] = np.argpartition(tmpMat, nmin+1, 0)[:nmin+1, :].T
+        ii = 368
+        if iblock == ii//blockSize:
+            nid = (nBlockId[iblock,:] * blockSize + np.tile(np.arange(mI)+mE, (nearNeighborBlock,1)).T).T.flatten()
+            print(imin_ids[iblock, ii%blockSize-mE, :])
+            print(nid[imin_ids[iblock, ii%blockSize-mE, :]])
+            print(tmpMat[imin_ids[iblock, ii%blockSize-mE, :], ii%blockSize-mE])
 
     edges = 0
     for iblock in range(nblock):
@@ -427,15 +445,13 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
                     jNeighbor = iNeighbor
                 j = jdx - iNeighbor*mI
                 j_idx = jblock*mI + j
-                if i == j:
-                    continue
 
-                if j_idx < i_idx and jNeighbor*mI + i in imin_ids[jblock, j, :]:
+                if j_idx <= i_idx and jNeighbor*mI + i in imin_ids[jblock, j, :]:
                     continue
-                assert(gapMat[jblock, jNeighbor, j, i] == 0 and gapMat[iblock, iNeighbor, i, j] == 0)
+                assert(gapMat[jblock, jNeighbor, i, j] == 0 and gapMat[iblock, iNeighbor, j, i] == 0)
                 if gapRand.random() < gapCon:
-                    gapMat[iblock, iNeighbor, i, j] = gapStr
-                    gapMat[jblock, jNeighbor, j, i] = gapStr
+                    gapMat[iblock, iNeighbor, j, i] = gapStr
+                    gapMat[jblock, jNeighbor, i, j] = gapStr
                     nGap[iblock, i] += 1
                     nGap[jblock, j] += 1
                     edges += 1
@@ -469,10 +485,9 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
                 else:
                     jNeighbor = iNeighbor
 
-                assert(gapMat[iblock, iNeighbor, i, j] == 0 and gapMat[jblock, jNeighbor, j, i] ==0)
-                gapMat[iblock, iNeighbor, i, j] = gapStr
-                gapMat[jblock, jNeighbor, j, i] = gapStr
-
+                assert(gapMat[iblock, iNeighbor, j, i] == 0 and gapMat[jblock, jNeighbor, i, j] ==0)
+                gapMat[iblock, iNeighbor, j, i] = gapStr
+                gapMat[jblock, jNeighbor, i, j] = gapStr
                 nGap[iblock, i] += 1
                 nGap[jblock, j] += 1
                 edges += 1
@@ -487,14 +502,31 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
 
     # outside the if-condition for debug/plotting purpose
     if retino_cross:
-        crossed = np.sort(default_rng.choice(ipick, nc, replace = False))
-        cross = np.zeros((nc,2), dtype = 'u4')
+        ic = 0
+        crossed = []
+        avail = True
+        bool_ipick = np.ones(ipick.size, dtype = bool)
+        while ic < nc and bool_ipick.any():
+            icross = default_rng.choice(ipick[bool_ipick], 1)[0]
+            crossed.append(icross)
+            # avoid immediate neighbors
+            iblock = ic // blockSize
+            i = icross % blockSize - mE
+            bool_ipick[iblock*mI+i] = False
+            neighbor_id = (nBlockId[iblock,:] * mI + np.tile(np.arange(mI), (nearNeighborBlock,1)).T).T 
+            ii = neighbor_id[gapMat[iblock,:,:,i] > 0].flatten()
+            bool_ipick[ii] = False
+            ic += 1
+            
+        nc = len(crossed)
+        cross = np.zeros((2,nc), dtype = 'u4')
         i = 0
+        _ipick = ipick[bool_ipick]
         for ic in crossed:
-            d_angle = np.abs(polar[ipick] - polar[ic])
+            d_angle = np.abs(polar[_ipick] - polar[ic])
             pick = d_angle > np.pi
             d_angle[pick] = 2*np.pi - d_angle[pick]
-            ids = ipick[(np.abs(ecc[ipick]-ecc[ic]) < 0.1*retinotopy*max_ecc)  & (nGap.flatten() > round(gapCon*nmin)) & (ipick != ic) & (d_angle > np.pi/18)]
+            ids = _ipick[(np.abs(ecc[_ipick]-ecc[ic]) < 0.05*retinotopy*max_ecc)  & (nGap.flatten()[bool_ipick] > round(gapCon*nmin)) & (_ipick != ic) & (d_angle > np.pi/36)]
             if len(ids) == 0:
                 raise Exception('no suitable cross target')
             target = ids[np.argmin(np.abs(np.linalg.norm(V1_pos[:,ids].T - V1_pos[:,ic], axis = -1) - cross_reldis*retinotopy*max_ecc))]
@@ -502,6 +534,11 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
             cross[1,i] = target
             i += 1
         print(f'retino cross = {cross}')
+
+    if retino_cross:
+        with open(crossFn, 'wb') as f:
+            np.array([nc], dtype = 'u4').tofile(f)
+            cross.tofile(f)
 
     with open(fV1_vec,'wb') as f:
         np.array([0], dtype = 'i4').tofile(f)
@@ -553,7 +590,7 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
     else:
         if retinotopy > 0:
             idx = np.zeros((nV1,nLGNperV1), dtype = 'u4')
-            _nLGNperV1 = int(round((nLGNperV1//2)/pCon))
+            _nLGNperV1 = nLGNperV1//2
             for i in range(nV1):
                 dis = np.linalg.norm(LGN_vpos0.T - V1_pos[:,i], axis = -1)
                 assert(dis.size == nLGN//2)
@@ -576,7 +613,7 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
                 sLGN = np.zeros((nV1, nLGNperV1))
                 ic = 0
                 for i in range(nV1):
-                    if i in crossed:
+                    if retino_cross and (i in crossed):
                         idx[cross[0,ic],:] = idx[cross[1,ic],:].copy()
                         sLGN[i,:] = np.exp(- (np.power(LGN_x[idx[cross[0,ic],:]] - V1_pos[0,cross[1,ic]], 2) + np.power(LGN_y[idx[cross[0,ic],:]] - V1_pos[1,cross[1,ic]],2)) / (std_ecc*std_ecc))
                         ic += 1
@@ -659,7 +696,7 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
             stmp0 = s[:, 0:2*nLGN_1D:2]
             local_max = np.amax(np.abs(stmp0))
             stmp = stmp0 / local_max
-            ax = fig.add_subplot(2,2,2*j+1)
+            ax = fig.add_subplot(nc,2,2*j+1)
             ax.set_title(f'neuron {i}-ON')
             ax.imshow(stmp, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('Reds'))
             ax.plot((V1_pos[0,i]+max_ecc)/max_ecc/2*nLGN_1D-0.5, (V1_pos[1,i]+max_ecc)/max_ecc/2*nLGN_1D-0.5, '*r')
@@ -670,7 +707,7 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
             stmp0 = s[:, 1:2*nLGN_1D:2]
             local_max = np.amax(np.abs(stmp0))
             stmp = stmp0 / local_max
-            ax = fig.add_subplot(2,2,2*j+2)
+            ax = fig.add_subplot(nc,2,2*j+2)
             ax.imshow(stmp, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('Blues'))
             ax.plot((V1_pos[0,i]+max_ecc)/max_ecc/2*nLGN_1D-0.5, (V1_pos[1,i]+max_ecc)/max_ecc/2*nLGN_1D-0.5, '*b')
             ax.plot((V1_pos[0,ii]+max_ecc)/max_ecc/2*nLGN_1D-0.5, (V1_pos[1,ii]+max_ecc)/max_ecc/2*nLGN_1D-0.5, 'ob')
@@ -678,7 +715,7 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
             ax.set_xticks([]) 
             ax.set_yticks([])
             j += 1
-        fig.savefig(f'{setup_fdr}sLGN_V1-init-{cross[0]}-{cross[1]}{suffix}-sep.png')
+        fig.savefig(f'{setup_fdr}sLGN_V1-init-{cross[0,0]}-{cross[1,0]}{suffix}-sep.png')
             
     fig = plt.figure(figsize = (8,8), dpi = 500)
     ax = fig.add_subplot(111)
@@ -706,7 +743,7 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
                     j_id = jblock*blockSize + mE + j
                     if j_id <= i_id:
                         break
-                    if gapMat[iblock, iNeighbor, i, j] > 0:
+                    if gapMat[iblock, iNeighbor, j, i] > 0:
                         if jblock != iblock:
                             for k in range(nearNeighborBlock):
                                 if nBlockId[jblock,k] == iblock:
@@ -714,7 +751,7 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
                                     break
                         else:
                             jNeighbor = iNeighbor
-                        assert(gapMat[jblock, jNeighbor, j, i] > 0)
+                        assert(gapMat[jblock, jNeighbor, i, j] > 0)
                         ax.plot([V1_pos[0,i_id], V1_pos[0,j_id]], [V1_pos[1,i_id], V1_pos[1,j_id]], '-b', lw = 1, alpha = 0.6)
 
                         edges += 1
@@ -754,7 +791,7 @@ def randq(m, n, pos, r0, stdev, squareOrCircle, rng):
 if __name__ == "__main__":
 
     if len(sys.argv) < 12:
-        print(" inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_fdr, squareOrCircle, relay, binary_thres, sInput, retinotopy = 0)")
+        print(" inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_fdr, squareOrCircle, relay, binary_thres, sInput, retino_cross, retinotopy = 0)")
     else:
         inputFn = sys.argv[1]
         suffix = sys.argv[2]
@@ -778,9 +815,15 @@ if __name__ == "__main__":
             sInput = sys.argv[12]
         else:
             sInput = None
-        if len(sys.argv) == 14:
-            retinotopy = sys.argv[13]
+
+        if sys.argv[13] == 'True' or sys.argv[13] == 'true' or sys.argv[13] == '1':
+            retino_cross = True
+        else:
+            retino_cross = False
+
+        if len(sys.argv) == 15:
+            retinotopy = float(sys.argv[14])
         else:
             retinotopy = 0
 
-        inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_fdr, squareOrCircle, relay, binary_thres, sInput, retinotopy)
+        inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_fdr, squareOrCircle, relay, binary_thres, sInput, retino_cross, retinotopy)

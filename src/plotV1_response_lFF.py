@@ -16,7 +16,7 @@ np.seterr(invalid = 'raise')
 #@profile
 def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
     #sample = np.array([0,1,2,768])
-    sample = np.hstack((np.array([850,248,561, 311, 496, 842, 52, 414, 988, 335, 1019], dtype = 'u4'), np.array([0,1,2,3,4], dtype = 'u4')))
+    sample = np.hstack((np.array([412, 473, 414, 456, 500, 40, 189, 93, 915], dtype = 'u4'), np.array([0,1,2,3,4], dtype = 'u4')))
 
     SCsplit = 0
     nLGNorF1F0 = True
@@ -24,7 +24,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
     seed = 657890
     np.random.seed(seed)
     step0 = 0
-    nt_ = 53400
+    nt_ = 20000
     nstep = 10000
     if nOri > 0:
         stiOri = np.pi*np.mod(iOri/nOri, 1.0)
@@ -1123,7 +1123,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
                 ax.plot(t[t.size//2], np.mean(cI), '*b', ms = (ig+1)/ngI)
                 current = current + cI
             if pGap and itype >= nTypeE:
-                cGap = -_cGap[i_gap,:]
+                cGap = _cGap[i_gap,:]
                 ax.plot(t, cGap, ':k', lw = lw)
                 ax.plot(t[t.size//2], np.mean(cGap), 'sk', ms = 1)
                 if iV1 == 24 or iV1 == 25:
