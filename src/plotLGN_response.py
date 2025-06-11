@@ -13,7 +13,7 @@ from os import path
 np.seterr(divide='warn', invalid='warn')
 
 import sys
-if len(sys.argv) < 5:
+if len(sys.argv) < 6:
     print(sys.argv)
     raise Exception(' need all 5 arguments, no default values available')
 else:
@@ -21,32 +21,38 @@ else:
     input_suffix = sys.argv[2]
     data_fdr = sys.argv[3]
     fig_fdr = sys.argv[4]
+    setup_fdr = sys.argv[5]
 
 print(output_suffix)
-print(input_suffix)
+print(setup_fdr)
 print(data_fdr)
 output_suffix = "-" + output_suffix 
 input_suffix = "-" + input_suffix 
 
 data_fdr = data_fdr + '/'
 fig_fdr = fig_fdr + '/'
+setup_fdr = setup_fdr + '/'
 
-plotResponseSample = True
+plotResponseSample = False
 plotContrastDist = False 
-plotStat = True 
+plotLGN_activation = True
+plotStat = False
 nLGN_1D = 8
-nt_ = 50000
+nt_ = 0
 nstep = 1000
 seed = 1653783
 #iLGN = np.array([12198, 24358, 1833,2575])
 #iLGN = np.array([0,1,nLGN_1D*nLGN_1D+nLGN_1D-1,nLGN_1D*nLGN_1D+nLGN_1D])
 ns = 10
-FRbins = 50 # per sec
+FRbins = 8 # per sec
 nsmooth = 5
 
 parameterFn = data_fdr + "patchV1_cfg" + output_suffix + ".bin"
 
 LGN_spFn = data_fdr + "LGN_sp" + output_suffix + ".bin"
+f_sLGN = data_fdr + "sLGN" + output_suffix + ".bin"
+fStats = data_fdr + "LGN_activation" + output_suffix + ".bin"
+fLGN_V1_ID = setup_fdr + 'LGN_V1_idList' + input_suffix + '.bin'
 
 prec, sizeofPrec, vL, vE, vI, vR, vThres, gL, vT, typeAcc, mE, mI, sRatioLGN, sRatioV1, frRatioLGN, convolRatio, nType, nTypeE, nTypeI, frameRate, inputFn, virtual_LGN, _, _ = read_cfg(parameterFn)
 print(f'frRatioLGN = {frRatioLGN}, convolRatio = {convolRatio}')
@@ -114,7 +120,7 @@ with open(output_fn, 'rb') as f:
     print(f'nstep = {nstep}')
     interstep = nt_//nstep
     if interstep != nt_/nstep:
-        ntstep = nt_
+        nstep = nt_
         interstep = nt_//nstep
     tt = np.arange(nstep)*interstep
     t = tt * dt
@@ -154,7 +160,35 @@ for i in range(nLGN):
     sp = sp0[sp0 < t[-1]]
     sp_range = np.linspace(0, nt_, nbins+1)*dt
     counts, _ = np.histogram(sp, bins = sp_range)
-    realLGN_fr[:,i] = movingAvg(counts/(1/FRbins), counts.size, nsmooth)
+    realLGN_fr[:,i] = movingAvg(counts*FRbins, counts.size, nsmooth)
+
+if plotLGN_activation:
+    with open(fLGN_V1_ID, 'rb') as f:
+        nV1 = np.fromfile(f, 'u4', 1)[0]
+        LGN_ID = np.zeros(nV1*nLGN, dtype = 'int')-1
+        print(nV1)
+        j = 0
+        for i in range(nV1):
+            nc = np.fromfile(f, 'u4', 1)[0]
+            if nc > 0:
+                LGN_ID[j:j+nc] = np.fromfile(f, 'u4', nc).astype(int)
+                j += nc
+        connected_LGN_ID = np.unique(LGN_ID[:j])
+
+    with open(fStats, 'wb') as f:
+        np.array([realLGN_fr.shape[0]], 'i4').tofile(f)
+        np.array([1/FRbins], 'f4').tofile(f)
+        cLGN_fr = realLGN_fr[:,connected_LGN_ID].sum(-1)
+        cLGN_fr.tofile(f)
+
+    fig = plt.figure('LGN_activation', dpi = 150)
+    ax = fig.add_subplot(111)
+    plot_t = (sp_range[:-1] + sp_range[1:])/2
+    ax.plot(plot_t[:20*FRbins], cLGN_fr[:20*FRbins], '-k', lw = 2, alpha = 0.8)
+    ax.set_ylabel('total LGN FR.')
+    ax.set_xlabel('t (s)')
+    fig.savefig(fig_fdr+'lgn_activation' + output_suffix + '.svg')
+    fig.savefig(fig_fdr+'lgn_activation' + output_suffix + '.png')
 
 if plotResponseSample:
     fig = plt.figure('LGN', dpi = 600)

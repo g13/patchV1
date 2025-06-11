@@ -8,18 +8,30 @@ import numpy as np
 import warnings
 import sys
 import matplotlib.pyplot as plt
+import matplotlib as mpl
+from pathlib import Path
+from collections import Counter
+mpl.rcParams.update({'font.family': 'CMU Sans Serif', 'axes.unicode_minus' : False})
+mpl.rcParams.update({'mathtext.fontset': 'cm', 'mathtext.default':'regular'})
 from patch_square import *
 from scipy.stats import qmc
 
 def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_fdr, squareOrCircle, relay, binary_thres, sInput, retino_cross, retinotopy = 0): 
+    #gap = True
+    gap = False
     nc = 16
-    cross_reldis = 0.75
+    t0_perc = 0.5
+    relay_thres = 0.5
+    cross_reldis = 0.45
     res_fdr = res_fdr + '/'
     setup_fdr = setup_fdr + '/'
     con_std = 0
-    gapCon = 0.2
+    gapCon = 0.75
     gapStr = 0.5
     nmin = 6
+    nmin_ext = 8
+    bmin = 4
+    icolor = {19: '#00a896', 113: '#147df5', 312: '#ff6d1f'}
 
     if std_ecc > 0:
         normed = True
@@ -50,19 +62,19 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
             nLGN_1D = 24
         else:
             nLGN_1D = 16
+            #nLGN_1D = 32
+            #nLGN_1D = 48
 
         radiusRatio = 1.0
     
     if stage == 3:
         if relay:
-            #pCon = 0.8 # initial sparsity
-            pCon = 0.8
             nLGN_1D = 16
-            radiusRatio = 0.5
         else:
-            pCon = 0.8
             nLGN_1D = 8
-            radiusRatio = 1.0
+
+        pCon = 0.95
+        radiusRatio = 1.0
     
     ########
     
@@ -76,13 +88,20 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
     fLGN_V1_s = setup_fdr + 'LGN_V1_sList' + suffix + '.bin'
     fV1_RFprop = setup_fdr + 'V1_RFprop' + suffix + '.bin'
     fLGN_switch = setup_fdr + 'LGN_switch' + suffix + '.bin'
-    if retino_cross:
+    if retino_cross or gap:
         crossFn = setup_fdr + 'cross_pair' + suffix + '.bin'
+        nblock = 32
+        blockSize = 32
         mI = 24
         mE = 8
     else:
-        mE = 24
-        mI = 8
+        nblock = 1
+        mE = 992
+        mI = 32
+        #nblock = 32
+        #mE = 24 
+        #mI = 8
+        blockSize = mE + mI
 
     fV1_vposFn = res_fdr + 'V1_vpos' + suffix0 + '.bin'
     fV1_allpos = res_fdr + 'V1_allpos' + suffix0 + '.bin'
@@ -98,12 +117,6 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
     
     eiStrength = 0.0
     ieStrength = 0.0
-    nblock = 32
-    blockSize = 32
-    #nblock = 1;
-    #blockSize = 1024;
-    #mE = 768;
-    #mI = 256;
     nV1 = nblock * blockSize
     doubleOnOff = 1
     frameVisV1output = False
@@ -198,9 +211,9 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
     
     with open(fLGN_surfaceID, 'wb') as f:
         if doubleOnOff:
-            LGN_idx,LGN_idy = np.meshgrid(np.arange(nLGN_1D * 2),np.arange(nLGN_1D))
+            LGN_idx, LGN_idy = np.meshgrid(np.arange(nLGN_1D * 2),np.arange(nLGN_1D))
         else:
-            LGN_idx,LGN_idy = np.meshgrid(np.arange(nLGN_1D),np.arange(nLGN_1D))
+            LGN_idx, LGN_idy = np.meshgrid(np.arange(nLGN_1D), np.arange(nLGN_1D))
         
         # tranform the coords into row-first order
         if doubleOnOff:
@@ -220,7 +233,7 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
     
     LGN_y = (LGN_idy.flatten() - nLGN_1D / 2 + 0.5) / nLGN_1D * max_ecc / 0.5
     LGN_vpos0 = np.array([LGN_x[0:nLGN:2], LGN_y[0:nLGN:2]])
-    print('LGN_vpos0')
+    print('LGN_vpos0 (either ON or OFF)')
     print(LGN_vpos0.shape)
     print(LGN_vpos0)
     #for i=1:nLGN_1D
@@ -268,11 +281,11 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
         if retinotopy != 0:
             V1_pos = np.zeros((2,nV1))
             #candidate_pos = square_pos(2*max_ecc*retinotopy, int(round(nV1/np.pi*4)), [0,0], seed = seed)
-            candidate_pos = fast_poisson_disk2d(2*max_ecc*retinotopy, int(round(nblock*mE/np.pi*4)), ratio = 0.8, seed = seed).T - max_ecc*retinotopy
+            candidate_pos = fast_poisson_disk2d(2*max_ecc*retinotopy, int(round(nblock*mE/np.pi*4)), ratio = 0.76, seed = seed).T - max_ecc*retinotopy
             pdx = np.argpartition(np.linalg.norm(candidate_pos, axis = 0), nblock*mE)
             V1_pos[:,epick] = candidate_pos[:,pdx[:nblock*mE]]
 
-            candidate_pos = fast_poisson_disk2d(2*max_ecc*retinotopy, int(round(nblock*mI/np.pi*4)), ratio = 0.8, seed = seed + 2).T - max_ecc*retinotopy
+            candidate_pos = fast_poisson_disk2d(2*max_ecc*retinotopy, int(round(nblock*mI/np.pi*4)), ratio = 0.76, seed = seed + 1).T - max_ecc*retinotopy
             pdx = np.argpartition(np.linalg.norm(candidate_pos, axis = 0), nblock*mI)
             V1_pos[:,ipick] = candidate_pos[:,pdx[:nblock*mI]]
 
@@ -377,7 +390,10 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
     tmp.tofile(gid)
     tmp.tofile(did)
     gapMat = np.zeros((nblock,nearNeighborBlock,mI,mI))
-    imin_ids = np.empty((nblock, mI, nmin+1), dtype = 'u4')
+    nmin_ext = min(mI-1,nmin_ext)
+    nmin = min(nmin_ext-2,nmin);
+    bmin = min(nmin-2,bmin);
+    imin_ids = np.empty((nblock, mI, nmin_ext), dtype = 'u4')
     nGap = np.zeros((nblock,mI))
     gapRand = np.random.default_rng(seed+2)
 
@@ -419,82 +435,88 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
         conMat.astype('f4').tofile(cid)
         delayMat.astype('f4').tofile(did)
         tmpMat = np.vstack(delayMat[:,mE:,mE:])
-        imin_ids[iblock, :, :] = np.argpartition(tmpMat, nmin+1, 0)[:nmin+1, :].T
-        ii = 368
-        if iblock == ii//blockSize:
-            nid = (nBlockId[iblock,:] * blockSize + np.tile(np.arange(mI)+mE, (nearNeighborBlock,1)).T).T.flatten()
-            print(imin_ids[iblock, ii%blockSize-mE, :])
-            print(nid[imin_ids[iblock, ii%blockSize-mE, :]])
-            print(tmpMat[imin_ids[iblock, ii%blockSize-mE, :], ii%blockSize-mE])
+        ids = np.argpartition(tmpMat, nmin_ext, 0)[:nmin_ext, :].T
+        dis = np.array([tmpMat[ids[i,:],i] for i in range(mI)])
+        #print(dis.shape)
+        arg_imin = np.argsort(dis, axis = -1)
+        _imin = np.array([ids[i, arg_imin[i, :]] for i in range(mI)])
+        #print(_imin.shape)
+        imin_ids[iblock, :, :] = _imin
 
-    edges = 0
-    for iblock in range(nblock):
-        for i in range(mI):
-            i_idx = iblock*mI + i
-            for jdx in imin_ids[iblock, i, :]:
-                iNeighbor = jdx//mI
-                jblock = nBlockId[iblock,iNeighbor] 
-                if jblock != iblock:
-                    jNeighbor = -1
-                    for k in range(nearNeighborBlock):
-                        if nBlockId[jblock,k] == iblock:
-                            jNeighbor = k
-                            break
-                    assert(jNeighbor != -1)
-                else:
-                    jNeighbor = iNeighbor
-                j = jdx - iNeighbor*mI
-                j_idx = jblock*mI + j
-
-                if j_idx <= i_idx and jNeighbor*mI + i in imin_ids[jblock, j, :]:
+        #if retino_cross:
+        #    ii = 368
+        #    if iblock == ii//blockSize:
+        #        nid = (nBlockId[iblock,:] * blockSize + np.tile(np.arange(mI)+mE, (nearNeighborBlock,1)).T).T.flatten()
+        #        print(imin_ids[iblock, ii%blockSize-mE, :])
+        #        print(nid[imin_ids[iblock, ii%blockSize-mE, :]])
+        #        print(tmpMat[imin_ids[iblock, ii%blockSize-mE, :], ii%blockSize-mE])
+    # set max nearest neighbor
+    mmin = np.zeros(nblock*mI, dtype = int) + nmin
+    r = np.linalg.norm(V1_pos[:,ipick], axis = 0)
+    # those at the boundary have less nearest neighbor
+    mmin[r > max_ecc*retinotopy*(1 - np.sqrt(np.pi/(mI*nblock))*0.8)] = bmin
+    nedge = np.zeros(mI*nblock, dtype = int)
+    # gap junction adjacency list
+    connected = np.empty(mI*nblock, dtype = object)
+    for i in range(mI*nblock):
+        connected[i] = []
+    for i_pass in range(nmin_ext):
+        for iblock in default_rng.permutation(nblock):
+            for i in default_rng.permutation(mI):
+                i_idx = iblock*mI + i
+                if nedge[i_idx] >= min(i_pass+1, mmin[i_idx]):
                     continue
-                assert(gapMat[jblock, jNeighbor, i, j] == 0 and gapMat[iblock, iNeighbor, j, i] == 0)
-                if gapRand.random() < gapCon:
-                    gapMat[iblock, iNeighbor, j, i] = gapStr
-                    gapMat[jblock, jNeighbor, i, j] = gapStr
-                    nGap[iblock, i] += 1
-                    nGap[jblock, j] += 1
-                    edges += 1
-         
-    for iblock in range(nblock):
-        for i in range(mI):
-            if nGap[iblock, i] == 0:
-                min_gap = nmin + 1
-                for jdx in imin_ids[iblock, i, :]:
+                _imin_ids = imin_ids[iblock, i, :].copy()
+                # index in ipick
+                iNeighbors = _imin_ids//mI
+                iimin_ids = nBlockId[iblock, iNeighbors]*mI + _imin_ids - (iNeighbors)*mI
+                nedge_sorted = np.argsort(nedge[iimin_ids])
+                for jdx in _imin_ids[nedge_sorted]:
                     iNeighbor = jdx//mI
                     jblock = nBlockId[iblock,iNeighbor] 
+                    if jblock != iblock:
+                        jNeighbor = -1
+                        for k in range(nearNeighborBlock):
+                            if nBlockId[jblock,k] == iblock:
+                                jNeighbor = k
+                                break
+                        assert(jNeighbor != -1)
+                    else:
+                        jNeighbor = iNeighbor
                     j = jdx - iNeighbor*mI
-                    if i == j:
+                    j_idx = jblock*mI + j
+                    # preconditions
+                    if j_idx == i_idx or gapMat[iblock, iNeighbor, j, i] > 0 or nedge[j_idx] >= min(i_pass+1, mmin[j_idx]):
                         continue
-                    if nGap[jblock,j] < min_gap:
-                        min_jdx = jdx
-                        min_gap = nGap[jblock,j]
-
-                assert(min_gap < nmin + 1)
-                jdx = min_jdx
-                iNeighbor = jdx//mI
-                jblock = nBlockId[iblock,iNeighbor] 
-                j = jdx - iNeighbor*mI
-                if jblock != iblock:
-                    jNeighbor = -1
-                    for k in range(nearNeighborBlock):
-                        if nBlockId[jblock,k] == iblock:
-                            jNeighbor = k
+                    # no cluster
+                    co_neighbor = [neighbor for neighbor, count in Counter(connected[j_idx] + connected[i_idx]).items() if count > 1]
+                    clustered = False
+                    for q in range(len(co_neighbor)):
+                        n1 = co_neighbor[q]
+                        for p in range(q+1, len(co_neighbor)):
+                            n2 = co_neighbor[p]
+                            if n2 == n1:
+                                continue
+                            if n2 in connected[n1]:
+                                clustered = True
+                                break
+                        if clustered:
                             break
-                    assert(jNeighbor != -1)
-                else:
-                    jNeighbor = iNeighbor
-
-                assert(gapMat[iblock, iNeighbor, j, i] == 0 and gapMat[jblock, jNeighbor, i, j] ==0)
-                gapMat[iblock, iNeighbor, j, i] = gapStr
-                gapMat[jblock, jNeighbor, i, j] = gapStr
-                nGap[iblock, i] += 1
-                nGap[jblock, j] += 1
-                edges += 1
-
+                    if clustered:
+                        continue
+                    if gapRand.random() < gapCon:
+                        gapMat[iblock, iNeighbor, j, i] = gapStr
+                        gapMat[jblock, jNeighbor, i, j] = gapStr
+                        nGap[iblock, i] += 1
+                        nGap[jblock, j] += 1
+                        nedge[i_idx] += 1
+                        nedge[j_idx] += 1
+                        connected[i_idx].append(j_idx)
+                        connected[j_idx].append(i_idx)
+                    break
+         
     gapMat.astype('f4').tofile(gid)
-    print(f'gap junctions:{edges}')
-    print(f'sum of gapMat:{np.sum(gapMat)}')
+    print(f'avg. gap junct. per neuron:{np.sum(nedge)/(mI*nblock)}, max: {np.max(nedge)}, min: {np.min(nedge)}')
     cid.close()
     gid.close()
     did.close()
@@ -510,7 +532,7 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
             icross = default_rng.choice(ipick[bool_ipick], 1)[0]
             crossed.append(icross)
             # avoid immediate neighbors
-            iblock = ic // blockSize
+            iblock = icross // blockSize
             i = icross % blockSize - mE
             bool_ipick[iblock*mI+i] = False
             neighbor_id = (nBlockId[iblock,:] * mI + np.tile(np.arange(mI), (nearNeighborBlock,1)).T).T 
@@ -519,6 +541,7 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
             ic += 1
             
         nc = len(crossed)
+        crossed = np.sort(crossed)
         cross = np.zeros((2,nc), dtype = 'u4')
         i = 0
         _ipick = ipick[bool_ipick]
@@ -526,16 +549,18 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
             d_angle = np.abs(polar[_ipick] - polar[ic])
             pick = d_angle > np.pi
             d_angle[pick] = 2*np.pi - d_angle[pick]
-            ids = _ipick[(np.abs(ecc[_ipick]-ecc[ic]) < 0.05*retinotopy*max_ecc)  & (nGap.flatten()[bool_ipick] > round(gapCon*nmin)) & (_ipick != ic) & (d_angle > np.pi/36)]
+            #ids = _ipick[(np.abs(ecc[_ipick]-ecc[ic]) < 0.05*retinotopy*max_ecc)  & (nGap.flatten()[bool_ipick] > round(gapCon*nmin)) & (_ipick != ic) & (d_angle > np.pi/36)]
+            #ids = _ipick[(np.abs(ecc[_ipick]-ecc[ic]) < 0.05*retinotopy*max_ecc)  & (nGap.flatten()[bool_ipick] > round(gapCon*nmin)) & (_ipick != ic)]
+            ids = _ipick[(nGap.flatten()[bool_ipick] >= round(gapCon*nmin)) & (_ipick != ic)]
+            ids = _ipick[_ipick != ic]
             if len(ids) == 0:
                 raise Exception('no suitable cross target')
             target = ids[np.argmin(np.abs(np.linalg.norm(V1_pos[:,ids].T - V1_pos[:,ic], axis = -1) - cross_reldis*retinotopy*max_ecc))]
             cross[0,i] = ic
             cross[1,i] = target
             i += 1
-        print(f'retino cross = {cross}')
 
-    if retino_cross:
+        print(f'retino cross = {cross}')
         with open(crossFn, 'wb') as f:
             np.array([nc], dtype = 'u4').tofile(f)
             cross.tofile(f)
@@ -572,21 +597,48 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
         V1_pos.astype('f4').tofile(f)
         np.ones((4,nV1), dtype = 'f4').tofile(f) # a, phase, sfreq, baRatio
 
+    nOn = np.zeros(nV1)
+    nOff = np.zeros(nV1)
     if not (sInput == None):
+        idFile = Path(fLGN_V1_ID)
+        assert(idFile.exists())
+        with open(fLGN_V1_ID, 'rb') as f:
+            _nV1 = np.fromfile(f, 'u4', 1)[0]
+            idx = np.zeros((_nV1,nLGNperV1), dtype = 'u4')
+            for i in range(_nV1):
+                _nLGNperV1 = np.fromfile(f, 'u4', 1)[0]
+                idx[i,:] = np.fromfile(f, 'u4', _nLGNperV1)
+
         with open(sInput, 'rb') as f:
             nt, sampleInterval = np.fromfile(f, 'u4', 2)
             nst = int(np.floor(nt / sampleInterval))
             dt_ = np.fromfile(f, 'f4', 1)[0]
             nV1_, max_LGNperV1 = np.fromfile(f, 'u4', 2)
             assert(nV1_ == nV1)
-            if max_LGNperV1 <= nLGNperV1:
-                print(max_LGNperV1)
-                print(nLGNperV1)
-                assert(nLGNperV1 == max_LGNperV1)
-                f.seek(4, 1)
-                nLearnFF = np.fromfile(f, 'u4', 1)[0]
-                f.seek(nLearnFF*4 + 1, 1)
-                sLGN = np.fromfile(f, 'f4', nV1_ * max_LGNperV1).reshape((max_LGNperV1, nV1)).T
+            assert(nLGNperV1 == max_LGNperV1)
+            t0 = min(nst, max(1,int(np.floor(nst*(1-t0_perc)))))
+            f.seek(-nV1*nLGNperV1*4*t0, 2)
+            sLGN = np.fromfile(f, 'f4', nV1 * nLGNperV1).reshape((nLGNperV1, nV1)).T
+            thres_sLGN = sLGN[sLGN>0].mean()*relay_thres
+            sLGN[sLGN < thres_sLGN] = 0
+            # balance populational On-Off
+            sLGN_bal = np.zeros(nV1)
+            for i in range(nV1):
+                _id = idx[i,:]
+                onId = np.arange(nLGNperV1)[np.logical_and(np.mod(_id,2)==0, sLGN[i,:] > 0)]
+                offId = np.arange(nLGNperV1)[np.logical_and(np.mod(_id,2)==1, sLGN[i,:] > 0)]
+                sLGN_bal[i] = np.sum(sLGN[i,onId]) - np.sum(sLGN[i,offId])
+            dsLGN_bal = np.mean(sLGN_bal)
+            for i in range(nV1):
+                _id = idx[i,:]
+                onId = np.arange(nLGNperV1)[np.logical_and(np.mod(_id,2)==0, sLGN[i,:] > 0)]
+                offId = np.arange(nLGNperV1)[np.logical_and(np.mod(_id,2)==1, sLGN[i,:] > 0)]
+                sLGN[i,onId] *= (1 - dsLGN_bal/2/sLGN[i,onId].sum())
+                sLGN[i,offId] *= (1 + dsLGN_bal/2/sLGN[i,offId].sum())
+                assert((sLGN >= 0).all())
+
+            print(f'relayed sLGN: max = {sLGN[sLGN>0].max()}, mean = {sLGN[sLGN>0].mean()}, min = {sLGN[sLGN>0].min()}')
+
     else:
         if retinotopy > 0:
             idx = np.zeros((nV1,nLGNperV1), dtype = 'u4')
@@ -594,7 +646,7 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
             for i in range(nV1):
                 dis = np.linalg.norm(LGN_vpos0.T - V1_pos[:,i], axis = -1)
                 assert(dis.size == nLGN//2)
-                _idx = np.argpartition(dis, _nLGNperV1)
+                _idx = np.argpartition(dis, _nLGNperV1) # either on or off idx partitioned to the first _nLGNperV1 LGN
                 id_on = default_rng.choice(_idx[:_nLGNperV1], nLGNperV1//2, replace = False)
                 current_id = 0
                 for j in range(nLGN_1D):
@@ -614,6 +666,7 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
                 ic = 0
                 for i in range(nV1):
                     if retino_cross and (i in crossed):
+                        assert(i == cross[0,ic])
                         idx[cross[0,ic],:] = idx[cross[1,ic],:].copy()
                         sLGN[i,:] = np.exp(- (np.power(LGN_x[idx[cross[0,ic],:]] - V1_pos[0,cross[1,ic]], 2) + np.power(LGN_y[idx[cross[0,ic],:]] - V1_pos[1,cross[1,ic]],2)) / (std_ecc*std_ecc))
                         ic += 1
@@ -647,12 +700,14 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
                             idj = id_on[np.logical_and(id_on >= j*nLGN_1D, id_on < (j+1)*nLGN_1D)]
                             idi[current_id:current_id + idj.size] = idj * 2
                             current_id += idj.size
+                            nOn[i] += idj.size
                         if i == 0 or not same :
                             id_off = randq(nLGN_1D * nLGN_1D, nLGNperV1 // 2, LGN_vpos0, max_ecc * radiusRatio, con_std, squareOrCircle, default_rng)
                         for j in range(nLGN_1D):
                             idj = id_off[np.logical_and(id_off >= j*nLGN_1D, id_off < (j+1)*nLGN_1D)]
                             idi[current_id:current_id + idj.size] = idj * 2 + 1
                             current_id += idj.size
+                            nOff[i] += idj.size
                         idx[i,:] = idi
                         assert(current_id == nLGNperV1)
                     else:
@@ -664,6 +719,9 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
                     sLGN[i,:] = np.exp(- np.power(LGN_ecc[idx[i,:]] / std_ecc, 2))
             else:
                 sLGN = u0 + default_rng.random(size = (nV1, nLGNperV1)) * (u1 - u0)
+        print('     mean, std')
+        print(f'sOn: {np.mean(nOn)}, {np.std(nOn)}')
+        print(f'sOff: {np.mean(nOff)}, {np.std(nOff)}')
 
         for i in range(nV1):
             ss = sLGN[i, :]
@@ -676,7 +734,6 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
             sLGN[i, :] = ss / np.sum(ss) * initialConnectionStrength * _nLGNperV1
             assert((sLGN[i, :] > 0).all())
     
-    print(np.sum(sLGN[74,:] > 0))
     print(f'sLGN: {[np.min(sLGN), np.mean(sLGN), np.max(sLGN)]}')
 
     with open(fLGN_V1_s, 'wb') as f:
@@ -685,57 +742,138 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
             np.array([nLGNperV1], dtype = 'u4').tofile(f)
             sLGN[i, :nLGNperV1].astype('f4').tofile(f)
 
-    fig = plt.figure('sLGN_V1-init', figsize = (7,6))
+    fig = plt.figure('sLGN_V1-init', figsize = (7, 3*(nc+1)), dpi = 200)
     if retino_cross:
         j = 0
+        clims = np.array([0,1])
         for i, ii in zip(cross[0,:], cross[1,:]):
             s = np.zeros(nLGN)
             s[idx[i, :]] = sLGN[i, :nLGNperV1]
-            s = np.reshape(s, (nLGN_1D , nLGN_1D * 2))
-            clims = np.array([0,1])
-            stmp0 = s[:, 0:2*nLGN_1D:2]
+            s = np.reshape(s, (nLGN_1D , nLGN_1D,  2))
+            stmp0 = s[:, :, 0]
             local_max = np.amax(np.abs(stmp0))
             stmp = stmp0 / local_max
-            ax = fig.add_subplot(nc,2,2*j+1)
+            ax = fig.add_subplot(nc+1,3,3*j+1)
             ax.set_title(f'neuron {i}-ON')
             ax.imshow(stmp, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('Reds'))
-            ax.plot((V1_pos[0,i]+max_ecc)/max_ecc/2*nLGN_1D-0.5, (V1_pos[1,i]+max_ecc)/max_ecc/2*nLGN_1D-0.5, '*r')
-            ax.plot((V1_pos[0,ii]+max_ecc)/max_ecc/2*nLGN_1D-0.5, (V1_pos[1,ii]+max_ecc)/max_ecc/2*nLGN_1D-0.5, 'or')
+            ax.plot((V1_pos[0,i]+max_ecc)/max_ecc/2*nLGN_1D-0.5, (V1_pos[1,i]+max_ecc)/max_ecc/2*nLGN_1D-0.5, '*b')
+            ax.plot((V1_pos[0,ii]+max_ecc)/max_ecc/2*nLGN_1D-0.5, (V1_pos[1,ii]+max_ecc)/max_ecc/2*nLGN_1D-0.5, 'ob')
             ax.set_xticks([]) 
             ax.set_yticks([])
 
-            stmp0 = s[:, 1:2*nLGN_1D:2]
+            stmp0 = s[:, :, 1]
             local_max = np.amax(np.abs(stmp0))
             stmp = stmp0 / local_max
-            ax = fig.add_subplot(nc,2,2*j+2)
+            ax = fig.add_subplot(nc+1,3,3*j+2)
             ax.imshow(stmp, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('Blues'))
-            ax.plot((V1_pos[0,i]+max_ecc)/max_ecc/2*nLGN_1D-0.5, (V1_pos[1,i]+max_ecc)/max_ecc/2*nLGN_1D-0.5, '*b')
-            ax.plot((V1_pos[0,ii]+max_ecc)/max_ecc/2*nLGN_1D-0.5, (V1_pos[1,ii]+max_ecc)/max_ecc/2*nLGN_1D-0.5, 'ob')
+            ax.plot((V1_pos[0,i]+max_ecc)/max_ecc/2*nLGN_1D-0.5, (V1_pos[1,i]+max_ecc)/max_ecc/2*nLGN_1D-0.5, '*r')
+            ax.plot((V1_pos[0,ii]+max_ecc)/max_ecc/2*nLGN_1D-0.5, (V1_pos[1,ii]+max_ecc)/max_ecc/2*nLGN_1D-0.5, 'or')
             ax.set_title(f'neuron {i}-OFF')
             ax.set_xticks([]) 
             ax.set_yticks([])
+
+            stmp0 = s.mean(-1)
+            local_max = np.amax(np.abs(stmp0))
+            stmp = stmp0 / local_max
+            ax = fig.add_subplot(nc+1,3,3*j+3)
+            #ax.imshow(stmp, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('Greys'))
+            ax.imshow(stmp, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('gray'))
+            if i in icolor.keys():
+                ax.plot((V1_pos[0,i]+max_ecc)/max_ecc/2*nLGN_1D-0.5, (V1_pos[1,i]+max_ecc)/max_ecc/2*nLGN_1D-0.5, 'o', color = icolor[i])
+            else:
+                ax.plot((V1_pos[0,i]+max_ecc)/max_ecc/2*nLGN_1D-0.5, (V1_pos[1,i]+max_ecc)/max_ecc/2*nLGN_1D-0.5, 'ok')
+            ax.plot((V1_pos[0,ii]+max_ecc)/max_ecc/2*nLGN_1D-0.5, (V1_pos[1,ii]+max_ecc)/max_ecc/2*nLGN_1D-0.5, 'ok')
+            ax.set_title(f'neuron {i}')
+
             j += 1
-        fig.savefig(f'{setup_fdr}sLGN_V1-init-{cross[0,0]}-{cross[1,0]}{suffix}-sep.png')
+
+        i = 121
+        s = np.zeros(nLGN)
+        s[idx[i, :]] = sLGN[i, :nLGNperV1]
+        s = np.reshape(s, (nLGN_1D , nLGN_1D,  2))
+        stmp0 = s.mean(-1)
+        local_max = np.amax(np.abs(stmp0))
+        stmp = stmp0 / local_max
+        ax = fig.add_subplot(nc+1,3,(nc+1)*3)
+        ax.imshow(stmp, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('Greys'))
+        ax.plot((V1_pos[0,i]+max_ecc)/max_ecc/2*nLGN_1D-0.5, (V1_pos[1,i]+max_ecc)/max_ecc/2*nLGN_1D-0.5, '*w')
+        ax.set_title(f'normal neuron {i}')
+    elif not (sInput == None):
+        j = 0
+        for i in default_rng.integers(nV1, size = nc):
+            s = np.zeros(nLGN)
+            s[idx[i, :]] = sLGN[i, :nLGNperV1]
+            s = np.reshape(s, (nLGN_1D , nLGN_1D,  2))
+            stmp0 = s[:, :, 0]
+            local_max = np.amax(np.abs(stmp0))
+            stmp = stmp0 / local_max
+            ax = fig.add_subplot(nc+1,3,3*j+1)
+            ax.set_title(f'neuron {i}-ON')
+            ax.imshow(stmp, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('Reds'))
+            ax.set_xticks([]) 
+            ax.set_yticks([])
+
+            stmp0 = s[:, :, 1]
+            local_max = np.amax(np.abs(stmp0))
+            stmp = stmp0 / local_max
+            ax = fig.add_subplot(nc+1,3,3*j+2)
+            ax.imshow(stmp, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('Blues'))
+            ax.set_title(f'neuron {i}-OFF')
+            ax.set_xticks([]) 
+            ax.set_yticks([])
+
+            stmp0 = s.mean(-1)
+            local_max = np.amax(np.abs(stmp0))
+            stmp = stmp0 / local_max
+            ax = fig.add_subplot(nc+1,3,3*j+3)
+            #ax.imshow(stmp, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('Greys'))
+            ax.imshow(stmp, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('gray'))
+            j += 1
+
+    fig.tight_layout()
+    fig.savefig(f'{setup_fdr}sLGN_V1-init-{suffix}-sep.png')
+    fig.savefig(f'{setup_fdr}sLGN_V1-init-{suffix}-sep.svg')
             
-    fig = plt.figure(figsize = (8,8), dpi = 500)
+    fig = plt.figure(figsize = (4, 4), dpi = 150)
     ax = fig.add_subplot(111)
+    fs = 12
+    ms = 2
     ax.plot(LGN_x, LGN_y, ',k')
-    ax.plot(V1_pos[0,epick], V1_pos[1,epick], '*', ms = 1, c='r', alpha = 0.6)
-    ax.plot(V1_pos[0,ipick], V1_pos[1,ipick], 's', ms = 1, c='b', alpha = 0.6)
+    ax.plot(V1_pos[0,epick], V1_pos[1,epick], '*', ms = ms, c='gray', alpha = 1.0, zorder = 1)
+    ax.plot(V1_pos[0,ipick], V1_pos[1,ipick], 's', ms = ms, c='gray', alpha = 1.0, zorder = 1)
+    plot_nid = False
+    handles = []
+    ms = 4
     if retino_cross:
+        ci = 0
+        color = mpl.colors.hsv_to_rgb([0, 1, 0.9])
+        orig = mpl.lines.Line2D([0],[0], ls = 'None', marker = 'o', ms = ms, color = 'k', label = 'original')
+        misplaced = mpl.lines.Line2D([0],[0], ls ='None', marker = '^', ms = ms, color = color, label = 'misplaced')
+        handles.append(orig)
+        handles.append(misplaced)
         for i, ii in zip(cross[0,:], cross[1,:]):
-            ax.plot(V1_pos[0,i], V1_pos[1,i], 'ok', ls = None, ms = 3)
-            ax.plot(V1_pos[0,ii], V1_pos[1,ii], '^k', ls = None, ms = 3)
-            ax.plot(V1_pos[0,[i,ii]], V1_pos[1,[i,ii]], ':k', lw = 0.1)
-            ax.text(V1_pos[0,i], V1_pos[1,i], f'{i}', fontsize = 4, c = 'm')
-            ax.text(V1_pos[0,ii], V1_pos[1,ii], f'{ii}', fontsize = 4, c = 'c')
+            #color = plt.get_cmap('turbo')(0.2 + 0.8*ci/(cross.shape[1]-1))
+            color = mpl.colors.hsv_to_rgb([0, 1, 0.9])
+            #color = 'g'
+            if i in icolor.keys():
+                ax.plot(V1_pos[0,i], V1_pos[1,i], 'o', c = icolor[i], ls = None, ms = ms)
+            else:
+                ax.plot(V1_pos[0,i], V1_pos[1,i], 'o', c = 'k', ls = None, ms = ms)
+
+            ax.plot(V1_pos[0,ii], V1_pos[1,ii], '^', c = color, ls = None, ms = ms)
+            ax.plot(V1_pos[0,[i,ii]], V1_pos[1,[i,ii]], '-', c = 'k', lw = 1.25, alpha = 1.0, zorder = 0)
+            #ax.text(V1_pos[0,i], V1_pos[1,i], f'{i}', fontsize = 6, c = 'm')
+            #ax.text(V1_pos[0,ii], V1_pos[1,ii], f'{ii}', fontsize = 6, c = 'c')
+            ci += 1
 
     edges = 0
+    lgap = mpl.lines.Line2D([0,0],[0,0], ls = '-', color= 'gray', label = 'gap junction')
+    handles.append(lgap)
     for iblock in range(nblock):
         for i in range(mI):
             i_id = iblock*blockSize + mE + i
             if retino_cross:
-                if i_id not in cross:
+                if i_id not in cross and plot_nid:
                     ax.text(V1_pos[0,i_id], V1_pos[1,i_id], f'{i_id}', fontsize = 4, c = 'k')
             for iNeighbor in range(nearNeighborBlock):
                 jblock = nBlockId[iblock,iNeighbor]
@@ -752,17 +890,23 @@ def inputLearnFF(inputFn, suffix, seed, std_ecc, suffix0, stage, res_fdr, setup_
                         else:
                             jNeighbor = iNeighbor
                         assert(gapMat[jblock, jNeighbor, i, j] > 0)
-                        ax.plot([V1_pos[0,i_id], V1_pos[0,j_id]], [V1_pos[1,i_id], V1_pos[1,j_id]], '-b', lw = 1, alpha = 0.6)
+                        ax.plot([V1_pos[0,i_id], V1_pos[0,j_id]], [V1_pos[1,i_id], V1_pos[1,j_id]], '-', color = 'gray', lw = 1, alpha = 0.8, zorder = 0)
 
                         edges += 1
-
+    ax.legend(handles = handles, loc = 'lower center', handlelength = 1, fontsize = fs-1, ncols = 3, bbox_to_anchor = (0.5, 1.0))
+    for h in handles:
+        h.set(visible = False)
     ax.set_xlim([V1_pos[0,:].min()-0.5,V1_pos[0,:].max()+0.5])
     ax.set_ylim([V1_pos[1,:].min()-0.5,V1_pos[1,:].max()+0.5])
+    ax.set_xlabel('V1 center x (deg)', fontsize = fs)
+    ax.tick_params(labelsize = fs-1)
+    ax.set_ylabel('V1 center y (deg)', fontsize = fs)
 
     print(f'edges = {edges}')
     print(f'sum of gapMat:{np.sum(gapMat)}')
     ax.set_aspect('equal')
     fig.savefig(setup_fdr + f'V1_positions{suffix}.png')
+    fig.savefig(setup_fdr + f'V1_positions{suffix}.svg')
 
     return
 

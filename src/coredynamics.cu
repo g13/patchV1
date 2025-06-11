@@ -873,7 +873,9 @@ void compute_V_collect_spike_learnFF(
             #pragma unroll max_nLearnTypeFF_E
             for (PosInt i=0; i<learnE_post.n; i++) {
                 lFF[2*i+0] =  vLTD_FF_E[nE*gridDim.x*i + eid];
-                lFF[2*i+1] = vTrip_FF_E[nE*gridDim.x*i + eid];
+                if (learnE_post.tau[2*i + 1] > 0) {
+                    lFF[2*i+1] = vTrip_FF_E[nE*gridDim.x*i + eid];
+                }
             }
             lAvg[0] = vAvgE[eid*2];
         } else {
@@ -882,7 +884,9 @@ void compute_V_collect_spike_learnFF(
                 #pragma unroll max_nLearnTypeFF_I
                 for (PosInt i=0; i<learnI_post.n; i++) {
                     lFF[2*i+0] =  vLTD_FF_I[nI*gridDim.x*i + iid];
-                    lFF[2*i+1] = vTrip_FF_I[nI*gridDim.x*i + iid];
+                    if (learnI_post.tau[2*i + 1] > 0) {
+                        lFF[2*i+1] = vTrip_FF_I[nI*gridDim.x*i + iid];
+                    }
                 }
                 lAvg[0] = vAvgI[iid];
             }
@@ -895,7 +899,9 @@ void compute_V_collect_spike_learnFF(
                     for (PosInt i=0; i<learnE.n; i++) {
                         lE[3*i+0] = vLTP_E[(nE*gridDim.x*trainDepth*i + nE*gridDim.x*currentTimeSlot + eid)*2];
                         lE[3*i+1] = vLTD_E[(nE*gridDim.x*i + eid)*2];
-                        lE[3*i+2] = vTripE[(nE*gridDim.x*i + eid)*2];
+                        if (learnE.tau[3*i + 2] > 0) {
+                            lE[3*i+2] = vTripE[(nE*gridDim.x*i + eid)*2];
+                        }
                     }
                     // Q_E
                     #pragma unroll max_nLearnTypeQ
@@ -919,24 +925,32 @@ void compute_V_collect_spike_learnFF(
                     #pragma unroll max_nLearnTypeFF_E
                     for (PosInt i=0; i<learnE_post.n; i++) {
                         lFF[2*max_nLearnTypeFF + 2*i+0] = lFF[2*i+0];
-                        lFF[2*max_nLearnTypeFF + 2*i+1] = lFF[2*i+1];
+                        if (learnE_post.tau[2*i + 1] > 0) {
+                            lFF[2*max_nLearnTypeFF + 2*i+1] = lFF[2*i+1];
+                        }
                     }
                     #pragma unroll max_nLearnTypeFF_E
                     for (PosInt i=0; i<learnE_post.n; i++) {
                         decay(lFF[2*max_nLearnTypeFF + 2*i+0], learnE_post.tau[2*i+0], tsp);
-                        decay(lFF[2*max_nLearnTypeFF + 2*i+1], learnE_post.tau[2*i+1], tsp);
+                        if (learnE_post.tau[2*i + 1] > 0) {
+                            decay(lFF[2*max_nLearnTypeFF + 2*i+1], learnE_post.tau[2*i+1], tsp);
+                        }
                     }
                 } else {
                     if (learnI_post.n) {
                         #pragma unroll max_nLearnTypeFF_I
                         for (PosInt i=0; i<learnI_post.n; i++) {
                             lFF[2*max_nLearnTypeFF + 2*i+0] = lFF[2*i+0];
-                            lFF[2*max_nLearnTypeFF + 2*i+1] = lFF[2*i+1];
+                            if (learnI_post.tau[2*i + 1] > 0) {
+                                lFF[2*max_nLearnTypeFF + 2*i+1] = lFF[2*i+1];
+                            }
                         }
                         #pragma unroll max_nLearnTypeFF_I
                         for (PosInt i=0; i<learnI_post.n; i++) {
                             decay(lFF[2*max_nLearnTypeFF + 2*i+0], learnI_post.tau[2*i+0], tsp);
-                            decay(lFF[2*max_nLearnTypeFF + 2*i+1], learnI_post.tau[2*i+1], tsp);
+                            if (learnI_post.tau[2*i + 1] > 0) {
+                                decay(lFF[2*max_nLearnTypeFF + 2*i+1], learnI_post.tau[2*i+1], tsp);
+                            }
                         }
                         lAvg[1] = lAvg[0];
                         decay(lAvg[1], learnI_post.tau[2*learnI_post.n], tsp);
@@ -954,7 +968,9 @@ void compute_V_collect_spike_learnFF(
                     for (PosInt i=0; i<learnE.n; i++) {
                         decay(lE[3*i+0], learnE.tau[3*i+0], tsp);
                         decay(lE[3*i+1], learnE.tau[3*i+1], tsp);
-                        decay(lE[3*i+2], learnE.tau[3*i+2], tsp);
+                        if (learnE.tau[3*i+2] > 0) {
+                            decay(lE[3*i+2], learnE.tau[3*i+2], tsp);
+                        }
                     }
                     #pragma unroll max_nLearnTypeQ
                     for (PosInt i=0; i<learnQ.n; i++) {
@@ -970,9 +986,11 @@ void compute_V_collect_spike_learnFF(
                 if (threadIdx.x < nE) {
                     #pragma unroll max_nLearnTypeE
                     for (PosInt i=0; i<learnE.n; i++) {
-                         vLTP_E[(nE*gridDim.x*trainDepth*i + nE*gridDim.x*currentTimeSlot + eid)*2 + 1] = lE[3*i+0];
-                         vLTD_E[(nE*gridDim.x*i + eid)*2 + 1] = lE[3*i+1];
-                         vTripE[(nE*gridDim.x*i + eid)*2 + 1] = lE[3*i+2];
+                        vLTP_E[(nE*gridDim.x*trainDepth*i + nE*gridDim.x*currentTimeSlot + eid)*2 + 1] = lE[3*i+0];
+                        vLTD_E[(nE*gridDim.x*i + eid)*2 + 1] = lE[3*i+1];
+                        if (learnE.tau[3*i+2] > 0) {
+                            vTripE[(nE*gridDim.x*i + eid)*2 + 1] = lE[3*i+2];
+                        }
                     }
                     vAvgE[2*eid+1] = lAvg[1];
                     #pragma unroll max_nLearnTypeQ
@@ -1014,7 +1032,6 @@ void compute_V_collect_spike_learnFF(
 				    switch (applyHomeo) {	
 				    	case 1: 
                             homeostatic_change = new_totalFF0/local_totalFF0;
-                            assert(homeostatic_change >= 0.0f);
 				    		break;
 				    	case 2:
 				    		homeostatic_change = (new_totalFF0 - local_totalFF0)/m;
@@ -1065,7 +1082,11 @@ void compute_V_collect_spike_learnFF(
                         for (PosInt j=0; j<learnE_pre.n; j++) {
                             Float A_LTD = learnE_post.A_ratio[j];
 							if (learnE_post.targetFR > 0) {
-								A_LTD *= learnE_pre.tauLTP[j] * lAvg[cPick] * lAvg[cPick];
+                                if (learnE_post.tau[j*2 + 1] > 0) {
+								    A_LTD *= learnE_pre.tauLTP[j] * lAvg[cPick] * lAvg[cPick];
+                                } else {
+								    A_LTD *= learnE_pre.tauLTP[j] * lAvg[cPick];
+                                }
 							}
                             /*debug
 							if (lFF[cPick*max_nLearnTypeFF*2 + 2*j+0] > 0 && i == 0) {
@@ -1087,7 +1108,11 @@ void compute_V_collect_spike_learnFF(
                         for (PosInt j=0; j<learnI_pre.n; j++) {
 							Float A_LTD = learnI_post.A_ratio[j];
 							if (learnI_post.targetFR > 0) {
-								A_LTD *= learnI_pre.tauLTP[j] * lAvg[cPick] * lAvg[cPick];
+                                if (learnI_post.tau[j*2 + 1] > 0) {
+								    A_LTD *= learnI_pre.tauLTP[j] * lAvg[cPick] * lAvg[cPick];
+                                } else {
+								    A_LTD *= learnI_pre.tauLTP[j] * lAvg[cPick];
+                                }
 							}
                             Float df = if_decay(lFF[cPick*max_nLearnTypeFF*2 + 2*j+0], learnI_post.tau[2*j+0], delta_t) * A_LTD;
                             f -= df;
@@ -1115,7 +1140,12 @@ void compute_V_collect_spike_learnFF(
                             if (lFF_pre > 0 && lFF[max_nLearnTypeFF*2 + 2*j+1] > 0 && i == 0) {
                                 printf("%u-%u, LTP, old_f = %e, lFF_pre = %e\n", tid, i, f, lFF_pre);
                             }*/
-                            Float df = if_decay(lFF_pre, learnE_pre.tauLTP[j], delta_t) * lFF[max_nLearnTypeFF*2 + 2*j+1] * learnE_post.A_LTP[j];
+                            Float df;
+                            if (learnE_post.tau[2*j + 1] > 0) {
+                                df = if_decay(lFF_pre, learnE_pre.tauLTP[j], delta_t) * lFF[max_nLearnTypeFF*2 + 2*j+1] * learnE_post.A_LTP[j];
+                            } else {
+                                df = if_decay(lFF_pre, learnE_pre.tauLTP[j], delta_t) * learnE_post.A_LTP[j];
+                            }
                             if (applyHomeo) delta_f += df;
                             f += df;
                             /*debug
@@ -1129,7 +1159,12 @@ void compute_V_collect_spike_learnFF(
                             float lFF_pref;
                             surf2DLayeredread(&lFF_pref, LGNspikeSurface, 4*x, y, 1+3*j+fPick);
 							Float lFF_pre = static_cast<Float>(lFF_pref);
-                            Float df = if_decay(lFF_pre, learnI_pre.tauLTP[j], delta_t) * lFF[max_nLearnTypeFF*2 + 2*j+1] * learnI_post.A_LTP[j];
+                            Float df;
+                            if (learnI_post.tau[2*j + 1] > 0) {
+                                df = if_decay(lFF_pre, learnI_pre.tauLTP[j], delta_t) * lFF[max_nLearnTypeFF*2 + 2*j+1] * learnI_post.A_LTP[j];
+                            } else {
+                                df = if_decay(lFF_pre, learnI_pre.tauLTP[j], delta_t) * learnI_post.A_LTP[j];
+                            }
 							if (applyHomeo) delta_f += df;
                             f += df;
                         }
@@ -1172,9 +1207,13 @@ void compute_V_collect_spike_learnFF(
                 #pragma unroll max_nLearnTypeFF_E
                 for (PosInt i=0; i<learnE_post.n; i++) {
                     lFF[cPick*2*max_nLearnTypeFF + 2*i+0] += nsp; // LTD_E
-                    lFF[cPick*2*max_nLearnTypeFF + 2*i+1] += nsp; // TripE
+                    if (learnE_post.tau[2*i+1] > 0) {
+                        lFF[cPick*2*max_nLearnTypeFF + 2*i+1] += nsp; // TripE
+                    }
                     decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+0], learnE_post.tau[2*i+0], delta_t);
-                    decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+1], learnE_post.tau[2*i+1], delta_t);
+                    if (learnE_post.tau[2*i+1] > 0) {
+                        decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+1], learnE_post.tau[2*i+1], delta_t);
+                    }
                 }
                 if (learning == 3 || learning == 5) { // no E, only FF_E, otherwise to be used again and update in recal_G
                     lAvg[cPick] += nsp;
@@ -1184,9 +1223,13 @@ void compute_V_collect_spike_learnFF(
                 #pragma unroll max_nLearnTypeFF_I
                 for (PosInt i=0; i<learnI_post.n; i++) {
                     lFF[cPick*2*max_nLearnTypeFF + 2*i+0] += nsp; // LTD_I
-                    lFF[cPick*2*max_nLearnTypeFF + 2*i+1] += nsp; // TripI
+                    if (learnI_post.tau[2*i+1] > 0) {
+                        lFF[cPick*2*max_nLearnTypeFF + 2*i+1] += nsp; // TripI
+                    }
                     decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+0], learnI_post.tau[2*i+0], delta_t);
-                    decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+1], learnI_post.tau[2*i+1], delta_t);
+                    if (learnI_post.tau[2*i+1] > 0) {
+                        decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+1], learnI_post.tau[2*i+1], delta_t);
+                    }
                 }
                 lAvg[cPick] += nsp;
                 decay(lAvg[cPick], learnI_post.tau[2*learnI_post.n], delta_t);
@@ -1198,7 +1241,9 @@ void compute_V_collect_spike_learnFF(
                 #pragma unroll max_nLearnTypeFF_E
                 for (PosInt i=0; i<learnE_post.n; i++) {
                     vLTD_FF_E[nE*gridDim.x*i + eid]  = lFF[cPick*2*max_nLearnTypeFF + 2*i+0];
-                    vTrip_FF_E[nE*gridDim.x*i + eid] = lFF[cPick*2*max_nLearnTypeFF + 2*i+1];
+                    if (learnE_post.tau[2*i+1] > 0) {
+                        vTrip_FF_E[nE*gridDim.x*i + eid] = lFF[cPick*2*max_nLearnTypeFF + 2*i+1];
+                    }
                 }
                 if (learning == 3 || learning == 5) { // no E, only FF_E
                     vAvgE[eid*2] = lAvg[cPick]; 
@@ -1208,7 +1253,9 @@ void compute_V_collect_spike_learnFF(
                 #pragma unroll max_nLearnTypeFF_I
                 for (PosInt i=0; i<learnI_post.n; i++) {
                     vLTD_FF_I[nI*gridDim.x*i + iid]  = lFF[cPick*2*max_nLearnTypeFF + 2*i+0];
-                    vTrip_FF_I[nI*gridDim.x*i + iid] = lFF[cPick*2*max_nLearnTypeFF + 2*i+1];
+                    if (learnI_post.tau[2*i+1] > 0) {
+                        vTrip_FF_I[nI*gridDim.x*i + iid] = lFF[cPick*2*max_nLearnTypeFF + 2*i+1];
+                    }
                 }
                 vAvgI[iid] = lAvg[cPick];
             }
@@ -1662,7 +1709,9 @@ void compute_V_collect_spike_learnFF_fast(
             #pragma unroll max_nLearnTypeFF_E
             for (PosInt i=0; i<learnE_post.n; i++) {
                 lFF[2*i+0] =  vLTD_FF_E[nE*gridDim.x*i + eid];
-                lFF[2*i+1] = vTrip_FF_E[nE*gridDim.x*i + eid];
+                if (learnE_post.tau[2*i + 1] > 0) {
+                    lFF[2*i+1] = vTrip_FF_E[nE*gridDim.x*i + eid];
+                }
             }
             lAvg[0] = vAvgE[eid*2];
         } else {
@@ -1671,7 +1720,9 @@ void compute_V_collect_spike_learnFF_fast(
                 #pragma unroll max_nLearnTypeFF_I
                 for (PosInt i=0; i<learnI_post.n; i++) {
                     lFF[2*i+0] =  vLTD_FF_I[nI*gridDim.x*i + iid];
-                    lFF[2*i+1] = vTrip_FF_I[nI*gridDim.x*i + iid];
+                    if (learnI_post.tau[2*i + 1] > 0) {
+                        lFF[2*i+1] = vTrip_FF_I[nI*gridDim.x*i + iid];
+                    }
                 }
                 lAvg[0] = vAvgI[iid];
             }
@@ -1684,7 +1735,9 @@ void compute_V_collect_spike_learnFF_fast(
                     for (PosInt i=0; i<learnE.n; i++) {
                         lE[3*i+0] = vLTP_E[(nE*gridDim.x*trainDepth*i + nE*gridDim.x*currentTimeSlot + eid)*2];
                         lE[3*i+1] = vLTD_E[(nE*gridDim.x*i + eid)*2];
-                        lE[3*i+2] = vTripE[(nE*gridDim.x*i + eid)*2];
+                        if (learnE.tau[3*i + 2] > 0) {
+                            lE[3*i+2] = vTripE[(nE*gridDim.x*i + eid)*2];
+                        }
                     }
                     // Q_E
                     #pragma unroll max_nLearnTypeQ
@@ -1708,24 +1761,32 @@ void compute_V_collect_spike_learnFF_fast(
                     #pragma unroll max_nLearnTypeFF_E
                     for (PosInt i=0; i<learnE_post.n; i++) {
                         lFF[2*max_nLearnTypeFF + 2*i+0] = lFF[2*i+0];
-                        lFF[2*max_nLearnTypeFF + 2*i+1] = lFF[2*i+1];
+                        if (learnE_post.tau[2*i + 1] > 0) {
+                            lFF[2*max_nLearnTypeFF + 2*i+1] = lFF[2*i+1];
+                        }
                     }
                     #pragma unroll max_nLearnTypeFF_E
                     for (PosInt i=0; i<learnE_post.n; i++) {
                         decay(lFF[2*max_nLearnTypeFF + 2*i+0], learnE_post.tau[2*i+0], tsp);
-                        decay(lFF[2*max_nLearnTypeFF + 2*i+1], learnE_post.tau[2*i+1], tsp);
+                        if (learnE_post.tau[2*i + 1] > 0) {
+                            decay(lFF[2*max_nLearnTypeFF + 2*i+1], learnE_post.tau[2*i+1], tsp);
+                        }
                     }
                 } else {
                     if (learnI_post.n) {
                         #pragma unroll max_nLearnTypeFF_I
                         for (PosInt i=0; i<learnI_post.n; i++) {
                             lFF[2*max_nLearnTypeFF + 2*i+0] = lFF[2*i+0];
-                            lFF[2*max_nLearnTypeFF + 2*i+1] = lFF[2*i+1];
+                            if (learnI_post.tau[2*i + 1] > 0) {
+                                lFF[2*max_nLearnTypeFF + 2*i+1] = lFF[2*i+1];
+                            }
                         }
                         #pragma unroll max_nLearnTypeFF_I
                         for (PosInt i=0; i<learnI_post.n; i++) {
                             decay(lFF[2*max_nLearnTypeFF + 2*i+0], learnI_post.tau[2*i+0], tsp);
-                            decay(lFF[2*max_nLearnTypeFF + 2*i+1], learnI_post.tau[2*i+1], tsp);
+                            if (learnI_post.tau[2*i + 1] > 0) {
+                                decay(lFF[2*max_nLearnTypeFF + 2*i+1], learnI_post.tau[2*i+1], tsp);
+                            }
                         }
                         lAvg[1] = lAvg[0];
                         decay(lAvg[1], learnI_post.tau[2*learnI_post.n], tsp);
@@ -1743,7 +1804,9 @@ void compute_V_collect_spike_learnFF_fast(
                     for (PosInt i=0; i<learnE.n; i++) {
                         decay(lE[3*i+0], learnE.tau[3*i+0], tsp);
                         decay(lE[3*i+1], learnE.tau[3*i+1], tsp);
-                        decay(lE[3*i+2], learnE.tau[3*i+2], tsp);
+                        if (learnE.tau[3*i+2] > 0) {
+                            decay(lE[3*i+2], learnE.tau[3*i+2], tsp);
+                        }
                     }
                     #pragma unroll max_nLearnTypeQ
                     for (PosInt i=0; i<learnQ.n; i++) {
@@ -1759,9 +1822,11 @@ void compute_V_collect_spike_learnFF_fast(
                 if (threadIdx.x < nE) {
                     #pragma unroll max_nLearnTypeE
                     for (PosInt i=0; i<learnE.n; i++) {
-                         vLTP_E[(nE*gridDim.x*trainDepth*i + nE*gridDim.x*currentTimeSlot + eid)*2 + 1] = lE[3*i+0];
-                         vLTD_E[(nE*gridDim.x*i + eid)*2 + 1] = lE[3*i+1];
-                         vTripE[(nE*gridDim.x*i + eid)*2 + 1] = lE[3*i+2];
+                        vLTP_E[(nE*gridDim.x*trainDepth*i + nE*gridDim.x*currentTimeSlot + eid)*2 + 1] = lE[3*i+0];
+                        vLTD_E[(nE*gridDim.x*i + eid)*2 + 1] = lE[3*i+1];
+                        if (learnE.tau[3*i+2] > 0) {
+                             vTripE[(nE*gridDim.x*i + eid)*2 + 1] = lE[3*i+2];
+                        }
                     }
                     vAvgE[2*eid+1] = lAvg[1];
                     #pragma unroll max_nLearnTypeQ
@@ -1783,7 +1848,7 @@ void compute_V_collect_spike_learnFF_fast(
             Float local_totalFF_inf;
             Float new_totalFF0; 
             Float homeostatic_change;
-			Float delta_f;
+            Float t_f;
 			if (applyHomeo) {
 				local_totalFF0 = totalFF[tid];
             	local_totalFF_inf = totalFF_inf[tid];
@@ -1803,10 +1868,6 @@ void compute_V_collect_spike_learnFF_fast(
 				    switch (applyHomeo) {	
 				    	case 1: 
                             homeostatic_change = new_totalFF0/local_totalFF0;
-                            if (homeostatic_change < 0.0f) {
-					            printf("exp_homeo = %f, f = %f->%f, finf = %f, ratio = %f\n", exp_homeo, local_totalFF0, new_totalFF0, local_totalFF_inf, homeostatic_change);
-                                assert(homeostatic_change >= 0.0f);
-                            }
                             //assert(homeostatic_change >= 0.0f);
 				    		break;
 				    	case 2:
@@ -1814,7 +1875,7 @@ void compute_V_collect_spike_learnFF_fast(
 				    		break;
 				    }
                 }
-				delta_f = 0.0;
+				t_f = 0.0;
 				/*
 				if (tid == 743) {
 					printf("exp_homeo = %f, f = %f->%f, finf = %f, ratio = %f\n", exp_homeo, local_totalFF0, new_totalFF0, local_totalFF_inf, homeostatic_change);
@@ -1825,6 +1886,10 @@ void compute_V_collect_spike_learnFF_fast(
             for (PosInt i = 0; i<m; i++) {
                 PosInt lid = i*nV1 + tid; //transposed
                 Float f = sLGN[lid];
+                if (f < 0) {
+					printf("start f = %f\n", f);
+                    assert(f >= 0); 
+                }
                 // pruning process not revertible
                 if (f == 0 && !rebound) {
                     continue;
@@ -1835,8 +1900,16 @@ void compute_V_collect_spike_learnFF_fast(
 						break;
 					case 2:
 						f += homeostatic_change;
+                        if (f <= 0) {
+                            f = 0;
+                            if (!rebound) continue;
+                        }
 						break;
 				}
+                if (f < 0) {
+					printf("decay f = %f\n", f);
+                    assert(f >= 0); 
+                }
                 int x = LGN_idx[lid];
                 int y = LGN_idy[lid];
                 float sInfo_FF;
@@ -1858,7 +1931,11 @@ void compute_V_collect_spike_learnFF_fast(
                         for (PosInt j=0; j<learnE_pre.n; j++) {
                             Float A_LTD = learnE_post.A_ratio[j];
 							if (learnE_post.targetFR > 0) {
-								A_LTD *= learnE_pre.tauLTP[j] * lAvg[cPick] * lAvg[cPick];
+                                if (learnE_post.tau[j*2 + 1] > 0) {
+								    A_LTD *= learnE_pre.tauLTP[j] * lAvg[cPick] * lAvg[cPick];
+                                } else {
+								    A_LTD *= learnE_pre.tauLTP[j] * lAvg[cPick];
+                                }
 							}
                             /*debug
 							if (lFF[cPick*max_nLearnTypeFF*2 + 2*j+0] > 0 && i == 0) {
@@ -1867,7 +1944,6 @@ void compute_V_collect_spike_learnFF_fast(
                             }*/
                             Float df = if_decay(lFF[cPick*max_nLearnTypeFF*2 + 2*j+0], learnE_post.tau[2*j+0], delta_t) * A_LTD;
                             f -= df;
-							if (applyHomeo) delta_f -= df;
                             /*debug
 							if (lFF[cPick*max_nLearnTypeFF*2 + 2*j+0] > 0 && i == 0) {
 								printf("%u-%u, new_f: %e\n", tid, i, f);
@@ -1880,11 +1956,14 @@ void compute_V_collect_spike_learnFF_fast(
                         for (PosInt j=0; j<learnI_pre.n; j++) {
 							Float A_LTD = learnI_post.A_ratio[j];
 							if (learnI_post.targetFR > 0) {
-								A_LTD *= learnI_pre.tauLTP[j] * lAvg[cPick] * lAvg[cPick];
+                                if (learnI_post.tau[j*2 + 1] > 0) {
+								    A_LTD *= learnI_pre.tauLTP[j] * lAvg[cPick] * lAvg[cPick];
+                                } else {
+								    A_LTD *= learnI_pre.tauLTP[j] * lAvg[cPick];
+                                }
 							}
                             Float df = if_decay(lFF[cPick*max_nLearnTypeFF*2 + 2*j+0], learnI_post.tau[2*j+0], delta_t) * A_LTD;
                             f -= df;
-                            if (applyHomeo) delta_f -= df;
                         }
                     }
                 } 
@@ -1908,8 +1987,12 @@ void compute_V_collect_spike_learnFF_fast(
                             if (lFF_pre > 0 && lFF[max_nLearnTypeFF*2 + 2*j+1] > 0 && i == 0) {
                                 printf("%u-%u, LTP, old_f = %e, lFF_pre = %e\n", tid, i, f, lFF_pre);
                             }*/
-                            Float df = if_decay(lFF_pre, learnE_pre.tauLTP[j], delta_t) * lFF[max_nLearnTypeFF*2 + 2*j+1] * learnE_post.A_LTP[j];
-                            if (applyHomeo) delta_f += df;
+                            Float df;
+                            if (learnE_post.tau[2*j + 1] > 0) {
+                                df = if_decay(lFF_pre, learnE_pre.tauLTP[j], delta_t) * lFF[max_nLearnTypeFF*2 + 2*j+1] * learnE_post.A_LTP[j];
+                            } else {
+                                df = if_decay(lFF_pre, learnE_pre.tauLTP[j], delta_t) * learnE_post.A_LTP[j];
+                            }
                             f += df;
                             /*debug
                             if (lFF_pre > 0 && lFF[max_nLearnTypeFF*2 + 2*j+1] > 0 && i == 0) {
@@ -1922,28 +2005,28 @@ void compute_V_collect_spike_learnFF_fast(
                             float lFF_pref;
                             surf2DLayeredread(&lFF_pref, LGNspikeSurface, 4*x, y, 1+3*j+fPick);
 							Float lFF_pre = static_cast<Float>(lFF_pref);
-                            Float df = if_decay(lFF_pre, learnI_pre.tauLTP[j], delta_t) * lFF[max_nLearnTypeFF*2 + 2*j+1] * learnI_post.A_LTP[j];
-							if (applyHomeo) delta_f += df;
+                            Float df;
+                            if (learnI_post.tau[2*j + 1] > 0) {
+                                df = if_decay(lFF_pre, learnI_pre.tauLTP[j], delta_t) * lFF[max_nLearnTypeFF*2 + 2*j+1] * learnI_post.A_LTP[j];
+                            } else {
+                                df = if_decay(lFF_pre, learnI_pre.tauLTP[j], delta_t) * learnI_post.A_LTP[j];
+                            }
                             f += df;
                         }
                     }
                 }
                 if (threadIdx.x < nE) {
                    	if (f < learnE_post.gmin) {
-                        if (applyHomeo) delta_f += learnE_post.gmin-f;
                    	    f = learnE_post.gmin;
                    	}
                    	if (f > learnE_post.gmax) {
-                        if (applyHomeo) delta_f -= f-learnE_post.gmax;
                    	    f = learnE_post.gmax;
                    	}
                 } else {
                    	if (f < learnI_post.gmin) {
-                        if (applyHomeo) delta_f += learnI_post.gmin-f;
                    	    f = learnI_post.gmin;
                    	}
                    	if (f > learnI_post.gmax) {
-                        if (applyHomeo) delta_f -= f-learnI_post.gmax;
                    	    f = learnI_post.gmax;
                    	}
                 }
@@ -1952,8 +2035,11 @@ void compute_V_collect_spike_learnFF_fast(
 					printf("%f->%f\n", sLGN[lid], f);
 				}*/
                 sLGN[lid] = f;
+                t_f += f;
             }
-            if (applyHomeo) totalFF[tid] = new_totalFF0 + delta_f;
+            if (applyHomeo) {
+                totalFF[tid] = t_f;
+            }
 
             // update FF vars; lAvg(E) to be updated after cortical learning if nLearnTypeE > 0
             Float delta_t = dt;
@@ -1965,9 +2051,13 @@ void compute_V_collect_spike_learnFF_fast(
                 #pragma unroll max_nLearnTypeFF_E
                 for (PosInt i=0; i<learnE_post.n; i++) {
                     lFF[cPick*2*max_nLearnTypeFF + 2*i+0] += nsp; // LTD_E
-                    lFF[cPick*2*max_nLearnTypeFF + 2*i+1] += nsp; // TripE
+                    if (learnE_post.tau[2*i+1] > 0) {
+                        lFF[cPick*2*max_nLearnTypeFF + 2*i+1] += nsp; // TripE
+                    }
                     decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+0], learnE_post.tau[2*i+0], delta_t);
-                    decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+1], learnE_post.tau[2*i+1], delta_t);
+                    if (learnE_post.tau[2*i+1] > 0) {
+                        decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+1], learnE_post.tau[2*i+1], delta_t);
+                    }
                 }
                 if (learning == 3 || learning == 5) { // no E, only FF_E, otherwise to be used again and update in recal_G
                     lAvg[cPick] += nsp;
@@ -1977,9 +2067,13 @@ void compute_V_collect_spike_learnFF_fast(
                 #pragma unroll max_nLearnTypeFF_I
                 for (PosInt i=0; i<learnI_post.n; i++) {
                     lFF[cPick*2*max_nLearnTypeFF + 2*i+0] += nsp; // LTD_I
-                    lFF[cPick*2*max_nLearnTypeFF + 2*i+1] += nsp; // TripI
+                    if (learnI_post.tau[2*i+1] > 0) {
+                        lFF[cPick*2*max_nLearnTypeFF + 2*i+1] += nsp; // TripI
+                    }
                     decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+0], learnI_post.tau[2*i+0], delta_t);
-                    decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+1], learnI_post.tau[2*i+1], delta_t);
+                    if (learnI_post.tau[2*i+1] > 0) {
+                        decay(lFF[cPick*2*max_nLearnTypeFF + 2*i+1], learnI_post.tau[2*i+1], delta_t);
+                    }
                 }
                 lAvg[cPick] += nsp;
                 decay(lAvg[cPick], learnI_post.tau[2*learnI_post.n], delta_t);
@@ -1991,7 +2085,9 @@ void compute_V_collect_spike_learnFF_fast(
                 #pragma unroll max_nLearnTypeFF_E
                 for (PosInt i=0; i<learnE_post.n; i++) {
                     vLTD_FF_E[nE*gridDim.x*i + eid]  = lFF[cPick*2*max_nLearnTypeFF + 2*i+0];
-                    vTrip_FF_E[nE*gridDim.x*i + eid] = lFF[cPick*2*max_nLearnTypeFF + 2*i+1];
+                    if (learnE_post.tau[2*i+1] > 0) {
+                        vTrip_FF_E[nE*gridDim.x*i + eid] = lFF[cPick*2*max_nLearnTypeFF + 2*i+1];
+                    }
                 }
                 if (learning == 3 || learning == 5) { // no E, only FF_E
                     vAvgE[eid*2] = lAvg[cPick]; 
@@ -2001,7 +2097,9 @@ void compute_V_collect_spike_learnFF_fast(
                 #pragma unroll max_nLearnTypeFF_I
                 for (PosInt i=0; i<learnI_post.n; i++) {
                     vLTD_FF_I[nI*gridDim.x*i + iid]  = lFF[cPick*2*max_nLearnTypeFF + 2*i+0];
-                    vTrip_FF_I[nI*gridDim.x*i + iid] = lFF[cPick*2*max_nLearnTypeFF + 2*i+1];
+                    if (learnI_post.tau[2*i+1] > 0) {
+                        vTrip_FF_I[nI*gridDim.x*i + iid] = lFF[cPick*2*max_nLearnTypeFF + 2*i+1];
+                    }
                 }
                 vAvgI[iid] = lAvg[cPick];
             }

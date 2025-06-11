@@ -101,6 +101,7 @@ int main(int argc, char** argv) {
 	vector<Float> spE0;
 	vector<Float> spI0;
 	vector<Float> noisyDep;
+	vector<Float> noisyDep0;
 	vector<Float> tonicDep;
 	vector<Float> minTonicRatio;
 	vector<Float> synFailFF;
@@ -167,7 +168,8 @@ int main(int argc, char** argv) {
 	Float spontP;
 	Float speedOfThought;
 	PosInt frameRate; // Hz
-	Size nt; // number of steps
+	Size nt, warm_up_nt, nt_multiple;
+    double ft_multiple; // number of steps
 	PosIntL seed;
     Float STA_dt;
     Size nSTA_sample;
@@ -197,6 +199,9 @@ int main(int argc, char** argv) {
 		("matConcurrency,n", po::value<Size>(&matConcurrency)->default_value(10), "sum presynaptic inputs from connection matrices in parallel, depends on the availability of device memory")
 		("speedOfThought", po::value<Float>(&speedOfThought)->default_value(1.0), "velocity of conduction, mm/ms")
 		("nt", po::value<Size>(&nt)->default_value(8000), "total simulatoin time in units of time step")
+		("warm_up_nt", po::value<Size>(&warm_up_nt)->default_value(1000), "noise warm up time in units of time step")
+		("ft_multiple", po::value<double>(&ft_multiple)->default_value(1.0), "total simulatoin time = nt*nt_multiple*ft_multiple")
+		("nt_multiple", po::value<Size>(&nt_multiple)->default_value(1), "total simulatoin time = nt*nt_multiple*ft_multiple")
 		("fbROI", po::value<vector<Float>>(&fbROI), "feedback ROI not implemented")
 		("boostOri", po::value<vector<Float>>(&boostOri), "boosting neurons with orientation preference with defined boostOri, [baseline, std], the mean is set by iOri")
 		("iOri", po::value<vector<PosInt>>(&iOri), "boosting neurons with orientation preference of iOri/nOri*PI")
@@ -264,7 +269,7 @@ int main(int argc, char** argv) {
 		("tauTrip", po::value<vector<Float>>(&tauTrip), "array for the decay timescale of the triplet variable of the triplet rule")
 		("tauAvg", po::value<vector<Float>>(&tauAvg), "the decay timescale of the filtered firing rate for the triplet rule, size of 2, (E, I)")
 		("targetFR", po::value<vector<Float>>(&targetFR), "the target firing rate for the triplet rule LTD, size of 2, (E, I)")
-		("gmaxLGN", po::value<vector<Float>>(&gmaxLGN), "maximum connection strength for LGN->V1, size of nLearnTypeFF")
+		("gmaxLGN", po::value<vector<Float>>(&gmaxLGN), "maximum connection strength for LGN->V1, size of nLearnTypeFF, positive for ratio, negative for abs. value")
 		("gmaxE", po::value<vector<Float>>(&gmaxE), "maximum connection strength for E->E, size of nLearnTypeE")
 		("gmaxQ", po::value<vector<Float>>(&gmaxQ), "maximum connection strength for I->E, size of nLearnTypeQ")
 		("gminLGN", po::value<vector<Float>>(&gminLGN), "minimum connection strength for LGN->V1, size of nLearnTypeFF")
@@ -285,6 +290,7 @@ int main(int argc, char** argv) {
 		("spI0", po::value<vector<Float>>(&spI0), "Inh. initial spike dist. mean. of size [nTypeHierarchy[1], 2] (s->c) ")
 		("SCsplit", po::value<Size>(&SCsplit)->default_value(0), "simple complex split at nLGN > SCsplit (simple)")
 		("noisyDep", po::value<vector<Float>>(&noisyDep), "noisy depolarization borrow from NMC model")
+		("noisyDep0", po::value<vector<Float>>(&noisyDep0), "noisy depolarization borrow from NMC model for warm up time (warm_up_nt), default value 0.5")
 		("tonicDep", po::value<vector<Float>>(&tonicDep), "tonic depolarization borrow from NMC model")
 		("CmoreDep", po::value<bool>(&CmoreDep)->default_value(true), "allow more depolarization for complex cells")
 		("noiseOnTonic", po::value<bool>(&noiseOnTonic)->default_value(true), "noisyDep as a percentage of tonicDep")
@@ -331,8 +337,11 @@ int main(int argc, char** argv) {
 	string connectome_cfg_filename, patchV1_cfg_filename, restore;
 	string output_suffix, output_suffix0; // suffix to be added to all output filename
 	string res_suffix; // suffix for resource files
+	string stim_suffix; // suffix for stimulus file
+	string inputFile_suffix; // suffix for lFF setup files
 	string conV1_suffix; // suffix for V1 connectome files
-	string conLGN_suffix; // suffix for LGN-V1 connectome files
+	string LGN_suffix; // suffix for LGN-V1 connectome files
+	string conLGN_suffix; // suffix for LGN-V1 conn. strength files
 	string snapshot_suffix; // output_suffix of the snapshots for previous runs
 	string conStats_filename;
 	string stimulus_filename, LGN_switch_filename;
@@ -349,7 +358,10 @@ int main(int argc, char** argv) {
 		("inputFolder", po::value<string>(&inputFolder)->default_value(""), "where the input data files at (unless starts with !), must end with /")
 		("resourceFolder", po::value<string>(&resourceFolder)->default_value(""), "where the resource files at (unless starts with !), must end with /")
 		("res_suffix", po::value<string>(&res_suffix)->default_value(""), "suffix for resource files")
+		("stim_suffix", po::value<string>(&stim_suffix)->default_value(""), "suffix for stimulus file")
+		("inputFile_suffix", po::value<string>(&inputFile_suffix)->default_value(""), "suffix for setup files")
 		("conV1_suffix", po::value<string>(&conV1_suffix)->default_value(""), "suffix for V1 connectome files")
+		("LGN_suffix", po::value<string>(&LGN_suffix)->default_value(""), "suffix for LGN input files")
 		("conLGN_suffix", po::value<string>(&conLGN_suffix)->default_value(""), "suffix for LGN to V1 connectome files")
 		("snapshot_suffix", po::value<string>(&snapshot_suffix), "suffix of the snapshot")
 		("fConnectome_cfg", po::value<string>(&connectome_cfg_filename)->default_value("connectome_cfg"), "file that stores connectome cfg parameters")
@@ -424,6 +436,14 @@ int main(int argc, char** argv) {
 		stimulus_filename = resourceFolder + stimulus_filename;
 	} else {
         stimulus_filename.erase(0,1);
+    }
+    if (stimulus_filename.size() < 4 || stimulus_filename.compare(stimulus_filename.size()-4, 4, ".bin") != 0) {
+        if (!stim_suffix.empty()) {
+            stimulus_filename = stimulus_filename + "-" + stim_suffix + ".bin";
+        } else {
+            cout << "stimulus_filename need to be end with '.bin' if {stim_suffix} is not specified\n";
+            return EXIT_FAILURE;
+        }
     }
 	if (LGN_surfaceID_filename.at(0) != '!'){
 		LGN_surfaceID_filename = resourceFolder + LGN_surfaceID_filename;
@@ -593,6 +613,7 @@ int main(int argc, char** argv) {
 	if (ignoreRetinogeniculateDelay) {
 		cout << "ignoreRetinogeniculateDelay = " << ignoreRetinogeniculateDelay << "\n";
 	}
+    nt = static_cast<size_t>((nt*nt_multiple)*ft_multiple);
 
 	if (sizeof(Float) == 4) {
 		printf("simulating for %u steps, t = %f ms\n", nt, nt*dt);
@@ -614,20 +635,42 @@ int main(int argc, char** argv) {
 
     if (!res_suffix.empty())  {
         res_suffix = "-" + res_suffix;
+    } else {
+        if (!inputFile_suffix.empty()) {
+            res_suffix = "-" + inputFile_suffix;
+        }
     }
     res_suffix = res_suffix + ".bin";
 
+    if (!LGN_suffix.empty())  {
+        LGN_suffix = "-" + LGN_suffix;
+    } else {
+        if (!inputFile_suffix.empty()) {
+            LGN_suffix = "-" + inputFile_suffix;
+        }
+    }
+    LGN_suffix = LGN_suffix + ".bin";
+
     if (!conLGN_suffix.empty())  {
         conLGN_suffix = "-" + conLGN_suffix;
+    } else {
+        if (!inputFile_suffix.empty()) {
+            conLGN_suffix = "-" + inputFile_suffix;
+        }
     }
     conLGN_suffix = conLGN_suffix + ".bin";
 
     if (!conV1_suffix.empty())  {
         conV1_suffix = "-" + conV1_suffix;
+    } else {
+        if (!inputFile_suffix.empty()) {
+            conV1_suffix = "-" + inputFile_suffix;
+        }
     }
     conV1_suffix = conV1_suffix + ".bin";
 
     cout << "res_suffix: " << res_suffix << "\n";
+    cout << "LGN_suffix: " << LGN_suffix << "\n";
     cout << "conLGN_suffix: " << conLGN_suffix << "\n";
     cout << "conV1_suffix: " << conV1_suffix << "\n";
 
@@ -709,7 +752,7 @@ int main(int argc, char** argv) {
 		} else {
 			nType0 = accumulate(nTypeHierarchy.begin(), nTypeHierarchy.end(), 0);
 			if (nType0 != nType) {
-				cout << "nTypeHierarchy inconsistent with LGN_V1 connection built with suffix " << conLGN_suffix << "\n";
+				cout << "nTypeHierarchy inconsistent with LGN_V1 connection built with suffix " << LGN_suffix << "\n";
 				return EXIT_FAILURE;
 			}
 		}
@@ -880,16 +923,39 @@ int main(int argc, char** argv) {
 		}
 	}
 
-	if (noisyDep.size() == 1) {
-		for (PosInt i=1; i<nType; i++) {
-			noisyDep.push_back(noisyDep[0]);
-		}
-	} else {
-		if (noisyDep.size() != nType) {
-			cout << "size of noisy level of the tonic depolarization (noisyDep) is " << noisyDep.size() << " != " << nType << "\n";
-			return EXIT_FAILURE;
-		}
-	}
+    if (!vm.count("noisyDep")) {
+        noisyDep[0] = 0.0;
+    } else {
+	    if (noisyDep.size() == 1) {
+	    	for (PosInt i=1; i<nType; i++) {
+	    		noisyDep.push_back(noisyDep[0]);
+	    	}
+	    } else {
+	    	if (noisyDep.size() != nType) {
+	    		cout << "size of noisy level of the tonic depolarization (noisyDep) is " << noisyDep.size() << " != " << nType << "\n";
+	    		return EXIT_FAILURE;
+	    	}
+	    }
+    }
+
+    if (warm_up_nt > 0) {
+	    if (!vm.count("noisyDep0")) {
+	        for (PosInt i=1; i<nType; i++) {
+	            noisyDep0.push_back(0.5);
+	        }
+        } else {
+	        if (noisyDep0.size() == 1) {
+	        	for (PosInt i=1; i<nType; i++) {
+	        		noisyDep0.push_back(noisyDep0[0]);
+	        	}
+	        } else {
+	        	if (noisyDep0.size() != nType) {
+	        		cout << "size of warm up noisy level of the depolarization (noisyDep0) is " << noisyDep0.size() << " != " << nType << "\n";
+	        		return EXIT_FAILURE;
+	        	}
+	        }
+        }
+    }
 
 	if (minTonicRatio.size() == 1) {
 		for (PosInt i=1; i<nType; i++) {
@@ -1585,9 +1651,9 @@ int main(int argc, char** argv) {
 	vector<int> reverse;
 	vector<Float> others;
     if (LGN_switch || reverseInput) {
-        fLGN_switch.open(LGN_switch_filename + conLGN_suffix, fstream::in | fstream::binary);
+        fLGN_switch.open(LGN_switch_filename + LGN_suffix, fstream::in | fstream::binary);
         if (!fLGN_switch) {
-		    cout << "Cannot open or find " << LGN_switch_filename + conLGN_suffix <<" to read in LGN switch settings.\n";
+		    cout << "Cannot open or find " << LGN_switch_filename + LGN_suffix <<" to read in LGN switch settings.\n";
 		    return EXIT_FAILURE;
         } else {
             fLGN_switch.read(reinterpret_cast<char*>(&nStatus), sizeof(Size));
@@ -4156,7 +4222,9 @@ int main(int argc, char** argv) {
     checkCudaErrors(cudaMalloc((void**)&d_pFF, nType*ngTypeFF*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void**)&d_pE,  nType*ngTypeE*sizeof(Float)));
     checkCudaErrors(cudaMalloc((void**)&d_pI,  nType*ngTypeI*sizeof(Float)));
-	checkCudaErrors(cudaMemcpy(d_noisyDep,  &(noisyDep[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
+    if (warm_up_nt > 0 && restore.empty()) {
+	    checkCudaErrors(cudaMemcpy(d_noisyDep,  &(noisyDep0[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
+    }
 	checkCudaErrors(cudaMemcpy(d_synFailFF,  &(synFailFF[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_synFail,  &(synFail[0]), nType*nType*sizeof(Float), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_synPerConFF, &(synPerConFF[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
@@ -4333,7 +4401,7 @@ int main(int argc, char** argv) {
 
 	Size max_LGNperV1;
 	Float* LGN_V1_s;
-	read_LGN(LGN_V1_s_filename + conLGN_suffix, LGN_V1_s, max_LGNperV1, &(sRatioLGN[0]), &(typeAccCount[0]), nType, learnData_FF > 0, print_log); // assign LGN_V1_s and max_LGNperV1
+	read_LGN(LGN_V1_s_filename + LGN_suffix, LGN_V1_s, max_LGNperV1, &(sRatioLGN[0]), &(typeAccCount[0]), nType, learnData_FF > 0, print_log); // assign LGN_V1_s and max_LGNperV1
 	Float* sLGN;
 	size_t sLGN_size = static_cast<size_t>(max_LGNperV1)*nV1*sizeof(Float);
 
@@ -4341,7 +4409,11 @@ int main(int argc, char** argv) {
 	usingGMem += sLGN_size;
 	if (checkGMemUsage(usingGMem, GMemAvail)) return EXIT_FAILURE;
 	Float tmp = 0.0;
-	cout << "sLGN = [" << *min_element(LGN_V1_s, LGN_V1_s + max_LGNperV1*nV1) << ", " << accumulate(LGN_V1_s, LGN_V1_s + max_LGNperV1*nV1, tmp)/(nV1*max_LGNperV1) << ", " << *max_element(LGN_V1_s, LGN_V1_s + max_LGNperV1*nV1) << "] < " << gmaxLGN[0] * sRatioLGN[0] << "\n";
+    if (gmaxLGN[0] > 0) {
+	    cout << "sLGN = [" << *min_element(LGN_V1_s, LGN_V1_s + max_LGNperV1*nV1) << ", " << accumulate(LGN_V1_s, LGN_V1_s + max_LGNperV1*nV1, tmp)/(nV1*max_LGNperV1) << ", " << *max_element(LGN_V1_s, LGN_V1_s + max_LGNperV1*nV1) << "] < " << gmaxLGN[0] * sRatioLGN[0] << "\n";
+    } else {
+	    cout << "sLGN = [" << *min_element(LGN_V1_s, LGN_V1_s + max_LGNperV1*nV1) << ", " << accumulate(LGN_V1_s, LGN_V1_s + max_LGNperV1*nV1, tmp)/(nV1*max_LGNperV1) << ", " << *max_element(LGN_V1_s, LGN_V1_s + max_LGNperV1*nV1) << "] < " << -gmaxLGN[0] << "\n";
+    }
 	checkCudaErrors(cudaMemcpy(sLGN, LGN_V1_s, sLGN_size, cudaMemcpyHostToDevice));
 
     Float* d_LGN_sInfo;
@@ -6068,7 +6140,6 @@ int main(int argc, char** argv) {
 		        fLearnData_FF.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
 		        fLearnData_FF.write((char*) gFF, nV1*sizeof(Float));
             }
-		    //hLearnData_FF_ready already synced by snapshot
 		    fLearnData_FF.write((char*) LGN_V1_s, sLGN_size);
 		    fLearnData_FF.write((char*) lVarFFpost, learnVarFFsize*sizeof(Float));
         }
@@ -6083,353 +6154,359 @@ int main(int argc, char** argv) {
         }
     }
 
-	for (unsigned int it = 0; it < nt; it++) {
+	for (unsigned int it = 0; it < warm_up_nt + nt; it++) {
 		Float t = it*dt;
 		// next frame comes between (t, t+dt), read and store frame to texture memory
-		if (virtual_LGN && (it+it0)*denorm >= (currentFrame-1)*ntPerFrame || !virtual_LGN && (it+it0+1)*denorm > currentFrame*ntPerFrame) {
-			if (fStimulus) {
-				// back insert frame into texture memory
-				if (virtual_LGN) {
-					fStimulus.read(reinterpret_cast<char*>(frame), nLGN_type*nPixelPerFrame*sizeof(float));
-                    /*
-                    if (currentFrame == 5) {
-						cout << "iFrameHead = " << iFrameHead << "\n";
-                        for (PosInt fh=0; fh<height; fh++) {
-                            for (PosInt fw=0; fw<width; fw++) {
-                                cout << "(" << static_cast<int>(frame[fh*width + fw]*255) << ", " << static_cast<int>(frame[nPixelPerFrame + fh*width + fw]*255) << "),";
-                            }
-                            cout << "\n";
-                        }
-                    }*/
-				} else {
-					fStimulus.read(reinterpret_cast<char*>(LMS), nChannel*nPixelPerFrame*sizeof(float));
-				}
-				streampos current_fpos = fStimulus.tellg();
-				if (current_fpos == eofStimulus) { // if at the end of input file loop back to the beginning of frame data
-					fStimulus.seekg(sofStimulus);
-            	    if (print_log) {
-					    cout << "next frame loops\n";
-            	    }
-				}
-			} else {
-				cout << "stimulus format corrupted\n";
-				return EXIT_FAILURE;
-			}	
-			if (virtual_LGN) {
-				prep_frame(iFrameHead, width, height, frameInput, frame_cuArr, nLGN_type, 1, cudaMemcpyHostToDevice); // implicit synchronized
-			} else {
-				if (reverseInput) {
-					prep_sample(iFrameHead, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, init_L, init_M, init_S, cudaMemcpyHostToDevice, reverse[iStatus]);
-				} else {
-					prep_sample(iFrameHead, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, init_L, init_M, init_S, cudaMemcpyHostToDevice, 0);
-				}
-                if (perform_STA) {
-                    LMS_to_STA_frame(STA_frameHead, L, M, S, STA_frame, width, height, STA_wpixel, STA_hpixel);
-                }
-				#ifdef SYNC
-            	    checkCudaErrors(cudaDeviceSynchronize());
-            	#endif
-			}
-
-			if (LGN_switch || reverseInput) {
-				if (virtual_LGN && currentFrame-1 - lastStatusFrame >= LGN_switchIt[iStatus] || !virtual_LGN && currentFrame - lastStatusFrame >= LGN_switchIt[iStatus]) {
-					iStatus = (iStatus + 1) % nStatus;
-    	            typeStatus.assign(&(LGN_status[nInputType*iStatus]));
-					for (PosInt iE = 0; iE<lFF_E_post.n; iE++) {
-						lFF_E_post.A_ratio[iE]*others[iStatus]/others[iStatus-1];
-					}
-					for (PosInt iI = 0; iI<lFF_I_post.n; iI++) {
-						lFF_I_post.A_ratio[iI]*others[iStatus]/others[iStatus-1];
-					}
-					if (virtual_LGN) {
-						lastStatusFrame = currentFrame-1;
-					} else {
-						lastStatusFrame = currentFrame;
-					}
-					switchNow = switchType;
-					cout << "switched at frame" << lastStatusFrame << ", current status: (" << typeStatus.actPercent[4] << ", " << typeStatus.actPercent[5] << ")\n";
-				} else {
-					if (it > 0) {
-						switchNow = 0;
-					}
-				}
-    	    }
-
-			currentFrame++;
-			if (iFrameHead+1 == maxFrame) {
-				frameCycle++;
-			}
-            if (perform_STA) {
-                old_STA_frameHead = STA_frameHead;
-			    STA_frameHead = (STA_frameHead+1) % STA_maxFrame;
-            }
-
-			oldFrameHead = iFrameHead;
-			iFrameHead = (iFrameHead+1) % maxFrame;
-            if (print_log) {
-				if (sizeof(Float) == 4) {
-			    	printf("\rsimulating@t = %lf -> %lf, frame %d#%d-%d, %.1f%%\n", t, t+dt, currentFrame, currentFrame%nFrame, nFrame, 100*static_cast<float>(it+1)/nt);
-				} else {
-			    	printf("\rsimulating@t = %lf -> %lf, frame %d#%d-%d, %.1f%%\n", t, t+dt, currentFrame/nFrame, currentFrame%nFrame, nFrame, 100*static_cast<float>(it+1)/nt);
-				}
-            }
-		}
-
-		// update frame for head and tail for convolution at t=(it + 1)*dt
-		iFramePhaseTail = (iFramePhaseTail + denorm) % ntPerFrame;
-		iFramePhaseHead = (iFramePhaseHead + denorm) % ntPerFrame;
-		mFramePhaseTail = (mFramePhaseTail + denorm) % ntPerFrame;
-		mFramePhaseHead = (mFramePhaseHead + denorm) % ntPerFrame;
-		// point frametail to the tail of the LGN temporal convolution at t-tau
-
-		/* if it < nRetrace, padded zero-valued frames for t<0
-		   -->|        |<-- framePhase
-		   |--|------frame------|
-		   |-----|-----|-----|-----|-----|
-		   jt-2, jt-1, jt ...nRetrace... it
-		 */// perform kernel convolution with built-in texture interpolation
-		if (virtual_LGN) {
-			Float rt = ((it+it0)*denorm % ntPerFrame)/static_cast<Float>(ntPerFrame);
-			virtual_LGN_convol<<<nLGN_block, nLGN_thread, 0, mainStream>>>(luminance, contrast, dLinearFrame, currentConvol, parvo_center, magno_center, dLGN_type, inputType, nParvo_I, nMagno_I, nParvo_C, nLGN, iFrameHead, oldFrameHead, rt, saveOutputB4V1);
-		} else {
-			PosInt iFrameTail = getTail(parvoComp, iFramePhaseTail, iFramePhaseHead, oldFrameHead + (1-pLongerThanM)*dFrame);
-			PosInt mFrameTail = getTail(magnoComp, mFramePhaseTail, mFramePhaseHead, oldFrameHead + pLongerThanM*dFrame);
-			if (nParvo > 0) {
-				if (it > 0) {
-					cudaProfilerStart();
-				}
-			    parvoGrid.x = nParvo;
-			    parvoGrid.y = 1;
-			    LGN_convol_parvo<<<parvoGrid, parvoBlock, pSharedSize, mainStream>>>(
-			    		luminance,
-			    		parvo_SW_storage, parvo_SC_storage, parvo_TW_storage,
-			    		currentConvol, contrast,
-			    		dLGN.coneType, *dLGN.spatial,
-						L_retinaInput, M_retinaInput, S_retinaInput,
-			    		nParvo_I, nMagno_I, nLGN,
-			    		normViewDistance,
-			    		iFrameTail, maxFrame, ntPerFrame, iFramePhaseTail,
-			    		Itau,
-			    		iKernelSampleT0, kernelSampleInterval, nKernelSample,
-			    		dt, denorm, saveOutputB4V1);
-        	    #ifdef CHECK
-			        getLastCudaError("LGN_convol_parvo failed");
-        	    #endif
-        	    #ifdef SYNC
-        	        checkCudaErrors(cudaDeviceSynchronize());
-        	    #endif
-				if (it > 0) {
-					cudaProfilerStop();
-				}
-        	}
-        	if (nMagno > 0) {
-        	    LGN_convol_magno<<<magnoGrid, magnoBlock, sizeof(Float)*mSample, magnoStream>>>(
-        	            luminance,
-			    		magno_SW_storage, magno_SC_storage, magno_TW_storage,
-			    		currentConvol, contrast,
-			    		dLGN.coneType, *dLGN.spatial,
-						L_retinaInput, M_retinaInput, S_retinaInput,
-			    		nParvo_I, nMagno_I, nParvo_C,
-			    		normViewDistance,
-			    		mFrameTail, maxFrame, ntPerFrame, mFramePhaseTail,
-			    		Itau,
-			    		mKernelSampleT0, kermelSampleInterval, mKernelSample,
-			    		dt, denorm, saveOutputB4V1);
-        	    #ifdef CHECK
-			        getLastCudaError("LGN_convol_magno failed");
-        	    #endif
-        	    #ifdef SYNC
-        	        checkCudaErrors(cudaDeviceSynchronize());
-        	    #endif
-			    cudaEventRecord(dMagnoConvolReady, magnoStream);
-        	}
-		}
-
-		if (it > 0) { // seeking for overlap of d2h of V1 data  with LGN convol compute 
-            if (minimal && it*dt >= sample_t0) { // send LGN_spike, V1_spike to minimal sample file
-				for (PosInt j = 0.; j < sampleID.size(); j++) {
-                    Float sInfo = spikeTrain[currentTimeSlot*nV1 + sampleID[j]];
-				    if (sInfo >= 1) {
-                        sample_spikeCount[j] += flooring(sInfo);
-                    }
-                }
-				for (PosInt j = 0.; j < nLGN; j++) {
-                    //Float sInfo = LGN_sInfo[j];
-					//LGN_spike_time[j] = flooring(sInfo);
-					LGN_spike_time[j] = LGN_sInfo[j];
-				}
-				//fSample.write((char*)&(LGN_spike_time[0]), nLGN*sizeof(Size));
-				fSample.write((char*)&(LGN_spike_time[0]), nLGN*sizeof(Float));
-                cout << "here: " << LGN_spike_time[67] << ", " <<LGN_spike_time[22] << "\n";
-			}
-            if (!minimal) {
-                if (rawData) {
-			        fRawData.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
-				    /* Debug
-				    	for (PosInt i=0; i<trainDepth; i++) {
-				    		for (PosInt j=0; j<nV1; j++) {
-                                Float sInfo = spikeTrain[i*nV1 + j];
-				    			if (sInfo < 1 && sInfo > max_vThres) {
-				    				assert(sInfo >= 1 || sInfo < max_vThres);
-				    			}
-				    		}
-				    		//if (i==0) {
-				    		//	if (spikeTrain[i*nV1 + 937] > 0) {
-				    		//		cout << " spiked at" << spikeTrain[i*nV1 + 937] << "\n";
-				    		//	}
-				    		//}
-				    	}
-				    */
-				    if (it%snapshotInterval != 0) { // else already synchronized
-			        	cudaEventSynchronize(hTracesReady);
-				    }
-				    if (iModel == 0) {
-			        	fRawData.write((char*) depC, nV1*sizeof(Float)*(2+ngTypeFF*(1+hWrite)));
-				    }
-				    if (iModel == 1) {
-			        	fRawData.write((char*) depC, nV1*sizeof(Float)*(3+ngTypeFF*(1+hWrite)));
-				    }
-                    /* Debug
-                    for (PosInt tid = 0; tid < nV1; tid++) {
-                        if (tid == 412) {
-                            int iChunk = (tid/blockSize) / chunkSize;
-                            int gap_block = (tid/blockSize) % chunkSize;
-                            int gap_tid = tid%blockSize - nE;
-                            int gap_id = gap_block*nI + gap_tid;
-                            int iid = (tid/blockSize)*nI + gap_tid;
-                            assert(iChunk >= 0);
-                            assert(gap_block >= 0);
-                            assert(gap_tid >= 0);
-                            assert(gap_id >= 0);
-                            printf("host:%d[%d, %d]: gapS = %.4f, gap = %.4f, v = %.4f, cGap = %.4f\n", tid, gap_block, gap_tid, gapS[iid], gap[iChunk][gap_id], v[tid], gap[iChunk][gap_id] - gapS[iid]*v[tid]);
-                        }
-                    }
-                    */
-                } 
-                if (learnData_FF > 0) {
-                    if (learnData_FF > 1) {
-                        if (!rawData) {
-			                fLearnData_FF.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
-			    		    if (it%snapshotInterval != 0) { // else already synchronized
-			                	cudaEventSynchronize(hTracesReady);
-			    		    }
-			                fLearnData_FF.write((char*) gFF, nV1*sizeof(Float));
-                        }
-			    	    if (it%snapshotInterval != 0) { // else already synchronized
-		                	cudaEventSynchronize(hLearnData_FF_ready);
-			    	    }
-                        /* DEBUG
-                        for (PosInt i=0; i<nV1; i++) {
-                            if (i%blockSize < nE) {
-                                PosInt j = (i/blockSize)*nE + i%blockSize;
-                                if (spikeTrain[nV1*currentTimeSlot + i] > 0) {
-                                    cout << "lAvgE written to " << i << " eid: " << j << " equals " << lVarFFpost[learnVarFFsize0 + j*2]  << "\n";
+        if (it >= warm_up_nt) {
+		    if (virtual_LGN && (it-warm_up_nt+it0)*denorm >= (currentFrame-1)*ntPerFrame || !virtual_LGN && (it-warm_up_nt+it0+1)*denorm > currentFrame*ntPerFrame) {
+		    	if (fStimulus) {
+		    		// back insert frame into texture memory
+		    		if (virtual_LGN) {
+		    			fStimulus.read(reinterpret_cast<char*>(frame), nLGN_type*nPixelPerFrame*sizeof(float));
+                        /*
+                        if (currentFrame == 5) {
+		    				cout << "iFrameHead = " << iFrameHead << "\n";
+                            for (PosInt fh=0; fh<height; fh++) {
+                                for (PosInt fw=0; fw<width; fw++) {
+                                    cout << "(" << static_cast<int>(frame[fh*width + fw]*255) << ", " << static_cast<int>(frame[nPixelPerFrame + fh*width + fw]*255) << "),";
                                 }
-                            }
-                            Float sInfo = spikeTrain[nV1*currentTimeSlot + i];
-                            if (sInfo > 0) {
-                                Size nsp = flooring(sInfo);
-                                cout << i << " stored " << nsp << " spike(s) at " << sInfo - nsp << "\n";
-                                assert(sInfo == 0 || (sInfo >= 1 && sInfo < 2));
+                                cout << "\n";
                             }
                         }*/
+		    		} else {
+		    			fStimulus.read(reinterpret_cast<char*>(LMS), nChannel*nPixelPerFrame*sizeof(float));
+		    		}
+		    		streampos current_fpos = fStimulus.tellg();
+		    		if (current_fpos == eofStimulus) { // if at the end of input file loop back to the beginning of frame data
+		    			fStimulus.seekg(sofStimulus);
+                	    if (print_log) {
+		    			    cout << "next frame loops\n";
+                	    }
+		    		}
+		    	} else {
+		    		cout << "stimulus format corrupted\n";
+		    		return EXIT_FAILURE;
+		    	}	
+		    	if (virtual_LGN) {
+		    		prep_frame(iFrameHead, width, height, frameInput, frame_cuArr, nLGN_type, 1, cudaMemcpyHostToDevice); // implicit synchronized
+		    	} else {
+		    		if (reverseInput) {
+		    			prep_sample(iFrameHead, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, init_L, init_M, init_S, cudaMemcpyHostToDevice, reverse[iStatus]);
+		    		} else {
+		    			prep_sample(iFrameHead, width, height, L, M, S, cuArr_L, cuArr_M, cuArr_S, 1, init_L, init_M, init_S, cudaMemcpyHostToDevice, 0);
+		    		}
+                    if (perform_STA) {
+                        LMS_to_STA_frame(STA_frameHead, L, M, S, STA_frame, width, height, STA_wpixel, STA_hpixel);
+                    }
+		    		#ifdef SYNC
+                	    checkCudaErrors(cudaDeviceSynchronize());
+                	#endif
+		    	}
 
-			            fLearnData_FF.write((char*) LGN_V1_s, sLGN_size);
-			            fLearnData_FF.write((char*) lVarFFpost, learnVarFFsize*sizeof(Float));
-                    } else if (it%sampleInterval_LGN_V1 == 0) { // assert learnData_FF == 1
-			    	    if (it%snapshotInterval != 0) { // else already synchronized
-		                	cudaEventSynchronize(hLearnData_FF_ready);
+		    	if (LGN_switch || reverseInput) {
+		    		if (virtual_LGN && currentFrame-1 - lastStatusFrame >= LGN_switchIt[iStatus] || !virtual_LGN && currentFrame - lastStatusFrame >= LGN_switchIt[iStatus]) {
+		    			iStatus = (iStatus + 1) % nStatus;
+    	                typeStatus.assign(&(LGN_status[nInputType*iStatus]));
+		    			for (PosInt iE = 0; iE<lFF_E_post.n; iE++) {
+		    				lFF_E_post.A_ratio[iE]*others[iStatus]/others[iStatus-1];
+		    			}
+		    			for (PosInt iI = 0; iI<lFF_I_post.n; iI++) {
+		    				lFF_I_post.A_ratio[iI]*others[iStatus]/others[iStatus-1];
+		    			}
+		    			if (virtual_LGN) {
+		    				lastStatusFrame = currentFrame-1;
+		    			} else {
+		    				lastStatusFrame = currentFrame;
+		    			}
+		    			switchNow = switchType;
+		    			cout << "switched at frame" << lastStatusFrame << ", current status: (" << typeStatus.actPercent[4] << ", " << typeStatus.actPercent[5] << ")\n";
+		    		} else {
+		    			if (it > warm_up_nt) {
+		    				switchNow = 0;
+		    			}
+		    		}
+    	        }
+
+		    	currentFrame++;
+		    	if (iFrameHead+1 == maxFrame) {
+		    		frameCycle++;
+		    	}
+                if (perform_STA) {
+                    old_STA_frameHead = STA_frameHead;
+		    	    STA_frameHead = (STA_frameHead+1) % STA_maxFrame;
+                }
+
+		    	oldFrameHead = iFrameHead;
+		    	iFrameHead = (iFrameHead+1) % maxFrame;
+                if (print_log) {
+		    		if (sizeof(Float) == 4) {
+		    	    	printf("\rsimulating@t = %lf -> %lf, frame %d#%d-%d, %.1f%%\n", t, t+dt, currentFrame, currentFrame%nFrame, nFrame, 100*static_cast<float>(it-warm_up_nt+1)/nt);
+		    		} else {
+		    	    	printf("\rsimulating@t = %lf -> %lf, frame %d#%d-%d, %.1f%%\n", t, t+dt, currentFrame/nFrame, currentFrame%nFrame, nFrame, 100*static_cast<float>(it-warm_up_nt+1)/nt);
+		    		}
+                }
+		    }
+
+            // it := it-warm_up_nt in comments
+		    // update frame for head and tail for convolution at t=(it + 1)*dt
+		    iFramePhaseTail = (iFramePhaseTail + denorm) % ntPerFrame;
+		    iFramePhaseHead = (iFramePhaseHead + denorm) % ntPerFrame;
+		    mFramePhaseTail = (mFramePhaseTail + denorm) % ntPerFrame;
+		    mFramePhaseHead = (mFramePhaseHead + denorm) % ntPerFrame;
+		    // point frametail to the tail of the LGN temporal convolution at t-tau
+		    /* if it < nRetrace, padded zero-valued frames for t<0
+		       -->|        |<-- framePhase
+		       |--|------frame------|
+		       |-----|-----|-----|-----|-----|
+		       jt-2, jt-1, jt ...nRetrace... it
+		     */// perform kernel convolution with built-in texture interpolation
+		    if (virtual_LGN) {
+		    	Float rt = ((it-warm_up_nt+it0)*denorm % ntPerFrame)/static_cast<Float>(ntPerFrame);
+		    	virtual_LGN_convol<<<nLGN_block, nLGN_thread, 0, mainStream>>>(luminance, contrast, dLinearFrame, currentConvol, parvo_center, magno_center, dLGN_type, inputType, nParvo_I, nMagno_I, nParvo_C, nLGN, iFrameHead, oldFrameHead, rt, saveOutputB4V1);
+		    } else {
+		    	PosInt iFrameTail = getTail(parvoComp, iFramePhaseTail, iFramePhaseHead, oldFrameHead + (1-pLongerThanM)*dFrame);
+		    	PosInt mFrameTail = getTail(magnoComp, mFramePhaseTail, mFramePhaseHead, oldFrameHead + pLongerThanM*dFrame);
+		    	if (nParvo > 0) {
+		    		//if (it > warm_up_nt) {
+		    		//	cudaProfilerStart();
+		    		//}
+		    	    parvoGrid.x = nParvo;
+		    	    parvoGrid.y = 1;
+		    	    LGN_convol_parvo<<<parvoGrid, parvoBlock, pSharedSize, mainStream>>>(
+		    	    		luminance,
+		    	    		parvo_SW_storage, parvo_SC_storage, parvo_TW_storage,
+		    	    		currentConvol, contrast,
+		    	    		dLGN.coneType, *dLGN.spatial,
+		    				L_retinaInput, M_retinaInput, S_retinaInput,
+		    	    		nParvo_I, nMagno_I, nLGN,
+		    	    		normViewDistance,
+		    	    		iFrameTail, maxFrame, ntPerFrame, iFramePhaseTail,
+		    	    		Itau,
+		    	    		iKernelSampleT0, kernelSampleInterval, nKernelSample,
+		    	    		dt, denorm, saveOutputB4V1);
+            	    #ifdef CHECK
+		    	        getLastCudaError("LGN_convol_parvo failed");
+            	    #endif
+            	    #ifdef SYNC
+            	        checkCudaErrors(cudaDeviceSynchronize());
+            	    #endif
+		    		//if (it > warm_up_nt) {
+		    		//	cudaProfilerStop();
+		    		//}
+            	}
+            	if (nMagno > 0) {
+            	    LGN_convol_magno<<<magnoGrid, magnoBlock, sizeof(Float)*mSample, magnoStream>>>(
+            	            luminance,
+		    	    		magno_SW_storage, magno_SC_storage, magno_TW_storage,
+		    	    		currentConvol, contrast,
+		    	    		dLGN.coneType, *dLGN.spatial,
+		    				L_retinaInput, M_retinaInput, S_retinaInput,
+		    	    		nParvo_I, nMagno_I, nParvo_C,
+		    	    		normViewDistance,
+		    	    		mFrameTail, maxFrame, ntPerFrame, mFramePhaseTail,
+		    	    		Itau,
+		    	    		mKernelSampleT0, kermelSampleInterval, mKernelSample,
+		    	    		dt, denorm, saveOutputB4V1);
+            	    #ifdef CHECK
+		    	        getLastCudaError("LGN_convol_magno failed");
+            	    #endif
+            	    #ifdef SYNC
+            	        checkCudaErrors(cudaDeviceSynchronize());
+            	    #endif
+		    	    cudaEventRecord(dMagnoConvolReady, magnoStream);
+            	}
+		    }
+
+		    if (it > warm_up_nt) { // seeking for overlap of d2h of V1 data  with LGN convol compute 
+                if (minimal && it*dt >= warm_up_nt + sample_t0) { // send LGN_spike, V1_spike to minimal sample file
+		    		for (PosInt j = 0.; j < sampleID.size(); j++) {
+                        Float sInfo = spikeTrain[currentTimeSlot*nV1 + sampleID[j]];
+		    		    if (sInfo >= 1) {
+                            sample_spikeCount[j] += flooring(sInfo);
                         }
-                        f_sLGN.write((char*) LGN_V1_s, sLGN_size);
-                        if (store_dsLGN) { // else read vAvgE/I from fLearnData_FF
-                            if (nLearnTypeFF_E) {
-                                f_dsLGN.write((char*) (lVarFFpost+learnVarFFsize0), nE*nblock*2*sizeof(Float));
+                    }
+		    		for (PosInt j = 0.; j < nLGN; j++) {
+                        //Float sInfo = LGN_sInfo[j];
+		    			//LGN_spike_time[j] = flooring(sInfo);
+		    			LGN_spike_time[j] = LGN_sInfo[j];
+		    		}
+		    		//fSample.write((char*)&(LGN_spike_time[0]), nLGN*sizeof(Size));
+		    		fSample.write((char*)&(LGN_spike_time[0]), nLGN*sizeof(Float));
+                    cout << "here: " << LGN_spike_time[67] << ", " <<LGN_spike_time[22] << "\n";
+		    	}
+                if (!minimal) {
+                    if (rawData) {
+		    	        fRawData.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
+		    		    /* Debug
+		    		    	for (PosInt i=0; i<trainDepth; i++) {
+		    		    		for (PosInt j=0; j<nV1; j++) {
+                                    Float sInfo = spikeTrain[i*nV1 + j];
+		    		    			if (sInfo < 1 && sInfo > max_vThres) {
+		    		    				assert(sInfo >= 1 || sInfo < max_vThres);
+		    		    			}
+		    		    		}
+		    		    		//if (i==0) {
+		    		    		//	if (spikeTrain[i*nV1 + 937] > 0) {
+		    		    		//		cout << " spiked at" << spikeTrain[i*nV1 + 937] << "\n";
+		    		    		//	}
+		    		    		//}
+		    		    	}
+		    		    */
+		    		    if ((it-warm_up_nt)%snapshotInterval != 0) { // else already synchronized
+		    	        	cudaEventSynchronize(hTracesReady);
+		    		    }
+		    		    if (iModel == 0) {
+		    	        	fRawData.write((char*) depC, nV1*sizeof(Float)*(2+ngTypeFF*(1+hWrite)));
+		    		    }
+		    		    if (iModel == 1) {
+		    	        	fRawData.write((char*) depC, nV1*sizeof(Float)*(3+ngTypeFF*(1+hWrite)));
+		    		    }
+                        /* Debug
+                        for (PosInt tid = 0; tid < nV1; tid++) {
+                            if (tid == 412) {
+                                int iChunk = (tid/blockSize) / chunkSize;
+                                int gap_block = (tid/blockSize) % chunkSize;
+                                int gap_tid = tid%blockSize - nE;
+                                int gap_id = gap_block*nI + gap_tid;
+                                int iid = (tid/blockSize)*nI + gap_tid;
+                                assert(iChunk >= 0);
+                                assert(gap_block >= 0);
+                                assert(gap_tid >= 0);
+                                assert(gap_id >= 0);
+                                printf("host:%d[%d, %d]: gapS = %.4f, gap = %.4f, v = %.4f, cGap = %.4f\n", tid, gap_block, gap_tid, gapS[iid], gap[iChunk][gap_id], v[tid], gap[iChunk][gap_id] - gapS[iid]*v[tid]);
                             }
-                            if (nLearnTypeFF_I) {
-                                f_dsLGN.write((char*) (lVarFFpost+learnVarFFsize0+nE*nblock*2), nI*nblock*sizeof(Float));
+                        }
+                        */
+                    } 
+                    if (learnData_FF > 0) {
+                        if (learnData_FF > 1) {
+                            if (!rawData) {
+		    	                fLearnData_FF.write((char*) (spikeTrain + nV1*currentTimeSlot), nV1*sizeof(Float));
+		    	    		    if ((it - warm_up_nt)%snapshotInterval != 0) { // else already synchronized
+		    	                	cudaEventSynchronize(hTracesReady);
+		    	    		    }
+		    	                fLearnData_FF.write((char*) gFF, nV1*sizeof(Float));
+                            }
+		    	    	    if ((it - warm_up_nt)%snapshotInterval != 0) { // else already synchronized
+		                    	cudaEventSynchronize(hLearnData_FF_ready);
+		    	    	    }
+                            /* DEBUG
+                            for (PosInt i=0; i<nV1; i++) {
+                                if (i%blockSize < nE) {
+                                    PosInt j = (i/blockSize)*nE + i%blockSize;
+                                    if (spikeTrain[nV1*currentTimeSlot + i] > 0) {
+                                        cout << "lAvgE written to " << i << " eid: " << j << " equals " << lVarFFpost[learnVarFFsize0 + j*2]  << "\n";
+                                    }
+                                }
+                                Float sInfo = spikeTrain[nV1*currentTimeSlot + i];
+                                if (sInfo > 0) {
+                                    Size nsp = flooring(sInfo);
+                                    cout << i << " stored " << nsp << " spike(s) at " << sInfo - nsp << "\n";
+                                    assert(sInfo == 0 || (sInfo >= 1 && sInfo < 2));
+                                }
+                            }*/
+
+		    	            fLearnData_FF.write((char*) LGN_V1_s, sLGN_size);
+		    	            fLearnData_FF.write((char*) lVarFFpost, learnVarFFsize*sizeof(Float));
+                        } else if ((it-warm_up_nt)%sampleInterval_LGN_V1 == 0) { // assert learnData_FF == 1
+		    	    	    if ((it-warm_up_nt)%snapshotInterval != 0) { // else already synchronized
+		                    	cudaEventSynchronize(hLearnData_FF_ready);
+                            }
+                            f_sLGN.write((char*) LGN_V1_s, sLGN_size);
+                            if (store_dsLGN) { // else read vAvgE/I from fLearnData_FF
+                                if (nLearnTypeFF_E) {
+                                    f_dsLGN.write((char*) (lVarFFpost+learnVarFFsize0), nE*nblock*2*sizeof(Float));
+                                }
+                                if (nLearnTypeFF_I) {
+                                    f_dsLGN.write((char*) (lVarFFpost+learnVarFFsize0+nE*nblock*2), nI*nblock*sizeof(Float));
+                                }
                             }
                         }
                     }
                 }
+		    	currentTimeSlot++;
+                currentTimeSlot = currentTimeSlot%trainDepth;
+		    	//cout << "-currentTimeSlot = " << currentTimeSlot << "\n";
+		    }
+            if (nMagno > 0) { // parvo is already on mainStream no need to wait
+                cudaStreamWaitEvent(mainStream, dMagnoConvolReady, 0);
             }
-			currentTimeSlot++;
-            currentTimeSlot = currentTimeSlot%trainDepth;
-			//cout << "-currentTimeSlot = " << currentTimeSlot << "\n";
-		}
-        if (nMagno > 0) { // parvo is already on mainStream no need to wait
-            cudaStreamWaitEvent(mainStream, dMagnoConvolReady, 0);
-        }
 
-		// generate LGN fr with logistic function
-		if (it > 0) {
-			cudaProfilerStart();
-		}
-		if (it == 0) { 
-			cout << "switchNow = " << switchNow << "\n";
-		}
-		//cout << "MAX_NLEARNTYPE_FF = " << MAX_NLEARNTYPE_FF << ", nLearnTypeFF = " << nLearnTypeFF << " \n";
-		LGN_nonlinear<<<nLGN_block, nLGN_thread, 0, mainStream>>>(nLGN, *dLGN.logistic, maxConvol, currentConvol, convolRatio, d_LGN_fr, d_LGN_sInfo, d_sx, d_sy, leftTimeRate, lastNegLogRand, randState, dLGN_type, switch_value, typeStatus, lVarFFpre, LGNspikeSurface, frRatioLGN, varSlot, lFF_E_pre, lFF_I_pre, nLearnTypeFF, dt, learning, learnData_FF > 1, LGN_switch, getLGN_sp, virtual_LGN, switchNow);
-		if (it > 0) {
-			cudaProfilerStop();
-		}
-        #ifdef CHECK
-		    getLastCudaError("LGN_nonlinear failed");
-        #endif
-        #ifdef SYNC
-            checkCudaErrors(cudaDeviceSynchronize());
-        #endif
+		    // generate LGN fr with logistic function
+		    //if (it > warm_up_nt) {
+		    //	cudaProfilerStart();
+		    //}
+		    if (it == warm_up_nt) { 
+		    	cout << "switchNow = " << switchNow << "\n";
+		    }
+		    //cout << "MAX_NLEARNTYPE_FF = " << MAX_NLEARNTYPE_FF << ", nLearnTypeFF = " << nLearnTypeFF << " \n";
+		    LGN_nonlinear<<<nLGN_block, nLGN_thread, 0, mainStream>>>(nLGN, *dLGN.logistic, maxConvol, currentConvol, convolRatio, d_LGN_fr, d_LGN_sInfo, d_sx, d_sy, leftTimeRate, lastNegLogRand, randState, dLGN_type, switch_value, typeStatus, lVarFFpre, LGNspikeSurface, frRatioLGN, varSlot, lFF_E_pre, lFF_I_pre, nLearnTypeFF, dt, learning, learnData_FF > 1, LGN_switch, getLGN_sp, virtual_LGN, switchNow);
+            if (it == warm_up_nt) {
+	            checkCudaErrors(cudaMemcpy(d_noisyDep,  &(noisyDep[0]), nType*sizeof(Float), cudaMemcpyHostToDevice));
+            }
+		    //if (it > warm_up_nt) {
+		    //	cudaProfilerStop();
+		    //}
+            #ifdef CHECK
+		        getLastCudaError("LGN_nonlinear failed");
+            #endif
+            #ifdef SYNC
+                checkCudaErrors(cudaDeviceSynchronize());
+            #endif
+		    if (getLGN_sp || saveOutputB4V1 || saveLGN_fr || learnData_FF || (minimal && it*dt >= warm_up_nt + sample_t0)) {
+		        cudaEventRecord(dLGN_ready, mainStream);
+		        cudaStreamWaitEvent(LGN_stream, dLGN_ready, 0);
+            }
 
-		if (getLGN_sp || saveOutputB4V1 || saveLGN_fr || learnData_FF || (minimal && it*dt >= sample_t0)) {
-		    cudaEventRecord(dLGN_ready, mainStream);
-		    cudaStreamWaitEvent(LGN_stream, dLGN_ready, 0);
-        }
-		if (it > 0) { // seeking for overlap of d2h V1 data with LGN convol 
-			if (it%snapshotInterval != 0) { // else already synchronized
-            	if (nFar && farSpiked) { 
-            	    for (PosInt i=0; i<nChunk; i++) {
-	        	        cudaEventSynchronize(gReady[i]);
-	        	        cudaEventSynchronize(gapReady[i]);
-            	    }
-            	} else {
-	        	    cudaEventSynchronize(gReady[0]);
-	        	    cudaEventSynchronize(gapReady[0]);
-            	}
-			}
+		    if (it > warm_up_nt) { // seeking for overlap of d2h V1 data with LGN convol 
+		    	if ((it-warm_up_nt)%snapshotInterval != 0) { // else already synchronized
+                	if (nFar && farSpiked) { 
+                	    for (PosInt i=0; i<nChunk; i++) {
+	            	        cudaEventSynchronize(gReady[i]);
+	            	        cudaEventSynchronize(gapReady[i]);
+                	    }
+                	} else {
+	            	    cudaEventSynchronize(gReady[0]);
+	            	    cudaEventSynchronize(gapReady[0]);
+                	}
+		    	}
+                if (!minimal) {
+                    if (rawData) {
+		            	// write g and gap traces to fRawData
+		            	reshape_chunk_and_write(gE[0], fRawData, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, ngTypeE, ngTypeI, nV1, blockSize, mI, hWrite);
+		    	    	//cout << it << " reshape_chunk_and_write gE\n";
+		            }
+                }
+		    	farSpiked = false;
+            }
+
             if (!minimal) {
-                if (rawData) {
-		        	// write g and gap traces to fRawData
-		        	reshape_chunk_and_write(gE[0], fRawData, maxChunkSize, remainChunkSize, iSizeSplit, nChunk, ngTypeE, ngTypeI, nV1, blockSize, mI, hWrite);
-			    	//cout << it << " reshape_chunk_and_write gE\n";
-		        }
-            }
-			farSpiked = false;
-        }
-            
-        if (!minimal) {
-		    if (saveOutputB4V1 || saveLGN_fr || learnData_FF) {
-                size_t tmpSize;
-		        if (saveOutputB4V1) { 
-                    tmpSize = outputB4V1Size; 
-		        } else { // use only the first row of outputB4V1
-                    tmpSize = nLGN*sizeof(Float); 
-		        }
-                #ifdef CHECK
-		            checkCudaErrors(cudaMemcpyAsync(outputB4V1, d_LGN_fr, tmpSize, cudaMemcpyDeviceToHost, LGN_stream));
-                #else
-		            cudaMemcpyAsync(outputB4V1, d_LGN_fr, tmpSize, cudaMemcpyDeviceToHost, LGN_stream);
-                #endif
-		        cudaEventRecord(hLGN_ready, LGN_stream);
-                #ifdef SYNC
-                    checkCudaErrors(cudaDeviceSynchronize());
-                #endif
+		        if (saveOutputB4V1 || saveLGN_fr || learnData_FF) {
+                    size_t tmpSize;
+		            if (saveOutputB4V1) { 
+                        tmpSize = outputB4V1Size; 
+		            } else { // use only the first row of outputB4V1
+                        tmpSize = nLGN*sizeof(Float); 
+		            }
+                    #ifdef CHECK
+		                checkCudaErrors(cudaMemcpyAsync(outputB4V1, d_LGN_fr, tmpSize, cudaMemcpyDeviceToHost, LGN_stream));
+                    #else
+		                cudaMemcpyAsync(outputB4V1, d_LGN_fr, tmpSize, cudaMemcpyDeviceToHost, LGN_stream);
+                    #endif
+		            cudaEventRecord(hLGN_ready, LGN_stream);
+                    #ifdef SYNC
+                        checkCudaErrors(cudaDeviceSynchronize());
+                    #endif
+                }
             }
         }
+
         //cout << "LGN done\n";
-		if (it == nt-1 & print_log) {
+		if (it == nt+warm_up_nt-1 && print_log) {
 			if (sizeof(Float) == 4) {
-				printf("\r@t = %f -> %f simulated, frame %d#%d-%d, %.1f%%\n", t, t+dt, currentFrame/nFrame, currentFrame%nFrame, nFrame, 100*static_cast<float>(it+1)/nt);
+				printf("\r@t = %f -> %f simulated, frame %d#%d-%d, %.1f%%\n", t, t+dt, currentFrame/nFrame, currentFrame%nFrame, nFrame, 100*static_cast<float>(it-warm_up_nt+1)/nt);
 			} else {
-				printf("\r@t = %lf -> %lf simulated, frame %d#%d-%d, %.1f%%\n", t, t+dt, currentFrame/nFrame, currentFrame%nFrame, nFrame, 100*static_cast<float>(it+1)/nt);
+				printf("\r@t = %lf -> %lf simulated, frame %d#%d-%d, %.1f%%\n", t, t+dt, currentFrame/nFrame, currentFrame%nFrame, nFrame, 100*static_cast<float>(it-warm_up_nt+1)/nt);
 			}
 			//oldFrame = currentFrame;
 		}
@@ -6478,51 +6555,53 @@ int main(int argc, char** argv) {
         #endif
 		cudaEventRecord(d_spReady, mainStream);
         varSlot = (varSlot+1)%2;
-        // send LGN_fr, currentConvol, luminance, contrast
-        if (!minimal) {
-            if (saveLGN_fr || saveOutputB4V1) {
-                cudaEventSynchronize(hLGN_ready);
-                if (saveOutputB4V1) {
-			        fOutputB4V1.write((char*)outputB4V1, outputB4V1Size); // d_LGN_fr, currentConvol, luminance, contrast
-                }
-                if (saveLGN_fr) {
-			        fLGN_fr.write((char*)outputB4V1, nLGN*sizeof(Float)); // d_LGN_fr
+        takeSnapShot = (it-warm_up_nt+1)%snapshotInterval == 0 || it == nt+warm_up_nt-1;
+
+        if (it >= warm_up_nt) { // send LGN_fr, currentConvol, luminance, contrast
+            if (!minimal) {
+                if (saveLGN_fr || saveOutputB4V1) {
+                    cudaEventSynchronize(hLGN_ready);
+                    if (saveOutputB4V1) {
+		    	        fOutputB4V1.write((char*)outputB4V1, outputB4V1Size); // d_LGN_fr, currentConvol, luminance, contrast
+                    }
+                    if (saveLGN_fr) {
+		    	        fLGN_fr.write((char*)outputB4V1, nLGN*sizeof(Float)); // d_LGN_fr
+                    }
                 }
             }
+            if ((minimal && it*dt >= warm_up_nt + sample_t0) || (!minimal && (learnData_FF > 1 || getLGN_sp))) { // send LGN_sInfo
+		    	Float* targetAddress;
+            	if (getLGN_sp) targetAddress = LGN_sInfo;
+		    	else targetAddress = outputB4V1;
+                #ifdef CHECK
+		    	    checkCudaErrors(cudaMemcpyAsync(targetAddress, d_LGN_sInfo, nLGN*sizeof(Float), cudaMemcpyDeviceToHost, LGN_stream));
+                #else
+		    	    cudaMemcpyAsync(targetAddress, d_LGN_sInfo, nLGN*sizeof(Float), cudaMemcpyDeviceToHost, LGN_stream);
+                #endif
+
+		    	/* Debug
+		    	    cout << "it = " << it << "\n";
+		    	    for (PosInt kk = 0; kk < nLGN; kk++) {
+		    	    	cout << targetAddress[kk] << ", ";
+		    	    }
+		    	    cout << "\n";
+		    	*/
+
+                #ifdef SYNC
+                    checkCudaErrors(cudaDeviceSynchronize());
+                #endif
+		        cudaEventRecord(hLGN_ready, LGN_stream);
+            }  
         }
-        if ((minimal && it*dt >= sample_t0) || (!minimal && (learnData_FF > 1 || getLGN_sp))) { // send LGN_sInfo
-			Float* targetAddress;
-        	if (getLGN_sp) targetAddress = LGN_sInfo;
-			else targetAddress = outputB4V1;
-            #ifdef CHECK
-			    checkCudaErrors(cudaMemcpyAsync(targetAddress, d_LGN_sInfo, nLGN*sizeof(Float), cudaMemcpyDeviceToHost, LGN_stream));
-            #else
-			    cudaMemcpyAsync(targetAddress, d_LGN_sInfo, nLGN*sizeof(Float), cudaMemcpyDeviceToHost, LGN_stream);
-            #endif
-
-			/* Debug
-			    cout << "it = " << it << "\n";
-			    for (PosInt kk = 0; kk < nLGN; kk++) {
-			    	cout << targetAddress[kk] << ", ";
-			    }
-			    cout << "\n";
-			*/
-
-            #ifdef SYNC
-                checkCudaErrors(cudaDeviceSynchronize());
-            #endif
-		    cudaEventRecord(hLGN_ready, LGN_stream);
-        }  
-
-        // send learnData_FF pre vars to host
-        takeSnapShot = (it+1)%snapshotInterval == 0 || it == nt-1;
-        if (!minimal && (learnData_FF > 1 || (takeSnapShot && learning))) {
-            #ifdef CHECK
-		        checkCudaErrors(cudaMemcpyAsync(outputB4V1+nLGN, lVarFFpre, LGN_learnPreSize, cudaMemcpyDeviceToHost, LGN_stream));
-            #else
-		        cudaMemcpyAsync(outputB4V1+nLGN, lVarFFpre, LGN_learnPreSize, cudaMemcpyDeviceToHost, LGN_stream);
-		    #endif
-		    cudaEventRecord(hLGN_ready, LGN_stream);
+        if (it >= warm_up_nt) { // send learnData_FF pre vars to host
+            if (!minimal && (learnData_FF > 1 || (takeSnapShot && learning))) {
+                #ifdef CHECK
+		            checkCudaErrors(cudaMemcpyAsync(outputB4V1+nLGN, lVarFFpre, LGN_learnPreSize, cudaMemcpyDeviceToHost, LGN_stream));
+                #else
+		            cudaMemcpyAsync(outputB4V1+nLGN, lVarFFpre, LGN_learnPreSize, cudaMemcpyDeviceToHost, LGN_stream);
+		        #endif
+		        cudaEventRecord(hLGN_ready, LGN_stream);
+            }
         }
 
         // send V1 spikes to host
@@ -6536,34 +6615,35 @@ int main(int argc, char** argv) {
         #endif
 		cudaEventRecord(h_spReady, mainStream);
 
-        // send sLGN and/or learnVarFF post tracers in mainStream
-        if (!minimal && ((learnData_FF == 1 && (it+1)%sampleInterval_LGN_V1 == 0) || learnData_FF > 1 || (takeSnapShot && learning))) {
-            #ifdef CHECK
-		        checkCudaErrors(cudaMemcpyAsync(LGN_V1_s, sLGN, sLGN_size, cudaMemcpyDeviceToHost, mainStream)); // to overlap with  recal_G, to be used in recal_Gvec
-            #else
-		        cudaMemcpyAsync(LGN_V1_s, sLGN, sLGN_size, cudaMemcpyDeviceToHost, mainStream);
-            #endif
-            if (learnData_FF > 1 || takeSnapShot) {
+        if (it >= warm_up_nt) { // send sLGN and/or learnVarFF post tracers in mainStream
+            if (!minimal && ((learnData_FF == 1 && (it-warm_up_nt+1)%sampleInterval_LGN_V1 == 0) || learnData_FF > 1 || (takeSnapShot && learning))) {
                 #ifdef CHECK
-		            checkCudaErrors(cudaMemcpyAsync(lVarFFpost, learnVar, learnVarFFsize0*sizeof(Float), cudaMemcpyDeviceToHost, mainStream));
+		            checkCudaErrors(cudaMemcpyAsync(LGN_V1_s, sLGN, sLGN_size, cudaMemcpyDeviceToHost, mainStream)); // to overlap with  recal_G, to be used in recal_Gvec
                 #else
-		            cudaMemcpyAsync(lVarFFpost, learnVar, learnVarFFsize0*sizeof(Float), cudaMemcpyDeviceToHost, mainStream);
+		            cudaMemcpyAsync(LGN_V1_s, sLGN, sLGN_size, cudaMemcpyDeviceToHost, mainStream);
+                #endif
+                if (learnData_FF > 1 || takeSnapShot) {
+                    #ifdef CHECK
+		                checkCudaErrors(cudaMemcpyAsync(lVarFFpost, learnVar, learnVarFFsize0*sizeof(Float), cudaMemcpyDeviceToHost, mainStream));
+                    #else
+		                cudaMemcpyAsync(lVarFFpost, learnVar, learnVarFFsize0*sizeof(Float), cudaMemcpyDeviceToHost, mainStream);
+                    #endif
+                }
+		        cudaEventRecord(hLearnData_FF_ready, mainStream);
+                #ifdef SYNC
+                    checkCudaErrors(cudaDeviceSynchronize());
                 #endif
             }
-		    cudaEventRecord(hLearnData_FF_ready, mainStream);
-            #ifdef SYNC
-                checkCudaErrors(cudaDeviceSynchronize());
-            #endif
-        }
 
-        if (!minimal) { // send d_LGN_sInfo and/or lVarFFpre
-            cudaEventSynchronize(hLGN_ready);
-            if (learnData_FF > 1){
-		    	if (getLGN_sp) memcpy((void*)(outputB4V1), (void*) LGN_sInfo, nLGN*sizeof(Float));
-		    	fLearnData_FF.write((char*) outputB4V1, preFFsize); 
-            } 
-            if (getLGN_sp) {
-                fLGN_sp.write((char*) LGN_sInfo, nLGN*sizeof(Float)); //
+            if (!minimal) { // send d_LGN_sInfo and/or lVarFFpre
+                cudaEventSynchronize(hLGN_ready);
+                if (learnData_FF > 1){
+		        	if (getLGN_sp) memcpy((void*)(outputB4V1), (void*) LGN_sInfo, nLGN*sizeof(Float));
+		        	fLearnData_FF.write((char*) outputB4V1, preFFsize); 
+                } 
+                if (getLGN_sp) {
+                    fLGN_sp.write((char*) LGN_sInfo, nLGN*sizeof(Float)); //
+                }
             }
         }
 
@@ -6692,29 +6772,29 @@ int main(int argc, char** argv) {
 		//}
         assert(block_offset == nblock);
         assert(p_total + p_offset == (2*matSize + gap_matSize));
-        // send depC, v and gFF to host
-		if (iModel == 0) {
-        	#ifdef CHECK
-        		checkCudaErrors(cudaMemcpyAsync(depC, d_depC, sizeof(Float)*nV1*(2+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream));
-        	#else
-        		cudaMemcpyAsync(depC, d_depC, sizeof(Float)*nV1*(2+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream);
-        	#endif
-		}
-		if (iModel == 1) {
-        	#ifdef CHECK
-        		checkCudaErrors(cudaMemcpyAsync(depC, d_depC, sizeof(Float)*nV1*(3+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream));
-        	#else
-        		cudaMemcpyAsync(depC, d_depC, sizeof(Float)*nV1*(3+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream);
-        	#endif
-		}
-		cudaEventRecord(hTracesReady, mainStream);
-        #ifdef SYNC
-            checkCudaErrors(cudaDeviceSynchronize());
-        #endif
 
-		chunkSize = maxChunkSize;
+        if (it >= warm_up_nt) { // send depC, v, (w) and gFF to host
+		    if (iModel == 0) {
+            	#ifdef CHECK
+            		checkCudaErrors(cudaMemcpyAsync(depC, d_depC, sizeof(Float)*nV1*(2+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream));
+            	#else
+            		cudaMemcpyAsync(depC, d_depC, sizeof(Float)*nV1*(2+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream);
+            	#endif
+		    }
+		    if (iModel == 1) {
+            	#ifdef CHECK
+            		checkCudaErrors(cudaMemcpyAsync(depC, d_depC, sizeof(Float)*nV1*(3+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream));
+            	#else
+            		cudaMemcpyAsync(depC, d_depC, sizeof(Float)*nV1*(3+ngTypeFF*(1+hWrite)), cudaMemcpyDeviceToHost, mainStream);
+            	#endif
+		    }
+		    cudaEventRecord(hTracesReady, mainStream);
+            #ifdef SYNC
+                checkCudaErrors(cudaDeviceSynchronize());
+            #endif
+        }
+
 		cudaEventSynchronize(h_spReady);
-
         Size nsp;
         if (print_log) {
             nsp = 0;
@@ -6736,6 +6816,7 @@ int main(int argc, char** argv) {
             else cout << "no near-neighbor spiking events in the time step\n";
         }
 
+		chunkSize = maxChunkSize;
         if (nFar) { // recal_G_vec
         	farSpiked = fill_fSpikeTrain(fSpikeTrain,  spikeTrain + nV1*currentTimeSlot, fCurrenSlot, vecID, nVec, nV1);
 			if (farSpiked) {
@@ -6766,18 +6847,20 @@ int main(int argc, char** argv) {
 		    			cudaStreamWaitEvent(stream[i], gReady[i]);
 		    		} // otherwise automatically queued in stream
 		    		sum_G<<<chunkSize, blockSize, 0, stream[i]>>> (d_nVec + block_offset*blockSize, d_gEt[i], d_gE[i], d_gIt[i], d_gI[i], d_hEt[i], d_hE[i], d_hIt[i], d_hI[i], ngTypeE, ngTypeI, it);
-            	    #ifdef CHECK
-            	        if (hWrite) checkCudaErrors(cudaMemcpyAsync(gE[i], d_gE[i], ghChunkSize, cudaMemcpyDeviceToHost, stream[i])); // size in chunk
-            	        else checkCudaErrors(cudaMemcpyAsync(gE[i], d_gE[i], gChunkSize, cudaMemcpyDeviceToHost, stream[i])); // size in chunk
-            	    #else
-            	        if (hWrite) cudaMemcpyAsync(gE[i], d_gE[i], ghChunkSize, cudaMemcpyDeviceToHost, stream[i]); // size in chunk
-            	        else cudaMemcpyAsync(gE[i], d_gE[i], gChunkSize, cudaMemcpyDeviceToHost, stream[i]); // size in chunk
-            	    #endif
-					//cout << "cudaMemcpyAsync gE[" << i << "]\n";
+                    if (it >= warm_up_nt) { // transfer recurrent conductance to host for write to file
+            	        #ifdef CHECK
+            	            if (hWrite) checkCudaErrors(cudaMemcpyAsync(gE[i], d_gE[i], ghChunkSize, cudaMemcpyDeviceToHost, stream[i])); // size in chunk
+            	            else checkCudaErrors(cudaMemcpyAsync(gE[i], d_gE[i], gChunkSize, cudaMemcpyDeviceToHost, stream[i])); // size in chunk
+            	        #else
+            	            if (hWrite) cudaMemcpyAsync(gE[i], d_gE[i], ghChunkSize, cudaMemcpyDeviceToHost, stream[i]); // size in chunk
+            	            else cudaMemcpyAsync(gE[i], d_gE[i], gChunkSize, cudaMemcpyDeviceToHost, stream[i]); // size in chunk
+            	        #endif
+					    //cout << "cudaMemcpyAsync gE[" << i << "]\n";
+		    		    cudaEventRecord(gReady[i], stream[i]); 
+                    }
 		    		if (i < nChunk-1) {
-		    			block_offset += chunkSize;
+		    		    block_offset += chunkSize;
 		    		}
-		    		cudaEventRecord(gReady[i], stream[i]);
 		    	}
 			} else {
     			for (PosInt i=0; i<nV1; i++) {
@@ -6789,7 +6872,7 @@ int main(int argc, char** argv) {
 				}
 			}
         }
-		if (!farSpiked) { // still need to write g, h to file
+		if (!farSpiked && it >= warm_up_nt) { // still need to write g, h to file
             if (print_log) {
                 cout << "no spikes from distant neighbor or no distant neighbor exists\n";
             }
@@ -6811,12 +6894,10 @@ int main(int argc, char** argv) {
             for (int i=0;i<nSTA_sample; i++) {
                 float sp = spikeTrain[currentTimeSlot*nV1 + STA_id[i]];
                 if (sp >= 1) {
-                //if (sp >= 1 && STA_nsp[i] == 0) {
                     STA_nsp[i] += static_cast<Size>(sp);
                     int k = old_STA_frameHead;
                     int iprev = 0;
                     for (int j=0;j<STA_nt;j++) {
-                    //for (int j=0;j<1;j++) {
                         for (int ipixel=0;ipixel<STA_frameSize;ipixel++) {
                             STA[i*STA_size + j*STA_frameSize + ipixel] += static_cast<Size>(sp)*STA_frame[k*STA_frameSize + ipixel];
                         }
@@ -6835,6 +6916,7 @@ int main(int argc, char** argv) {
 
 		if (InhGap) {
             if (nGapFar) {
+		        chunkSize = maxChunkSize;
             	fill_fGapTrain(fGapTrain,  spikeTrain + nV1*currentTimeSlot, fGapCurrenSlot, gapVecID, nGapVec, mI);
 		    	block_offset = 0;
 		        for (PosInt i = 0; i < nChunk; i++) {
@@ -6855,16 +6937,18 @@ int main(int argc, char** argv) {
 		    		// wait for the corresponding chunk to finish recal_G_mat before sum_G 
 		        	cudaStreamWaitEvent(gapStream[i], gapReady[i], 0);
 		        	sum_Gap<<<chunkSize, nI, 0, gapStream[i]>>> (d_nGapVec + block_offset*nI, d_gapt[i], d_gap[i]);
-		        	// 							  // char*
-                    #ifdef CHECK
-                        checkCudaErrors(cudaMemcpyAsync(gap[i], d_gap[i], gapChunkSize, cudaMemcpyDeviceToHost, gapStream[i])); // size in chunk
-                    #else
-                        cudaMemcpyAsync(gap[i], d_gap[i], gapChunkSize, cudaMemcpyDeviceToHost, gapStream[i]); // size in chunk
-                    #endif
+		        	// 							  
+                    if (it >= warm_up_nt) { // transfer gap to host for write to file
+                        #ifdef CHECK
+                            checkCudaErrors(cudaMemcpyAsync(gap[i], d_gap[i], gapChunkSize, cudaMemcpyDeviceToHost, gapStream[i])); // size in chunk
+                        #else
+                            cudaMemcpyAsync(gap[i], d_gap[i], gapChunkSize, cudaMemcpyDeviceToHost, gapStream[i]); // size in chunk
+                        #endif
+		        	    cudaEventRecord(gapReady[i], gapStream[i]);
+                    }
 		        	if (i < nChunk-1) {
-		        		block_offset += chunkSize;
+		        	    block_offset += chunkSize;
 		        	}
-		        	cudaEventRecord(gapReady[i], gapStream[i]);
 		        }
 		    } else {
 		        for (PosInt i = 0; i < matConcurrency; i++) { // at least wait for recal_G_mat finishes
@@ -6882,206 +6966,208 @@ int main(int argc, char** argv) {
 		    cudaStreamWaitEvent(mainStream, gReady[i]);
 		    cudaStreamWaitEvent(mainStream, gapReady[i]);
         }
-        if (!minimal) { // learnData_FF post vAvgEx2,I (fr)
-            if (learnData_FF > 1 || (store_dsLGN && (it+1)%sampleInterval_LGN_V1 == 0) || (takeSnapShot && learning)) {
-                #ifdef CHECK
-		            checkCudaErrors(cudaMemcpyAsync(lVarFFpost+learnVarFFsize0, learnVar+learnVarFFsize0, learnVarFFsize1*sizeof(Float), cudaMemcpyDeviceToHost, mainStream));
-                #else
-		            cudaMemcpyAsync(lVarFFpost+learnVarFFsize0, learnVar+learnVarFFsize0, learnVarFFsize1*sizeof(Float), cudaMemcpyDeviceToHost, mainStream);
-                #endif
-		        cudaEventRecord(hLearnData_FF_ready, mainStream); // overides the one before
-                #ifdef SYNC
-                    checkCudaErrors(cudaDeviceSynchronize());
-                #endif
-            } 
-
-            if (framePhyV1output || frameVisV1output || frameVisLGNoutput) { // framed output
-		        if (it%ot == 0) { // re-initialize
+        if (it >= warm_up_nt) {
+            if (!minimal) { // learnData_FF post vAvgEx2,I (fr)
+                if (learnData_FF > 1 || (store_dsLGN && (it-warm_up_nt+1)%sampleInterval_LGN_V1 == 0) || (takeSnapShot && learning)) {
                     #ifdef CHECK
-		        	    checkCudaErrors(cudaMemsetAsync(d_outputFrame, 0, framesSize, ostream[0]));
+		                checkCudaErrors(cudaMemcpyAsync(lVarFFpost+learnVarFFsize0, learnVar+learnVarFFsize0, learnVarFFsize1*sizeof(Float), cudaMemcpyDeviceToHost, mainStream));
                     #else
-		        	    cudaMemsetAsync(d_outputFrame, 0, framesSize, ostream[0]);
+		                cudaMemcpyAsync(lVarFFpost+learnVarFFsize0, learnVar+learnVarFFsize0, learnVarFFsize1*sizeof(Float), cudaMemcpyDeviceToHost, mainStream);
                     #endif
-                    //cout << it << "%" << ot << " = " << it%ot << " reset phyV1\n";
-		            cudaEventRecord(frameReady, ostream[0]);
-		            if (frameVisV1output) {
-		                cudaStreamWaitEvent(ostream[1], frameReady, 0);
-                    }
+		            cudaEventRecord(hLearnData_FF_ready, mainStream); // overides the one before
+                    #ifdef SYNC
+                        checkCudaErrors(cudaDeviceSynchronize());
+                    #endif
+                } 
+
+                if (framePhyV1output || frameVisV1output || frameVisLGNoutput) { // framed output
+		            if ((it-warm_up_nt)%ot == 0) { // re-initialize
+                        #ifdef CHECK
+		            	    checkCudaErrors(cudaMemsetAsync(d_outputFrame, 0, framesSize, ostream[0]));
+                        #else
+		            	    cudaMemsetAsync(d_outputFrame, 0, framesSize, ostream[0]);
+                        #endif
+                        //cout << it << "%" << ot << " = " << it%ot << " reset phyV1\n";
+		                cudaEventRecord(frameReady, ostream[0]);
+		                if (frameVisV1output) {
+		                    cudaStreamWaitEvent(ostream[1], frameReady, 0);
+                        }
+		                if (frameVisLGNoutput) {
+		                    cudaStreamWaitEvent(ostream[2], frameReady, 0);
+                        }
+		            }
+                    if (spiked) {
+                        bool is_spike = true;
+                        if (framePhyV1output) {
+		                    cudaStreamWaitEvent(ostream[0], d_spReady, 0);
+		                    pixelizeOutput<<<(nPixel_phyV1+MAX_BLOCKSIZE-1)/MAX_BLOCKSIZE, MAX_BLOCKSIZE, 0, ostream[0]>>>(d_spikeTrain+currentTimeSlot*nV1, d_V1SpPhyFrame, d_V1_phyFramePosId, d_nV1perPhyPixel, maxV1perPixel, 0, nPixel_phyV1, nPixel_phyV1, nV1, odt, is_spike);
+                            #ifdef CHECK
+		                        getLastCudaError("pixelizeOutput phyV1 failed");
+                            #endif
+                        }
+                        #ifdef SYNC
+                            checkCudaErrors(cudaDeviceSynchronize());
+                        #endif
+
+		                if (frameVisV1output) {
+		                    cudaStreamWaitEvent(ostream[1], d_spReady, 0);
+		            	    pixelizeOutput<<<(nPixel_visV1+MAX_BLOCKSIZE-1)/MAX_BLOCKSIZE, MAX_BLOCKSIZE, 0, ostream[1]>>>(d_spikeTrain+currentTimeSlot*nV1, d_V1SpVisFrame, d_V1_visFramePosId, d_nV1perVisPixel, maxV1perPixel_I, maxV1perPixel_C, nPixel_visV1/2, nPixel_visV1, nV1, odt, is_spike);
+                            #ifdef CHECK
+		            	        getLastCudaError("pixelizeOutput visV1 failed");
+                            #endif
+                        }
+                        #ifdef SYNC
+                            checkCudaErrors(cudaDeviceSynchronize());
+                        #endif
+		            }
+
 		            if (frameVisLGNoutput) {
-		                cudaStreamWaitEvent(ostream[2], frameReady, 0);
-                    }
-		        }
-                if (spiked) {
-                    bool is_spike = true;
-                    if (framePhyV1output) {
-		                cudaStreamWaitEvent(ostream[0], d_spReady, 0);
-		                pixelizeOutput<<<(nPixel_phyV1+MAX_BLOCKSIZE-1)/MAX_BLOCKSIZE, MAX_BLOCKSIZE, 0, ostream[0]>>>(d_spikeTrain+currentTimeSlot*nV1, d_V1SpPhyFrame, d_V1_phyFramePosId, d_nV1perPhyPixel, maxV1perPixel, 0, nPixel_phyV1, nPixel_phyV1, nV1, odt, is_spike);
+                        bool is_spike = false;
+		                cudaStreamWaitEvent(ostream[2], d_spReady, 0);
+		            	pixelizeOutput<<<(nPixel_visLGN+MAX_BLOCKSIZE-1)/MAX_BLOCKSIZE, MAX_BLOCKSIZE, 0, ostream[2]>>>(d_LGN_fr, d_LGN_spVisFrame, d_LGN_visFramePosId, d_nLGNperPixel, maxLGNperPixel_I, maxLGNperPixel_C, nPixel_visLGN/2, nPixel_visLGN, nLGN, odt, is_spike);
                         #ifdef CHECK
-		                    getLastCudaError("pixelizeOutput phyV1 failed");
+		            	    getLastCudaError("pixelizeOutput visLGN failed");
                         #endif
-                    }
+		            }
+
+		            if ((it-warm_up_nt+1)%ot == 0 && !minimal) { // finished sum and output
+                        #ifdef CHECK
+		            	    checkCudaErrors(cudaMemcpy(outputFrame, d_outputFrame, framesSize, cudaMemcpyDeviceToHost));
+                        #else
+		            	    cudaMemcpy(outputFrame, d_outputFrame, framesSize, cudaMemcpyDeviceToHost);
+                        #endif
+		            	fOutputFrame.write((char*)outputFrame, framesSize);
+		            }
                     #ifdef SYNC
                         checkCudaErrors(cudaDeviceSynchronize());
                     #endif
-
-		            if (frameVisV1output) {
-		                cudaStreamWaitEvent(ostream[1], d_spReady, 0);
-		        	    pixelizeOutput<<<(nPixel_visV1+MAX_BLOCKSIZE-1)/MAX_BLOCKSIZE, MAX_BLOCKSIZE, 0, ostream[1]>>>(d_spikeTrain+currentTimeSlot*nV1, d_V1SpVisFrame, d_V1_visFramePosId, d_nV1perVisPixel, maxV1perPixel_I, maxV1perPixel_C, nPixel_visV1/2, nPixel_visV1, nV1, odt, is_spike);
-                        #ifdef CHECK
-		        	        getLastCudaError("pixelizeOutput visV1 failed");
-                        #endif
-                    }
-                    #ifdef SYNC
-                        checkCudaErrors(cudaDeviceSynchronize());
-                    #endif
-		        }
-
-		        if (frameVisLGNoutput) {
-                    bool is_spike = false;
-		            cudaStreamWaitEvent(ostream[2], d_spReady, 0);
-		        	pixelizeOutput<<<(nPixel_visLGN+MAX_BLOCKSIZE-1)/MAX_BLOCKSIZE, MAX_BLOCKSIZE, 0, ostream[2]>>>(d_LGN_fr, d_LGN_spVisFrame, d_LGN_visFramePosId, d_nLGNperPixel, maxLGNperPixel_I, maxLGNperPixel_C, nPixel_visLGN/2, nPixel_visLGN, nLGN, odt, is_spike);
-                    #ifdef CHECK
-		        	    getLastCudaError("pixelizeOutput visLGN failed");
-                    #endif
-		        }
-
-		        if ((it+1)%ot == 0 && !minimal) { // finished sum and output
-                    #ifdef CHECK
-		        	    checkCudaErrors(cudaMemcpy(outputFrame, d_outputFrame, framesSize, cudaMemcpyDeviceToHost));
-                    #else
-		        	    cudaMemcpy(outputFrame, d_outputFrame, framesSize, cudaMemcpyDeviceToHost);
-                    #endif
-		        	fOutputFrame.write((char*)outputFrame, framesSize);
-		        }
-                #ifdef SYNC
-                    checkCudaErrors(cudaDeviceSynchronize());
-                #endif
+                }
             }
+            if (!print_log) {
+		    	printf("\r%.1f%%", 100*static_cast<float>(it-warm_up_nt+1)/nt);
+            }
+		    if (takeSnapShot && !minimal) {
+		    	timeStamp = time(NULL);
+		    	snapShot_fn = "snapShot_"+ to_string(timeStamp) + output_suffix;
+		    	fSnapshot.open(snapShot_fn, fstream::out | fstream::binary);
+		    	if (!fSnapshot) {
+		    		cout << "cannot create " << snapShot_fn << " to store the snapshotInterval\n";
+		    		return EXIT_FAILURE;
+		    	} else {
+		    		PosInt qt = it0 + it - warm_up_nt + 1;
+		    		fSnapshot.write((char*)&qt, sizeof(PosInt));
+		    		fSnapshot.write((char*)&nt0, sizeof(PosInt));
+		    		fSnapshot.write((char*)&frameCycle, sizeof(PosInt));
+		    		fSnapshot.write((char*)&iFrameHead, sizeof(PosInt));
+		    		fSnapshot.write((char*)&oldFrameHead, sizeof(PosInt));
+		    		fSnapshot.write((char*)&currentFrame, sizeof(PosInt));
+		    		fSnapshot.write((char*)&iFramePhaseHead, sizeof(PosInt));
+		    		fSnapshot.write((char*)&iFramePhaseTail, sizeof(PosInt));
+		    		fSnapshot.write((char*)&mFramePhaseHead, sizeof(PosInt));
+		    		fSnapshot.write((char*)&mFramePhaseTail, sizeof(PosInt));
+		    		fSnapshot.write((char*)&iStatus, sizeof(PosInt));
+		    		PosInt _currentTimeSlot = (currentTimeSlot + 1)%trainDepth;
+		    		fSnapshot.write((char*)& _currentTimeSlot, sizeof(PosInt));
+		    		//cout << "it0 = " << qt << "\n";
+		    		//cout << "frameCycle = " << frameCycle << "\n";
+		    		//cout << "iFrameHead = " << iFrameHead << "\n";
+		    		//cout << "oldFrameHead = " << oldFrameHead << "\n";
+		    		//cout << "currentFrame = " << currentFrame << "\n";
+		    		//cout << "iFramePhaseHead = " << iFramePhaseHead << "\n";
+		    		//cout << "iFramePhaseTail = " << iFramePhaseTail << "\n";
+		    		//cout << "mFramePhaseHead = " << mFramePhaseHead << "\n";
+		    		//cout << "mFramePhaseTail = " << mFramePhaseTail << "\n";
+		    		//cout << "currentTimeSlot = " << _currentTimeSlot << "\n";
+		    		//cout << "iStatus = " << iStatus << "\n";
+
+		    		fSnapshot.write((char*)&iModel, sizeof(int));
+		    		fSnapshot.write((char*)&learning, sizeof(int));
+
+		    		fSnapshot.write((char*)&nV1, sizeof(Size));
+		    		fSnapshot.write((char*)&nLGN, sizeof(Size));
+		    		fSnapshot.write((char*)&ngTypeFF, sizeof(Size));
+		    		fSnapshot.write((char*)&ngTypeE, sizeof(Size));
+		    		fSnapshot.write((char*)&ngTypeI, sizeof(Size));
+		    		fSnapshot.write((char*)&nType, sizeof(Size));
+		    		fSnapshot.write((char*)&trainDepth, sizeof(Size));
+
+		    		// write vars
+		    		char* _sav = new char[deviceMemorySize];
+		    		// LGN
+		    		Float* r_leftTimeRate = (Float*) _sav;
+		    		Float* r_lastNegLogRand = r_leftTimeRate + nLGN;
+		    		curandStateMRG32k3a* r_randState = (curandStateMRG32k3a*) (r_lastNegLogRand + nLGN);
+		    		checkCudaErrors(cudaMemcpy(r_leftTimeRate, leftTimeRate, LGN_convolSize, cudaMemcpyDeviceToHost));
+		    		fSnapshot.write((char*)r_leftTimeRate, LGN_convolSize);
+		    		if (learning) {
+		                cudaEventSynchronize(hLearnData_FF_ready);
+		    			fSnapshot.write((char*)LGN_V1_s, sLGN_size);
+		    			fSnapshot.write((char*)lVarFFpost, LGN_learnPostSize);
+                        // hLGN_ready synced
+		    			fSnapshot.write((char*) (outputB4V1 + nLGN), LGN_learnPreSize);
+		    		}
+		    		// V1
+		    		curandStateMRG32k3a* r_rGenCond;
+		    		r_rGenCond = r_randState + nLGN;
+		    		checkCudaErrors(cudaMemcpy(r_rGenCond, rGenCond, nV1*sizeof(curandStateMRG32k3a), cudaMemcpyDeviceToHost));
+		    		fSnapshot.write((char*)r_rGenCond, nV1*sizeof(curandStateMRG32k3a));
+
+		    		curandStateMRG32k3a* r_rNoisy =  r_rGenCond + nV1;
+		    		checkCudaErrors(cudaMemcpy(r_rNoisy, rNoisy, nV1*sizeof(curandStateMRG32k3a), cudaMemcpyDeviceToHost));
+		    		fSnapshot.write((char*)r_rNoisy, nV1*sizeof(curandStateMRG32k3a));
+
+		    		Float* r_tBack =  (Float*) (r_rNoisy + nV1);
+		    		checkCudaErrors(cudaMemcpy(r_tBack, tBack, nV1*sizeof(Float), cudaMemcpyDeviceToHost));
+		    		fSnapshot.write((char*)r_tBack, nV1*sizeof(Float));
+
+		    		delete []_sav;
+		    		// already pinned
+		    		checkCudaErrors(cudaMemcpy(spikeTrain, d_spikeTrain, trainSize*sizeof(Float), cudaMemcpyDeviceToHost));
+		    		fSnapshot.write((char*)spikeTrain, trainSize*sizeof(Float));
+		    		// makesure ready
+		    	    cudaEventSynchronize(hTracesReady);
+		    		if (nFar && farSpiked) { 
+                	    for (PosInt i=0; i<nChunk; i++) {
+	            	        cudaEventSynchronize(gReady[i]);
+	            	        cudaEventSynchronize(gapReady[i]);
+                	    }
+                	} else {
+	            	    cudaEventSynchronize(gReady[0]);
+	            	    cudaEventSynchronize(gapReady[0]);
+                	}
+
+		    		for (PosInt i = 0; i<trainDepth; i++) {
+		    			for (PosInt j=0; j<nV1; j++) {
+		    				assert(!std::isnan(spikeTrain[i*nV1 + j]));
+		    				if (spikeTrain[i*nV1 + j] < 1) {
+		    					PosInt itype;
+		    					for (PosInt q=0; q<nType; q++) {
+		    						if (j % blockSize < typeAccCount[q]) {
+		    							itype = q;
+		    							break;
+		    						}
+		    					}
+		    					assert(spikeTrain[i*nV1 + j] < vThres[itype]);
+		    				}
+		    			}
+		    		}
+		    		checkCudaErrors(cudaMemcpy(depC, d_depC, totalSize, cudaMemcpyDeviceToHost));
+		    		fSnapshot.write((char*)depC, totalSize);
+		    		for (PosInt j=0; j<totalSize/sizeof(Float); j++) {
+		    			assert(!std::isnan(depC[j]));
+		    		}
+		    		fSnapshot.close();
+		    		// remove old snapshotInterval
+		    		if (oldTimeStamp != 0 && delPrevSnapshot) {
+		    			string oldSnapshot_Fn = "snapShot_"+ to_string(oldTimeStamp) + output_suffix;
+		    			if (remove(oldSnapshot_Fn.c_str()) != 0) cout << "failed to remove preivous snapshot\n";
+		    			else cout << "... removed previous snapshot\n";
+		    		}
+		    		oldTimeStamp = timeStamp;
+		    		cout << "saved a snapshot in " << snapShot_fn << "\n";
+		    	}
+		    }
         }
-        if (!print_log) {
-			printf("\r%.1f%%", 100*static_cast<float>(it+1)/nt);
-        }
-		if (takeSnapShot && !minimal) {
-			timeStamp = time(NULL);
-			snapShot_fn = "snapShot_"+ to_string(timeStamp) + output_suffix;
-			fSnapshot.open(snapShot_fn, fstream::out | fstream::binary);
-			if (!fSnapshot) {
-				cout << "cannot create " << snapShot_fn << " to store the snapshotInterval\n";
-				return EXIT_FAILURE;
-			} else {
-				PosInt qt = it0 + it+1;
-				fSnapshot.write((char*)&qt, sizeof(PosInt));
-				fSnapshot.write((char*)&nt0, sizeof(PosInt));
-				fSnapshot.write((char*)&frameCycle, sizeof(PosInt));
-				fSnapshot.write((char*)&iFrameHead, sizeof(PosInt));
-				fSnapshot.write((char*)&oldFrameHead, sizeof(PosInt));
-				fSnapshot.write((char*)&currentFrame, sizeof(PosInt));
-				fSnapshot.write((char*)&iFramePhaseHead, sizeof(PosInt));
-				fSnapshot.write((char*)&iFramePhaseTail, sizeof(PosInt));
-				fSnapshot.write((char*)&mFramePhaseHead, sizeof(PosInt));
-				fSnapshot.write((char*)&mFramePhaseTail, sizeof(PosInt));
-				fSnapshot.write((char*)&iStatus, sizeof(PosInt));
-				PosInt _currentTimeSlot = (currentTimeSlot + 1)%trainDepth;
-				fSnapshot.write((char*)& _currentTimeSlot, sizeof(PosInt));
-				//cout << "it0 = " << qt << "\n";
-				//cout << "frameCycle = " << frameCycle << "\n";
-				//cout << "iFrameHead = " << iFrameHead << "\n";
-				//cout << "oldFrameHead = " << oldFrameHead << "\n";
-				//cout << "currentFrame = " << currentFrame << "\n";
-				//cout << "iFramePhaseHead = " << iFramePhaseHead << "\n";
-				//cout << "iFramePhaseTail = " << iFramePhaseTail << "\n";
-				//cout << "mFramePhaseHead = " << mFramePhaseHead << "\n";
-				//cout << "mFramePhaseTail = " << mFramePhaseTail << "\n";
-				//cout << "currentTimeSlot = " << _currentTimeSlot << "\n";
-				//cout << "iStatus = " << iStatus << "\n";
-
-				fSnapshot.write((char*)&iModel, sizeof(int));
-				fSnapshot.write((char*)&learning, sizeof(int));
-
-				fSnapshot.write((char*)&nV1, sizeof(Size));
-				fSnapshot.write((char*)&nLGN, sizeof(Size));
-				fSnapshot.write((char*)&ngTypeFF, sizeof(Size));
-				fSnapshot.write((char*)&ngTypeE, sizeof(Size));
-				fSnapshot.write((char*)&ngTypeI, sizeof(Size));
-				fSnapshot.write((char*)&nType, sizeof(Size));
-				fSnapshot.write((char*)&trainDepth, sizeof(Size));
-
-				// write vars
-				char* _sav = new char[deviceMemorySize];
-				// LGN
-				Float* r_leftTimeRate = (Float*) _sav;
-				Float* r_lastNegLogRand = r_leftTimeRate + nLGN;
-				curandStateMRG32k3a* r_randState = (curandStateMRG32k3a*) (r_lastNegLogRand + nLGN);
-				checkCudaErrors(cudaMemcpy(r_leftTimeRate, leftTimeRate, LGN_convolSize, cudaMemcpyDeviceToHost));
-				fSnapshot.write((char*)r_leftTimeRate, LGN_convolSize);
-				if (learning) {
-                    // hLearnData_FF_ready synced
-					fSnapshot.write((char*)LGN_V1_s, sLGN_size);
-					fSnapshot.write((char*)lVarFFpost, LGN_learnPostSize);
-                    // h_LGNready synced
-					fSnapshot.write((char*) (outputB4V1 + nLGN), LGN_learnPreSize);
-				}
-				// V1
-				curandStateMRG32k3a* r_rGenCond;
-				r_rGenCond = r_randState + nLGN;
-				checkCudaErrors(cudaMemcpy(r_rGenCond, rGenCond, nV1*sizeof(curandStateMRG32k3a), cudaMemcpyDeviceToHost));
-				fSnapshot.write((char*)r_rGenCond, nV1*sizeof(curandStateMRG32k3a));
-
-				curandStateMRG32k3a* r_rNoisy =  r_rGenCond + nV1;
-				checkCudaErrors(cudaMemcpy(r_rNoisy, rNoisy, nV1*sizeof(curandStateMRG32k3a), cudaMemcpyDeviceToHost));
-				fSnapshot.write((char*)r_rNoisy, nV1*sizeof(curandStateMRG32k3a));
-
-				Float* r_tBack =  (Float*) (r_rNoisy + nV1);
-				checkCudaErrors(cudaMemcpy(r_tBack, tBack, nV1*sizeof(Float), cudaMemcpyDeviceToHost));
-				fSnapshot.write((char*)r_tBack, nV1*sizeof(Float));
-
-				delete []_sav;
-				// already pinned
-				checkCudaErrors(cudaMemcpy(spikeTrain, d_spikeTrain, trainSize*sizeof(Float), cudaMemcpyDeviceToHost));
-				fSnapshot.write((char*)spikeTrain, trainSize*sizeof(Float));
-				// makesure ready
-			    cudaEventSynchronize(hTracesReady);
-				if (nFar && farSpiked) { 
-            	    for (PosInt i=0; i<nChunk; i++) {
-	        	        cudaEventSynchronize(gReady[i]);
-	        	        cudaEventSynchronize(gapReady[i]);
-            	    }
-            	} else {
-	        	    cudaEventSynchronize(gReady[0]);
-	        	    cudaEventSynchronize(gapReady[0]);
-            	}
-
-				for (PosInt i = 0; i<trainDepth; i++) {
-					for (PosInt j=0; j<nV1; j++) {
-						assert(!std::isnan(spikeTrain[i*nV1 + j]));
-						if (spikeTrain[i*nV1 + j] < 1) {
-							PosInt itype;
-							for (PosInt q=0; q<nType; q++) {
-								if (j % blockSize < typeAccCount[q]) {
-									itype = q;
-									break;
-								}
-							}
-							assert(spikeTrain[i*nV1 + j] < vThres[itype]);
-						}
-					}
-				}
-				checkCudaErrors(cudaMemcpy(depC, d_depC, totalSize, cudaMemcpyDeviceToHost));
-				fSnapshot.write((char*)depC, totalSize);
-				for (PosInt j=0; j<totalSize/sizeof(Float); j++) {
-					assert(!std::isnan(depC[j]));
-				}
-				fSnapshot.close();
-				// remove old snapshotInterval
-				if (oldTimeStamp != 0 && delPrevSnapshot) {
-					string oldSnapshot_Fn = "snapShot_"+ to_string(oldTimeStamp) + output_suffix;
-					if (remove(oldSnapshot_Fn.c_str()) != 0) cout << "failed to remove preivous snapshot\n";
-					else cout << "... removed previous snapshot\n";
-				}
-				oldTimeStamp = timeStamp;
-				cout << "saved a snapshot in " << snapShot_fn << "\n";
-			}
-		}
 	}
     if (!minimal) {
         if (rawData) {
@@ -7202,6 +7288,8 @@ int main(int argc, char** argv) {
 	    	fPatchV1_cfg.write((char*) &(gI0[0]), nType*2*sizeof(Float));	
 	    	fPatchV1_cfg.write((char*) &(synFail[0]), nType*nType*sizeof(Float));	
 	    	fPatchV1_cfg.write((char*) &(synFailFF[0]), nType*sizeof(Float));	
+	    	fPatchV1_cfg.write((char*) &warm_up_nt, sizeof(Size));	
+	    	fPatchV1_cfg.write((char*) &(noisyDep0[0]), nType*sizeof(Float));	
 	    }
     } else {
         // h_spReady synced
@@ -7212,7 +7300,7 @@ int main(int argc, char** argv) {
 				sample_spikeCount[j] += flooring(sInfo);
 			}
 		}
-        // h_LGNready synced
+        // hLGN_ready synced
 		for (PosInt j = 0.; j < nLGN; j++) {
 			//Float sInfo = LGN_sInfo[j];
 			//LGN_spike_time[j] = flooring(sInfo);	

@@ -1,24 +1,38 @@
-# connection strength heatmaps # better to choose from testLearnFF
 import numpy as np
 import numpy.ma as ma
 import matplotlib.pyplot as plt
 import matplotlib.colors as clr
+from matplotlib.patches import Rectangle
+import matplotlib as mpl
 import contourpy as ctr
 from scipy.optimize import curve_fit
 import scipy.stats as stat
 import scipy.signal as signal
 import sys
+import pickle
 import warnings
 import os 
+from line_profiler import profile 
+
 from img_proc import create_gif
+mpl.rcParams.update({'font.family': 'CMU Sans Serif', 'axes.unicode_minus' : False})
+mpl.rcParams.update({'mathtext.fontset': 'cm', 'mathtext.default':'regular'})
 np.seterr(over = 'raise', under = 'ignore')
     
+#@profile
 def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr, fig_fdr, inputFn, LGN_switch, mix, st, examSingle, use_local_max, stage, ns, examLTD, find_peak, retino_cross, retinotopy):
     save_svg = True
+    fitGauss = False
+    calcOS = True
+    plot_tOS = True
     get_NeighborOfNeighbor = False
+    draw_hlf_contour = False # True
+    draw_contour = False # True
     use_local_min = False
+    examSingleTemporal = False
     step0 = 0
     nt_ = 0
+    icolor = {19: '#00a896', 113: '#147df5', 312: '#ff6d1f'}
     #nt_ = 61500
     #nt_ = 123000
     avgOnly = False # controls if produce full RF radius, RF center data
@@ -30,7 +44,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
     res_fdr = res_fdr+'/'
     setup_fdr = setup_fdr+'/'
     data_fdr = data_fdr+'/'
-    np.random.seed(seed)
+    genRand = np.random.default_rng(seed)
     if not isuffix0 == '':
         isuffix0 = '-' + isuffix0
     
@@ -39,17 +53,19 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
     
     if not osuffix == '':
         osuffix = '-'+osuffix
-    
+    print(osuffix) 
     #### HERE ####
     top_thres = 0.8
     os_out = 0.5
-    nstep = 1000
+    #nstep = 2000
+    nstep = 100
     nbins = 20
-    nit0 = 10
+    #nit0 = 3
+    nit0 = 11
     
     #V1_pick = np.array([203,752,365,360,715,467,743]); # specify the IDs of V1 neurons to be sampled. If set, ns will be ignored.
     #V1_pick = np.hstack((np.array([412, 473, 414, 456, 500, 40, 189, 93, 915], dtype = 'u4'), np.array([0,1,2,3,4], dtype = 'u4')))
-    V1_pick = np.hstack((np.array([412, 473, 414, 0, 1, 2], dtype = 'u4')))
+    #V1_pick = np.hstack((np.array([412, 473, 414, 0, 1, 2], dtype = 'u4')))
     nop = 12
     ############
     
@@ -77,6 +93,8 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             ncross = np.fromfile(f, 'u4', 1)[0]
             cross_sample = np.fromfile(f, 'u4', ncross)
             cross_target = np.fromfile(f, 'u4', ncross)
+        print(f'cross_sample: {cross_sample}')
+        print(f'cross_target: {cross_target}')
 
     with open(fLGN_vpos, 'rb') as f:
         nLGN, nLGN_I = np.fromfile(f, 'u4', 2)
@@ -103,7 +121,12 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         nLearnFF_E, nLearnFF_I = np.fromfile(f, 'u4', 2)
         nLearnFF = nLearnFF_E + nLearnFF_I
         sRatio = np.array(nLearnFF_E * [sRatio[0]]  + nLearnFF_I * [sRatio[1]])
-        gmaxLGN = np.fromfile(f, 'f4', nLearnFF) * sRatio
+        gmaxLGN = np.fromfile(f, 'f4', nLearnFF) 
+        for i in range(gmaxLGN.size):
+            if gmaxLGN[i] < 0:
+               gmaxLGN[i] = -gmaxLGN[i]
+            else: 
+               gmaxLGN[i] *= sRatio[i]
         FF_InfRatio = np.fromfile(f, 'f4', 1)[0]
         nskip = (10 + nLearnFF)
         print(f'original time step = {nt}')
@@ -127,6 +150,8 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         synPerFF = np.fromfile(f, 'f4', 2)
     nE = mE*nblock
     nI = mI*nblock
+    print(nE, nI)
+    print(mE, mI)
 
     epick = np.zeros(mE * nblock, dtype = 'u4')
     ipick = np.zeros(mI * nblock, dtype = 'u4')
@@ -190,7 +215,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                 assert((LGN_V1_ID[i,:nLGN_V1[i]] < nLGN + nLGN_I).all())
     
     if 'V1_pick' not in locals():
-        V1_pick = np.random.randint(nV1, size = ns)
+        V1_pick = genRand.integers(nV1, size = ns)
     
     V1_pick = np.sort(V1_pick)
     ### TEMPORARY: test inhibitory neurons with gap junction
@@ -198,7 +223,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         V1_pick = np.unique(np.hstack((cross_sample, cross_target, V1_pick)))
     else:
         cross_sample = np.array([], dtype = int)
-    print(V1_pick)
+    print(f'V1_pick: {V1_pick}')
     ns = V1_pick.size
     nLGN_1D = int(np.round(np.sqrt(float(nLGN / 2))))
     c_offset = np.mod(nLGN_1D + 1, 2)
@@ -235,6 +260,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
     nrow = (nit + nit0 - 1)//nit0
     if nit > nt_ - step0:
         nit = nt_ - step0 
+    print(f'nit = {nit}')
     
     #LGN_vpos0 = LGN_vpos.reshape(2,nLGN_1D, 2*nLGN_1D)
     #x0 = LGN_vpos0[0, 0, 0:2*nLGN_1D:2]
@@ -257,9 +283,10 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
     print(f'nt = {nt}')
     print(f'qt = {qt}')
     fout = open(fStats, 'wb')
-    np.array([step0, nt_, nit, stage, nLGN_1D], dtype = int).tofile(fout)
+    np.array([step0, nt_, nit, stage, nV1, nLGN_1D, r.size], dtype = int).tofile(fout)
     np.array([dt]).astype('f4').tofile(fout)
     input_halfwidth.astype('f4').tofile(fout)
+    r.astype('f4').tofile(fout)
 
     with open(res_fdr + inputFn + '.cfg','rb') as f:
         nStage = np.fromfile(f, 'u4', 1)[0]
@@ -275,7 +302,11 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
     with open(f_sLGN, 'rb') as f:
         f.seek(nskip * 4, 1)
         print(f'skip {nskip*4} bytes (already read)')
-        fig = plt.figure('tOS-dist', figsize = (8,nit * 1.5), dpi = 300)
+        if plot_tOS:
+            fig = plt.figure('tOS-dist', figsize = (8, nit * 1.5), dpi = 300)
+            pfig = plt.figure('tON_OFF-balance', figsize = (3, 2.4), dpi = 90)
+            pax = pfig.add_subplot(1,1,1)
+
         fit_x = np.linspace(0, r[-1], 100)
         op_edges = np.linspace(0,360,nop)
         x_op = (op_edges[:-1] + op_edges[1:]) / 2
@@ -294,8 +325,8 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         s_Doff = np.zeros((r.size))
         rstd_on = np.zeros(nit)
         rstd_off = np.zeros(nit)
-        s_sum = np.zeros((2,nit))
-        s_std = np.zeros((2,nit))
+        s_sum = np.zeros((2,nV1,nit))
+        s_std = np.zeros((2,nV1,nit))
         n_con = np.zeros((2,nit))
         _rstd_on = np.zeros((nV1,nit))
         _rstd_off = np.zeros((nV1,nit))
@@ -347,28 +378,33 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                 f.seek(max_LGNperV1 * nV1 * np.int64(it[i-1]) * 4, 1)
             try:
                 sLGN = np.fromfile(f, 'f4', max_LGNperV1*nV1).reshape((max_LGNperV1, nV1)).T
+                print(f'{i}/{nit}')
             except:
                 raise Exception(f'Error at {i}/{nit}, tstep == {it[i-1]}, currently read {f.tell()/1024/1024:.3f}MB')
-            sLGN_grid = np.zeros((nV1,nLGN))
+            sLGN_grid = np.zeros((nV1,nLGN)) - 1
             for j in range(nV1):
                 sLGN_grid[j, LGN_V1_ID[j, :nLGN_V1[j]]] = sLGN[j, :nLGN_V1[j]]
 
             sLGN_grid = np.reshape(sLGN_grid, (nV1, nLGN_1D, nLGN_1D * 2))
             sLGN_on = sLGN_grid[:,:,0:nLGN_1D * 2:2]
             sLGN_off = sLGN_grid[:,:,1:nLGN_1D * 2:2]
+
             if i == 0:
-                picked[0,:,:,:] = sLGN_on > 0
-                picked[1,:,:,:] = sLGN_off > 0
+                picked[0,:,:,:] = sLGN_on > -1
+                picked[1,:,:,:] = sLGN_off > -1
                 nonzero_pick_on = picked[0,:,:,:].any(0)
                 nonzero_pick_off = picked[1,:,:,:].any(0)
                 nonzero_sum = np.zeros((2, nLGN_1D, nLGN_1D))
                 nonzero_sum[0,:,:] = picked[0,:,:,:].sum(0)
                 nonzero_sum[1,:,:] = picked[1,:,:,:].sum(0)
 
+            sLGN_on[sLGN_on == -1] = 0
+            sLGN_off[sLGN_off == -1] = 0
+
             for j in range(nV1):
                 if np.sum(picked[:,j,:,:]) > 0:
-                    assert(np.sum(picked[0,j,:,:]) == max_LGNperV1 // 2)
-                    assert(np.sum(picked[1,j,:,:]) == max_LGNperV1 // 2)
+                    #assert(np.sum(picked[0,j,:,:]) == max_LGNperV1 // 2)
+                    #assert(np.sum(picked[1,j,:,:]) == max_LGNperV1 // 2)
                     q_on = sLGN_on[j,:,:].flatten()
                     s_on[j,:] = q_on[picked[0,j,:,:].flatten()].flatten()
                     ron[j,:] = rLGN[picked[0,j,:,:]].flatten()
@@ -376,10 +412,11 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                     s_off[j,:] = q_off[picked[1,j,:,:].flatten()].flatten()
                     roff[j,:] = rLGN[picked[1,j,:,:]].flatten()
 
-            s_sum[0,i] = np.mean(np.sum(s_on, axis = 1))
-            s_sum[1,i] = np.mean(np.sum(s_off, axis = 1))
-            s_std[0,i] = np.mean(np.std(s_on, axis = 1))
-            s_std[1,i] = np.mean(np.std(s_off, axis = 1))
+            s_sum[0,:,i] = np.sum(s_on, axis = 1)
+            s_sum[1,:,i] = np.sum(s_off, axis = 1)
+            print(f'#unbalanced > avg. weight: {np.sum(np.abs(s_sum[0,:,i] - s_sum[1,:,i])/max_LGNperV1*2 > np.mean(s_sum[:,:,i])/max_LGNperV1*2)}: {np.mean(np.abs(s_sum[0,:,i] - s_sum[1,:,i]))/max_LGNperV1*2} ~ {np.mean(s_sum[:,:,i])/max_LGNperV1*2}')
+            s_std[0,:,i] = np.std(s_on, axis = 1)
+            s_std[1,:,i] = np.std(s_off, axis = 1)
             n_con[0,i] = np.mean(np.sum(s_on > 0, axis = 1))
             n_con[1,i] = np.mean(np.sum(s_off > 0, axis = 1))
             binEdges = np.arange(max_LGNperV1 / 2+1)
@@ -412,56 +449,57 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                 else:
                     avg_off_min = 0
 
-            Gauss, gaussian_type_on, dmin, dmax = choose_func(s_on[epick,:], ron[epick,:])
-            try:
-                p, _ = curve_fit(Gauss, ron[epick,:].flatten(), s_on[epick,:].flatten(), p0 = [nLGN_1D, dmax], bounds = ([0, dmin], [np.inf, np.inf]))
-                fitted_on = Gauss(fit_x, p[0], p[1])
-                if gaussian_type_on == 0:
-                    rstd_on[i] = p[0]
-                else:
-                    rstd_on[i] = -p[0]
-            except:
-                rstd_on[i] = 0
-                fitted_on = Gauss(fit_x, 0, dmax)
-                print(f'on gaussian fit failed at nit = {i},')
+            if fitGauss:
+                Gauss, gaussian_type_on, dmin, dmax = choose_func(s_on[epick,:], ron[epick,:])
+                try:
+                    p, _ = curve_fit(Gauss, ron[epick,:].flatten(), s_on[epick,:].flatten(), p0 = [nLGN_1D, dmax], bounds = ([0, dmin], [np.inf, np.inf]))
+                    fitted_on = Gauss(fit_x, p[0], p[1])
+                    if gaussian_type_on == 0:
+                        rstd_on[i] = p[0]
+                    else:
+                        rstd_on[i] = -p[0]
+                except:
+                    rstd_on[i] = 0
+                    fitted_on = Gauss(fit_x, 0, dmax)
+                    print(f'on gaussian fit failed at nit = {i},')
 
-            for j in range(nV1):
-                if j in epick or nLearnFF_I > 0:
-                    Gauss, gaussian_type, dmin, dmax = choose_func(s_on[j,:], ron[j,:])
-                    try:
-                        p, _ = curve_fit(Gauss, ron[j,:], s_on[j,:], p0 = [nLGN_1D, dmax], bounds = ([0, dmin], [np.inf, np.inf]))
-                        if gaussian_type == 0:
-                            _rstd_on[j,i] = p[0]
-                        else:
-                            _rstd_on[j,i] = -p[0]
-                    except:
-                        _rstd_on[j,i] = 0
+                for j in range(nV1):
+                    if j in epick or nLearnFF_I > 0:
+                        Gauss, gaussian_type, dmin, dmax = choose_func(s_on[j,:], ron[j,:])
+                        try:
+                            p, _ = curve_fit(Gauss, ron[j,:], s_on[j,:], p0 = [nLGN_1D, dmax], bounds = ([0, dmin], [np.inf, np.inf]))
+                            if gaussian_type == 0:
+                                _rstd_on[j,i] = p[0]
+                            else:
+                                _rstd_on[j,i] = -p[0]
+                        except:
+                            _rstd_on[j,i] = 0
 
-            Gauss, gaussian_type_off, dmin, dmax = choose_func(s_off[epick,:], roff[epick,:])
-            try:
-                p, _ = curve_fit(Gauss, roff[epick,:].flatten(), s_off[epick,:].flatten(), p0 = [nLGN_1D, dmax], bounds = ([0, dmin], [np.inf, np.inf]))
-                fitted_off = Gauss(fit_x, p[0], p[1])
-                if gaussian_type_off == 0:
-                    rstd_off[i] = p[0]
-                else:
-                    rstd_off[i] = -p[0]
-            except:
-                rstd_off[i] = 0
-                fitted_off = Gauss(fit_x, 0, dmax)
-                print(f'off gaussian fit failed at nit = {i},')
+                Gauss, gaussian_type_off, dmin, dmax = choose_func(s_off[epick,:], roff[epick,:])
+                try:
+                    p, _ = curve_fit(Gauss, roff[epick,:].flatten(), s_off[epick,:].flatten(), p0 = [nLGN_1D, dmax], bounds = ([0, dmin], [np.inf, np.inf]))
+                    fitted_off = Gauss(fit_x, p[0], p[1])
+                    if gaussian_type_off == 0:
+                        rstd_off[i] = p[0]
+                    else:
+                        rstd_off[i] = -p[0]
+                except:
+                    rstd_off[i] = 0
+                    fitted_off = Gauss(fit_x, 0, dmax)
+                    print(f'off gaussian fit failed at nit = {i},')
 
-            for j in range(nV1):
-                if j in epick or nLearnFF_I > 0:
-                    Gauss, gaussian_type, dmin, dmax = choose_func(s_off[j,:], roff[j,:])
-                    try:
-                        p, _ = curve_fit(Gauss, roff[j,:], s_off[j,:], p0 = [nLGN_1D, dmax], bounds = ([0, dmin], [np.inf, np.inf]))
-                        if gaussian_type == 0:
-                            _rstd_off[j,i] = p[0]
-                        else:
-                            _rstd_off[j,i] = -p[0]
-                    except:
-                        _rstd_off[j,i] = 0
-            
+                for j in range(nV1):
+                    if j in epick or nLearnFF_I > 0:
+                        Gauss, gaussian_type, dmin, dmax = choose_func(s_off[j,:], roff[j,:])
+                        try:
+                            p, _ = curve_fit(Gauss, roff[j,:], s_off[j,:], p0 = [nLGN_1D, dmax], bounds = ([0, dmin], [np.inf, np.inf]))
+                            if gaussian_type == 0:
+                                _rstd_off[j,i] = p[0]
+                            else:
+                                _rstd_off[j,i] = -p[0]
+                        except:
+                            _rstd_off[j,i] = 0
+                
             g_std_p[i] = stat.ttest_1samp(_rstd_on[epick,i] - _rstd_off[epick,i], 0).pvalue
 
             sLGN_on = np.sum(sLGN_on, axis = 0)[nonzero_pick_on]/nonzero_sum[0,:,:][nonzero_pick_on]
@@ -491,7 +529,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             ron_dist[i,:,2] = per_on[:,1]
             roff_dist[i,:,2] = per_off[:,1]
 
-            if stage == 2: 
+            if plot_tOS and stage == 2: 
                 ax1 = fig.add_subplot(nit, 4, 4 * i + 2) # cell-normalized on vs. off
                 ax2 = fig.add_subplot(nit, 4, 4 * i + 3) # cell-summed on and off strength
                 ax3 = fig.add_subplot(nit, 4, 4 * i + 4) # on vs. off
@@ -500,66 +538,78 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                 ax3.plot(r[jpick_off], s_Doff[jpick_off], '.b', ms = 1, alpha = 0.7)
                 ax3.plot(ron[epick,:], s_on[epick,:], ',r', alpha = 0.3)
                 ax3.plot(roff[epick,:], s_off[epick,:], ',b', alpha = 0.3)
-
-                if gaussian_type_on == 0:
-                    ax3.plot(fit_x, fitted_on,':r', lw = 1)
-                else:
-                    ax3.plot(fit_x, fitted_on,'-r', lw = 1)
-                if gaussian_type_off == 0:
-                    ax3.plot(fit_x, fitted_off,':b', lw = 1)
-                else:
-                    ax3.plot(fit_x, fitted_off,'-b', lw = 1)
+                if fitGauss:
+                    if gaussian_type_on == 0:
+                        ax3.plot(fit_x, fitted_on,':r', lw = 1)
+                    else:
+                        ax3.plot(fit_x, fitted_on,'-r', lw = 1)
+                    if gaussian_type_off == 0:
+                        ax3.plot(fit_x, fitted_off,':b', lw = 1)
+                    else:
+                        ax3.plot(fit_x, fitted_off,'-b', lw = 1)
                 ax3.set_ylim(bottom = 0)
                 if i == 0:
                     ax3.set_title('str over dis')
                     ax3.set_ylabel('#avg str')
                 if i == nit-1:
-                    plt.xlabel('dis (unit LGN)')
+                    ax3.set_xlabel('dis (unit LGN)')
                 else:
                     ax3.set_xticks([]) 
 
-            onS, offS, osel, overlap, orient = determine_os_str(LGN_vpos, LGN_V1_ID, LGN_type, sLGN, nV1, nLGN_V1, min_dis, os_out, nLGN_1D)
-
-            if stage == 2:
-                ax = fig.add_subplot(nit, 4, 4 * i + 1)
+            if calcOS:
+                onS, offS, osel, overlap, orient = determine_os_str(LGN_vpos, LGN_V1_ID, LGN_type, sLGN, nV1, nLGN_V1, min_dis, os_out, nLGN_1D)
             else:
-                ax = fig.add_subplot(nit, 3, 3 * i + 1)
+                onS = np.zeros(nV1)
+                offS = np.zeros(nV1)
+                osel = np.zeros(nV1)
+                overlap = np.zeros(nV1)
+                orient = np.zeros(nV1)
 
-            _, binEdges, _ = ax.hist(onS[epick] - offS[epick], bins = 20, color = 'r', alpha = 0.7)
+            if plot_tOS:
+                ax = fig.add_subplot(nit, 4, 4 * i + 1)
+
+                _, binEdges, _ = ax.hist(onS[epick] - offS[epick], bins = 20, color = 'r', alpha = 0.7)
+                #ax.hist(onS[ipick] - offS[ipick], bins = binEdges, color = 'b', alpha = 0.7)
+                _, binIdges, _ = ax.hist(onS[ipick] - offS[ipick], bins = 20, color = 'b', alpha = 0.7)
+                if binEdges[0] < lims[0,0]:
+                    lims[0,0] = min(binEdges[0], binIdges[0])
+                if binEdges[-1] > lims[0,1]:
+                    lims[0,1] = max(binEdges[-1], binIdges[1])
+                if i == 0:
+                    ax.set_title('On-Off balance')
+                    ax.set_xlabel('sOn-sOff')
+                    ax.set_ylabel('#V1')
+                if i < nit-1:
+                    ax.set_xticks([]) 
+                # production figure
+                if i == nit-1 or i == 0:
+                    if i == 0:
+                        _pdata = [onS[epick]-offS[epick]]
+                    else:
+                        _pdata.append(onS[epick]-offS[epick])
+                        _, pbinEdges = np.histogram(_pdata, bins = 20)
+                        pax.hist(_pdata[0], bins = pbinEdges, color = 'gray', alpha = 0.7, label = 'init.', width = 0.97)
+                        pax.hist(_pdata[1], bins = pbinEdges, color = 'k', alpha = 0.7, label = 'final', width = 0.97)
+                        pax.set_yticks([0, 300, 600, 900])
+                        pax.legend(fontsize = 12)
+                        pax.set_xlabel(r'$w_{ON}-w_{OFF}$', fontsize = 12)
+                        pax.set_ylabel('#V1', fontsize = 12)
+
             OnOff_balance[i] = np.mean(onS[epick] - offS[epick])
-            ax.hist(onS[ipick] - offS[ipick], bins = binEdges, color = 'b', alpha = 0.7)
             OnOff_balance_p[i] = stat.ttest_1samp(onS[epick] - offS[epick], 0).pvalue
-            if binEdges[0] < lims[0,0]:
-                lims[0,0] = binEdges[0]
-            if binEdges[-1] > lims[0,1]:
-                lims[0,1] = binEdges[-1]
-            if i == 0:
-                ax.set_title('On-Off balance')
-                ax.set_xlabel('sOn-sOff')
-                ax.set_ylabel('#V1')
-            if i < nit-1:
-                ax.set_xticks([]) 
 
-            if stage == 3 or stage == 5:
-                ax = fig.add_subplot(nit,3,3 * i + 2)
-                #binned = np.digitize(orient * 180 / np.pi, bins = op_edges)
-                #counts = np.zeros(nop-1)
-                #for j in range(nop-1):
-                #    counts[j] = np.sum(binned == j)
-                #    if counts[j] > 0:
-                #        counts[j] *= np.mean(osel[binned == j])
-                #ax.bar(x_op, counts, color = 'b')
-                ax.hist(orient * 180 / np.pi, bins = op_edges, weights = osel, color = 'b')
-
+            if plot_tOS and (stage == 3 or stage == 5):
+                ax = fig.add_subplot(nit,4,4 * i + 2)
+                ax.hist(orient * 180 / np.pi, bins = op_edges, color = 'b')
                 if i == 0:
                     ax.set_title('OP dist')
-                    ax.set_ylabel('#V1 weighted by OS')
+                    ax.set_ylabel('#V1')
                 if i == nit-1:
                     ax.set_xlabel('OP (deg)')
                 else:
                     ax.set_xticks([]) 
 
-                ax = fig.add_subplot(nit, 3, 3 * i + 3)
+                ax = fig.add_subplot(nit, 4, 4 * i + 3)
                 _, binEdges, _ = ax.hist(osel, bins = nop-1)
                 if binEdges[1] < lims[1,0]:
                     lims[1,0] = binEdges[1]
@@ -572,9 +622,44 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                     ax.set_xlabel('dis/(Ron+Roff)')
                 else:
                     ax.set_xticks([]) 
+
+                ax = fig.add_subplot(nit,4,4 * i + 4)
+                ax.hist(orient * 180 / np.pi, bins = op_edges, weights = osel, color = 'b')
+                if i == 0:
+                    ax.set_title('OP dist')
+                    ax.set_ylabel('#V1 weighted by OS')
+                if i == nit-1:
+                    ax.set_xlabel('OP (deg)')
+                else:
+                    ax.set_xticks([]) 
+
             sys.stdout.write(f'\r{i+1}/{nit}, e: {nerr}')
             total_err += nerr
-        print(f'#fit error: {total_err}')
+
+        if plot_tOS:
+            for i in range(nit):
+                plt.figure(num = 'tOS-dist')
+                ax = plt.subplot(nit, 4, 4 * i + 1)
+                ax.set_xlim(lims[0,:])
+                if stage == 3 or stage == 5:
+                    ax = plt.subplot(nit, 4, 4 * i + 3)
+                    ax.set_xlim(lims[1,:])
+            print(f'#fit error: {total_err}')
+            fig.tight_layout()
+            fig.savefig(f'{fig_fdr}tOS-dist{osuffix}{rtime}.png')
+            if save_svg:
+                fig.savefig(f'{fig_fdr}tOS-dist{osuffix}{rtime}.svg')
+
+            plt.close(fig)
+            print('tOS-dist finished')
+
+            pfig.tight_layout()
+            pfig.savefig(f'{fig_fdr}tON_OFF-balance{osuffix}{rtime}.png')
+            if save_svg:
+                pfig.savefig(f'{fig_fdr}tON_OFF-balance{osuffix}{rtime}.svg')
+            plt.close(pfig)
+        else:
+            print('')
 
         rstd_on *= np.sqrt(2*np.log(2))
         rstd_off *= np.sqrt(2*np.log(2))
@@ -591,32 +676,28 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         s_std.tofile(fout)
         n_con.tofile(fout)
         print('data collected')
-        for i in range(nit):
-            ax = plt.subplot(nit, 4, 4 * i + 1)
-            ax.set_xlim(lims[0,:])
-            if stage == 3 or stage == 5:
-                ax = plt.subplot(nit, 4, 4 * i + 3)
-                ax.set_xlim(lims[1,:])
         
-        #fig.tight_layout()
-        fig.savefig(f'{fig_fdr}tOS-dist{osuffix}{rtime}.png')
-        if save_svg:
-            fig.savefig(f'{fig_fdr}tOS-dist{osuffix}{rtime}.svg')
-
-        plt.close(fig)
-        print('tOS-dist finished')
-
         fig = plt.figure('radial_dist', figsize = (10,4), dpi = 120)
         ax = fig.add_subplot(121)
         for i in range(nit):
-            ax.plot(r, ron_dist[i,:,0], label = f'{i/nit*100:.1f}%', lw = (i+1)/nit*3)
+            #ax.plot(r, ron_dist[i,:,0], label = f'{i/nit*100:.1f}%', lw = (i+1)/nit*3)
+            sat = (i+1) / nit * 0.7 + 0.3
+            val = 1.0
+            hue = 0
+            hsv = np.array([hue,sat,val]).T
+            ax.plot(r, ron_dist[i,:,0], label = f'{i/nit*100:.1f}%', color = clr.hsv_to_rgb(hsv), alpha = 0.8)
             #ax.fill_between(r, ron_dist[i,:,1], ron_dist[i,:,2], alpha = 0.5)
         ax.set_xlabel('r, distance to center (#LGN)')
         ax.set_ylabel('average connection weight')
         ax.set_title('On')
         ax = fig.add_subplot(122)
         for i in range(nit):
-            ax.plot(r, roff_dist[i,:,0], label = f'{i/nit*100:.1f}%', lw = (i+1)/nit*3)
+            sat = (i+1) / nit * 0.7 + 0.3
+            val = 1.0
+            hue = 2/3
+            hsv = np.array([hue,sat,val]).T
+            ax.plot(r, ron_dist[i,:,0], label = f'{i/nit*100:.1f}%', color = clr.hsv_to_rgb(hsv), alpha = 0.8)
+            #ax.plot(r, roff_dist[i,:,0], label = f'{i/nit*100:.1f}%', lw = (i+1)/nit*3)
             #ax.fill_between(r, roff_dist[i,:,1], roff_dist[i,:,2], alpha = 0.5)
         ax.set_xlabel('r, distance to center (#LGN)')
         ax.set_ylabel('average connection weight')
@@ -625,7 +706,43 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         if save_svg:
             fig.savefig(f'{fig_fdr}radial_dist{osuffix}.svg')
 
+        fig = plt.figure('50-100', figsize = (8,3.4), dpi = 120)
+        ax1 = fig.add_subplot(121)
+        ax2 = fig.add_subplot(122)
+        label = ['broad\n(50% time)', 'narrow\n(100% time)']
+        hsv = np.empty((2,2), dtype = object)
+        hsv[0,0] = [0, 0.9, 1.0]
+        hsv[0,1] = [0, 0.5, 1.0]
+        hsv[1,0] = [2/3, 0.9, 1.0]
+        hsv[1,1] = [2/3, 0.5, 1.0]
+        alpha = [0.5, 0.5]
+        ls = ['--', '-']
+        j = 0
+        for i in [nit//2, nit-1]:
+            ax1.plot(r, ron_dist[i,:,0], label = label[j], ls = ls[j], alpha = alpha[j], lw = 2, color = clr.hsv_to_rgb(hsv[0,j]))
+            ax1.fill_between(r, ron_dist[i,:,1], ron_dist[i,:,2], alpha = alpha[j], color = clr.hsv_to_rgb(hsv[0,j]), ec = 'None')
+            ax2.plot(r, roff_dist[i,:,0], label = label[j], ls = ls[j], alpha = alpha[j], lw = 2, color = clr.hsv_to_rgb(hsv[1,j]))
+            ax2.fill_between(r, roff_dist[i,:,1], roff_dist[i,:,2], alpha = alpha[j], color = clr.hsv_to_rgb(hsv[1,j]), ec = 'None')
+            j += 1
+        ax1.set_yticks([0,0.1,0.2,0.3])
+        ax2.set_yticks([0,0.1,0.2,0.3])
+        ax1.tick_params(axis = 'both', labelsize = 13)
+        ax2.tick_params(axis = 'both', labelsize = 13)
+        #ax1.text(1.0, 0.95, 'ON relayed from stage II', fontsize = 14, horizontalalignment = 'center', verticalalignment = 'bottom')
+        fig.suptitle('stage III initalization relayed from stage II', fontsize = 16)
+        ax1.set_xlabel('radial distance', fontsize = 16)
+        ax2.set_xlabel('radial distance', fontsize = 16)
+        ax1.set_ylabel('conn. weight, ON', fontsize = 16)
+        ax2.set_ylabel('conn. weight, OFF', fontsize = 16)
+        ax1.legend(handlelength = 1.2, fontsize = 14)
+        ax2.legend(handlelength = 1.2, fontsize = 14)
+        fig.tight_layout()
+        fig.savefig(f'{fig_fdr}50-100{osuffix}.png')
+        if save_svg:
+            fig.savefig(f'{fig_fdr}50-100{osuffix}.svg')
 
+        ron_dist[:,:,0].tofile(fout)
+        roff_dist[:,:,0].tofile(fout)
 
         n_above = np.arange(max_LGNperV1/2)
         fig = plt.figure('max_min_tDist', figsize = (6,6), dpi = 300)
@@ -711,7 +828,14 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         f.seek(max_LGNperV1 * nV1 * np.int64(nt_ - 1) * 4 + nskip*4, 0)
         sLGN = np.fromfile(f, 'f4', max_LGNperV1* nV1).reshape(max_LGNperV1, nV1).T
     
-    onS, offS, osel, overlap, orient = determine_os_str(LGN_vpos, LGN_V1_ID, LGN_type, sLGN, nV1, nLGN_V1, min_dis, os_out, nLGN_1D)
+    if calcOS:
+        onS, offS, osel, overlap, orient = determine_os_str(LGN_vpos, LGN_V1_ID, LGN_type, sLGN, nV1, nLGN_V1, min_dis, os_out, nLGN_1D)
+    else:
+        onS = np.zeros(nV1)
+        offS = np.zeros(nV1)
+        osel = np.zeros(nV1)
+        overlap = np.zeros(nV1)
+        orient = np.zeros(nV1)
     
     fig = plt.figure('stats-LGN_V1', figsize = (6,6), dpi = 300)
     ax = fig.add_subplot(2,2,1)
@@ -783,6 +907,27 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
 
     ################## HERE ##################
     
+    sat0 = 0.5
+    sat1 = 0.7
+    val0 = 1.0
+    val1 = 1.0
+    hsv_red = np.zeros((2, 3))
+    hsv_red[:,0] = 0
+    hsv_red[0,1] = sat0
+    hsv_red[1,1] = sat1
+    hsv_red[0,2] = val0
+    hsv_red[1,2] = val1
+    hsv_blue = np.zeros((2, 3))
+    hsv_blue[:,0] = 2/3
+    hsv_blue[0,1] = sat0
+    hsv_blue[1,1] = sat1
+    hsv_blue[0,2] = val0
+    hsv_blue[1,2] = val1
+    hsv_orange = hsv_red.copy()
+    hsv_orange[:,0] += 0.1
+    hsv_navy = hsv_blue.copy()
+    hsv_navy[:,0] -= 0.1
+
     if st == 2 or st == 1:
         sLGN_all = np.zeros((ns+2, nit, nLGN))
         if avgOnly:
@@ -852,7 +997,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         ytl_full = ytl_neg.copy()
         yt_full.extend(yt)
         ytl_full.extend(ytl)
-        fig = plt.figure('t_radius', figsize = (4,5*(1+nLearnFF_I)), dpi = 300)
+        fig = plt.figure('t_radius', figsize = (5*(1+nLearnFF_I), 4), dpi = 300)
         ax1 = fig.add_subplot(2, (1+nLearnFF_I), 1)
         ax2 = fig.add_subplot(2, (1+nLearnFF_I), 2+nLearnFF_I)
         if avgOnly:
@@ -987,6 +1132,8 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
         g_std_p.tofile(fout)
         dis2c_p.tofile(fout)
         ctr_p.tofile(fout)
+        radius_t[-1,:,:].tofile(fout)
+        contour_radius[-1,:,:].tofile(fout)
 
         fout.close()
 
@@ -1147,7 +1294,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                     ax.set_xlim([np.min(V1_pos[0,:])-0.5, np.max(V1_pos[0,:]) + 0.5])
                     ax.set_ylim([np.min(V1_pos[1,:])-0.5, np.max(V1_pos[1,:]) + 0.5])
 
-                    filename = fig_fdr + f'_tmp-V1_RF_center{j}.png'
+                    filename = fig_fdr + f'{osuffix}_tmp-V1_RF_center{j}.png'
                     fig.savefig(filename)
                     plt.close(fig)
                     fn.append(filename)
@@ -1155,7 +1302,9 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                 for f in fn:
                     os.remove(f)
 
-                nsI = np.sum(np.mod(V1_pick, blockSize) >= mE) - cross_sample.size
+                nsI = np.sum([np.mod(i, blockSize) >= mE and i not in cross_sample for i in V1_pick])
+                for i in cross_sample:
+                    assert(np.mod(i, blockSize) >= mE)
                 sampleI_neighbor = np.empty(nsI, dtype = object)
                 for i in range(nsI):
                     sampleI_neighbor[i] = []
@@ -1164,6 +1313,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                 for i in V1_pick:
                     if np.mod(i, blockSize) < mE or i in cross_sample:
                         continue
+                    print(i, ismpl)
                     iblock = i//blockSize
                     ii = i - iblock*blockSize - mE 
                     for j in range(nearNeighborBlock):
@@ -1208,7 +1358,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                     ax.set_xlim([np.min(V1_pos[0,:])-0.5, np.max(V1_pos[0,:]) + 0.5])
                     ax.set_ylim([np.min(V1_pos[1,:])-0.5, np.max(V1_pos[1,:]) + 0.5])
 
-                    filename = fig_fdr + f'_tmp-V1_RF_center{j}.png'
+                    filename = fig_fdr + f'{osuffix}_tmp-V1_RF_center{j}.png'
                     fig.savefig(filename)
                     plt.close(fig)
                     fn.append(filename)
@@ -1429,40 +1579,75 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                         neighbor_dis[iblock*mI +i, 1] = np.mean(ndis)
                 print(f'max {max_nearest_n} neurons has distance < {upper_limit_avg_dis_est}')
 
-                fig = plt.figure(figsize = (12,4), dpi = 120)
-                ax = fig.add_subplot(131)
+                fig = plt.figure(figsize = (8,5), dpi = 120)
+                ax = fig.add_subplot(221)
                 cross_ii = (cross_sample//blockSize)*mI + cross_sample%blockSize - mE
                 ax.plot(gapNeighbor_dis[:,0], gapNeighbor_dis[:,1], ',k')
-                ax.plot(gapNeighbor_dis[cross_ii,0], gapNeighbor_dis[cross_ii,1], ',r')
+                ax.plot(gapNeighbor_dis[cross_ii,0], gapNeighbor_dis[cross_ii,1], '*r', ms = 5)
                 for i in range(nI):
                     ii = (i//mI)*blockSize + i%mI + mE
                     if gapNeighbor_dis[i,0] > 1.0 and ii not in cross_sample:
                         print(f'neuron {ii} gap neighbor distance: {gapNeighbor_dis[i,0]:.4f}->{gapNeighbor_dis[i,1]:.4f}')
 
-                ax.set_xlabel('initial distance to gap neighbors')
-                ax.set_ylabel('final distance to gap neighbors')
+                ax.set_xlabel('initial distance to gap neighbors (deg)')
+                ax.set_ylabel('final distance to gap neighbors (deg)')
                 ax.set_title('gap neighbor distance')
                 ax.set_aspect('equal')
-                ax = fig.add_subplot(132)
+                ax = fig.add_subplot(222)
                 ax.plot(neighbor_dis[:,0], neighbor_dis[:,1], ',k')
-                ax.plot(neighbor_dis[cross_ii,0], neighbor_dis[cross_ii,1], ',r')
+                ax.plot(neighbor_dis[cross_ii,0], neighbor_dis[cross_ii,1], '*r', ms = 5)
                 for i in range(nI):
                     ii = (i//mI)*blockSize + i%mI + mE
                     if neighbor_dis[i,1] > 1.0 and ii not in cross_sample:
                         print(f'neuron {ii} neighbor distance: {neighbor_dis[i,0]:.4f}->{neighbor_dis[i,1]:.4f}')
 
-                ax.set_xlabel('initial distance to neighbor')
-                ax.set_ylabel('final distance to neighbor')
+                ax.set_xlabel('initial distance to neighbor (deg)')
+                ax.set_ylabel('final distance to neighbor (deg)')
                 ax.set_title('neighbor distance')
-                #ax.set_aspect('equal')
-                ax = fig.add_subplot(133)
+                ax.set_aspect('equal')
+                ax = fig.add_subplot(223)
                 ax.plot((V1_OnEcc[ipick,0] + V1_OffEcc[ipick,0])/2, neighbor_dis[:,1]-neighbor_dis[:,0], ',k')
-                ax.set_xlabel('initial distance to center')
-                ax.set_ylabel('delta distance to neighbor')
+                ax.set_xlabel('initial distance to center (deg)')
+                ax.set_ylabel('delta distance to neighbor (deg)')
 
+                ax = fig.add_subplot(224)
+                # retinotopic continuity metric
+                local_area = np.pi*np.power(max_ecc*retinotopy,2)/nV1
+                #local_d = np.sqrt(local_area/(np.sqrt(3)/4)) *1.5
+                local_d = np.sqrt(local_area) *1.5
+                max_local_n = 20
+                local_cm = np.zeros(nV1)
+                # record nearest id
+                local_id = np.zeros((nV1, max_local_n), dtype = int)
+                cid = np.zeros(nV1, dtype = int)
+                for iblock in range(nblock):
+                    disMat = delayMat[iblock, :, :, :]
+                    neighbor_id = (nBlockId[iblock,:] * blockSize + np.tile(np.arange(blockSize), (nearNeighborBlock,1)).T).T.flatten()
+                    for i in range(blockSize):
+                        iid = iblock*blockSize + i
+                        lid = neighbor_id[np.logical_and(disMat[:, :, i].flatten() <= local_d, neighbor_id != iid)]
+                        assert(cid[iid] + len(lid) < max_local_n)
+                        local_id[iid,cid[iid]:cid[iid] + len(lid)] = lid
+                        cid[iid] += len(lid)
+                # cm = dis(self vcenter, average local vcenter)/local_d
+                assert(not avgOnly)
+                for i in range(nV1):
+                    local_vcenter = (np.mean(on_center[:, local_id[i,:cid[i]], -1], axis = 1) + np.mean(off_center[:, local_id[i,:cid[i]], -1], axis = 1))/2
+                    self_vcenter = (on_center[:,i,-1] + off_center[:,i,-1])/2
+                    local_cm[i] = np.linalg.norm(local_vcenter - self_vcenter)/local_d
+                non_cross_pick = np.array([i for i in ipick if i not in cross_sample], dtype = int)
+                ax.boxplot([local_cm, local_cm[ipick], local_cm[non_cross_pick], local_cm[cross_sample]])
+                ax.set_xticks([1,2,3,4], ['total', 'all gap', 'non-cross', 'cross'])
+                ax.set_aspect('equal')
+                ax.set_ylabel('local visual discontinuity')
+
+                fig.tight_layout()
                 fig.savefig(fig_fdr + f'neighbor_gap_dis{osuffix}.png')
                 if save_svg:
                     fig.savefig(fig_fdr + f'neighbor_gap_dis{osuffix}.svg')
+                fid = open(fig_fdr +f'temp_neighbordis_data{osuffix}.pkl', 'wb')
+                pickle.dump([cross_sample, blockSize, mI, mE, nblock, gapNeighbor_dis, neighbor_dis, on_center[:,:,[0,-1]], off_center[:,:,[0,-1]], ipick, local_cm, local_d, nV1, cross_target, V1_pos[:, cross_sample], max_ecc, nearNeighborBlock, delayMat, nBlockId], fid)
+                fid.close()
 
         if nLearnFF_I > 0:
             _V1_pick = np.hstack((V1_pick, np.array([nV1, nV1+1], dtype = int)))
@@ -1534,7 +1719,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                                 ax.set_ylabel(f'type: {types[itype]}')
                             if i == nit-1:
                                 ax = plt.subplot(1,nit + 1, nit + 1)
-                                im = imagesc(stmp,clims)
+                                im = ax.imshow(stmp,clims)
                                 ax.set_xticks([])
                                 ax.set_yticks([])
                                 plt.colorbar()
@@ -1569,16 +1754,18 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                         else:
                             vmin = 0
 
-                        ax.imshow(stmp0, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('gray'), vmin = vmin, vmax = vmax)
+                        im = ax.imshow(stmp0, aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('gray'), vmin = vmin, vmax = vmax)
                         if itype == 0:
                             mc = '*m'
                             cc = ':m'
-                            lc = 'r'
+                            lc = clr.hsv_to_rgb(hsv_red)
+                            rc = clr.hsv_to_rgb(hsv_orange)
                             qcenter = on_center
                         else:
                             mc = '*g'
                             cc = ':g'
-                            lc = 'b'
+                            lc = clr.hsv_to_rgb(hsv_blue)
+                            rc = clr.hsv_to_rgb(hsv_navy)
                             qcenter = off_center
                         if avgOnly:
                             radius = radius_t[iq,itype,i]
@@ -1590,21 +1777,27 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                         center = center/xspan * nLGN_1D + nLGN_1D/2
                         radius = radius/xspan * nLGN_1D
                         nc = 20
-                        circle = np.array([[radius * np.cos(2*np.pi/nc*ic) for ic in range(nc)], [radius * np.sin(2*np.pi/nc*ic) for ic in range(nc)]])
-                        ax.plot(center[0]-0.5, center[1]-0.5, mc, ms = 1, alpha = 0.25)
-                        ax.plot(center[0]-0.5 + circle[0,:], center[1]-0.5 + circle[1,:], cc, lw = 0.2, alpha = 0.5)
-                        _max = stmp0.max()
-                        if _max > 0:
-                            _stmp = stmp0/_max
-                            level = s0[iq,itype]/_max
-                        else:
-                            _stmp = np.zeros_like(stmp0)
-                            level = 0.5
-
-                        try:
-                            ax.contour(_stmp, levels = [level], linewidths = 0.5, colors = lc)
-                        except UserWarning:
-                            print(_stmp, i, iq, avgOnly, level)
+                        if retino_cross and iV1 < nV1:
+                            if iV1 in icolor.keys():
+                                ax.plot((V1_pos[0,iV1] + max_ecc)/max_ecc/2*nLGN_1D-0.5, (V1_pos[1,iV1] + max_ecc)/max_ecc/2*nLGN_1D-0.5, 'x', ms = 2.5, color = icolor[iV1], alpha = 1.0)
+                            else:
+                                ax.plot((V1_pos[0,iV1] + max_ecc)/max_ecc/2*nLGN_1D-0.5, (V1_pos[1,iV1] + max_ecc)/max_ecc/2*nLGN_1D-0.5, 'xr', ms = 2.5, alpha = 0.8)
+                        if draw_contour:
+                            #circle = np.array([[radius * np.cos(2*np.pi/nc*ic) for ic in range(nc)], [radius * np.sin(2*np.pi/nc*ic) for ic in range(nc)]])
+                            #ax.plot(center[0]-0.5, center[1]-0.5, mc, ms = 1, alpha = 0.25)
+                            #ax.plot(center[0]-0.5 + circle[0,:], center[1]-0.5 + circle[1,:], cc, lw = 0.2, alpha = 0.5)
+                            _max = stmp0.max()
+                            try:
+                                if _max > 0:
+                                    _stmp = stmp0/_max
+                                    level = s0[iq,itype]/_max
+                                    ax.contour(_stmp, levels = [level], linewidths = 1, colors = [lc[0,:]], alpha = 1.0)
+                                else:
+                                    _stmp = np.zeros_like(stmp0)
+                                if draw_hlf_contour:
+                                    ax.contour(_stmp, levels = [0.5], linewidths = 1, linestyles= 'solid', colors = [rc[0,:]], alpha = 0.8)
+                            except UserWarning:
+                                print(_stmp, i, iq, avgOnly, level, lc)
 
                         ax.set_yticks([])
                         ax.set_xticks([])
@@ -1625,12 +1818,14 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                             if itype == 0:
                                 mc = '*m'
                                 cc = ':m'
-                                lc = 'r'
+                                lc = clr.hsv_to_rgb(hsv_red)
+                                rc = clr.hsv_to_rgb(hsv_orange)
                                 qcenter = on_center
                             else:
                                 mc = '*g'
                                 cc = ':g'
-                                lc = 'b'
+                                lc = clr.hsv_to_rgb(hsv_blue)
+                                rc = clr.hsv_to_rgb(hsv_navy)
                                 qcenter = off_center
                             if avgOnly:
                                 radius = radius_t[iq,itype,i]
@@ -1642,18 +1837,22 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                             center = center/xspan * nLGN_1D + nLGN_1D/2
                             radius = radius/xspan * nLGN_1D
                             nc = 20
-                            circle = np.array([[radius * np.cos(2*np.pi/nc*ic) for ic in range(nc)], [radius * np.sin(2*np.pi/nc*ic) for ic in range(nc)]])
-                            ax.plot(center[0]-0.5, center[1]-0.5, mc, ms = 1, alpha = 0.25)
-                            ax.plot(center[0]-0.5 + circle[0,:], center[1]-0.5 + circle[1,:], cc, lw = 0.2, alpha = 0.5)
-                            _max = stmp0.max()
-                            if _max > 0:
-                                _stmp = stmp0/_max
-                                level = s0[iq,itype]/_max
-                            else:
-                                _stmp = np.zeros_like(stmp0)
-                                level = 0.5
+                            if retino_cross and iV1 < nV1:
+                                if iV1 in icolor.keys():
+                                    ax.plot((V1_pos[0,iV1] + max_ecc)/max_ecc/2*nLGN_1D-0.5, (V1_pos[1,iV1] + max_ecc)/max_ecc/2*nLGN_1D-0.5, 'x', ms = 2.5, color = icolor[iV1], alpha = 1.0)
+                                else:
+                                    ax.plot((V1_pos[0,iV1] + max_ecc)/max_ecc/2*nLGN_1D-0.5, (V1_pos[1,iV1] + max_ecc)/max_ecc/2*nLGN_1D-0.5, 'xr', ms = 2.5, alpha = 0.8)
 
-                            ax.contour(_stmp, levels = [level], linewidths = 0.5, colors = lc)
+                            if draw_contour:
+                                _max = stmp0.max()
+                                if _max > 0:
+                                    _stmp = stmp0/_max
+                                    level = s0[iq,itype]/_max
+                                    ax.contour(_stmp, levels = [level], linewidths = 1, colors = [lc[0,:]], alpha = 1.0)
+                                else:
+                                    _stmp = np.zeros_like(stmp0)
+                                if draw_hlf_contour:
+                                    ax.contour(_stmp, levels = [0.5], linewidths = 1, linestyles= 'dashed', colors = [rc[0,:]], alpha = 1.0)
 
                             pos_bbox = ax.get_position()
                             ax.set_yticks([])
@@ -1738,7 +1937,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                             else:
                                 iplot += i + 1
                             ax = fig.add_subplot(2*nrow * ntype, nit0 + 1, iplot)
-                            ax.imshow(np.power(abs(ft), 2), aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('gray'))
+                            ax.imshow(np.log(np.power(abs(ft), 2)), aspect = 'equal', origin = 'lower', cmap = plt.get_cmap('gray'))
                             if find_peak and _ori is not None and len(_peak[0]) > 0:
                                 if np.abs(_ori[0]) > np.abs(_ori[1]):
                                     xs = np.linspace(0, nLGN_1D-1, nLGN_1D)
@@ -1981,7 +2180,7 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             if gmax == 0:
                 continue
             if not use_local_max:
-                gmax = gmaxLGN[0]
+                gmax = gmaxLGN[0]*0.05
             gmin = np.min(tLGN)
             if examSingle:
                 fig = plt.figure(f'tLGN_V1_single-{iV1}', figsize = (8,8), dpi = 300)
@@ -1999,8 +2198,17 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                         ip = (2*((ip+2*nLGN_1D-1)//(2*nLGN_1D))-1) * nLGN_1D + np.mod(ip//2-1, nLGN_1D) + 1
                     hsv = np.array([hue,sat,val]).T
                     ax = fig.add_subplot(2 * nLGN_1D, nLGN_1D, ip)
-                    ax.plot(it * dt, tLGN[:,i] / gmax * 100, '-', color = clr.hsv_to_rgb(hsv))
-                    ax.set_ylim(0, 100)
+                    if examSingleTemporal:
+                        ax.plot(it * dt, tLGN[:,i] / gmax * 100, '-', color = clr.hsv_to_rgb(hsv))
+                        ax.set_ylim(0, 100)
+                    else:
+                        ax.add_patch(Rectangle((0,0),1,1,fc = clr.hsv_to_rgb(hsv), ec = 'none', lw = None))
+                        ax.set_xlim(0,1)
+                        ax.set_ylim(0,1)
+                    ax.spines['bottom'].set(color = 'gray', alpha = 0.6) 
+                    ax.spines['top'].set(color = 'gray', alpha = 0.6)
+                    ax.spines['left'].set(color = 'gray', alpha = 0.6)
+                    ax.spines['right'].set(color = 'gray', alpha = 0.6)
                     ax.set_xticks([])
                     ax.set_yticks([])
                 fig.savefig(f'{fig_fdr}tLGN_V1_single-{EI_str}{iV1}{osuffix}{rtime}.png')
@@ -2011,9 +2219,9 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
             fig = plt.figure(f'tLGN_V1-{iV1}', figsize = (8,9), dpi = 500)
             if LGN_switch:
                 if examLTD:
-                    ax = plt.subplot(31,3,(3*15 + 1, 3*15 + 2))
+                    ax = plt.subplots(31,3,(3*15 + 1, 3*15 + 2))
                 else:
-                    ax = plt.subplot(21,3,(3*10 + 1, 3*10 + 2))
+                    ax = plt.subplots(21,3,(3*10 + 1, 3*10 + 2))
                 status_t = 0
                 for i in range(nStatus):
                     current_nt = np.round(statusDur[i] * 1000 / dt)
@@ -2028,12 +2236,21 @@ def outputLearnFF(seed, isuffix0, isuffix, osuffix, res_fdr, setup_fdr, data_fdr
                     ax = fig.add_subplot(ntype+1, 3, (3*i+1, 3*i+2))
                 else:
                     ax = fig.add_subplot(ntype, 3, (3*i+1, 3*i+2))
-                ax.plot(it * dt/1000, tLGN[:,LGN_type[LGN_V1_ID[iV1, :nLGN_V1[iV1]]] == types[i]] / gmax * 100, '-', alpha = 0.5)
+                _datapoints = tLGN[:,LGN_type[LGN_V1_ID[iV1, :nLGN_V1[iV1]]] == types[i]] / gmax * 100
+                #ax.plot(it * dt/1000, _datapoints, '-', lw = 0.5, alpha = 0.6)
+                _tpoints = it * dt/1000/60
+                ax.plot(_tpoints, _datapoints, '-', lw = 0.7, alpha = 0.4)
+                low, med, high = *np.percentile(_datapoints, [10, 50, 90], axis=1), 
+                ax.plot(_tpoints, med, '--', color = 'k', lw = 1.5, alpha = 0.8, label = 'median')
+                ax.fill_between(_tpoints, low, high, ls = 'None', color = 'k', alpha = 0.4, ec = 'None', label = '10%-90% range')
                 ax.set_title(f'type{types[i]} input activation level {typeInput[i] * 100:.1f}%')
                 ax.set_ylim(0,100)
-                ax.set_ylabel('strength % of max')
+                #ax.set_ylabel('strength % of max')
+                ax.set_ylabel('conn. strength (%)', fontsize = 13)
+                ax.legend(fontsize = 12, loc = 'upper left')
                 if i == ntype-1 and not examLTD:
-                    ax.set_xlabel('s')
+                    ax.set_xlabel('min', fontsize = 13)
+                ax.tick_params(axis = 'both', labelsize = 11)
             edges = np.linspace(0,100,nbins)
             if examLTD:
                 ax = fig.add_subplot(ntype+1, 3, (3*ntype+1, 3*ntype+2))
@@ -2103,9 +2320,9 @@ def determine_os_str(pos, ids, types, s, n, m, min_dis, os_out, nLGN_1D):
         onPick = on_id[sPick]
         onS[i] = np.sum(on_s)
         on_pos = np.mean(pos[:,onPick], axis = 1)
-        for i in range(onPick.size):
-            for j in range(i+1, onPick.size):
-                assert(pos[0,onPick[i]] !=  pos[0,onPick[j]] or pos[1,onPick[i]] !=  pos[1,onPick[j]])
+        for j in range(onPick.size):
+            for k in range(j+1, onPick.size):
+                assert(pos[0,onPick[j]] !=  pos[0,onPick[k]] or pos[1,onPick[j]] !=  pos[1,onPick[k]])
 
         off_s = all_s[all_type == 5]
         off_id = all_id[all_type == 5]
@@ -2113,9 +2330,9 @@ def determine_os_str(pos, ids, types, s, n, m, min_dis, os_out, nLGN_1D):
         offPick = off_id[sPick]
         offS[i] = np.sum(off_s)
         off_pos = np.mean(pos[:,offPick], axis = 1)
-        for i in range(offPick.size):
-            for j in range(i+1, offPick.size):
-                assert(pos[0,offPick[i]] !=  pos[0,offPick[j]] or pos[1,offPick[i]] !=  pos[1,offPick[j]])
+        for j in range(offPick.size):
+            for k in range(j+1, offPick.size):
+                assert(pos[0,offPick[j]] !=  pos[0,offPick[k]] or pos[1,offPick[j]] !=  pos[1,offPick[k]])
         dis_vec = np.array([on_pos[0] - off_pos[0], off_pos[1] - on_pos[1]])
         on_off_dis = np.sqrt(np.sum(dis_vec * dis_vec))
         if on_off_dis <= min_dis / 2:
@@ -2133,12 +2350,15 @@ def determine_os_str(pos, ids, types, s, n, m, min_dis, os_out, nLGN_1D):
                 cos_on = np.zeros(onPick.size)
                 cos_on[pick] = np.sum((rel_pos[:,pick] / on_dis[pick]) * proj.reshape(2,1), axis = 0)
                 proj_on = on_dis*cos_on
-                max_on_p = np.max(proj_on[proj_on >= 0])
-                max_on_m = np.max(np.abs(proj_on[proj_on <= 0]))
-                if max_on_m == 0:
-                    r_on = min_dis / 2
-                else:
-                    r_on = (max_on_p + max_on_m) * max_on_p / max_on_m
+                try:
+                    max_on_p = np.max(proj_on[proj_on >= 0])
+                    max_on_m = np.max(np.abs(proj_on[proj_on <= 0]))
+                    if max_on_m == 0:
+                        r_on = min_dis / 2
+                    else:
+                        r_on = (max_on_p + max_on_m) * max_on_p / max_on_m
+                except:
+                    r_off = min_dis / 2
             else:
                 r_on = min_dis / 2
             if offPick.size > 1:
@@ -2148,12 +2368,15 @@ def determine_os_str(pos, ids, types, s, n, m, min_dis, os_out, nLGN_1D):
                 cos_off = np.zeros(offPick.size)
                 cos_off[pick] = np.sum((rel_pos[:,pick] / off_dis[pick]) * proj.reshape(2,1), axis = 0)
                 proj_off = off_dis*cos_off
-                max_off_p = np.max(proj_off[proj_off >= 0])
-                max_off_m = np.max(np.abs(proj_off[proj_off <= 0]))
-                if max_off_m == 0:
+                try:
+                    max_off_p = np.max(proj_off[proj_off >= 0])
+                    max_off_m = np.max(np.abs(proj_off[proj_off <= 0]))
+                    if max_off_m == 0:
+                        r_off = min_dis / 2
+                    else:
+                        r_off = (max_off_p + max_off_m) * (max_off_p / max_off_m)
+                except:
                     r_off = min_dis / 2
-                else:
-                    r_off = (max_off_p + max_off_m) * (max_off_p / max_off_m)
             else:
                 r_off = min_dis / 2
             osel[i] = on_off_dis / (r_on + r_off)

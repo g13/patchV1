@@ -15,12 +15,12 @@ sm=sm_86
 
 rm -f patch.o 
 nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg $gptflag${fast_math} -std=$cpp_version -$optflag -c -I$PY_INC patch.cu
-
+#
 #rm -f use_python.o 
 #nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -std=$cpp_version -$optflag -c -I$PY_INC util/use_python.cpp
                                                                                          
-rm -f coredynamics.o 
-nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg $gptflag${fast_math} -std=$cpp_version -$optflag -c coredynamics.cu
+#rm -f coredynamics.o 
+#nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg $gptflag${fast_math} -std=$cpp_version -$optflag -c coredynamics.cu
 
 #rm -f discrete_convol.o
 #nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg $gptflag${fast_math} -std=$cpp_version -$optflag -c discrete_input_convol.cu
@@ -33,5 +33,5 @@ nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg $gptflag${fast
 #
 #rm -f condShape.o
 #nvcc -arch=$sm -rdc=true -Xcompiler -rdynamic -Xptxas -v,-dlcm=cg $gptflag${fast_math} -std=$cpp_version -$optflag -c condShape.cu
-#
+
 nvcc -arch=$sm -lcudadevrt -lcudart -lboost_filesystem -lboost_program_options -Xlinker -rpath,$PY_LIB -L$PY_LIB -lpython3.11 -lrt -ldl -lutil use_python.o condShape.o patch.o cuda_util.o stats.o discrete_input_convol.o coredynamics.o $gptflag -$optflag -o $HOME/bin/patch_fast

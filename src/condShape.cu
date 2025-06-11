@@ -27,7 +27,11 @@ void learnE(LearnVarShapeE &l, Float tauLTP[], Float tauLTD[], Float tauTrip[], 
         l.tau[3*i+2] = tauTrip[i];
         l.A_LTP[i] = A_LTP[i];
         Float tauAvg_in_sec = tauAvg/1000.0;
-        l.A_ratio[i] = tauTrip[i]*l.A_LTP[i]/(tauLTD[i]*(tauAvg_in_sec*tauAvg_in_sec))/1000.0; // * tau_LTP * filtered spike avg^2 / target firing rate = A_LTD
+        if (tauTrip[i] > 0) {
+            l.A_ratio[i] = tauTrip[i]*l.A_LTP[i]/(tauLTD[i]*(tauAvg_in_sec*tauAvg_in_sec))/1000.0; // * tau_LTP * filtered spike avg^2 / target firing rate = A_LTD
+        } else {
+            l.A_ratio[i] = l.A_LTP[i]/(tauLTD[i]*(tauAvg_in_sec))/1000.0; // * tau_LTP * filtered spike avg / target firing rate = A_LTD
+        }
     }
     l.tau[3*n] = tauAvg;
     l.targetFR = targetFR;

@@ -447,7 +447,7 @@ def generate_circular_mask(npixel, radius, seed, ecc, buffer_ecc, neye, center =
         print(f'{nmasked} ({nmasked/b/a*100:.3f}%) pixel(s) left unmasked')
     return mask
 
-def generate_retinal_wave(amp, spatialFrequency, temporalFrequency, waveSF, waveTF, direction, phase, sharpness, npixel, fname, time, frameRate = 120, ecc = 2.5, gtype = 'drifting', neye = 2, bar = False, center = np.pi/2, wing = np.pi/2, mask = None, maskData = None, ecc0 = 0, genMovie = True, virtual_LGN = 0, nrepeat = 1, reverse = False):
+def generate_retinal_wave(amp, spatialFrequency, temporalFrequency, waveSF, waveTF, direction, phase, sharpness, npixel, fname, iFrame, frameRate = 120, ecc = 2.5, gtype = 'drifting', neye = 2, bar = False, center = np.pi/2, wing = np.pi/2, mask = None, maskData = None, ecc0 = 0, genMovie = True, virtual_LGN = 0, nrepeat = 1, reverse = False, length = 0, offset_seed = 0):
     if ecc0 == 0:
         ecc0 = ecc
     if np.mod(npixel,2) != 0:
@@ -487,11 +487,11 @@ def generate_retinal_wave(amp, spatialFrequency, temporalFrequency, waveSF, wave
         mixed_output = cv.VideoWriter(fname+'.avi', FourCC, frameRate, (npixel,npixel), True)
 
     # make sure size of arrays
-    if isinstance(time, (list, tuple, np.ndarray)):
-        nseq = len(time)
+    if isinstance(iFrame, (list, tuple, np.ndarray)):
+        nseq = len(iFrame)
     else:
         nseq = 1
-        time = np.array([time])
+        iFrame = np.array([iFrame])
 
     amp = check_size(amp, nInputType, nseq, 'first', 'amp')
     spatialFrequency = check_size(spatialFrequency, nInputType, nseq, 'first', 'spatialFrequency')
@@ -499,6 +499,17 @@ def generate_retinal_wave(amp, spatialFrequency, temporalFrequency, waveSF, wave
     direction = check_size(direction, nInputType, nseq, 'second', 'direction')
     phase = check_size(phase, nInputType, nseq, 'first', 'phase')
     sharpness = check_size(sharpness, nInputType, nseq, 'first', 'sharpness')
+
+    length = length/180*np.pi
+    if offset_seed > 0:
+        rGen = np.random.default_rng(offset_seed)
+        offset = (rGen.random(nseq)*2 - 1) * (ecc*np.pi/180 - length/2)
+        print(offset, f'radius = {ecc*np.pi/180}', f'half_length = {length/2}')
+    else:
+        offset = 0
+
+    length = check_size(length, nInputType, nseq)
+    offset = check_size(offset, nInputType, nseq, 'second', 'offset')
 
     ########### VIDEO encodes as BGR: 
     if neye == 1:
@@ -557,7 +568,7 @@ def generate_retinal_wave(amp, spatialFrequency, temporalFrequency, waveSF, wave
     print(f'ecc = {ecc}')
     f = open(fname + '.bin', 'wb')
     np.array([virtual_LGN]).astype('i4').tofile(f) 
-    nFrame = np.sum(np.round(np.ceil(frameRate*time))).astype(int)
+    nFrame = np.sum(iFrame).astype(int)
     print(nFrame)
     np.array([nFrame, npixel, npixel], dtype='i4').tofile(f)
     np.array([ecc], dtype='f4').tofile(f)
@@ -581,13 +592,7 @@ def generate_retinal_wave(amp, spatialFrequency, temporalFrequency, waveSF, wave
     
     nFrame = 0
     for i in range(nseq):
-        t = time[i]
-        nstep = int(np.round(frameRate*t))
-        if not nstep == frameRate*t:
-            nstep = int(np.ceil(frameRate*t))
-            print(f'adjusted to {nstep} frames in total')
-        else:
-            print(f'exact {nstep} frames in total')
+        nstep = iFrame[i]
 
         if np.mod(nstep,2) != 0 and gtype == 'rotating':
             raise Exception(f'need even time step, current: {nstep}')
@@ -598,23 +603,23 @@ def generate_retinal_wave(amp, spatialFrequency, temporalFrequency, waveSF, wave
             for jseq in range(nInputType):
                 j = typeSeq[jseq]
                 radTF = temporalFrequency[j,i]*2*np.pi
-                radSF = spatialFrequency[j,i]*180/np.pi*2*np.pi
+                radSF = spatialFrequency[j,i]*180/np.pi*2*np.pi 
             
                 if neye == 1:
                     if gtype == 'rotating':
-                        data = retinal_wave(amp[j,i], radTF, radSF, direction[j,i]-dd[it], a, b, sharpness[j,i], phase[j,i], t, X, Y, bar, center, wing, waveSF, waveTF, nrepeat)
+                        data = retinal_wave(amp[j,i], radTF, radSF, direction[j,i]-dd[it], a, b, sharpness[j,i], phase[j,i], t, X, Y, center, wing, waveSF, waveTF, nrepeat)
                     if gtype == 'drifting':
-                        data = retinal_wave(amp[j,i], radTF, radSF, direction[j,i], a, b, sharpness[j,i], phase[j,i], t, X, Y, bar, center, wing, waveSF, waveTF, nrepeat)
+                        data = retinal_wave(amp[j,i], radTF, radSF, direction[j,i], a, b, sharpness[j,i], phase[j,i], t, X, Y, center, wing, waveSF, waveTF, nrepeat, length = length[j,i], offset = offset[j,i])
 
                     if mask is not None:
                         data[mask[i,:,:]] = maskData[j,i, mask[i,:,:]]
                 else:
                     if gtype == 'rotating':
-                        dataL = retinal_wave(amp[j,i], radTF, radSF, direction[j,i]-dd[it], a, b, sharpness[j,i], phase[j,i], t, X, Y, bar, center, wing, waveSF, waveTF, nrepeat)
-                        dataR = retinal_wave(amp[j,i], radTF, radSF, direction[j,i]+dd[it], a, b, sharpness[j,i], phase[j,i], t, X, Y, bar, center, wing, waveSF, waveTF, nrepeat)
+                        dataL = retinal_wave(amp[j,i], radTF, radSF, direction[j,i]-dd[it], a, b, sharpness[j,i], phase[j,i], t, X, Y, center, wing, waveSF, waveTF, nrepeat)
+                        dataR = retinal_wave(amp[j,i], radTF, radSF, direction[j,i]+dd[it], a, b, sharpness[j,i], phase[j,i], t, X, Y, center, wing, waveSF, waveTF, nrepeat)
                     if gtype == 'drifting':
-                        dataL = retinal_wave(amp[j,i], radTF, radSF, direction[j,i], a, b, sharpness[j,i], phase[j,i], t, X, Y, bar, center, wing, waveSF, waveTF, nrepeat)
-                        dataR = retinal_wave(amp[j,i], radTF, radSF, direction[j,i], a, b, sharpness[j,i], phase[j,i], t, X, Y, bar, center, wing, waveSF, waveTF, nrepeat)
+                        dataL = retinal_wave(amp[j,i], radTF, radSF, direction[j,i], a, b, sharpness[j,i], phase[j,i], t, X, Y, center, wing, waveSF, waveTF, nrepeat, length = length[j,i], offset = offset[j,i])
+                        dataR = retinal_wave(amp[j,i], radTF, radSF, direction[j,i], a, b, sharpness[j,i], phase[j,i], t, X, Y, center, wing, waveSF, waveTF, nrepeat, length = length[j,i], offset = offset[j,i])
 
                     if mask is not None:
                         assert(dataL.shape[0] == b)
@@ -757,21 +762,30 @@ def sine_wave(amp, radTF, radSF, direction, a, b, c1, c2, control, sharpness, ph
         
     return color.reshape((b,a,3))
 
-def retinal_wave(amp, radTF, radSF, direction, a, b, sharpness, phase, t, X, Y, bar, center, wing, waveSF, waveTF, nrepeat):
-    wave_ratio = waveSF/radSF # period/wave_period
-    # phase is alreayd wave phase
+def retinal_wave(amp, radTF, radSF, direction, a, b, sharpness, phase, t, X, Y, center, wing, waveSF, waveTF, nrepeat, length = 0, offset = 0):
+    wave_ratio = waveSF/radSF #  = active period/wave period
+    # phase is already in rad's unit for a wave On and Off
+    # get wave phase for all position, phi0 in wave unit
     phi0 = (np.cos(direction)*X + np.sin(direction)*Y)*waveSF - waveTF*t - phase
+    # from active unit to wave unit
     wing0 = wing*wave_ratio
     center0 = np.pi - wing0
     pick = np.zeros(X.shape, dtype = bool)
-    phi = np.zeros(X.shape) + center + wing
+    phi = np.zeros(X.shape) + center + wing # initialize with phase of zero values
+    if length > 0:
+        # offset is signed distance of the vector counterclock-wisely orthogonal to the oriented line crossing the origin
+        # calculate the distance to that offset oriented line
+        ref_dis = np.abs(Y*np.cos(direction) - X*np.sin(direction)-offset)
+        fpick = ref_dis < length/2
+    else:
+        fpick = np.ones_like(X).astype(bool)
     for i in range(nrepeat):
-        tmp_pick = np.abs((phi0 + i*2*np.pi) - center0) < wing0
+        # get all pixel within the stimulus range (or its repeats)
+        tmp_pick = np.logical_and(np.abs((phi0 + i*2*np.pi) - center0) < wing0, fpick)
+        # assign with active phase
         phi[tmp_pick] = (phi0[tmp_pick] + i*2*np.pi - center0 + wing0) / wave_ratio - wing + center
-
+    # rescale zeros to center + wing
     bw = np.reshape((np.sin(phi) - np.sin(wing+center))/(1-np.sin(wing+center))*amp, (a*b,1))
-    assert((bw >= 0).all())
-    assert((bw <= 1).all())
     if sharpness != 1:
         if sharpness > 0:
             exp_half = np.exp(sharpness/2)+1
@@ -781,8 +795,6 @@ def retinal_wave(amp, radTF, radSF, direction, a, b, sharpness, phase, t, X, Y, 
         else:
             bw[bw > 5e-16] = 1
 
-    assert((bw <= 1.0+5e-16).all())
-    assert((bw >= 0.0-5e-16).all())
     bw[bw > 1] = 1
     bw[bw < 0] = 0
     return bw.reshape((b,a))

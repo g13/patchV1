@@ -9,7 +9,7 @@ from plotV1_response import movingAvg
 #np.seterr(invalid = 'raise')
 
 def plotV1_fr(output_suffix0, res_fdr, data_fdr, fig_fdr, inputFn, nOri, readNewSpike, ns):
-    sample = np.arange(10)
+    #sample = np.arange(10)
     sample_nOri = 10
     sample_nOri0 = 0
     sample_cutoff = 1.0
@@ -22,7 +22,7 @@ def plotV1_fr(output_suffix0, res_fdr, data_fdr, fig_fdr, inputFn, nOri, readNew
     tauLTD = 34
     LTP_window = tauTrip #ms
     LTD_window = tauLTD #ms
-    plot_popFR = False
+    plot_popFR = True
 
     if nOri > 0:
         output_suffix = output_suffix0 + '_' + str(iOri)
@@ -83,55 +83,88 @@ def plotV1_fr(output_suffix0, res_fdr, data_fdr, fig_fdr, inputFn, nOri, readNew
     LGN_spScatter = readLGN_sp(LGN_spFn, prec = prec)
     nLGN = len(LGN_spScatter)
 
-    if 'sample' not in locals():
+    if 'sample' not in locals() and ns > 0:
         sample = np.random.randint(nV1, size = ns)
-    for i in sample:
-        fig = plt.figure(f'V1-fr-{i}', dpi = 300, figsize = [16,8])
-        ax = fig.add_subplot(211)
-        fr = np.array([sum(np.logical_and(spScatter[i]>=it[j]*dt, spScatter[i]<it[j+1]*dt)) for j in range(it.size-1)], dtype = float)/(stepInterval*dt)*1000
-        smoothed_fr = movingAvg(fr, it.size-1, fr_window)
-        ax.set_title(f'max fr = {fr.max():.1f} Hz')
-        ax.plot(it[:-1]*dt/1000, smoothed_fr, '-k', lw = 0.5)
-        ax.plot(it[:-1]*dt/1000, smoothed_fr, ',r')
-        ax.set_xlabel('sample range (s)')
-        ax.set_ylabel('firing rate')
+        for i in sample:
+            fig = plt.figure(f'V1-fr-{i}', dpi = 300, figsize = [16,8])
+            ax = fig.add_subplot(211)
+            fr = np.array([sum(np.logical_and(spScatter[i]>=it[j]*dt, spScatter[i]<it[j+1]*dt)) for j in range(it.size-1)], dtype = float)/(stepInterval*dt)*1000
+            smoothed_fr = movingAvg(fr, it.size-1, fr_window)
+            ax.set_title(f'max fr = {fr.max():.1f} Hz')
+            ax.plot(it[:-1]*dt/1000, smoothed_fr, '-k', lw = 0.5)
+            ax.plot(it[:-1]*dt/1000, smoothed_fr, ',r')
+            ax.set_xlabel('sample range (s)')
+            ax.set_ylabel('firing rate')
 
-        ax = fig.add_subplot(212)
-        fr = np.array([sum(np.logical_and(spScatter[i]>=it0[j]*dt, spScatter[i]<it0[j+1]*dt)) for j in range(it0.size-1)], dtype = float)/(stepInterval0*dt)*1000
-        smoothed_fr = movingAvg(fr, it0.size-1, max(sample_nOri,1))
-        ax.set_title(f'max fr = {fr.max():.1f} Hz')
-        ax.plot(it0[:-1]*dt/1000, smoothed_fr, '-k', lw = 0.5)
-        ax.set_xlabel('full time (s)')
+            ax = fig.add_subplot(212)
+            fr = np.array([sum(np.logical_and(spScatter[i]>=it0[j]*dt, spScatter[i]<it0[j+1]*dt)) for j in range(it0.size-1)], dtype = float)/(stepInterval0*dt)*1000
+            smoothed_fr = movingAvg(fr, it0.size-1, max(sample_nOri,1))
+            ax.set_title(f'max fr = {fr.max():.1f} Hz')
+            ax.plot(it0[:-1]*dt/1000, smoothed_fr, '-k', lw = 0.5)
+            ax.set_xlabel('full time (s)')
 
-        fig.savefig(fig_fdr+output_suffix + f'V1-fr-{i}.png', bbox_inches='tight')
-        plt.close(fig)
+            fig.savefig(fig_fdr+output_suffix + f'V1-fr-{i}.png', bbox_inches='tight')
+            plt.close(fig)
 
     if plot_popFR:
         fig = plt.figure(f'V1-popFR', dpi = 300, figsize = [16,8])
         ax = fig.add_subplot(211)
         denorm = stepInterval*dt/1000
-        l_fr = np.array([np.percentile([sum(np.logical_and(spScatter[i]>=it[j]*dt, spScatter[i]<it[j+1]*dt)) for i in epick], low) for j in range(it.size-1)], dtype = float)/denorm
-        h_fr = np.array([np.percentile([sum(np.logical_and(spScatter[i]>=it[j]*dt, spScatter[i]<it[j+1]*dt)) for i in epick], high) for j in range(it.size-1)], dtype = float)/denorm
-        denorm *= len(epick)
-        fr = np.array([sum([sum(np.logical_and(spScatter[i]>=it[j]*dt, spScatter[i]<it[j+1]*dt)) for i in epick]) for j in range(it.size-1)], dtype = float)/denorm
+        l_fr = np.zeros(it.size-1)
+        h_fr = np.zeros(it.size-1)
+        fr = np.zeros(it.size-1)
+        _fr = np.zeros((epick.size,it.size-1))
+        idx = 0
+        for i in epick:
+            k = 0
+            for j in range(it.size-1):
+                nsp = len(spScatter[i])
+                while k < nsp and spScatter[i][k] < it[j+1]*dt:
+                    _fr[idx,j] += 1
+                    k += 1
+            idx += 1
+        _fr /= denorm
+        l_fr = np.percentile(_fr, low, axis = 0)
+        h_fr = np.percentile(_fr, high, axis = 0)
+        fr = _fr.mean(0)
         smoothed_fr = movingAvg(fr, it.size-1, fr_window)
         max_frE = fr.max()
+        total_spikesE = fr.sum()
         ax.plot(it[:-1]*dt, smoothed_fr, '-r', lw = 0.5, label = 'exc. fr', alpha = 0.7)
         ax.fill_between(it[:-1]*dt, l_fr, y2 = h_fr, color = 'r', edgecolor = 'None', alpha = 0.5)
-        denorm = stepInterval*dt/1000
-        l_fr = np.array([np.percentile([sum(np.logical_and(spScatter[i]>=it[j]*dt, spScatter[i]<it[j+1]*dt)) for i in ipick], low) for j in range(it.size-1)], dtype = float)/denorm
-        h_fr = np.array([np.percentile([sum(np.logical_and(spScatter[i]>=it[j]*dt, spScatter[i]<it[j+1]*dt)) for i in ipick], high) for j in range(it.size-1)], dtype = float)/denorm
-        denorm *= len(ipick)
-        fr = np.array([sum([sum(np.logical_and(spScatter[i]>=it[j]*dt, spScatter[i]<it[j+1]*dt)) for i in ipick]) for j in range(it.size-1)], dtype = float)/denorm
+
+        l_fr = np.zeros(it.size-1)
+        h_fr = np.zeros(it.size-1)
+        fr = np.zeros(it.size-1)
+        _fr = np.zeros((ipick.size,it.size-1))
+        idx = 0
+        for i in ipick:
+            k = 0
+            for j in range(it.size-1):
+                nsp = len(spScatter[i])
+                while k < nsp and spScatter[i][k] < it[j+1]*dt:
+                    _fr[idx,j] += 1
+                    k += 1
+            idx += 1
+        _fr /= denorm
+        l_fr = np.percentile(_fr, low, axis = 0)
+        h_fr = np.percentile(_fr, high, axis = 0)
+        fr = _fr.mean(0)
         smoothed_fr = movingAvg(fr, it.size-1, fr_window)
         max_frI = fr.max()
+        total_spikesI = fr.sum()
         ax.plot(it[:-1]*dt, smoothed_fr, '-b', lw = 0.5, label = 'inh. fr', alpha = 0.7)
         ax.fill_between(it[:-1]*dt, l_fr, y2 = h_fr, color = 'b', edgecolor = 'None', alpha = 0.5)
-        total_spikesE = np.mean([sum(np.logical_and(spScatter[i] < it[-1]*dt, spScatter[i] >= it[0]*dt)) for i in epick])
-        total_spikesI = np.mean([sum(np.logical_and(spScatter[i] < it[-1]*dt, spScatter[i] >= it[0]*dt)) for i in ipick])
-        LGN_spikes = np.sum([sum(np.logical_and(LGN_spScatter[i] < it[-1]*dt, LGN_spScatter[i] >= it[0]*dt)) for i in range(nLGN)])
         denorm = stepInterval*dt/1000*nLGN
-        LGN_fr = np.array([sum([sum(np.logical_and(LGN_spScatter[i]>=it[j]*dt, LGN_spScatter[i]<it[j+1]*dt)) for i in range(nLGN)]) for j in range(it.size-1)], dtype = float)/denorm
+        LGN_fr = np.zeros(it.size-1)
+        for i in range(nLGN):
+            k = 0
+            for j in range(it.size-1):
+                nsp = len(LGN_spScatter[i])
+                while k < nsp and LGN_spScatter[i][k] < it[j+1]*dt:
+                    LGN_fr[j] += 1
+                    k += 1
+        LGN_fr /= denorm 
         smoothed_LGN_fr = movingAvg(LGN_fr, it.size-1, fr_window)
         ax.plot(it[:-1]*dt, smoothed_LGN_fr, '-g', lw = 0.5, label = 'LGN. fr', alpha = 0.7)
         #LTP, LTD = learning_rule_convol(LGN_spScatter, spScatter, epick, tauTrip, tauLTD, tauLTP, 3, 0, nt_, dt, fig_fdr + output_suffix)
@@ -161,12 +194,26 @@ def plotV1_fr(output_suffix0, res_fdr, data_fdr, fig_fdr, inputFn, nOri, readNew
 
         ax = fig.add_subplot(212)
         denorm = stepInterval0*dt/1000
-        l_fr = np.array([np.percentile([sum(np.logical_and(spScatter[i]>=it0[j]*dt, spScatter[i]<it0[j+1]*dt)) for i in epick], low) for j in range(it0.size-1)], dtype = float)/denorm
-        h_fr = np.array([np.percentile([sum(np.logical_and(spScatter[i]>=it0[j]*dt, spScatter[i]<it0[j+1]*dt)) for i in epick], high) for j in range(it0.size-1)], dtype = float)/denorm
-        denorm *= len(epick)
-        fr = np.array([sum([sum(np.logical_and(spScatter[i]>=it0[j]*dt, spScatter[i]<it0[j+1]*dt)) for i in epick]) for j in range(it0.size-1)], dtype = float)/denorm
+        l_fr = np.zeros(it0.size-1)
+        h_fr = np.zeros(it0.size-1)
+        fr = np.zeros(it0.size-1)
+        _fr = np.zeros((epick.size,it0.size-1))
+        idx = 0
+        for i in epick:
+            k = 0
+            for j in range(it0.size-1):
+                nsp = len(spScatter[i])
+                while k < nsp and spScatter[i][k] < it0[j+1]*dt:
+                    _fr[idx,j] += 1
+                    k += 1
+            idx += 1
+        _fr /= denorm
+        l_fr = np.percentile(_fr, low, axis = 0)
+        h_fr = np.percentile(_fr, high, axis = 0)
+        fr = _fr.mean(0)
         max_frE = fr.max()
-        smoothed_fr = movingAvg(fr, it.size-1, fr_window)
+        total_spikesE = fr.sum()
+        smoothed_fr = movingAvg(fr, it0.size-1, fr_window)
 
         V1_totalFrFn = data_fdr + "V1_totalFr" + _output_suffix + ".bin"
         with open(V1_totalFrFn, 'wb') as f:
@@ -176,24 +223,35 @@ def plotV1_fr(output_suffix0, res_fdr, data_fdr, fig_fdr, inputFn, nOri, readNew
 
         ax.plot(it0[:-1]*dt/1000, smoothed_fr, '-r', lw = 0.5, label = 'exc. fr')
         ax.fill_between(it0[:-1]*dt/1000, l_fr, y2 = h_fr, color = 'r', edgecolor = 'None', alpha = 0.5)
-        denorm = stepInterval0*dt/1000
-        l_fr = np.array([np.percentile([sum(np.logical_and(spScatter[i]>=it0[j]*dt, spScatter[i]<it0[j+1]*dt)) for i in ipick], low) for j in range(it0.size-1)], dtype = float)/denorm
-        h_fr = np.array([np.percentile([sum(np.logical_and(spScatter[i]>=it0[j]*dt, spScatter[i]<it0[j+1]*dt)) for i in ipick], high) for j in range(it0.size-1)], dtype = float)/denorm
-        denorm *= len(ipick)
-        fr = np.array([sum([sum(np.logical_and(spScatter[i]>=it0[j]*dt, spScatter[i]<it0[j+1]*dt)) for i in ipick]) for j in range(it0.size-1)], dtype = float)/denorm
+        l_fr = np.zeros(it0.size-1)
+        h_fr = np.zeros(it0.size-1)
+        fr = np.zeros(it0.size-1)
+        _fr = np.zeros((ipick.size,it0.size-1))
+        idx = 0
+        for i in ipick:
+            k = 0
+            for j in range(it0.size-1):
+                nsp = len(spScatter[i])
+                while k < nsp and spScatter[i][k] < it0[j+1]*dt:
+                    _fr[idx,j] += 1
+                    k += 1
+            idx += 1
+        _fr /= denorm
+        l_fr = np.percentile(_fr, low, axis = 0)
+        h_fr = np.percentile(_fr, high, axis = 0)
+        fr = _fr.mean(0)
         max_frI = fr.max()
-        smoothed_fr = movingAvg(fr, it.size-1, fr_window)
+        total_spikesI = fr.sum()
+        smoothed_fr = movingAvg(fr, it0.size-1, fr_window)
+
         ax.plot(it0[:-1]*dt/1000, smoothed_fr, '-b', lw = 0.5, label = 'inh. fr')
         ax.fill_between(it0[:-1]*dt/1000, l_fr, y2 = h_fr, color = 'b', edgecolor = 'None', alpha = 0.7)
-        total_spikesE = np.mean([len(spScatter[i]) for i in epick])
-        total_spikesI = np.mean([len(spScatter[i]) for i in ipick])
         ax.set_title(f'max FR. (avg. spikes) E: {max_frE:.1f}Hz({total_spikesE:.1f}), I: {max_frI:.1f}Hz({total_spikesI:.1f})')
         ax.set_ylabel('fr')
         ax.set_xlabel('full time (s)')
         fig.tight_layout(pad = 0.5)
         fig.savefig(fig_fdr+output_suffix + f'V1-popFR.png', bbox_inches='tight')
         plt.close(fig)
-
 
 def learning_rule_convol(LGN_sp, V1_sp, idx, tauTrip, tauLTD, tauLTP, ntau, t0, nt, dt, fig_prefix = None):
     exp_weightLTP = np.exp(-np.arange(round(tauLTP/dt)*ntau) * dt/tauLTP)

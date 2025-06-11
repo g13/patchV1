@@ -14,57 +14,72 @@ waveStage=2 # set stage number
 if [[ "${waveStage}" = "2" ]] ;then # stage II wave goes here
 	#inputFn=32-sequential_10-30_stage_II 
 	#inputFn=32-random3917563_10-30_stage_II 
-	fdr=wave_II/mechanism # folder will be made to store figures and configuratoin files
+	fdr=wave_II/mechanism/sp20_early-stop # folder will be made to store figures and configuratoin files
     data_fdr=${data_fdr}/${fdr}
 	op_cfg=wave_II.cfg # the simulation config file to be used
 	new_setup=True
     #inputFn=64-random3917566_10-10_stage_II-SP20
+    #suffix=SP10x7-single-2S
     suffix=SP10
-    inputFn=64-opponent_10-10_stage_II-$suffix
-    #inputFn=32-preset_10-10_stage_II-SP10_single_dir
-    #inputFn=32-preset_10-10_stage_II-SP10_opposed_single_dir
-    #op=SP10_osd-s0_3-h0-A0_003125-rLTD1_0-w2048 # theme string to be added to filenames of data and figures
-    #op=retinotopy_SP10-gap0_05-s0_3-h2-A0_05-rLTD0_3-w64 # theme string to be added to filenames of data and figures
-    op=sp10_test0 # theme string tco be added to filenames of data and figures
+    #inputFn=4-preset_30-30_stage_II-$suffix
+    #inputFn=256-random3917568_30-30_stage_II-$suffix
+    inputFn=64-random89762345_40-40_stage_II-$suffix
+    #inputFn=64-opponent_40-40_stage_II-$suffix
+    #inputFn=64-random3917563_20-20_stage_II-$suffix
+    op=sp10_dr1 # theme string tco be added to filenames of data and figures
     retino_cross=False
     retinotopy=0.0 #0.35
-	lgn=lFF_II-${suffix} # the theme string to be used for LGN_V1 connections
-	res=lFF_II-${suffix} # the theme string to be used for V1, LGN positions etc.
+    fsuffix=rd64_${suffix}
+    #fsuffix=20-SP10x7_singleg-2S
+    #fsuffix=30-SP10-ortho
+	lgn=lFF_II-${fsuffix} # the theme string to be used for LGN_V1 connections
+	res=lFF_II-${fsuffix} # the theme string to be used for V1, LGN positions etc.
 	squareOrCircle=false # initial LGN-recruitment shape 
     examSingle=false # output the spatiotemporal figure, tLGN_V1_single if true
     find_peak=false
 	fAsInput=None
+    conLGN_idFile=None
+    relay=false
 fi
 
-relay=false
 if [[ "${waveStage}" = "3" ]] ;then
-	inputFn=64x3-random3917563_5-5_stage_III
+    relay=true
+    isuffix=10+10
+	inputFn=192x1-random3912540_10-10_stage_III-${isuffix}
+	#inputFn=64x3-random3912540_10-10_stage_III-${isuffix}
+	#inputFn=64x4-opponent_10-10_stage_III-${isuffix}
 	#inputFn=32x3-opponent_5-5_stage_III_sym
 	#inputFn=32x3-sequential_5-15_stage_III_sym
 	#inputFn=32x3-135_5-5_stage_III_sym
 	fdr=wave_concat/wave_III
-	op=w3_random
+	op=w3_concat3-0
 	#op=single_test-135
 	op_cfg=wave_III.cfg
 	new_setup=False
-    data_fdr=${data_fdr}/${fdr}
+	suffix=s0
 	if [[ "${relay}" = false ]]; then
-		suffix=s0
 		lgn=lFF_III_${suffix}
 		res=lFF_III_${suffix}
 		fAsInput=None
 	else
-		fAsInput=${data_fdr}/sLGN_32_ii.bin
-		if [ -z "${fAsInput}" ]; 
+        conLGN_idFile=lFF_II-rd64_SP20
+		fAsInput=${data_fdr}/sLGN-sp20_early-stop_t0.bin
+        
+		if [ -e "${fAsInput}" ]; 
 		then
-			lgn=lFF_concat0
-		else
-			lgn=lFF_relay_concat
+		    suffix=concat-${isuffix}x1_full
+        else
+            echo no sLGN file found at ${fAsInput}, re-initialize
+            return 1
 		fi
-		res=lFF0
+		lgn=lFF_${suffix}
+		res=lFF_${suffix}
+        cp ${setup_fdr}/LGN_V1_idList-${conLGN_idFile}.bin ${setup_fdr}/LGN_V1_idList-${lgn}.bin 
 	fi
-	squareOrCircle=true # initial LGN-recruitment shape 
+	squareOrCircle=false # initial LGN-recruitment shape 
     examSingle=true # output the spatiotemporal figure, tLGN_V1_single if true
+    data_fdr=${data_fdr}/${fdr}
+    retino_cross=False
 fi
 
 if [[ "${waveStage}" = "5" ]] ;then
@@ -78,10 +93,14 @@ if [[ "${waveStage}" = "5" ]] ;then
     examSingle=true # output the spatiotemporal figure, tLGN_V1_single if true
 fi
 
-examLTD=True
+examLTD=False
 binary_thres=0.0
 #binary_thres=0.5
 std_ecc=0
+#std_ecc=32
+#std_ecc=28
+#std_ecc=24
+#std_ecc=20
 #std_ecc=16
 #std_ecc=12
 #std_ecc=8
@@ -90,10 +109,10 @@ std_ecc=0
 #std_ecc=4
 #std_ecc=3
 #std_ecc=2.66667
-seed=1924786 # RANDOM SEED for post-analysis sampling and input randomization 
+seed=20230308 # RANDOM SEED for post-analysis sampling and input randomization 
 # for outputLearnFF.m
 st=2 # figures' output: 0 for temporal, 1 for spatial, 2 for both, otherwise none
-use_local_max=1 # output the spatiotemporal figure, sLGN_V1 with strength normalized for each frame instead over all frames if set 1
+use_local_max=0 # output the spatiotemporal figure, sLGN_V1 with strength normalized for each frame instead over all frames if set 1
 collectMeanDataOnly=False # not ploting samples of V1 response variable traces
 
 # NOT RELATED, leave alone
@@ -145,7 +164,7 @@ echo plotOnly=${plotOnly}
 
 if [[ "${redo}" = "0" ]]
 then
-    cp lFF-nonhpc ${fig_fdr}/lFF-nonhpc_${op}
+    cp $0 ${fig_fdr}/lFF-nonhpc_${op}
     cp lFF-nonhpc.keys ${fig_fdr}/lFF-nonhpc_${op}.keys
     chmod +x ${fig_fdr}/lFF-nonhpc_${op}
     vim -s ${fig_fdr}/lFF-nonhpc_${op}.keys ${fig_fdr}/lFF-nonhpc_${op} > /dev/null 2>&1

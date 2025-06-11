@@ -143,12 +143,20 @@ void learnFF_post(T &l, Float tauLTD[], Float tauTrip[], Float r_LTD[], Float ta
         Float tauAvg_in_sec = tauAvg/1000.0;
 		l.A_ratio[i] = r_LTD[i] * l.A_LTP[i]; // for A_LTD
 		if (targetFR > 0) {
-			l.A_ratio[i] *= tauTrip[i]/(tauLTD[i]*(tauAvg_in_sec*tauAvg_in_sec))/1000.0/targetFR; // * tauLTP * filtered spike avg^2 = A_LTD
+            if (tauTrip[i] > 0) {
+			    l.A_ratio[i] *= tauTrip[i]/(tauLTD[i]*(tauAvg_in_sec*tauAvg_in_sec))/1000.0/targetFR; // * tauLTP * filtered spike avg^2 = A_LTD
+            } else {
+			    l.A_ratio[i] *= 1.0/(tauLTD[i]*tauAvg_in_sec)/1000.0/targetFR; // * tauLTP * filtered spike avg = A_LTD
+            }
 		}
     }
     l.tau[2*n] = tauAvg;
     l.targetFR = targetFR; 
-    l.gmax = gmax*ratio;
+    if (gmax > 0) {
+        l.gmax = gmax*ratio;
+    } else {
+        l.gmax = -gmax;
+    }
     l.gmin = gmin*ratio;
 }
 template<class T>

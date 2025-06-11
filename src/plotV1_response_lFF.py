@@ -16,7 +16,7 @@ np.seterr(invalid = 'raise')
 #@profile
 def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix, res_fdr, setup_fdr, data_fdr, fig_fdr, TF, iOri, nOri, readNewSpike, usePrefData, collectMeanDataOnly, OPstatus):
     #sample = np.array([0,1,2,768])
-    sample = np.hstack((np.array([412, 473, 414, 456, 500, 40, 189, 93, 915], dtype = 'u4'), np.array([0,1,2,3,4], dtype = 'u4')))
+    #sample = np.hstack((np.array([412, 473, 414, 456, 500, 40, 189, 93, 915], dtype = 'u4'), np.array([0,1,2,3,4], dtype = 'u4')))
 
     SCsplit = 0
     nLGNorF1F0 = True
@@ -24,7 +24,7 @@ def plotV1_response_lFF(output_suffix0, res_suffix, conLGN_suffix, conV1_suffix,
     seed = 657890
     np.random.seed(seed)
     step0 = 0
-    nt_ = 20000
+    nt_ = 7000
     nstep = 10000
     if nOri > 0:
         stiOri = np.pi*np.mod(iOri/nOri, 1.0)
